@@ -65,3 +65,29 @@ Never guess at Effect patterns - check the guide first.
 
 <!-- effect-solutions:end -->
 
+## Code Philosophy
+
+### Cognitive Load is What Matters
+We should reduce the cognitive load in our projects as much as possible.
+
+When reading code, you put things like values of variables, control flow logic and call sequences into your head. The average person can hold roughly four such chunks in working memory. Once the cognitive load reaches this threshold, it becomes much harder to understand things.
+
+Types of cognitive load:
+- Intrinsic - caused by the inherent difficulty of a task. It can't be reduced, it's at the very heart of software development.
+- Extraneous - created by the way the information is presented. Caused by factors not directly relevant to the task, such as smart author's quirks. Can be greatly reduced.
+
+Our goal is to reduce extraneous cognitive load as much as possible.
+Patterns that contribute to extraneous cognitive load:
+- Complex inline conditionals
+  - Solution: introduce meaningfully named intermediate variables
+- Nested ifs
+  - Solution: early returns
+- Inheritance, e.g. AdminController extends UserController extends GuestController extends BaseController
+  - Solution: prefer composition over inheritance
+- Excessive state
+  - Solution: prefer functional style programming - describe the series of computations to be performed, avoid storing the state at each step if possible. Also break down scopes with excessive state into composable functions to compartmentalize the cognitive load
+
+### Single Source of Truth
+I hope this one is self explanatory. Duplicate sources of truth for the same information drift over time, leading to confusion and bugs. This is why the agent map is so important - it helps us find pre-existing sources of truth so that we can avoid repeating it.
+
+Just because two sources of information match at any one point in time does not mean that they should be consolidated. Sometimes, they could become meaningfully different in the future. You must think in terms of the problem space, not the current state of the solution. For example, two API endpoints may return the same response schema *right now* but they are fundamentally *different endpoints*, so the response types should be declared separately.
