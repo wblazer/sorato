@@ -1,8 +1,15 @@
 {
   "name": "blazerbench",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
-  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./dataset": "./src/dataset/Dataset.ts",
+    "./rubric": "./src/rubric/Rubric.ts",
+    "./sandbox": "./src/sandbox/Sandbox.ts",
+    "./harness": "./src/harness/Harness.ts",
+    "./runner": "./src/runner/Runner.ts"
+  },
   "scripts": {
     "prepare": "effect-language-service patch",
     "typecheck": "tsc --noEmit",
