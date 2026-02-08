@@ -54,3 +54,11 @@ export type {
   RunnerConfig,
 } from './runner/Runner.ts'
 export { runBenchmark, runStringBenchmark } from './runner/Runner.ts'
+
+// Reporter
+export {
+  formatSummary,
+  toJson,
+  saveResult,
+  defaultResultPath,
+} from './reporter/Reporter.ts'

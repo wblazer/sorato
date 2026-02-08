@@ -13,7 +13,7 @@
  *   - **Hooks**: arbitrary code on lifecycle events. Just functions → Effects.
  *   - **Model**: provided via Effect's `LanguageModel` service.
  */
-import type { AiError, Prompt, Response, Toolkit } from '@effect/ai'
+import type { AiError, Prompt, Response, Tool, Toolkit } from '@effect/ai'
 import type { Effect } from 'effect'
 
 // ---------------------------------------------------------------------------
@@ -67,10 +67,7 @@ export interface HarnessHook<E = never, R = never> {
  * Configuration for constructing a harness.
  */
 export interface HarnessConfig<
-  Tools extends Record<string, import('@effect/ai').Tool.Any> = Record<
-    string,
-    never
-  >,
+  Tools extends Record<string, Tool.Any> = Record<string, never>,
   HookE = never,
   HookR = never,
 > {
@@ -109,11 +106,7 @@ export interface HarnessResult {
  * Hooks fire on every stream part — text deltas, tool calls, tool results.
  * The full conversation is captured via the Chat history ref.
  */
-export const run = <
-  Tools extends Record<string, import('@effect/ai').Tool.Any>,
-  HookE,
-  HookR,
->(
+export const run = <Tools extends Record<string, Tool.Any>, HookE, HookR>(
   input: string,
   config: HarnessConfig<Tools, HookE, HookR>
 ): Effect.Effect<

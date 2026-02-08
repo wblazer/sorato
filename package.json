@@ -8,7 +8,8 @@
     "./rubric": "./src/rubric/Rubric.ts",
     "./sandbox": "./src/sandbox/Sandbox.ts",
     "./harness": "./src/harness/Harness.ts",
-    "./runner": "./src/runner/Runner.ts"
+    "./runner": "./src/runner/Runner.ts",
+    "./reporter": "./src/reporter/Reporter.ts"
   },
   "scripts": {
     "prepare": "effect-language-service patch",
@@ -27,6 +28,7 @@
   },
   "dependencies": {
     "@effect/ai": "^0.33.2",
+    "@effect/ai-anthropic": "^0.23.0",
     "@effect/cli": "^0.73.1",
     "@effect/platform": "^0.94.2",
     "@effect/platform-bun": "^0.87.1",

@@ -10,7 +10,7 @@
  * don't accidentally blow rate limits or burn money.
  */
 import { Effect } from 'effect'
-import type { AiError, LanguageModel } from '@effect/ai'
+import type { AiError, LanguageModel, Tool } from '@effect/ai'
 import type { Dataset, Scenario } from '../dataset/Dataset.ts'
 import type { HarnessConfig, HarnessResult } from '../harness/Harness.ts'
 import { run as runHarness } from '../harness/Harness.ts'
@@ -64,13 +64,13 @@ export const runBenchmark = <
   Input,
   Expected,
   Meta,
-  DatasetE,
-  DatasetR,
-  Tools extends Record<string, import('@effect/ai').Tool.Any>,
-  HookE,
-  HookR,
-  RubricE,
-  RubricR,
+  DatasetE = never,
+  DatasetR = never,
+  Tools extends Record<string, Tool.Any> = Record<string, never>,
+  HookE = never,
+  HookR = never,
+  RubricE = never,
+  RubricR = never,
 >(options: {
   readonly dataset: Dataset<Input, Expected, Meta, DatasetE, DatasetR>
   readonly harness: HarnessConfig<Tools, HookE, HookR>
@@ -145,13 +145,13 @@ export const runBenchmark = <
 export const runStringBenchmark = <
   Expected,
   Meta,
-  DatasetE,
-  DatasetR,
-  Tools extends Record<string, import('@effect/ai').Tool.Any>,
-  HookE,
-  HookR,
-  RubricE,
-  RubricR,
+  DatasetE = never,
+  DatasetR = never,
+  Tools extends Record<string, Tool.Any> = Record<string, never>,
+  HookE = never,
+  HookR = never,
+  RubricE = never,
+  RubricR = never,
 >(options: {
   readonly dataset: Dataset<string, Expected, Meta, DatasetE, DatasetR>
   readonly harness: HarnessConfig<Tools, HookE, HookR>
