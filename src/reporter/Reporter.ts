@@ -76,6 +76,7 @@ export const toJson = <I, M>(result: BenchmarkResult<I, M>): string =>
       results: result.results.map((r) => ({
         scenarioId: r.scenario.id,
         rubric: r.scenario.rubric.name,
+        rubricDescription: r.scenario.rubric.description,
         input: r.scenario.input,
         metadata: r.scenario.metadata,
         output: finalAssistantText(r.harnessResult.conversation),

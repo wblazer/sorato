@@ -89,6 +89,8 @@ export interface Rubric<
   R = never,
 > {
   readonly name: string
+  /** Human-readable description of what the rubric checks, e.g. "contains 'Hello, World!'" */
+  readonly description: string
   readonly evaluate: (
     ctx: RunContext<Input, Meta>
   ) => Effect.Effect<Score, E, R>
@@ -103,9 +105,11 @@ export interface Rubric<
  */
 export const fromFunction = <Input = string, Meta = Record<string, never>>(
   name: string,
-  fn: (ctx: RunContext<Input, Meta>) => Score
+  fn: (ctx: RunContext<Input, Meta>) => Score,
+  description?: string
 ): Rubric<Input, Meta> => ({
   name,
+  description: description ?? name,
   evaluate: (ctx) => Effect.sync(() => fn(ctx)),
 })
 
@@ -116,9 +120,11 @@ export const fromFunction = <Input = string, Meta = Record<string, never>>(
  */
 export const fromEffect = <Input, Meta, E, R>(
   name: string,
-  evaluate: (ctx: RunContext<Input, Meta>) => Effect.Effect<Score, E, R>
+  evaluate: (ctx: RunContext<Input, Meta>) => Effect.Effect<Score, E, R>,
+  description?: string
 ): Rubric<Input, Meta, E, R> => ({
   name,
+  description: description ?? name,
   evaluate,
 })
 
@@ -149,28 +155,40 @@ export const finalAssistantText = (conversation: Prompt.Prompt): string => {
  * Scores 1 when the final assistant message === the expected string.
  */
 export const exactMatch = (expected: string): Rubric =>
-  fromFunction('exact-match', (ctx) => {
-    const output = finalAssistantText(ctx.conversation)
-    return { score: output === expected ? 1 : 0 }
-  })
+  fromFunction(
+    'exact-match',
+    (ctx) => {
+      const output = finalAssistantText(ctx.conversation)
+      return { score: output === expected ? 1 : 0 }
+    },
+    `exact match: '${expected}'`
+  )
 
 /**
  * Scores 1 when the final assistant message contains the expected string.
  */
 export const contains = (expected: string): Rubric =>
-  fromFunction('contains', (ctx) => {
-    const output = finalAssistantText(ctx.conversation)
-    return { score: output.includes(expected) ? 1 : 0 }
-  })
+  fromFunction(
+    'contains',
+    (ctx) => {
+      const output = finalAssistantText(ctx.conversation)
+      return { score: output.includes(expected) ? 1 : 0 }
+    },
+    `contains '${expected}'`
+  )
 
 /**
  * Scores 1 when the final assistant message matches the given regex pattern.
  */
 export const regex = (pattern: string): Rubric =>
-  fromFunction('regex', (ctx) => {
-    const output = finalAssistantText(ctx.conversation)
-    return { score: new RegExp(pattern).test(output) ? 1 : 0 }
-  })
+  fromFunction(
+    'regex',
+    (ctx) => {
+      const output = finalAssistantText(ctx.conversation)
+      return { score: new RegExp(pattern).test(output) ? 1 : 0 }
+    },
+    `matches /${pattern}/`
+  )
 
 // ---------------------------------------------------------------------------
 // LLM-as-judge
@@ -196,44 +214,47 @@ export const llmJudge = (
     reason: Schema.String,
   })
 
-  return fromEffect('llm-judge', (ctx) =>
-    Effect.gen(function* () {
-      const output = finalAssistantText(ctx.conversation)
+  return fromEffect(
+    'llm-judge',
+    (ctx) =>
+      Effect.gen(function* () {
+        const output = finalAssistantText(ctx.conversation)
 
-      const expectedSection = expected
-        ? `\nExpected output:\n${expected}\n`
-        : ''
+        const expectedSection = expected
+          ? `\nExpected output:\n${expected}\n`
+          : ''
 
-      const response = yield* LanguageModel.generateObject({
-        prompt: [
-          {
-            role: 'system',
-            content: `You are an evaluation judge. Score the assistant's output.
+        const response = yield* LanguageModel.generateObject({
+          prompt: [
+            {
+              role: 'system',
+              content: `You are an evaluation judge. Score the assistant's output.
 
 Criteria: ${criteria}
 
 Respond with:
 - score: number between 0 and 1
 - reason: brief explanation of your scoring`,
-          },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: `${expectedSection}Actual output:\n${output}`,
-              },
-            ],
-          },
-        ],
-        schema: JudgeResult,
-        objectName: 'JudgeResult',
-      })
+            },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: `${expectedSection}Actual output:\n${output}`,
+                },
+              ],
+            },
+          ],
+          schema: JudgeResult,
+          objectName: 'JudgeResult',
+        })
 
-      return {
-        score: response.value.score,
-        reason: response.value.reason,
-      } satisfies Score
-    })
+        return {
+          score: response.value.score,
+          reason: response.value.reason,
+        } satisfies Score
+      }),
+    `llm-judge: ${criteria}`
   )
 }
