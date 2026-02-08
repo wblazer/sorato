@@ -6,7 +6,7 @@
  *
  * Or import from sub-paths for tree-shaking / clarity:
  *   import { fromArray } from "blazerbench/dataset"
- *   import { llmJudge } from "blazerbench/rubric"
+ *   import { contains } from "blazerbench/rubric"
  */
 
 // Dataset
@@ -57,6 +57,7 @@ export { runBenchmark, runStringBenchmark } from './runner/Runner.ts'
 
 // Reporter
 export {
+  ReporterError,
   formatSummary,
   toJson,
   saveResult,

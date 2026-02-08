@@ -2,7 +2,7 @@
  * hello-world eval — the simplest possible vertical slice.
  *
  * A handful of trivial prompt→expected-string scenarios exercising the
- * full pipeline: Dataset → Harness → Rubric → Runner → Reporter.
+ * full pipeline: Dataset → Harness → Runner → Reporter.
  *
  * Run:  bun run evals/hello-world/main.ts
  */
@@ -24,30 +24,26 @@ import type { Scenario } from 'blazerbench'
 // Dataset
 // ---------------------------------------------------------------------------
 
-const scenarios: ReadonlyArray<Scenario<string, string>> = [
+const scenarios: ReadonlyArray<Scenario> = [
   {
     id: 'hello-world',
     input: "Say 'Hello, World!' and nothing else.",
-    expected: 'Hello, World!',
-    metadata: {},
+    rubric: contains('Hello, World!'),
   },
   {
     id: 'simple-math',
     input: 'What is 2 + 2? Reply with just the number.',
-    expected: '4',
-    metadata: {},
+    rubric: contains('4'),
   },
   {
     id: 'color-of-sky',
     input: 'What color is the sky on a clear day? Reply with one word.',
-    expected: 'blue',
-    metadata: {},
+    rubric: contains('blue'),
   },
   {
     id: 'reverse-greeting',
     input: "Say 'Goodbye!' and nothing else.",
-    expected: 'Goodbye!',
-    metadata: {},
+    rubric: contains('Goodbye!'),
   },
 ]
 
@@ -76,15 +72,13 @@ const program = Effect.gen(function* () {
   const result = yield* runStringBenchmark({
     dataset,
     harness: {},
-    rubric: contains,
   })
 
-  const summary = formatSummary(result)
-  yield* Effect.log(summary)
+  console.log(formatSummary(result))
 
   const path = defaultResultPath(result)
   yield* saveResult(result, path)
-  yield* Effect.log(`Results saved to ${path}`)
+  console.log(`Results saved to ${path}`)
 })
 
 const MainLayer = Layer.merge(AnthropicLive, LocalSandboxLive)

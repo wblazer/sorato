@@ -6,7 +6,7 @@
  * state, whatever. The rubric receives a `RunContext` containing:
  *   - The Sandbox (to inspect world state: run commands, read files)
  *   - The full conversation history
- *   - The original scenario (including any expected-value data)
+ *   - The original scenario
  *   - Aggregate usage stats
  *
  * A string-comparison rubric is just a special case that only looks at the
@@ -31,15 +31,11 @@ import type { Scenario } from '../dataset/Dataset.ts'
  * Everything a rubric might need to judge a harness run.
  *
  * Generic over the scenario types so the rubric has full access to the
- * scenario's input, expected value, and metadata.
+ * scenario's input and metadata.
  */
-export interface RunContext<
-  Input = string,
-  Expected = string,
-  Meta = Record<string, never>,
-> {
+export interface RunContext<Input = string, Meta = Record<string, never>> {
   /** The scenario that was run. */
-  readonly scenario: Scenario<Input, Expected, Meta>
+  readonly scenario: Scenario<Input, Meta>
 
   /** The full conversation history from the agent loop. */
   readonly conversation: Prompt.Prompt
@@ -62,11 +58,11 @@ export interface RunContext<
 /**
  * The result of evaluating a single scenario.
  *
- * `pass` is the hard boolean gate. `score` is a 0–1 float for finer-grained
- * ranking. `reason` is an optional human-readable explanation.
+ * The library imposes no scale — a rubric can return 0/1 for binary
+ * judgments, 0–100 for percentage scores, or anything else. Interpretation
+ * is the consumer's responsibility.
  */
 export interface Score {
-  readonly pass: boolean
   readonly score: number
   readonly reason?: string | undefined
 }
@@ -78,22 +74,23 @@ export interface Score {
 /**
  * A rubric is a named evaluation function that receives a RunContext.
  *
+ * Rubrics live on individual scenarios — different scenarios in the same
+ * dataset can use entirely different rubrics.
+ *
  * Generic over:
- *   - `Input`, `Expected`, `Meta` — the scenario shape (so the rubric can
- *     access scenario.expected, scenario.metadata, etc.)
+ *   - `Input`, `Meta` — the scenario shape
  *   - `E` — errors the evaluation can produce
  *   - `R` — Effect requirements (e.g. LanguageModel for LLM-as-judge)
  */
 export interface Rubric<
   Input = string,
-  Expected = string,
   Meta = Record<string, never>,
   E = never,
   R = never,
 > {
   readonly name: string
   readonly evaluate: (
-    ctx: RunContext<Input, Expected, Meta>
+    ctx: RunContext<Input, Meta>
   ) => Effect.Effect<Score, E, R>
 }
 
@@ -104,14 +101,10 @@ export interface Rubric<
 /**
  * Create a rubric from a pure (synchronous) evaluation function.
  */
-export const fromFunction = <
-  Input = string,
-  Expected = string,
-  Meta = Record<string, never>,
->(
+export const fromFunction = <Input = string, Meta = Record<string, never>>(
   name: string,
-  fn: (ctx: RunContext<Input, Expected, Meta>) => Score
-): Rubric<Input, Expected, Meta> => ({
+  fn: (ctx: RunContext<Input, Meta>) => Score
+): Rubric<Input, Meta> => ({
   name,
   evaluate: (ctx) => Effect.sync(() => fn(ctx)),
 })
@@ -121,12 +114,10 @@ export const fromFunction = <
  * Use this when evaluation needs IO — calling an LLM, running sandbox
  * commands, reading files, etc.
  */
-export const fromEffect = <Input, Expected, Meta, E, R>(
+export const fromEffect = <Input, Meta, E, R>(
   name: string,
-  evaluate: (
-    ctx: RunContext<Input, Expected, Meta>
-  ) => Effect.Effect<Score, E, R>
-): Rubric<Input, Expected, Meta, E, R> => ({
+  evaluate: (ctx: RunContext<Input, Meta>) => Effect.Effect<Score, E, R>
+): Rubric<Input, Meta, E, R> => ({
   name,
   evaluate,
 })
@@ -155,64 +146,52 @@ export const finalAssistantText = (conversation: Prompt.Prompt): string => {
 // ---------------------------------------------------------------------------
 
 /**
- * Passes when the final assistant message === scenario.expected.
+ * Scores 1 when the final assistant message === the expected string.
  */
-export const exactMatch: Rubric<string, string> = fromFunction(
-  'exact-match',
-  (ctx) => {
+export const exactMatch = (expected: string): Rubric =>
+  fromFunction('exact-match', (ctx) => {
     const output = finalAssistantText(ctx.conversation)
-    return {
-      pass: output === ctx.scenario.expected,
-      score: output === ctx.scenario.expected ? 1 : 0,
-    }
-  }
-)
+    return { score: output === expected ? 1 : 0 }
+  })
 
 /**
- * Passes when the final assistant message contains scenario.expected.
+ * Scores 1 when the final assistant message contains the expected string.
  */
-export const contains: Rubric<string, string> = fromFunction(
-  'contains',
-  (ctx) => {
+export const contains = (expected: string): Rubric =>
+  fromFunction('contains', (ctx) => {
     const output = finalAssistantText(ctx.conversation)
-    return {
-      pass: output.includes(ctx.scenario.expected),
-      score: output.includes(ctx.scenario.expected) ? 1 : 0,
-    }
-  }
-)
+    return { score: output.includes(expected) ? 1 : 0 }
+  })
 
 /**
- * Passes when the final assistant message matches scenario.expected as regex.
+ * Scores 1 when the final assistant message matches the given regex pattern.
  */
-export const regex: Rubric<string, string> = fromFunction('regex', (ctx) => {
-  const output = finalAssistantText(ctx.conversation)
-  const re = new RegExp(ctx.scenario.expected)
-  const matches = re.test(output)
-  return { pass: matches, score: matches ? 1 : 0 }
-})
+export const regex = (pattern: string): Rubric =>
+  fromFunction('regex', (ctx) => {
+    const output = finalAssistantText(ctx.conversation)
+    return { score: new RegExp(pattern).test(output) ? 1 : 0 }
+  })
 
 // ---------------------------------------------------------------------------
 // LLM-as-judge
 // ---------------------------------------------------------------------------
 
 /**
- * An LLM-as-judge rubric. Receives the full RunContext and asks a model
- * to evaluate the outcome.
+ * An LLM-as-judge rubric. Asks a model to evaluate the outcome against
+ * the given criteria.
  *
  * Requires `LanguageModel` in the Effect context.
  */
 export const llmJudge = (
-  criteria: string
+  criteria: string,
+  expected?: string
 ): Rubric<
-  string,
   string,
   Record<string, never>,
   AiError.AiError,
   LanguageModel.LanguageModel
 > => {
   const JudgeResult = Schema.Struct({
-    pass: Schema.Boolean,
     score: Schema.Number,
     reason: Schema.String,
   })
@@ -221,16 +200,19 @@ export const llmJudge = (
     Effect.gen(function* () {
       const output = finalAssistantText(ctx.conversation)
 
+      const expectedSection = expected
+        ? `\nExpected output:\n${expected}\n`
+        : ''
+
       const response = yield* LanguageModel.generateObject({
         prompt: [
           {
             role: 'system',
-            content: `You are an evaluation judge. Score the assistant's output against the expected output.
+            content: `You are an evaluation judge. Score the assistant's output.
 
 Criteria: ${criteria}
 
 Respond with:
-- pass: boolean (true if the output meets the criteria)
 - score: number between 0 and 1
 - reason: brief explanation of your scoring`,
           },
@@ -239,7 +221,7 @@ Respond with:
             content: [
               {
                 type: 'text',
-                text: `Expected output:\n${ctx.scenario.expected}\n\nActual output:\n${output}`,
+                text: `${expectedSection}Actual output:\n${output}`,
               },
             ],
           },
@@ -249,7 +231,6 @@ Respond with:
       })
 
       return {
-        pass: response.value.pass,
         score: response.value.score,
         reason: response.value.reason,
       } satisfies Score

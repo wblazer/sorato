@@ -10,6 +10,7 @@
  */
 import { Effect, Schema } from 'effect'
 import type { BenchmarkResult, ScenarioResult } from '../runner/Runner.ts'
+import { finalAssistantText } from '../rubric/Rubric.ts'
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -28,22 +29,19 @@ export class ReporterError extends Schema.TaggedError<ReporterError>()(
 // Console summary
 // ---------------------------------------------------------------------------
 
-const formatScenarioLine = <I, E, M>(r: ScenarioResult<I, E, M>): string => {
-  const icon = r.score.pass ? '✓' : '✗'
+const formatScenarioLine = <I, M>(r: ScenarioResult<I, M>): string => {
   const reason = r.score.reason ? ` — ${r.score.reason}` : ''
-  return `  ${icon} ${r.scenario.id} (${r.score.score})${reason}`
+  return `  ${r.scenario.id}: ${r.score.score}${reason}`
 }
 
 /**
  * Render a `BenchmarkResult` as a human-readable string suitable for
  * printing to the terminal.
  */
-export const formatSummary = <I, E, M>(
-  result: BenchmarkResult<I, E, M>
-): string => {
+export const formatSummary = <I, M>(result: BenchmarkResult<I, M>): string => {
   const lines: Array<string> = []
 
-  lines.push(`\n  ${result.datasetName} × ${result.rubricName}`)
+  lines.push(result.datasetName)
   lines.push(`${'─'.repeat(50)}`)
 
   for (const r of result.results) {
@@ -52,9 +50,8 @@ export const formatSummary = <I, E, M>(
 
   lines.push(`${'─'.repeat(50)}`)
   lines.push(
-    `  ${result.summary.passed}/${result.summary.total} passed` +
-      `  avg: ${result.summary.averageScore.toFixed(2)}` +
-      `  failed: ${result.summary.failed}`
+    `  ${result.summary.total} scenarios` +
+      `  avg score: ${result.summary.averageScore.toFixed(2)}`
   )
   lines.push('')
 
@@ -68,19 +65,20 @@ export const formatSummary = <I, E, M>(
 /**
  * Serialize a `BenchmarkResult` to a stable JSON representation.
  *
- * Strips the conversation history (which is large and not useful for
- * diffing) and keeps scenario id, score, and usage.
+ * Includes the actual model response for each scenario so results
+ * are debuggable without the full conversation history.
  */
-export const toJson = <I, E, M>(result: BenchmarkResult<I, E, M>): string =>
+export const toJson = <I, M>(result: BenchmarkResult<I, M>): string =>
   JSON.stringify(
     {
       datasetName: result.datasetName,
-      rubricName: result.rubricName,
       summary: result.summary,
       results: result.results.map((r) => ({
         scenarioId: r.scenario.id,
+        rubric: r.scenario.rubric.name,
         input: r.scenario.input,
-        expected: r.scenario.expected,
+        metadata: r.scenario.metadata,
+        output: finalAssistantText(r.harnessResult.conversation),
         score: r.score,
         usage: r.harnessResult.usage,
       })),
@@ -95,8 +93,8 @@ export const toJson = <I, E, M>(result: BenchmarkResult<I, E, M>): string =>
  *
  * Creates parent directories as needed.
  */
-export const saveResult = <I, E, M>(
-  result: BenchmarkResult<I, E, M>,
+export const saveResult = <I, M>(
+  result: BenchmarkResult<I, M>,
   path: string
 ): Effect.Effect<string, ReporterError> =>
   Effect.tryPromise({
@@ -117,8 +115,8 @@ export const saveResult = <I, E, M>(
  * Generate a default file path for a benchmark result.
  * Format: `.results/{datasetName}-{ISO timestamp}.json`
  */
-export const defaultResultPath = <I, E, M>(
-  result: BenchmarkResult<I, E, M>,
+export const defaultResultPath = <I, M>(
+  result: BenchmarkResult<I, M>,
   baseDir = '.results'
 ): string => {
   const ts = new Date().toISOString().replace(/[:.]/g, '-')

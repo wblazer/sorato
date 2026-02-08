@@ -4,13 +4,14 @@
  * Each Scenario carries:
  *   - `id`: a stable identifier for diffing results across runs, caching, etc.
  *   - `input`: the prompt/task description handed to the harness
- *   - `expected`: whatever the rubric needs to judge the output against
+ *   - `rubric`: how this scenario's outcome should be evaluated
  *   - `metadata`: a generic bag for user-defined context (tags, difficulty, etc.)
  *
- * The library is deliberately agnostic about what `input`, `expected`, and
- * `metadata` contain. You bring your own schemas; the Dataset just holds them.
+ * The library is deliberately agnostic about what `input` and `metadata`
+ * contain. You bring your own schemas; the Dataset just holds them.
  */
 import type { Effect } from 'effect'
+import type { Rubric } from '../rubric/Rubric.ts'
 
 // ---------------------------------------------------------------------------
 // Scenario
@@ -18,19 +19,17 @@ import type { Effect } from 'effect'
 
 /**
  * A single benchmark scenario. Generic over:
- *   - `Input`    – what gets fed to the harness (usually a string prompt)
- *   - `Expected` – what the rubric compares against
- *   - `Meta`     – arbitrary user metadata (default: empty record)
+ *   - `Input` – what gets fed to the harness (usually a string prompt)
+ *   - `Meta`  – arbitrary user metadata (default: empty record)
+ *
+ * Each scenario carries its own `Rubric`, so different scenarios within
+ * the same dataset can be evaluated with entirely different strategies.
  */
-export interface Scenario<
-  Input = string,
-  Expected = string,
-  Meta = Record<string, never>,
-> {
+export interface Scenario<Input = string, Meta = Record<string, never>> {
   readonly id: string
   readonly input: Input
-  readonly expected: Expected
-  readonly metadata: Meta
+  readonly rubric: Rubric<Input, Meta>
+  readonly metadata?: Meta | undefined
 }
 
 // ---------------------------------------------------------------------------
@@ -44,23 +43,18 @@ export interface Scenario<
  * any source that might fail or require context. The `R` parameter lets you
  * declare those requirements (e.g. `FileSystem`, `HttpClient`).
  *
- * Generic parameters mirror `Scenario<Input, Expected, Meta>` plus:
+ * Generic parameters mirror `Scenario<Input, Meta>` plus:
  *   - `E` – errors that can occur when loading
  *   - `R` – Effect requirements for loading
  */
 export interface Dataset<
   Input = string,
-  Expected = string,
   Meta = Record<string, never>,
   E = never,
   R = never,
 > {
   readonly name: string
-  readonly scenarios: Effect.Effect<
-    ReadonlyArray<Scenario<Input, Expected, Meta>>,
-    E,
-    R
-  >
+  readonly scenarios: Effect.Effect<ReadonlyArray<Scenario<Input, Meta>>, E, R>
 }
 
 // ---------------------------------------------------------------------------
@@ -71,10 +65,10 @@ export interface Dataset<
  * Create a dataset from an in-memory array of scenarios.
  * The simplest possible constructor — no effects, no requirements.
  */
-export const fromArray = <Input, Expected, Meta = Record<string, never>>(
+export const fromArray = <Input, Meta = Record<string, never>>(
   name: string,
-  scenarios: ReadonlyArray<Scenario<Input, Expected, Meta>>
-): Dataset<Input, Expected, Meta> => ({
+  scenarios: ReadonlyArray<Scenario<Input, Meta>>
+): Dataset<Input, Meta> => ({
   name,
   scenarios: Effect_.succeed(scenarios),
 })
@@ -83,10 +77,10 @@ export const fromArray = <Input, Expected, Meta = Record<string, never>>(
  * Create a dataset from an effectful loader.
  * Use this when scenarios come from disk, network, etc.
  */
-export const fromEffect = <Input, Expected, Meta, E, R>(
+export const fromEffect = <Input, Meta, E, R>(
   name: string,
-  scenarios: Effect.Effect<ReadonlyArray<Scenario<Input, Expected, Meta>>, E, R>
-): Dataset<Input, Expected, Meta, E, R> => ({
+  scenarios: Effect.Effect<ReadonlyArray<Scenario<Input, Meta>>, E, R>
+): Dataset<Input, Meta, E, R> => ({
   name,
   scenarios,
 })
