@@ -9,8 +9,8 @@
  * Concurrency is configurable — default is sequential (concurrency: 1) so you
  * don't accidentally blow rate limits or burn money.
  */
+import type { HarnessResult } from '@agents/core'
 import type { Scenario } from '../dataset/Dataset.ts'
-import type { HarnessResult } from '../harness/Harness.ts'
 import type { Score } from '../rubric/Rubric.ts'
 
 // ---------------------------------------------------------------------------

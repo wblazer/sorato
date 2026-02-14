@@ -9,7 +9,7 @@
  * The CLI's only job is to call `suite.run` and format the results.
  */
 import type { Effect } from 'effect'
-import type { BenchmarkResult } from '@agents/core'
+import type { BenchmarkResult } from '@agents/bench'
 
 // ---------------------------------------------------------------------------
 // EvalSuite

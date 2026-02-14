@@ -13,8 +13,8 @@ Other patterns (webhook handler, web UI, cron-triggered agent) are userland code
 
 ## Related Context
 
-- `src/harness/` — the agent loop the runner invokes
+- `packages/core/src/harness/` — the agent loop the runner invokes
 - `src/dataset/` — provides scenarios
 - `src/rubric/` — evaluates outcomes
-- `src/sandbox/` — provides isolated sessions per scenario
+- `packages/core/src/sandbox/` — provides isolated sessions per scenario
 - `src/reporter/` — formats runner output

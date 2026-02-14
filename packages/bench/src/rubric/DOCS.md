@@ -14,6 +14,6 @@ Evaluates harness output. Receives a `RunContext` with the full sandbox session,
 
 ## Related Context
 
-- `src/sandbox/` — provides the sandbox session rubrics can inspect
+- `packages/core/src/sandbox/` — provides the sandbox session rubrics can inspect
 - `src/dataset/` — scenarios carry their rubrics
 - `src/runner/` — builds RunContext and invokes evaluation

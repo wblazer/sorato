@@ -23,4 +23,4 @@ The `dependencies: [CurrentSandbox]` on each tool declaration is what makes the 
 
 - `src/sandbox/` — `CurrentSandbox` tag and `SandboxSession` interface
 - `src/harness/` — consumes the resolved toolkit via `HarnessConfig`
-- `src/runner/` — provides `CurrentSandbox` per scenario
+- `packages/bench/src/runner/` — provides `CurrentSandbox` per scenario

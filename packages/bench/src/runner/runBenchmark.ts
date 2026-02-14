@@ -1,14 +1,14 @@
 import { Effect, Layer } from 'effect'
 import type { AiError, LanguageModel, Tool } from '@effect/ai'
-import type { Dataset } from '../dataset/Dataset.ts'
-import type { HarnessConfig } from '../harness/Harness.ts'
-import { run as runHarness } from '../harness/run.ts'
-import type { RunContext } from '../rubric/Rubric.ts'
 import {
+  run as runHarness,
   Sandbox,
   CurrentSandbox,
+  type HarnessConfig,
   type SandboxError,
-} from '../sandbox/Sandbox.ts'
+} from '@agents/core'
+import type { Dataset } from '../dataset/Dataset.ts'
+import type { RunContext } from '../rubric/Rubric.ts'
 import type { BenchmarkResult, RunnerConfig, ScenarioResult } from './Runner.ts'
 
 // ---------------------------------------------------------------------------

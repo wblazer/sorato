@@ -19,5 +19,5 @@ Memory is NOT a separate primitive. It's a harness concern implemented through h
 ## Related Context
 
 - `src/sandbox/` — where tool calls execute
-- `src/runner/` — orchestrates harness runs over datasets
-- `src/rubric/` — evaluates harness output
+- `packages/bench/src/runner/` — orchestrates harness runs over datasets
+- `packages/bench/src/rubric/` — evaluates harness output

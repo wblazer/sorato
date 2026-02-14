@@ -12,13 +12,12 @@ import {
   fromArray,
   contains,
   runBenchmark,
-  LocalSandboxLive,
-  SandboxError,
   formatSummary,
   saveResult,
   defaultResultPath,
-} from '@agents/core'
-import type { Scenario } from '@agents/core'
+} from '@agents/bench'
+import { LocalSandboxLive, SandboxError } from '@agents/core'
+import type { Scenario } from '@agents/bench'
 import { AgentToolkit, AgentToolkitLive } from '@agents/core/tool'
 import type { EvalSuite } from '../suite.ts'
 

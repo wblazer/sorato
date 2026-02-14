@@ -9,6 +9,7 @@
     "file-read": "bun run cli.ts -- run file-read"
   },
   "dependencies": {
+    "@agents/bench": "workspace:*",
     "@agents/core": "workspace:*",
     "@effect/ai-anthropic": "^0.23.0",
     "@effect/cli": "^0.73.2",

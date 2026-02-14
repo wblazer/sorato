@@ -1,6 +1,6 @@
 # Evals
 
-Benchmark eval suites that exercise the `@agents/core` library.
+Benchmark eval suites that exercise `@agents/core` and `@agents/bench`.
 
 ## Running Evals
 

@@ -33,6 +33,10 @@ Each primitive is an Effect service (`Context.Tag`). The library ships default `
 | **Reporter** | Formats and persists benchmark results                         | Console + JSON   |
 | **Observer** | Tracing, logging, cost tracking across runs                    | Basic (future)   |
 
+These primitives are split across packages: `@agents/core` ships the agent
+primitives (Sandbox, Tool, Harness), while `@agents/bench` ships the evaluation
+primitives (Dataset, Rubric, Runner, Reporter).
+
 ### What's NOT a primitive
 
 - **Memory / Context**: This is a harness concern, implemented through hooks. The hook system is expressive enough for RAG, vector search, conversation history, etc. A separate Memory primitive would add indirection without buying anything.

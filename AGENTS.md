@@ -13,8 +13,9 @@ Composable primitives for building AI agent systems.
 
 Bun workspaces. Packages depend on each other via `workspace:*`.
 
-- `packages/core/` — the library: composable primitives (sandbox, harness, rubric, dataset, runner, reporter). See `packages/core/DOCS.md`.
-- `apps/evals/` — benchmark eval suites that exercise the library
+- `packages/core/` — agent primitives (sandbox, harness, tool). See `packages/core/DOCS.md`.
+- `packages/bench/` — evaluation primitives (dataset, rubric, runner, reporter). See `packages/bench/DOCS.md`.
+- `apps/evals/` — benchmark eval suites that exercise the primitives
 - `apps/` — future home for TUI, web UI, and other userspace applications
 
 ## Agent Map

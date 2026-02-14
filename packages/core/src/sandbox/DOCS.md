@@ -24,5 +24,5 @@ The library doesn't ship cloud sandboxes. Users write `SandboxFactory` Layers ba
 
 - `src/tool/` — tools that require `CurrentSandbox` in their handlers
 - `src/harness/` — dispatches tool calls through the sandbox
-- `src/runner/` — acquires scoped sandbox sessions and provides `CurrentSandbox` per scenario
+- `packages/bench/src/runner/` — acquires scoped sandbox sessions and provides `CurrentSandbox` per scenario
 - `VISION.md` — execution model, IaC relationship, industry context

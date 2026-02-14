@@ -19,7 +19,7 @@
  */
 import type { Prompt } from '@effect/ai'
 import { Effect } from 'effect'
-import type { SandboxSession } from '../sandbox/Sandbox.ts'
+import type { SandboxSession } from '@agents/core'
 import type { Scenario } from '../dataset/Dataset.ts'
 
 // ---------------------------------------------------------------------------

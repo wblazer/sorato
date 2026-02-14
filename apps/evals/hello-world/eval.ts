@@ -11,12 +11,13 @@ import {
   fromArray,
   contains,
   runStringBenchmark,
-  LocalSandboxLive,
   formatSummary,
   saveResult,
   defaultResultPath,
-} from '@agents/core'
-import type { Scenario, HarnessConfig } from '@agents/core'
+} from '@agents/bench'
+import { LocalSandboxLive } from '@agents/core'
+import type { Scenario } from '@agents/bench'
+import type { HarnessConfig } from '@agents/core'
 import type { EvalSuite } from '../suite.ts'
 
 // ---------------------------------------------------------------------------
