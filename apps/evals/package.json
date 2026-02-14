@@ -4,12 +4,15 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "start": "bun run cli.ts",
     "hello-world": "bun run hello-world/main.ts"
   },
   "dependencies": {
     "@blazerbench/core": "workspace:*",
     "@effect/ai-anthropic": "^0.23.0",
+    "@effect/cli": "^0.73.2",
     "@effect/platform": "^0.94.2",
+    "@effect/platform-bun": "^0.87.1",
     "effect": "^3.19.15"
   }
 }
