@@ -16,27 +16,20 @@ export { fromArray, fromEffect } from './dataset/Dataset.ts'
 // Rubric
 export type { Score, Rubric, RunContext } from './rubric/Rubric.ts'
 export {
-  exactMatch,
-  contains,
-  regex,
-  llmJudge,
   finalAssistantText,
   fromFunction as rubricFromFunction,
   fromEffect as rubricFromEffect,
 } from './rubric/Rubric.ts'
+export { exactMatch, contains, regex, llmJudge } from './rubric/builtins.ts'
 
 // Sandbox
-export {
-  Sandbox,
-  SandboxError,
-  LocalSandbox,
-  LocalSandboxLive,
-} from './sandbox/Sandbox.ts'
+export { Sandbox, SandboxError } from './sandbox/Sandbox.ts'
 export type {
   SandboxSession,
   SandboxFactory,
   ExecResult,
 } from './sandbox/Sandbox.ts'
+export { LocalSandbox, LocalSandboxLive } from './sandbox/LocalSandbox.ts'
 
 // Harness
 export type {
@@ -45,7 +38,7 @@ export type {
   HarnessConfig,
   HarnessResult,
 } from './harness/Harness.ts'
-export { run } from './harness/Harness.ts'
+export { run } from './harness/run.ts'
 
 // Runner
 export type {
@@ -53,13 +46,13 @@ export type {
   BenchmarkResult,
   RunnerConfig,
 } from './runner/Runner.ts'
-export { runBenchmark, runStringBenchmark } from './runner/Runner.ts'
+export { runBenchmark, runStringBenchmark } from './runner/runBenchmark.ts'
 
 // Reporter
+export { ReporterError } from './reporter/Reporter.ts'
 export {
-  ReporterError,
   formatSummary,
   toJson,
   saveResult,
   defaultResultPath,
-} from './reporter/Reporter.ts'
+} from './reporter/format.ts'

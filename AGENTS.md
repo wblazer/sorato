@@ -1,6 +1,6 @@
 # Blazer Bench
 
-A personal LLM benchmarking tool with a focus on modularity and composability
+Composable primitives for building and benchmarking AI agent systems. See `VISION.md` for the strategic rationale.
 
 ## Tech Stack
 
@@ -21,26 +21,28 @@ A personal LLM benchmarking tool with a focus on modularity and composability
 
 **Map Documentation Philosophy**:
 
-- Code should be as self-documenting as possible; the agent map compresses the code for context efficiency
-- AGENTS.md nodes explains "why" for folders/modules existence - the domain knowledge you have when writing code that normally gets lost over time
-- Document architectural boundaries
-- Include common pitfalls and "never do this" rules specific to that code
-- Implementation details in AGENTS.md should be rare - mostly for "here's what a typical {sensible_code_unit} looks like"
-- If relevant, nodes should document usage by consumers for convenience. Think like quick example showcases at the top of READMEs, except for code
+- **Locality of concern**: explanations belong next to the code they describe, not in a separate doc. AGENTS.md nodes summarize _folders_, not files. Type explanations go in comments next to the type.
+- AGENTS.md nodes explain "why" for folders/modules existence — the domain knowledge that normally gets lost over time
+- Nodes point to files with brief descriptions. Details live in the code — go read it.
+- Document architectural boundaries and "never do this" rules
+- Don't duplicate what the code already says. Docs that restate code will drift and become lies.
 
 ## Architecture
 
-Composable primitives. The library provides the structure and some default implementations; consumers compose them freely or supply their own.
+Composable primitives. The library provides the structure and some default implementations; consumers compose them freely or supply their own. Benchmarking is one use case of the composition, not the only one — the same primitives support building real agent systems.
 
 **Primitives** (all in `src/`):
 
 - **Dataset** (`src/dataset/`) — collection of `Scenario<Input, Expected, Meta>`. Effectful loading. Generic over everything.
 - **Rubric** (`src/rubric/`) — evaluates harness output against expected. Ships: `exactMatch`, `contains`, `regex`, `llmJudge`. Write your own with `fromFunction` / `fromEffect`.
-- **Sandbox** (`src/sandbox/`) — execution environment trait for tools. Ships `LocalSandbox` (no isolation). Consumers provide Docker/Firecracker/etc. as a Layer.
-- **Harness** (`src/harness/`) — composes tools (via @effect/ai `Toolkit`), hooks, and a system prompt. The "agent under test."
-- **Runner** (`src/runner/`) — orchestrates: dataset → harness → rubric → results. Configurable concurrency.
+- **Sandbox** (`src/sandbox/`) — execution environment trait for tools. Ships `LocalSandbox` (no isolation). Consumers provide Docker/Firecracker/etc. as a Layer. The agent loop runs _outside_ the sandbox — tool calls are remoted in.
+- **Harness** (`src/harness/`) — composes tools (via @effect/ai `Toolkit`), hooks, and a system prompt. The "agent under test." Memory is a harness concern (hooks), not a separate primitive.
+- **Runner** (`src/runner/`) — orchestrates: dataset → harness → rubric → results. Configurable concurrency. This is batch-mode composition; other execution patterns (webhook-triggered, interactive) are userland.
+- **Reporter** (`src/reporter/`) — formats and persists benchmark results. Console summary + JSON serialization.
 
-**Data flow**: `Dataset.scenarios` → `Harness.run(input)` → `Rubric.evaluate(RunContext)` → `BenchmarkResult`
+**Data flow** (benchmark mode): `Dataset.scenarios` → `Harness.run(input)` → `Rubric.evaluate(RunContext)` → `BenchmarkResult`
+
+**Execution model**: Three distinct contexts — orchestrator (your CLI/server), agent runtime (harness/LLM loop), and sandbox (isolated tool execution). The harness runs outside the sandbox so a broken environment doesn't kill the agent loop. See `VISION.md` and `src/sandbox/AGENTS.md` for details.
 
 **Key design decisions**:
 
@@ -52,6 +54,7 @@ Composable primitives. The library provides the structure and some default imple
 - Sandbox is a _factory_ (`SandboxFactory`), not a singleton. The Runner acquires a scoped `SandboxSession` per scenario — no cross-contamination, proper cleanup, safe for concurrent runs.
 - Scenarios have stable `id` fields for diffing results across runs, caching, and retry tracking.
 - `exec` returns `{ stdout, stderr, exitCode }` — rubrics can check exit codes, not just stdout.
+- IaC (Alchemy, Terraform, Nix, etc.) lives in userland — it provisions resources that satisfy `SandboxFactory` Layers. The library is agnostic to cloud providers and provisioning tools.
 
 ## Related Context
 
@@ -60,6 +63,7 @@ Composable primitives. The library provides the structure and some default imple
 - `src/sandbox/` — Sandbox service and LocalSandbox layer
 - `src/harness/` — Harness config, hooks, and run function
 - `src/runner/` — Runner orchestration and result types
+- `src/reporter/` — Result formatting and persistence
 
 ## Development Commands
 

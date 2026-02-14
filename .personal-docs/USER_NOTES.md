@@ -14,6 +14,12 @@
 - Wants room for future publishability but doesn't want premature abstraction
 - Likes to keep things in one repo until there's a real reason to split
 
+## Documentation Philosophy
+
+- **Locality of concern**: things that drift together should be close to each other. Type explanations belong in comments next to the type, not in a separate doc. Tests near implementation. Structure, styling, and behavior colocated (why Tailwind + component frameworks win).
+- **AGENTS.md nodes summarize folders, not files.** They explain _why_ the folder exists and point to files with one-line descriptions. Details live in the code itself — go read it.
+- **Don't duplicate the code in docs.** If an explanation belongs next to a piece of code, put it there. Docs that restate what the code already says will drift and become lies.
+
 ## Technical Preferences
 
 - Effect ecosystem (functional TypeScript)
