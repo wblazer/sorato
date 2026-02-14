@@ -1,5 +1,5 @@
 {
-  "name": "blazerbench",
+  "name": "agents",
   "private": true,
   "workspaces": [
     "packages/*",
@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "prepare": "effect-language-service patch",
-    "eval": "bun run --filter @blazerbench/evals start --",
+    "eval": "bun run --filter @agents/evals start --",
     "typecheck": "bun --filter '*' typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

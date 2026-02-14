@@ -1,12 +1,12 @@
 /**
- * blazerbench — a composable LLM benchmarking library
+ * @agents/core — composable primitives for building AI agent systems
  *
  * Re-exports every primitive so consumers can do:
- *   import { Dataset, Rubric, Harness, Runner, Sandbox } from "blazerbench"
+ *   import { Dataset, Rubric, Harness, Runner, Sandbox } from "@agents/core"
  *
  * Or import from sub-paths for tree-shaking / clarity:
- *   import { fromArray } from "blazerbench/dataset"
- *   import { contains } from "blazerbench/rubric"
+ *   import { fromArray } from "@agents/core/dataset"
+ *   import { contains } from "@agents/core/rubric"
  */
 
 // Dataset

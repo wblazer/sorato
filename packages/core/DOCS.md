@@ -1,6 +1,6 @@
-# @blazerbench/core
+# @agents/core
 
-The library. Composable primitives for building and benchmarking AI agent systems. See `VISION.md` for strategic rationale, `ROADMAP.md` for the plan.
+The library. Composable primitives for building AI agent systems. See `VISION.md` for strategic rationale, `ROADMAP.md` for the plan.
 
 ## Architecture
 

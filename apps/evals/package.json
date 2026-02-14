@@ -1,5 +1,5 @@
 {
-  "name": "@blazerbench/evals",
+  "name": "@agents/evals",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,7 @@
     "hello-world": "bun run hello-world/main.ts"
   },
   "dependencies": {
-    "@blazerbench/core": "workspace:*",
+    "@agents/core": "workspace:*",
     "@effect/ai-anthropic": "^0.23.0",
     "@effect/cli": "^0.73.2",
     "@effect/platform": "^0.94.2",

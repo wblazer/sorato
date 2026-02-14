@@ -1,6 +1,6 @@
-# Blazer Bench
+# Agents
 
-Composable primitives for building and benchmarking AI agent systems.
+Composable primitives for building AI agent systems.
 
 ## Tech Stack
 
@@ -46,7 +46,7 @@ bun run typecheck
 bun install
 
 # Run an eval
-bun run --filter @blazerbench/evals hello-world
+bun run --filter @agents/evals hello-world
 ```
 
 ## Never Do

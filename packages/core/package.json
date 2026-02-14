@@ -1,5 +1,5 @@
 {
-  "name": "@blazerbench/core",
+  "name": "@agents/core",
   "module": "src/index.ts",
   "type": "module",
   "exports": {

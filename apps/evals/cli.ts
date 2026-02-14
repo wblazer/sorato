@@ -1,5 +1,5 @@
 /**
- * blazerbench CLI — run and inspect eval suites.
+ * agents CLI — run and inspect eval suites.
  *
  * Usage:
  *   bun run cli.ts run hello-world
@@ -57,7 +57,7 @@ const run = Command.make('run', { evalName }, ({ evalName }) =>
 // Root command
 // ---------------------------------------------------------------------------
 
-const blazerbench = Command.make('blazerbench', {}).pipe(
+const agents = Command.make('agents', {}).pipe(
   Command.withSubcommands([list, run])
 )
 
@@ -65,8 +65,8 @@ const blazerbench = Command.make('blazerbench', {}).pipe(
 // Entrypoint
 // ---------------------------------------------------------------------------
 
-const cli = Command.run(blazerbench, {
-  name: 'blazerbench',
+const cli = Command.run(agents, {
+  name: 'agents',
   version: '0.0.1',
 })
 

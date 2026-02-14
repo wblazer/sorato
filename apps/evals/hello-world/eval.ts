@@ -15,8 +15,8 @@ import {
   formatSummary,
   saveResult,
   defaultResultPath,
-} from '@blazerbench/core'
-import type { Scenario } from '@blazerbench/core'
+} from '@agents/core'
+import type { Scenario } from '@agents/core'
 import type { EvalSuite } from '../suite.ts'
 
 // ---------------------------------------------------------------------------

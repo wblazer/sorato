@@ -71,7 +71,7 @@ export interface SandboxFactory {
   readonly acquire: Effect.Effect<SandboxSession, SandboxError, Scope.Scope>
 }
 
-export class Sandbox extends Context.Tag('@blazerbench/Sandbox')<
+export class Sandbox extends Context.Tag('@agents/Sandbox')<
   Sandbox,
   SandboxFactory
 >() {}
