@@ -19,6 +19,7 @@
 - **Locality of concern**: things that drift together should be close to each other. Type explanations belong in comments next to the type, not in a separate doc. Tests near implementation. Structure, styling, and behavior colocated (why Tailwind + component frameworks win).
 - **AGENTS.md nodes summarize folders, not files.** They explain _why_ the folder exists and point to files with one-line descriptions. Details live in the code itself — go read it.
 - **Don't duplicate the code in docs.** If an explanation belongs next to a piece of code, put it there. Docs that restate what the code already says will drift and become lies.
+- **Don't write low-value documentation that's likely to silently drift.** If a comment or doc restates something that lives elsewhere (a CLI invocation, a config value, a type signature), it will go stale when the source of truth changes — and nobody will trace the inconsistency back to your comment. Every piece of documentation should earn its keep.
 
 ## Technical Preferences
 

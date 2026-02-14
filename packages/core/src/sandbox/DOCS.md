@@ -4,7 +4,7 @@ The execution environment boundary. Every tool call an agent makes goes through 
 
 ## Files
 
-- `Sandbox.ts` — trait/contract: `SandboxSession`, `SandboxFactory`, `Sandbox` tag, `SandboxError`. The interface any implementation must satisfy.
+- `Sandbox.ts` — trait/contract: `SandboxSession`, `SandboxFactory`, `Sandbox` tag, `CurrentSandbox` tag, `SandboxError`. The interface any implementation must satisfy. `CurrentSandbox` is the per-scenario session tag that tools require in their `R` parameter.
 - `LocalSandbox.ts` — default implementation using `@effect/platform` CommandExecutor + Bun file APIs. No isolation. Fine for dev/benchmarks.
 
 ## Key Insight: Agent Loop Runs Outside the Sandbox
@@ -22,6 +22,7 @@ The library doesn't ship cloud sandboxes. Users write `SandboxFactory` Layers ba
 
 ## Related Context
 
+- `src/tool/` — tools that require `CurrentSandbox` in their handlers
 - `src/harness/` — dispatches tool calls through the sandbox
-- `src/runner/` — acquires scoped sandbox sessions per scenario
+- `src/runner/` — acquires scoped sandbox sessions and provides `CurrentSandbox` per scenario
 - `VISION.md` — execution model, IaC relationship, industry context

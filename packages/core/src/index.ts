@@ -23,7 +23,7 @@ export {
 export { exactMatch, contains, regex, llmJudge } from './rubric/builtins.ts'
 
 // Sandbox
-export { Sandbox, SandboxError } from './sandbox/Sandbox.ts'
+export { Sandbox, CurrentSandbox, SandboxError } from './sandbox/Sandbox.ts'
 export type {
   SandboxSession,
   SandboxFactory,
@@ -47,6 +47,9 @@ export type {
   RunnerConfig,
 } from './runner/Runner.ts'
 export { runBenchmark, runStringBenchmark } from './runner/runBenchmark.ts'
+
+// Tool
+export { ReadFile, AgentToolkit, AgentToolkitLive } from './tool/Tool.ts'
 
 // Reporter
 export { ReporterError } from './reporter/Reporter.ts'

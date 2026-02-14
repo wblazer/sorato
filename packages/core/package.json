@@ -9,7 +9,8 @@
     "./sandbox": "./src/sandbox/Sandbox.ts",
     "./harness": "./src/harness/Harness.ts",
     "./runner": "./src/runner/Runner.ts",
-    "./reporter": "./src/reporter/Reporter.ts"
+    "./reporter": "./src/reporter/Reporter.ts",
+    "./tool": "./src/tool/Tool.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

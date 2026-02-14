@@ -5,7 +5,7 @@ The "agent under test." Composes a system prompt, tools, and hooks into a comple
 ## Files
 
 - `Harness.ts` — types: `HarnessEvent`, `HarnessHook`, `HarnessConfig`, `HarnessResult`
-- `run.ts` — the `run` function: `streamText`-based agent loop with hook dispatch and usage tracking
+- `run.ts` — the `run` function: multi-turn `streamText`-based agent loop. Loops until the model produces a turn with no tool calls (max 25 turns). Hooks fire on every stream part.
 
 ## Memory Is Hooks
 

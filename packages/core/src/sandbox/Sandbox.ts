@@ -71,6 +71,26 @@ export interface SandboxFactory {
   readonly acquire: Effect.Effect<SandboxSession, SandboxError, Scope.Scope>
 }
 
+// ---------------------------------------------------------------------------
+// Context Tags
+// ---------------------------------------------------------------------------
+
+/**
+ * The per-scenario sandbox session. Tools require this in their `R` parameter
+ * to delegate operations (exec, readFile, writeFile) into the sandbox.
+ *
+ * The runner provides this — it acquires a session from the SandboxFactory
+ * and layers it into the scope before running the harness.
+ */
+export class CurrentSandbox extends Context.Tag('@agents/CurrentSandbox')<
+  CurrentSandbox,
+  SandboxSession
+>() {}
+
+/**
+ * The sandbox factory — produces scoped SandboxSession instances.
+ * The runner uses this to acquire sessions per scenario.
+ */
 export class Sandbox extends Context.Tag('@agents/Sandbox')<
   Sandbox,
   SandboxFactory

@@ -5,7 +5,7 @@ Batch-mode orchestration: dataset -> harness -> rubric -> results. One use case 
 ## Files
 
 - `Runner.ts` — types: `ScenarioResult`, `BenchmarkResult`, `RunnerConfig`
-- `runBenchmark.ts` — `runBenchmark` and `runStringBenchmark` functions. Acquires a scoped sandbox per scenario, runs the harness, evaluates the rubric, collects results.
+- `runBenchmark.ts` — `runBenchmark` and `runStringBenchmark` functions. Acquires a scoped sandbox per scenario, provides `CurrentSandbox` into the scope, resolves the effectful harness config (so tools can access the sandbox), runs the harness, evaluates the rubric, collects results.
 
 ## Not the Only Execution Path
 

@@ -11,9 +11,10 @@
  */
 import type { EvalSuite } from './suite.ts'
 import { suite as helloWorld } from './hello-world/eval.ts'
+import { suite as fileRead } from './file-read/eval.ts'
 
 /** All registered eval suites, keyed by name. */
-export const suites: ReadonlyArray<EvalSuite> = [helloWorld]
+export const suites: ReadonlyArray<EvalSuite> = [helloWorld, fileRead]
 
 /** Look up a suite by name. Returns undefined if not found. */
 export const findSuite = (name: string): EvalSuite | undefined =>

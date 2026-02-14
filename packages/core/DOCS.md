@@ -10,9 +10,10 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 
 - **Dataset** (`src/dataset/`) — collection of scenarios. Effectful loading. Generic over everything.
 - **Rubric** (`src/rubric/`) — evaluates harness output against expectations. Ships built-in rubrics; write your own.
-- **Sandbox** (`src/sandbox/`) — execution environment trait for tools. Ships `LocalSandbox`. The agent loop runs _outside_ the sandbox — tool calls are remoted in.
-- **Harness** (`src/harness/`) — system prompt + tools + hooks = agent. Memory is a harness concern (hooks), not a separate primitive.
-- **Runner** (`src/runner/`) — batch-mode orchestration: dataset → harness → rubric → results. Other execution patterns are userland.
+- **Sandbox** (`src/sandbox/`) — execution environment trait for tools. Ships `LocalSandbox`. `CurrentSandbox` tag provides the per-scenario session to tool handlers via `R`.
+- **Tool** (`src/tool/`) — `@effect/ai Toolkit` tools that delegate to `CurrentSandbox`. Ships `ReadFile`. Handlers use `failureMode: "return"` so errors go back to the LLM.
+- **Harness** (`src/harness/`) — system prompt + tools + hooks = agent. Agent loop with multi-turn tool calling. Memory is a harness concern (hooks), not a separate primitive.
+- **Runner** (`src/runner/`) — batch-mode orchestration: dataset → harness → rubric → results. Provides `CurrentSandbox` per scenario. Accepts an effectful harness config so toolkits can be resolved inside the sandbox scope.
 - **Reporter** (`src/reporter/`) — formats and persists benchmark results.
 
 **Data flow** (benchmark mode): `Dataset.scenarios` → `Harness.run(input)` → `Rubric.evaluate(RunContext)` → `BenchmarkResult`
@@ -33,8 +34,9 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 
 - `src/dataset/` — Dataset and Scenario types
 - `src/rubric/` — Rubric trait and built-in implementations
-- `src/sandbox/` — Sandbox service and LocalSandbox layer
-- `src/harness/` — Harness config, hooks, and run function
+- `src/sandbox/` — Sandbox service, CurrentSandbox tag, and LocalSandbox layer
+- `src/tool/` — Agent tools (ReadFile) and bundled toolkit
+- `src/harness/` — Harness config, hooks, and run function (multi-turn agent loop)
 - `src/runner/` — Runner orchestration and result types
 - `src/reporter/` — Result formatting and persistence
 - `VISION.md` — strategic rationale, execution model, industry context

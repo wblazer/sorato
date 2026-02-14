@@ -16,7 +16,7 @@ import {
   saveResult,
   defaultResultPath,
 } from '@agents/core'
-import type { Scenario } from '@agents/core'
+import type { Scenario, HarnessConfig } from '@agents/core'
 import type { EvalSuite } from '../suite.ts'
 
 // ---------------------------------------------------------------------------
@@ -72,7 +72,7 @@ const MainLayer = Layer.merge(AnthropicLive, LocalSandboxLive)
 const run = Effect.gen(function* () {
   const result = yield* runStringBenchmark({
     dataset,
-    harness: {},
+    harness: Effect.succeed({} satisfies HarnessConfig),
   })
 
   console.log(formatSummary(result))

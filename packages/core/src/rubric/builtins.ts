@@ -18,9 +18,13 @@ import {
 
 /**
  * Scores 1 when the final assistant message === the expected string.
+ * Generic over Input/Meta — these rubrics only inspect the conversation,
+ * not the scenario input, so they work with any scenario shape.
  */
-export const exactMatch = (expected: string): Rubric =>
-  fromFunction(
+export const exactMatch = <Input = string, Meta = Record<string, never>>(
+  expected: string
+): Rubric<Input, Meta> =>
+  fromFunction<Input, Meta>(
     'exact-match',
     (ctx) => {
       const output = finalAssistantText(ctx.conversation)
@@ -32,8 +36,10 @@ export const exactMatch = (expected: string): Rubric =>
 /**
  * Scores 1 when the final assistant message contains the expected string.
  */
-export const contains = (expected: string): Rubric =>
-  fromFunction(
+export const contains = <Input = string, Meta = Record<string, never>>(
+  expected: string
+): Rubric<Input, Meta> =>
+  fromFunction<Input, Meta>(
     'contains',
     (ctx) => {
       const output = finalAssistantText(ctx.conversation)
@@ -45,8 +51,10 @@ export const contains = (expected: string): Rubric =>
 /**
  * Scores 1 when the final assistant message matches the given regex pattern.
  */
-export const regex = (pattern: string): Rubric =>
-  fromFunction(
+export const regex = <Input = string, Meta = Record<string, never>>(
+  pattern: string
+): Rubric<Input, Meta> =>
+  fromFunction<Input, Meta>(
     'regex',
     (ctx) => {
       const output = finalAssistantText(ctx.conversation)
