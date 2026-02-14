@@ -1,53 +1,56 @@
 /**
- * hello-world eval suite — the simplest possible vertical slice.
+ * hello-world eval — the simplest possible vertical slice.
  *
- * A handful of trivial prompt->expected-string scenarios exercising the
- * full pipeline: Dataset -> Harness -> Runner -> Reporter.
+ * No tools, no sandbox. Just prompt → model → check.
+ * Demonstrates that test works for simple tests too — the HarnessConfig
+ * is just empty.
  */
 import { AnthropicClient, AnthropicLanguageModel } from '@effect/ai-anthropic'
 import { FetchHttpClient } from '@effect/platform'
 import { Config, Effect, Layer } from 'effect'
 import {
-  fromArray,
-  contains,
-  runStringBenchmark,
-  formatSummary,
-  saveResult,
-  defaultResultPath,
+  test,
+  run,
+  formatSuiteSummary,
+  saveSuiteResult,
+  defaultSuiteResultPath,
 } from '@agents/bench'
-import { LocalSandboxLive } from '@agents/core'
-import type { Scenario } from '@agents/bench'
 import type { HarnessConfig } from '@agents/core'
+import type { SuiteResult } from '@agents/bench'
 import type { EvalSuite } from '../suite.ts'
 
 // ---------------------------------------------------------------------------
-// Dataset
+// Harness config — empty, no tools needed
 // ---------------------------------------------------------------------------
 
-const scenarios: ReadonlyArray<Scenario> = [
-  {
-    id: 'hello-world',
-    input: "Say 'Hello, World!' and nothing else.",
-    rubric: contains('Hello, World!'),
-  },
-  {
-    id: 'simple-math',
-    input: 'What is 2 + 2? Reply with just the number.',
-    rubric: contains('4'),
-  },
-  {
-    id: 'color-of-sky',
-    input: 'What color is the sky on a clear day? Reply with one word.',
-    rubric: contains('blue'),
-  },
-  {
-    id: 'reverse-greeting',
-    input: "Say 'Goodbye!' and nothing else.",
-    rubric: contains('Goodbye!'),
-  },
-]
+const config: HarnessConfig = {}
 
-const dataset = fromArray('hello-world', scenarios)
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+const tests = [
+  test(config, {
+    name: 'hello-world',
+    prompt: "Say 'Hello, World!' and nothing else.",
+    check: (r) => r.includes('Hello, World!'),
+  }),
+  test(config, {
+    name: 'simple-math',
+    prompt: 'What is 2 + 2? Reply with just the number.',
+    check: (r) => r.includes('4'),
+  }),
+  test(config, {
+    name: 'color-of-sky',
+    prompt: 'What color is the sky on a clear day? Reply with one word.',
+    check: (r) => r.toLowerCase().includes('blue'),
+  }),
+  test(config, {
+    name: 'reverse-greeting',
+    prompt: "Say 'Goodbye!' and nothing else.",
+    check: (r) => r.includes('Goodbye!'),
+  }),
+]
 
 // ---------------------------------------------------------------------------
 // Layers
@@ -64,30 +67,25 @@ const AnthropicLive = AnthropicLanguageModel.layer({
   Layer.provide(FetchHttpClient.layer)
 )
 
-const MainLayer = Layer.merge(AnthropicLive, LocalSandboxLive)
-
 // ---------------------------------------------------------------------------
-// Suite export
+// Suite
 // ---------------------------------------------------------------------------
 
-const run = Effect.gen(function* () {
-  const result = yield* runStringBenchmark({
-    dataset,
-    harness: Effect.succeed({} satisfies HarnessConfig),
-  })
+const suiteRun = Effect.gen(function* () {
+  const result: SuiteResult = yield* run(tests)
 
-  console.log(formatSummary(result))
+  console.log(formatSuiteSummary(result))
 
-  const path = defaultResultPath(result)
-  yield* saveResult(result, path)
+  const path = defaultSuiteResultPath('hello-world')
+  yield* saveSuiteResult(result, path)
   console.log(`Results saved to ${path}`)
 
   return result
-}).pipe(Effect.provide(MainLayer))
+}).pipe(Effect.provide(AnthropicLive))
 
 export const suite: EvalSuite = {
   name: 'hello-world',
   description:
     'Trivial prompt/response scenarios — the simplest vertical slice.',
-  run,
+  run: suiteRun,
 }

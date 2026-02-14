@@ -1,102 +1,140 @@
 /**
- * file-read eval — the first agentic eval.
+ * file-read eval — agentic eval with sandbox + ReadFile tool.
  *
- * Tests the agent's ability to use the ReadFile tool to read a file from the
- * sandbox and answer a question about its contents. The simplest possible
- * demonstration of tool use through the sandbox boundary.
+ * Demonstrates the nested-effects pattern:
+ *   - Model provided at the suite level
+ *   - Harness config (system prompt, toolkit) shared via closure
+ *   - Each test acquires a fresh sandbox, seeds files, runs, cleans up
  */
 import { AnthropicClient, AnthropicLanguageModel } from '@effect/ai-anthropic'
 import { FetchHttpClient } from '@effect/platform'
 import { Config, Effect, Layer } from 'effect'
 import {
-  fromArray,
-  contains,
-  runBenchmark,
-  formatSummary,
-  saveResult,
-  defaultResultPath,
+  test,
+  run,
+  formatSuiteSummary,
+  saveSuiteResult,
+  defaultSuiteResultPath,
 } from '@agents/bench'
-import { LocalSandboxLive, SandboxError } from '@agents/core'
-import type { Scenario } from '@agents/bench'
-import { AgentToolkit, AgentToolkitLive } from '@agents/core/tool'
+import {
+  Toolkit,
+  ReadFile,
+  ReadFileHandler,
+  Sandbox,
+  CurrentSandbox,
+  LocalSandboxLive,
+  SandboxError,
+} from '@agents/core'
 import type { EvalSuite } from '../suite.ts'
+import type { SuiteResult } from '@agents/bench'
 
 // ---------------------------------------------------------------------------
-// Scenario shape
+// Toolkit — composed from individual tools
 // ---------------------------------------------------------------------------
 
-/**
- * Each scenario seeds a file into the sandbox and asks the agent a question
- * about it. The agent must use ReadFile to get the contents, then answer.
- */
-interface FileReadInput {
-  /** Path where the file will be created (relative to sandbox cwd). */
+const FileTools = Toolkit.make(ReadFile)
+const FileToolsLayer = FileTools.toLayer(ReadFileHandler)
+
+// ---------------------------------------------------------------------------
+// Harness config — shared across all tests in this suite
+// ---------------------------------------------------------------------------
+
+const systemPrompt =
+  'You are a precise assistant with access to a filesystem. Use the ReadFile tool to read files when asked about their contents. Answer concisely — only what was asked, nothing more.'
+
+// ---------------------------------------------------------------------------
+// Test scenarios
+// ---------------------------------------------------------------------------
+
+interface FileScenario {
+  readonly name: string
   readonly filePath: string
-  /** Contents to seed into the file before the agent runs. */
   readonly fileContents: string
-  /** The question the agent must answer by reading the file. */
-  readonly question: string
+  readonly prompt: string
+  readonly expected: string
 }
 
-// ---------------------------------------------------------------------------
-// Dataset
-// ---------------------------------------------------------------------------
-
-const scenarios: ReadonlyArray<Scenario<FileReadInput>> = [
+const scenarios: ReadonlyArray<FileScenario> = [
   {
-    id: 'read-greeting',
-    input: {
-      filePath: '/tmp/agents-eval/greeting.txt',
-      fileContents: 'Hello from the sandbox!',
-      question:
-        "Read the file at /tmp/agents-eval/greeting.txt and tell me exactly what it says. Reply with only the file's contents, nothing else.",
-    },
-    rubric: contains('Hello from the sandbox!'),
+    name: 'read-greeting',
+    filePath: '/tmp/agents-eval/greeting.txt',
+    fileContents: 'Hello from the sandbox!',
+    prompt:
+      "Read the file at /tmp/agents-eval/greeting.txt and tell me exactly what it says. Reply with only the file's contents, nothing else.",
+    expected: 'Hello from the sandbox!',
   },
   {
-    id: 'read-count-lines',
-    input: {
-      filePath: '/tmp/agents-eval/lines.txt',
-      fileContents: 'line one\nline two\nline three\nline four\nline five',
-      question:
-        'Read the file at /tmp/agents-eval/lines.txt and count how many lines it has. Reply with just the number.',
-    },
-    rubric: contains('5'),
+    name: 'read-count-lines',
+    filePath: '/tmp/agents-eval/lines.txt',
+    fileContents: 'line one\nline two\nline three\nline four\nline five',
+    prompt:
+      'Read the file at /tmp/agents-eval/lines.txt and count how many lines it has. Reply with just the number.',
+    expected: '5',
   },
   {
-    id: 'read-extract-value',
-    input: {
-      filePath: '/tmp/agents-eval/config.json',
-      fileContents: JSON.stringify(
-        { name: 'test-project', version: '1.2.3', author: 'Agent' },
-        null,
-        2
-      ),
-      question:
-        'Read the file at /tmp/agents-eval/config.json and tell me the version. Reply with just the version string.',
-    },
-    rubric: contains('1.2.3'),
+    name: 'read-extract-value',
+    filePath: '/tmp/agents-eval/config.json',
+    fileContents: JSON.stringify(
+      { name: 'test-project', version: '1.2.3', author: 'Agent' },
+      null,
+      2
+    ),
+    prompt:
+      'Read the file at /tmp/agents-eval/config.json and tell me the version. Reply with just the version string.',
+    expected: '1.2.3',
   },
 ]
 
-const dataset = fromArray('file-read', scenarios)
-
 // ---------------------------------------------------------------------------
-// Harness config (effectful — resolves toolkit inside sandbox scope)
+// Per-test sandbox lifecycle
 // ---------------------------------------------------------------------------
 
-const harness = Effect.gen(function* () {
-  const toolkit = yield* Effect.provide(AgentToolkit, AgentToolkitLive)
+/** Seed a file into the real filesystem for the sandbox to read. */
+const seedFile = (path: string, contents: string) =>
+  Effect.tryPromise({
+    try: () => Bun.write(path, contents),
+    catch: (error) =>
+      new SandboxError({
+        operation: 'seedFile',
+        message: `Failed to seed ${path}: ${error}`,
+      }),
+  })
 
-  return {
-    systemPrompt: [
-      'You are a precise assistant with access to a filesystem.',
-      'Use the ReadFile tool to read files when asked about their contents.',
-      'Answer concisely — only what was asked, nothing more.',
-    ].join(' '),
-    toolkit,
-  }
-})
+const cleanup = Effect.tryPromise({
+  try: () => Bun.spawn(['rm', '-rf', '/tmp/agents-eval']).exited,
+  catch: (error) =>
+    new SandboxError({
+      operation: 'cleanup',
+      message: `Failed to cleanup: ${error}`,
+    }),
+}).pipe(Effect.ignore)
+
+// ---------------------------------------------------------------------------
+// Tests — each leaf is an Effect you can read top-to-bottom
+// ---------------------------------------------------------------------------
+
+const tests = scenarios.map((scenario) =>
+  Effect.gen(function* () {
+    // Seed the file this test needs
+    yield* seedFile(scenario.filePath, scenario.fileContents)
+
+    // Acquire a fresh sandbox for this test
+    const sandboxFactory = yield* Sandbox
+    return yield* Effect.scoped(
+      Effect.gen(function* () {
+        const sandbox = yield* sandboxFactory.acquire
+        return yield* test(
+          { systemPrompt, toolkit: FileTools },
+          {
+            name: scenario.name,
+            prompt: scenario.prompt,
+            check: (response) => response.includes(scenario.expected),
+          }
+        ).pipe(Effect.provide(Layer.succeed(CurrentSandbox, sandbox)))
+      })
+    )
+  })
+)
 
 // ---------------------------------------------------------------------------
 // Layers
@@ -113,65 +151,30 @@ const AnthropicLive = AnthropicLanguageModel.layer({
   Layer.provide(FetchHttpClient.layer)
 )
 
-const MainLayer = Layer.merge(AnthropicLive, LocalSandboxLive)
-
 // ---------------------------------------------------------------------------
-// File seeding + benchmark
+// Suite
 // ---------------------------------------------------------------------------
 
-/**
- * Seed scenario files into the filesystem before running the benchmark.
- * LocalSandbox uses the real filesystem, so we write directly.
- */
-const seedFiles = Effect.forEach(scenarios, (scenario) =>
-  Effect.tryPromise({
-    try: () => Bun.write(scenario.input.filePath, scenario.input.fileContents),
-    catch: (error) =>
-      new SandboxError({
-        operation: 'seedFile',
-        message: `Failed to seed ${scenario.input.filePath}: ${error}`,
-      }),
-  })
-)
+const suiteRun = Effect.gen(function* () {
+  const result: SuiteResult = yield* run(tests)
+  yield* cleanup
 
-/** Clean up seeded files after the benchmark. */
-const cleanupFiles = Effect.tryPromise({
-  try: () => Bun.spawn(['rm', '-rf', '/tmp/agents-eval']).exited,
-  catch: (error) =>
-    new SandboxError({
-      operation: 'cleanup',
-      message: `Failed to cleanup: ${error}`,
-    }),
-}).pipe(Effect.ignore)
+  console.log(formatSuiteSummary(result))
 
-// ---------------------------------------------------------------------------
-// Suite export
-// ---------------------------------------------------------------------------
-
-const run = Effect.gen(function* () {
-  // Seed files, run benchmark, clean up
-  yield* seedFiles
-
-  const result = yield* runBenchmark({
-    dataset,
-    harness,
-    inputToPrompt: (input) => input.question,
-  })
-
-  yield* cleanupFiles
-
-  console.log(formatSummary(result))
-
-  const path = defaultResultPath(result)
-  yield* saveResult(result, path)
+  const path = defaultSuiteResultPath('file-read')
+  yield* saveSuiteResult(result, path)
   console.log(`Results saved to ${path}`)
 
   return result
-}).pipe(Effect.provide(MainLayer))
+}).pipe(
+  Effect.provide(
+    Layer.mergeAll(FileToolsLayer, LocalSandboxLive, AnthropicLive)
+  )
+)
 
 export const suite: EvalSuite = {
   name: 'file-read',
   description:
     'Agent reads files via ReadFile tool and answers questions about contents.',
-  run,
+  run: suiteRun,
 }

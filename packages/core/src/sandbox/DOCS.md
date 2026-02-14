@@ -23,11 +23,11 @@ The library doesn't ship cloud sandboxes. Users write `SandboxFactory` Layers ba
 ## Never Do
 
 - Never call `child_process` or Bun file APIs directly from tools — go through `SandboxSession`
-- Don't accidentally share a `SandboxSession` across scenarios — reuse should be an explicit strategy in userland (see `packages/bench/src/runner/`)
+- Don't accidentally share a `SandboxSession` across scenarios — reuse should be an explicit choice by the caller
 
 ## Related Context
 
 - `src/tool/` — tools that require `CurrentSandbox` in their handlers
 - `src/harness/` — dispatches tool calls through the sandbox
-- `packages/bench/src/runner/` — acquires scoped sandbox sessions and provides `CurrentSandbox` per scenario
+- `packages/bench/` — eval primitives; callers acquire sandbox sessions and provide `CurrentSandbox` explicitly
 - `VISION.md` — execution model, IaC relationship, industry context

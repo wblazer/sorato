@@ -12,7 +12,7 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 - **Tool** (`src/tool/`) — `@effect/ai Toolkit` tools that delegate to `CurrentSandbox`. Ships `ReadFile`. Handlers use `failureMode: "return"` so errors go back to the LLM.
 - **Harness** (`src/harness/`) — system prompt + tools + hooks = agent. Agent loop with multi-turn tool calling. Memory is a harness concern (hooks), not a separate primitive.
 
-**Evaluation primitives** live in `@agents/bench`: Dataset, Rubric, Runner, Reporter.
+**Evaluation primitives** live in `@agents/bench`: `eval_()`, `run()`, Reporter.
 
 **Execution model**: Three distinct contexts — orchestrator, agent runtime (harness), and sandbox. The harness runs outside the sandbox so a broken environment doesn't kill the agent loop. See `VISION.md` and `src/sandbox/DOCS.md`.
 
@@ -30,6 +30,6 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 - `src/sandbox/` — Sandbox service, CurrentSandbox tag, and LocalSandbox layer
 - `src/tool/` — Agent tools (ReadFile) and bundled toolkit
 - `src/harness/` — Harness config, hooks, and run function (multi-turn agent loop)
-- `packages/bench/` — Dataset, Rubric, Runner, Reporter (evaluation primitives)
+- `packages/bench/` — eval primitives (`eval_`, `run`, Reporter)
 - `VISION.md` — strategic rationale, execution model, industry context
 - `ROADMAP.md` — phased plan from current state to production

@@ -19,7 +19,11 @@ import { LanguageModel as LanguageModel_, Chat as Chat_ } from '@effect/ai'
 /** Maximum agent loop iterations to prevent runaway tool-call cycles. */
 const MAX_TURNS = 25
 
-export const run = <Tools extends Record<string, Tool.Any>, HookE, HookR>(
+export const run = <
+  Tools extends Record<string, Tool.Any>,
+  HookE = never,
+  HookR = never,
+>(
   input: string,
   config: HarnessConfig<Tools, HookE, HookR>
 ): Effect_.Effect<
@@ -117,5 +121,5 @@ export const run = <Tools extends Record<string, Tool.Any>, HookE, HookR>(
 
     const conversation = yield* Ref_.get(chat.history)
 
-    return { conversation, usage } satisfies HarnessResult
+    return { conversation, text: outputText, usage } satisfies HarnessResult
   })

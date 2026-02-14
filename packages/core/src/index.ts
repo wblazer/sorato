@@ -2,7 +2,7 @@
  * @agents/core — agent primitives for building AI systems
  *
  * Re-exports the core agent primitives so consumers can do:
- *   import { Harness, Sandbox } from "@agents/core"
+ *   import { Sandbox, run } from "@agents/core"
  *
  * Evaluation primitives live in @agents/bench.
  */
@@ -27,4 +27,5 @@ export type {
 export { run } from './harness/run.ts'
 
 // Tool
-export { ReadFile, AgentToolkit, AgentToolkitLive } from './tool/tool.ts'
+export { Toolkit } from '@effect/ai'
+export { ReadFile, ReadFileHandler } from './tool/tool.ts'

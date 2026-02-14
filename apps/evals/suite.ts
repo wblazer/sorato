@@ -9,7 +9,7 @@
  * The CLI's only job is to call `suite.run` and format the results.
  */
 import type { Effect } from 'effect'
-import type { BenchmarkResult } from '@agents/bench'
+import type { SuiteResult } from '@agents/bench'
 
 // ---------------------------------------------------------------------------
 // EvalSuite
@@ -34,8 +34,7 @@ export interface EvalSuite {
   /**
    * Run the full benchmark pipeline.
    *
-   * Returns BenchmarkResult<any, any> because the CLI doesn't care about
-   * the scenario's Input/Meta types — it just formats the results.
+   * Returns SuiteResult — the CLI formats results uniformly.
    */
-  readonly run: Effect.Effect<BenchmarkResult<any, any>, unknown>
+  readonly run: Effect.Effect<SuiteResult, unknown>
 }

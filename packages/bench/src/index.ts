@@ -1,43 +1,27 @@
 /**
  * @agents/bench — evaluation primitives built on @agents/core
  *
- * Re-exports every eval primitive so consumers can do:
- *   import { Dataset, Rubric, Runner } from "@agents/bench"
+ * Tests are just Effects with dependencies.
+ *   import { test, run, TestResult, SuiteResult } from "@agents/bench"
  *
- * Or import from sub-paths for clarity:
- *   import { fromArray } from "@agents/bench/dataset"
- *   import { contains } from "@agents/bench/rubric"
+ * Dependencies provided via Effect Layers at the edge.
  */
 
-// Dataset
-export type { Scenario, Dataset } from './dataset/dataset.ts'
-export { fromArray, fromEffect } from './dataset/dataset.ts'
-
-// Rubric
-export type { Score, Rubric, RunContext } from './rubric/rubric.ts'
-export {
-  finalAssistantText,
-  fromFunction as rubricFromFunction,
-  fromEffect as rubricFromEffect,
-} from './rubric/rubric.ts'
-export { exactMatch, contains, regex, llmJudge } from './rubric/builtins.ts'
-
-// Runner
+// Test API
 export type {
-  ScenarioResult,
-  BenchmarkResult,
-  RunnerConfig,
-  RunnerHooks,
-  SandboxStrategy,
-} from './runner/runner.ts'
-export { RunnerError } from './runner/runner.ts'
-export { runBenchmark, runStringBenchmark } from './runner/run-benchmark.ts'
+  Test,
+  TestResult,
+  SuiteResult,
+  RunOptions,
+  TestOptions,
+} from './test.ts'
+export { test, run } from './test.ts'
 
 // Reporter
 export { ReporterError } from './reporter/reporter.ts'
 export {
-  formatSummary,
-  toJson,
-  saveResult,
-  defaultResultPath,
+  formatSuiteSummary,
+  suiteToJson,
+  saveSuiteResult,
+  defaultSuiteResultPath,
 } from './reporter/format.ts'

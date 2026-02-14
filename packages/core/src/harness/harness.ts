@@ -1,17 +1,18 @@
 /**
- * A Harness is the "agent under test." It owns the full agent loop: sending
- * the scenario input to a language model, streaming the response, resolving
- * tool calls, and returning the complete conversation history.
+ * Harness — the agent loop as composable types + functions.
  *
- * The harness uses `streamText` under the hood, which gives us visibility
- * into every step of the agent loop — text deltas, tool calls, tool results,
- * finish events. Hooks fire on each of these, so consumers can log, guard,
- * count tokens, or implement custom control flow.
+ * A Harness owns the full agent loop: sending input to a language model,
+ * streaming the response, resolving tool calls, and returning text + usage.
+ *
+ * The `run` function (in `run.ts`) is the raw loop. This file provides:
+ *   - Types: `HarnessConfig`, `HarnessResult`, `HarnessRunResult`
+ *   - Hooks: `HarnessEvent`, `HarnessHook`
+ *   - Helpers: `extractText` for pulling assistant text from a conversation
  *
  * Composability:
  *   - **Tools**: composed via @effect/ai's `Toolkit.merge`.
  *   - **Hooks**: arbitrary code on lifecycle events. Just functions → Effects.
- *   - **Model**: provided via Effect's `LanguageModel` service.
+ *   - **Model**: provided via Effect's `LanguageModel` service in R.
  */
 import type { Prompt, Tool, Toolkit } from '@effect/ai'
 import type { Effect } from 'effect'
@@ -60,7 +61,7 @@ export interface HarnessHook<E = never, R = never> {
 }
 
 // ---------------------------------------------------------------------------
-// Harness
+// HarnessConfig
 // ---------------------------------------------------------------------------
 
 /**
@@ -74,19 +75,31 @@ export interface HarnessConfig<
   /** System prompt prepended to every scenario run. */
   readonly systemPrompt?: string | undefined
 
-  /** The composed toolkit (tools + handlers). */
-  readonly toolkit?: Toolkit.WithHandler<Tools> | undefined
+  /**
+   * The toolkit — tools + handlers. Accepts either a resolved `WithHandler`
+   * or a `Toolkit` Effect (which resolves handlers from the Effect context).
+   */
+  readonly toolkit?:
+    | Toolkit.WithHandler<Tools>
+    | Effect.Effect<Toolkit.WithHandler<Tools>, never, Tool.HandlersFor<Tools>>
+    | undefined
 
   /** Lifecycle hooks. All hooks run for every event — compose freely. */
   readonly hooks?: ReadonlyArray<HarnessHook<HookE, HookR>> | undefined
 }
 
+// ---------------------------------------------------------------------------
+// HarnessResult
+// ---------------------------------------------------------------------------
+
 /**
- * The result of running a complete agent session through a harness.
+ * The result of running an agent session through the harness.
  */
 export interface HarnessResult {
   /** The complete conversation (system + user + all assistant/tool messages). */
   readonly conversation: Prompt.Prompt
+  /** The concatenated text from all assistant messages across all turns. */
+  readonly text: string
   /** Aggregate token usage across the session. */
   readonly usage: {
     readonly inputTokens: number

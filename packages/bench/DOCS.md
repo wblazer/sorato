@@ -1,16 +1,13 @@
 # @agents/bench
 
-Eval primitives built on top of `@agents/core`. This package owns the
-benchmarking and evaluation stack (datasets, rubrics, runners, reporters).
+Eval primitives built on top of `@agents/core`.
 
 ## Architecture
 
-- **Dataset** (`src/dataset/`) — collection of scenarios
-- **Rubric** (`src/rubric/`) — evaluation of harness outcomes
-- **Runner** (`src/runner/`) — orchestration over scenarios
-- **Reporter** (`src/reporter/`) — formatting + persistence of results
+- **Test** (`src/test.ts`) — `eval_()` constructor, `run()` combinator, `TestResult`, `SuiteResult`. Tests are just Effects — dependencies flow via R, provided at the edge.
+- **Reporter** (`src/reporter/`) — formatting + persistence of results. Pure functions over `SuiteResult` data.
 
 ## Related Context
 
-- `packages/core/` — harness, sandbox, and tool primitives used by the runner
+- `packages/core/` — harness, sandbox, and tool primitives
 - `apps/evals/` — benchmark suites that use this package
