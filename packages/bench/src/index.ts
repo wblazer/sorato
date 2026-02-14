@@ -10,16 +10,16 @@
  */
 
 // Dataset
-export type { Scenario, Dataset } from './dataset/Dataset.ts'
-export { fromArray, fromEffect } from './dataset/Dataset.ts'
+export type { Scenario, Dataset } from './dataset/dataset.ts'
+export { fromArray, fromEffect } from './dataset/dataset.ts'
 
 // Rubric
-export type { Score, Rubric, RunContext } from './rubric/Rubric.ts'
+export type { Score, Rubric, RunContext } from './rubric/rubric.ts'
 export {
   finalAssistantText,
   fromFunction as rubricFromFunction,
   fromEffect as rubricFromEffect,
-} from './rubric/Rubric.ts'
+} from './rubric/rubric.ts'
 export { exactMatch, contains, regex, llmJudge } from './rubric/builtins.ts'
 
 // Runner
@@ -29,12 +29,12 @@ export type {
   RunnerConfig,
   RunnerHooks,
   SandboxStrategy,
-} from './runner/Runner.ts'
-export { RunnerError } from './runner/Runner.ts'
-export { runBenchmark, runStringBenchmark } from './runner/runBenchmark.ts'
+} from './runner/runner.ts'
+export { RunnerError } from './runner/runner.ts'
+export { runBenchmark, runStringBenchmark } from './runner/run-benchmark.ts'
 
 // Reporter
-export { ReporterError } from './reporter/Reporter.ts'
+export { ReporterError } from './reporter/reporter.ts'
 export {
   formatSummary,
   toJson,

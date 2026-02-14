@@ -4,10 +4,10 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./dataset": "./src/dataset/Dataset.ts",
-    "./rubric": "./src/rubric/Rubric.ts",
-    "./runner": "./src/runner/Runner.ts",
-    "./reporter": "./src/reporter/Reporter.ts"
+    "./dataset": "./src/dataset/dataset.ts",
+    "./rubric": "./src/rubric/rubric.ts",
+    "./runner": "./src/runner/runner.ts",
+    "./reporter": "./src/reporter/reporter.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

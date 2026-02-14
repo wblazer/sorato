@@ -4,9 +4,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./sandbox": "./src/sandbox/Sandbox.ts",
-    "./harness": "./src/harness/Harness.ts",
-    "./tool": "./src/tool/Tool.ts"
+    "./sandbox": "./src/sandbox/sandbox.ts",
+    "./harness": "./src/harness/harness.ts",
+    "./tool": "./src/tool/tool.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

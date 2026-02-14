@@ -12,7 +12,7 @@
  */
 import { Tool, Toolkit } from '@effect/ai'
 import { Effect, Schema } from 'effect'
-import { CurrentSandbox, SandboxError } from '../sandbox/Sandbox.ts'
+import { CurrentSandbox, SandboxError } from '../sandbox/sandbox.ts'
 
 // ---------------------------------------------------------------------------
 // Tool declarations — what the LLM sees

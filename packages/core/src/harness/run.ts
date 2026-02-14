@@ -11,7 +11,7 @@
  * Hooks fire on every stream part — text deltas, tool calls, tool results.
  */
 import type { AiError, Prompt, Response, Tool } from '@effect/ai'
-import type { HarnessConfig, HarnessEvent, HarnessResult } from './Harness.ts'
+import type { HarnessConfig, HarnessEvent, HarnessResult } from './harness.ts'
 
 import { Effect as Effect_, Ref as Ref_, Stream as Stream_ } from 'effect'
 import { LanguageModel as LanguageModel_, Chat as Chat_ } from '@effect/ai'

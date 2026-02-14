@@ -8,14 +8,14 @@
  */
 
 // Sandbox
-export { Sandbox, CurrentSandbox, SandboxError } from './sandbox/Sandbox.ts'
+export { Sandbox, CurrentSandbox, SandboxError } from './sandbox/sandbox.ts'
 export type {
   ExecCommand,
   SandboxSession,
   SandboxFactory,
   ExecResult,
-} from './sandbox/Sandbox.ts'
-export { LocalSandbox, LocalSandboxLive } from './sandbox/LocalSandbox.ts'
+} from './sandbox/sandbox.ts'
+export { LocalSandbox, LocalSandboxLive } from './sandbox/local-sandbox.ts'
 
 // Harness
 export type {
@@ -23,8 +23,8 @@ export type {
   HarnessHook,
   HarnessConfig,
   HarnessResult,
-} from './harness/Harness.ts'
+} from './harness/harness.ts'
 export { run } from './harness/run.ts'
 
 // Tool
-export { ReadFile, AgentToolkit, AgentToolkitLive } from './tool/Tool.ts'
+export { ReadFile, AgentToolkit, AgentToolkitLive } from './tool/tool.ts'

@@ -15,7 +15,7 @@ import {
   type ExecCommand,
   type ExecResult,
   type SandboxSession,
-} from './Sandbox.ts'
+} from './sandbox.ts'
 
 // ---------------------------------------------------------------------------
 // Helpers

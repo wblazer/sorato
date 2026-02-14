@@ -12,8 +12,8 @@
 import { Schema } from 'effect'
 import type { Effect } from 'effect'
 import type { HarnessResult, SandboxSession } from '@agents/core'
-import type { Scenario } from '../dataset/Dataset.ts'
-import type { Score } from '../rubric/Rubric.ts'
+import type { Scenario } from '../dataset/dataset.ts'
+import type { Score } from '../rubric/rubric.ts'
 
 // ---------------------------------------------------------------------------
 // Result types

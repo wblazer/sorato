@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
-import type { BenchmarkResult, ScenarioResult } from '../runner/Runner.ts'
-import { finalAssistantText } from '../rubric/Rubric.ts'
-import { ReporterError } from './Reporter.ts'
+import type { BenchmarkResult, ScenarioResult } from '../runner/runner.ts'
+import { finalAssistantText } from '../rubric/rubric.ts'
+import { ReporterError } from './reporter.ts'
 
 // ---------------------------------------------------------------------------
 // Console summary

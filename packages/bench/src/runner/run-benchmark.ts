@@ -8,15 +8,15 @@ import {
   type SandboxError,
   type SandboxSession,
 } from '@agents/core'
-import type { Dataset } from '../dataset/Dataset.ts'
-import type { RunContext } from '../rubric/Rubric.ts'
-import { RunnerError } from './Runner.ts'
+import type { Dataset } from '../dataset/dataset.ts'
+import type { RunContext } from '../rubric/rubric.ts'
+import { RunnerError } from './runner.ts'
 import type {
   BenchmarkResult,
   RunnerConfig,
   RunnerHooks,
   ScenarioResult,
-} from './Runner.ts'
+} from './runner.ts'
 
 // ---------------------------------------------------------------------------
 // Runner

@@ -20,7 +20,7 @@
 import type { Prompt } from '@effect/ai'
 import { Effect } from 'effect'
 import type { SandboxSession } from '@agents/core'
-import type { Scenario } from '../dataset/Dataset.ts'
+import type { Scenario } from '../dataset/dataset.ts'
 
 // ---------------------------------------------------------------------------
 // RunContext — what the rubric receives

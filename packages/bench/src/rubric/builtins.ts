@@ -10,7 +10,7 @@ import {
   fromFunction,
   fromEffect,
   finalAssistantText,
-} from './Rubric.ts'
+} from './rubric.ts'
 
 // ---------------------------------------------------------------------------
 // Built-in rubrics (string comparison on final assistant message)

@@ -11,7 +11,7 @@
  * contain. You bring your own schemas; the Dataset just holds them.
  */
 import type { Effect } from 'effect'
-import type { Rubric } from '../rubric/Rubric.ts'
+import type { Rubric } from '../rubric/rubric.ts'
 
 // ---------------------------------------------------------------------------
 // Scenario
