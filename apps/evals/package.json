@@ -4,9 +4,9 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "start": "bun run cli.ts",
-    "hello-world": "bun run cli.ts -- run hello-world",
-    "file-read": "bun run cli.ts -- run file-read"
+    "start": "bun --env-file=../../.env run cli.ts",
+    "hello-world": "bun --env-file=../../.env run cli.ts -- run hello-world",
+    "file-read": "bun --env-file=../../.env run cli.ts -- run file-read"
   },
   "dependencies": {
     "@agents/bench": "workspace:*",

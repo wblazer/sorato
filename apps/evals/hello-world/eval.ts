@@ -57,7 +57,7 @@ const tests = [
 // ---------------------------------------------------------------------------
 
 const AnthropicLive = AnthropicLanguageModel.layer({
-  model: 'claude-sonnet-4-20250514',
+  model: 'claude-haiku-4-5-20251001',
 }).pipe(
   Layer.provide(
     AnthropicClient.layerConfig({

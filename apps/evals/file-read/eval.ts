@@ -23,7 +23,6 @@ import {
   Sandbox,
   CurrentSandbox,
   LocalSandboxLive,
-  SandboxError,
 } from '@agents/core'
 import type { EvalSuite } from '../suite.ts'
 import type { SuiteResult } from '@agents/bench'
@@ -57,57 +56,33 @@ interface FileScenario {
 const scenarios: ReadonlyArray<FileScenario> = [
   {
     name: 'read-greeting',
-    filePath: '/tmp/agents-eval/greeting.txt',
+    filePath: 'greeting.txt',
     fileContents: 'Hello from the sandbox!',
     prompt:
-      "Read the file at /tmp/agents-eval/greeting.txt and tell me exactly what it says. Reply with only the file's contents, nothing else.",
+      "Read the file at greeting.txt and tell me exactly what it says. Reply with only the file's contents, nothing else.",
     expected: 'Hello from the sandbox!',
   },
   {
     name: 'read-count-lines',
-    filePath: '/tmp/agents-eval/lines.txt',
+    filePath: 'lines.txt',
     fileContents: 'line one\nline two\nline three\nline four\nline five',
     prompt:
-      'Read the file at /tmp/agents-eval/lines.txt and count how many lines it has. Reply with just the number.',
+      'Read the file at lines.txt and count how many lines it has. Reply with just the number.',
     expected: '5',
   },
   {
     name: 'read-extract-value',
-    filePath: '/tmp/agents-eval/config.json',
+    filePath: 'config.json',
     fileContents: JSON.stringify(
       { name: 'test-project', version: '1.2.3', author: 'Agent' },
       null,
       2
     ),
     prompt:
-      'Read the file at /tmp/agents-eval/config.json and tell me the version. Reply with just the version string.',
+      'Read the file at config.json and tell me the version. Reply with just the version string.',
     expected: '1.2.3',
   },
 ]
-
-// ---------------------------------------------------------------------------
-// Per-test sandbox lifecycle
-// ---------------------------------------------------------------------------
-
-/** Seed a file into the real filesystem for the sandbox to read. */
-const seedFile = (path: string, contents: string) =>
-  Effect.tryPromise({
-    try: () => Bun.write(path, contents),
-    catch: (error) =>
-      new SandboxError({
-        operation: 'seedFile',
-        message: `Failed to seed ${path}: ${error}`,
-      }),
-  })
-
-const cleanup = Effect.tryPromise({
-  try: () => Bun.spawn(['rm', '-rf', '/tmp/agents-eval']).exited,
-  catch: (error) =>
-    new SandboxError({
-      operation: 'cleanup',
-      message: `Failed to cleanup: ${error}`,
-    }),
-}).pipe(Effect.ignore)
 
 // ---------------------------------------------------------------------------
 // Tests — each leaf is an Effect you can read top-to-bottom
@@ -115,14 +90,12 @@ const cleanup = Effect.tryPromise({
 
 const tests = scenarios.map((scenario) =>
   Effect.gen(function* () {
-    // Seed the file this test needs
-    yield* seedFile(scenario.filePath, scenario.fileContents)
-
-    // Acquire a fresh sandbox for this test
+    // Acquire a fresh sandbox and seed the file this test needs
     const sandboxFactory = yield* Sandbox
     return yield* Effect.scoped(
       Effect.gen(function* () {
         const sandbox = yield* sandboxFactory.acquire
+        yield* sandbox.writeFile(scenario.filePath, scenario.fileContents)
         return yield* test(
           { systemPrompt, toolkit: FileTools },
           {
@@ -141,7 +114,7 @@ const tests = scenarios.map((scenario) =>
 // ---------------------------------------------------------------------------
 
 const AnthropicLive = AnthropicLanguageModel.layer({
-  model: 'claude-sonnet-4-20250514',
+  model: 'claude-haiku-4-5-20251001',
 }).pipe(
   Layer.provide(
     AnthropicClient.layerConfig({
@@ -157,7 +130,6 @@ const AnthropicLive = AnthropicLanguageModel.layer({
 
 const suiteRun = Effect.gen(function* () {
   const result: SuiteResult = yield* run(tests)
-  yield* cleanup
 
   console.log(formatSuiteSummary(result))
 
