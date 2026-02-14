@@ -1,6 +1,6 @@
 # Blazer Bench
 
-Composable primitives for building and benchmarking AI agent systems. See `VISION.md` for the strategic rationale.
+Composable primitives for building and benchmarking AI agent systems.
 
 ## Tech Stack
 
@@ -8,6 +8,14 @@ Composable primitives for building and benchmarking AI agent systems. See `VISIO
 - **Framework**: Effect (functional programming)
 - **CLI**: @effect/cli
 - **AI**: @effect/ai
+
+## Monorepo Structure
+
+Bun workspaces. Packages depend on each other via `workspace:*`.
+
+- `packages/core/` — the library: composable primitives (sandbox, harness, rubric, dataset, runner, reporter). See `packages/core/AGENTS.md`.
+- `apps/evals/` — benchmark eval suites that exercise the library
+- `apps/` — future home for TUI, web UI, and other userspace applications
 
 ## Agent Map
 
@@ -27,55 +35,17 @@ Composable primitives for building and benchmarking AI agent systems. See `VISIO
 - Document architectural boundaries and "never do this" rules
 - Don't duplicate what the code already says. Docs that restate code will drift and become lies.
 
-## Architecture
-
-Composable primitives. The library provides the structure and some default implementations; consumers compose them freely or supply their own. Benchmarking is one use case of the composition, not the only one — the same primitives support building real agent systems.
-
-**Primitives** (all in `src/`):
-
-- **Dataset** (`src/dataset/`) — collection of `Scenario<Input, Expected, Meta>`. Effectful loading. Generic over everything.
-- **Rubric** (`src/rubric/`) — evaluates harness output against expected. Ships: `exactMatch`, `contains`, `regex`, `llmJudge`. Write your own with `fromFunction` / `fromEffect`.
-- **Sandbox** (`src/sandbox/`) — execution environment trait for tools. Ships `LocalSandbox` (no isolation). Consumers provide Docker/Firecracker/etc. as a Layer. The agent loop runs _outside_ the sandbox — tool calls are remoted in.
-- **Harness** (`src/harness/`) — composes tools (via @effect/ai `Toolkit`), hooks, and a system prompt. The "agent under test." Memory is a harness concern (hooks), not a separate primitive.
-- **Runner** (`src/runner/`) — orchestrates: dataset → harness → rubric → results. Configurable concurrency. This is batch-mode composition; other execution patterns (webhook-triggered, interactive) are userland.
-- **Reporter** (`src/reporter/`) — formats and persists benchmark results. Console summary + JSON serialization.
-
-**Data flow** (benchmark mode): `Dataset.scenarios` → `Harness.run(input)` → `Rubric.evaluate(RunContext)` → `BenchmarkResult`
-
-**Execution model**: Three distinct contexts — orchestrator (your CLI/server), agent runtime (harness/LLM loop), and sandbox (isolated tool execution). The harness runs outside the sandbox so a broken environment doesn't kill the agent loop. See `VISION.md` and `src/sandbox/AGENTS.md` for details.
-
-**Key design decisions**:
-
-- Tools ARE @effect/ai `Toolkit` tools — no abstraction layer
-- Everything is plain data + functions, no classes/inheritance
-- Dependencies flow through Effect's `R` parameter, satisfied via Layers at the edge
-- `package.json` has sub-path `exports` for future publishability
-- Rubrics receive a `RunContext` (sandbox + conversation + scenario + usage), NOT just strings. This supports evaluating full agent loops — e.g. a coding rubric can `sandbox.exec("bun test")` to check correctness. String comparison is a special case handled by built-in rubrics that extract the final assistant message.
-- Sandbox is a _factory_ (`SandboxFactory`), not a singleton. The Runner acquires a scoped `SandboxSession` per scenario — no cross-contamination, proper cleanup, safe for concurrent runs.
-- Scenarios have stable `id` fields for diffing results across runs, caching, and retry tracking.
-- `exec` returns `{ stdout, stderr, exitCode }` — rubrics can check exit codes, not just stdout.
-- IaC (Alchemy, Terraform, Nix, etc.) lives in userland — it provisions resources that satisfy `SandboxFactory` Layers. The library is agnostic to cloud providers and provisioning tools.
-
-## Related Context
-
-- `src/dataset/` — Dataset and Scenario types
-- `src/rubric/` — Rubric trait and built-in implementations
-- `src/sandbox/` — Sandbox service and LocalSandbox layer
-- `src/harness/` — Harness config, hooks, and run function
-- `src/runner/` — Runner orchestration and result types
-- `src/reporter/` — Result formatting and persistence
-
 ## Development Commands
 
 ```bash
-# Type check
+# Type check all packages
 bun run typecheck
-
-# Run the CLI
-bun run start
 
 # Install dependencies
 bun install
+
+# Run an eval
+bun run --filter @blazerbench/evals hello-world
 ```
 
 ## Never Do

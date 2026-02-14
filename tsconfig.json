@@ -23,12 +23,6 @@
     "exactOptionalPropertyTypes": true,
     "noUnusedLocals": true,
 
-    // Path aliases — lets consumers (evals/) import from "blazerbench" etc.
-    "paths": {
-      "blazerbench": ["./src/index.ts"],
-      "blazerbench/*": ["./src/*/index.ts", "./src/*"]
-    },
-
     // Effect Language Service
     "plugins": [{ "name": "@effect/language-service" }]
   }

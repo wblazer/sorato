@@ -1,0 +1,15 @@
+{
+  "name": "@blazerbench/evals",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "hello-world": "bun run hello-world/main.ts"
+  },
+  "dependencies": {
+    "@blazerbench/core": "workspace:*",
+    "@effect/ai-anthropic": "^0.23.0",
+    "@effect/platform": "^0.94.2",
+    "effect": "^3.19.15"
+  }
+}

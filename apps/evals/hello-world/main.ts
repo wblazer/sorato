@@ -4,7 +4,7 @@
  * A handful of trivial prompt→expected-string scenarios exercising the
  * full pipeline: Dataset → Harness → Runner → Reporter.
  *
- * Run:  bun run evals/hello-world/main.ts
+ * Run:  bun run --filter @blazerbench/evals hello-world
  */
 import { AnthropicClient, AnthropicLanguageModel } from '@effect/ai-anthropic'
 import { FetchHttpClient } from '@effect/platform'
@@ -17,8 +17,8 @@ import {
   formatSummary,
   saveResult,
   defaultResultPath,
-} from 'blazerbench'
-import type { Scenario } from 'blazerbench'
+} from '@blazerbench/core'
+import type { Scenario } from '@blazerbench/core'
 
 // ---------------------------------------------------------------------------
 // Dataset

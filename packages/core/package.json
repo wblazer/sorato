@@ -1,0 +1,23 @@
+{
+  "name": "@blazerbench/core",
+  "module": "src/index.ts",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./dataset": "./src/dataset/Dataset.ts",
+    "./rubric": "./src/rubric/Rubric.ts",
+    "./sandbox": "./src/sandbox/Sandbox.ts",
+    "./harness": "./src/harness/Harness.ts",
+    "./runner": "./src/runner/Runner.ts",
+    "./reporter": "./src/reporter/Reporter.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@effect/ai": "^0.33.2",
+    "@effect/platform": "^0.94.2",
+    "@effect/platform-bun": "^0.87.1",
+    "effect": "^3.19.15"
+  }
+}

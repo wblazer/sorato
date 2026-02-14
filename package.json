@@ -1,37 +1,20 @@
 {
   "name": "blazerbench",
-  "module": "src/index.ts",
-  "type": "module",
-  "exports": {
-    ".": "./src/index.ts",
-    "./dataset": "./src/dataset/Dataset.ts",
-    "./rubric": "./src/rubric/Rubric.ts",
-    "./sandbox": "./src/sandbox/Sandbox.ts",
-    "./harness": "./src/harness/Harness.ts",
-    "./runner": "./src/runner/Runner.ts",
-    "./reporter": "./src/reporter/Reporter.ts"
-  },
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
     "prepare": "effect-language-service patch",
-    "typecheck": "tsc --noEmit",
-    "start": "bun run index.ts",
+    "typecheck": "bun --filter '*' typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@effect/language-service": "^0.72.0",
     "@types/bun": "latest",
-    "prettier": "^3.8.1"
-  },
-  "peerDependencies": {
+    "prettier": "^3.8.1",
     "typescript": "^5"
-  },
-  "dependencies": {
-    "@effect/ai": "^0.33.2",
-    "@effect/ai-anthropic": "^0.23.0",
-    "@effect/cli": "^0.73.1",
-    "@effect/platform": "^0.94.2",
-    "@effect/platform-bun": "^0.87.1",
-    "effect": "^3.19.15"
   }
 }
