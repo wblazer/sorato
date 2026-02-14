@@ -13,24 +13,25 @@ Composable primitives for building and benchmarking AI agent systems.
 
 Bun workspaces. Packages depend on each other via `workspace:*`.
 
-- `packages/core/` — the library: composable primitives (sandbox, harness, rubric, dataset, runner, reporter). See `packages/core/AGENTS.md`.
+- `packages/core/` — the library: composable primitives (sandbox, harness, rubric, dataset, runner, reporter). See `packages/core/DOCS.md`.
 - `apps/evals/` — benchmark eval suites that exercise the library
 - `apps/` — future home for TUI, web UI, and other userspace applications
 
 ## Agent Map
 
-**The Vision**: As codebases grow, LLMs struggle to navigate without flooding context windows. This project uses a distributed "agent map" - AGENTS.md files placed throughout the codebase that act as navigation nodes. Each node answers "why does this code exist" and "how do I work with it" without requiring full codebase context.
+**The Vision**: As codebases grow, LLMs struggle to navigate without flooding context windows. This project uses a distributed "agent map" — DOCS.md files placed throughout the codebase that act as navigation nodes. Each node answers "why does this code exist" and "how do I work with it" without requiring full codebase context.
 
 **How the Map Works**:
 
-- Each AGENTS.md has links (file paths) to related nodes (e.g., `src/components/AGENTS.md`)
-- When you read any file in a directory, all AGENTS.md files up the tree are automatically loaded
-- Jump to any AGENTS.md and you'll have full context for that location
+- The root node is this file (`AGENTS.md`) — auto-loaded by OpenCode on every session
+- Subdirectory nodes use `DOCS.md` — auto-loaded by a plugin (`docs-autoload`) when any file in that directory is read, or when the DOCS.md itself is read explicitly
+- Each DOCS.md has links (file paths) to related nodes (e.g., `src/components/DOCS.md`)
+- Explicit reads of a DOCS.md are deduplicated against subsequent autoloads — no double injection
 
 **Map Documentation Philosophy**:
 
-- **Locality of concern**: explanations belong next to the code they describe, not in a separate doc. AGENTS.md nodes summarize _folders_, not files. Type explanations go in comments next to the type.
-- AGENTS.md nodes explain "why" for folders/modules existence — the domain knowledge that normally gets lost over time
+- **Locality of concern**: explanations belong next to the code they describe, not in a separate doc. DOCS.md nodes summarize _folders_, not files. Type explanations go in comments next to the type.
+- DOCS.md nodes explain "why" for folders/modules existence — the domain knowledge that normally gets lost over time
 - Nodes point to files with brief descriptions. Details live in the code — go read it.
 - Document architectural boundaries and "never do this" rules
 - Don't duplicate what the code already says. Docs that restate code will drift and become lies.

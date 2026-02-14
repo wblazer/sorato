@@ -17,7 +17,7 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 
 **Data flow** (benchmark mode): `Dataset.scenarios` → `Harness.run(input)` → `Rubric.evaluate(RunContext)` → `BenchmarkResult`
 
-**Execution model**: Three distinct contexts — orchestrator, agent runtime (harness), and sandbox. The harness runs outside the sandbox so a broken environment doesn't kill the agent loop. See `VISION.md` and `src/sandbox/AGENTS.md`.
+**Execution model**: Three distinct contexts — orchestrator, agent runtime (harness), and sandbox. The harness runs outside the sandbox so a broken environment doesn't kill the agent loop. See `VISION.md` and `src/sandbox/DOCS.md`.
 
 **Key design decisions**:
 

@@ -9,7 +9,7 @@ The "agent under test." Composes a system prompt, tools, and hooks into a comple
 
 ## Memory Is Hooks
 
-Memory is NOT a separate primitive. It's a harness concern implemented through hooks. A `beforeRun` hook that does vector search _is_ RAG. A hook that loads AGENTS.md files _is_ codebase memory. The hook system is expressive enough; no separate abstraction needed.
+Memory is NOT a separate primitive. It's a harness concern implemented through hooks. A `beforeRun` hook that does vector search _is_ RAG. A hook that loads DOCS.md files _is_ codebase memory. The hook system is expressive enough; no separate abstraction needed.
 
 ## Never Do
 

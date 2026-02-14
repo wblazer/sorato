@@ -16,7 +16,7 @@ Agent harness good enough to use for real coding work.
 
 - **System prompt + tool set** tuned for coding tasks
 - **Observability hooks** — logging, cost tracking
-- **Memory hooks** — AGENTS.md injection, conversation history, vector search
+- **Memory hooks** — DOCS.md injection, conversation history, vector search
 - **Multi-turn robustness** — tool errors, context window limits, stuck loops
 
 This is the highest-risk phase. Benchmarking infrastructure from Phase 1 is how you measure progress.
