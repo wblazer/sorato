@@ -27,7 +27,10 @@ export type {
   ScenarioResult,
   BenchmarkResult,
   RunnerConfig,
+  RunnerHooks,
+  SandboxStrategy,
 } from './runner/Runner.ts'
+export { RunnerError } from './runner/Runner.ts'
 export { runBenchmark, runStringBenchmark } from './runner/runBenchmark.ts'
 
 // Reporter

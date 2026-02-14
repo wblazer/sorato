@@ -10,7 +10,7 @@ Evaluates harness output. Receives a `RunContext` with the full sandbox session,
 ## Key Points
 
 - Rubrics live on scenarios, not datasets — per-scenario evaluation strategies
-- Sandbox access in rubrics enables checking real world state (e.g., `sandbox.exec("bun test")`)
+- Sandbox access in rubrics enables checking real world state (e.g., `sandbox.exec({ command: 'bun test' })`)
 
 ## Related Context
 

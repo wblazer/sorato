@@ -9,7 +9,9 @@
  * Concurrency is configurable — default is sequential (concurrency: 1) so you
  * don't accidentally blow rate limits or burn money.
  */
-import type { HarnessResult } from '@agents/core'
+import { Schema } from 'effect'
+import type { Effect } from 'effect'
+import type { HarnessResult, SandboxSession } from '@agents/core'
 import type { Scenario } from '../dataset/Dataset.ts'
 import type { Score } from '../rubric/Rubric.ts'
 
@@ -23,6 +25,33 @@ export interface ScenarioResult<Input, Meta> {
   readonly harnessResult: HarnessResult
   readonly score: Score
 }
+
+// ---------------------------------------------------------------------------
+// Runner hooks
+// ---------------------------------------------------------------------------
+
+export interface ScenarioContext<Input, Meta> {
+  readonly scenario: Scenario<Input, Meta>
+  readonly sandbox: SandboxSession
+}
+
+export interface RunnerHooks<Input, Meta, SetupE = never, R = never> {
+  /** Runs before each scenario (use for setup/fixtures). */
+  readonly setup?: (
+    ctx: ScenarioContext<Input, Meta>
+  ) => Effect.Effect<void, SetupE, R>
+  /** Runs after each scenario (always, even on failure). Must not fail. */
+  readonly cleanup?: (
+    ctx: ScenarioContext<Input, Meta>
+  ) => Effect.Effect<void, never, R>
+}
+
+// ---------------------------------------------------------------------------
+// Sandbox strategy
+// ---------------------------------------------------------------------------
+
+/** Controls how sandbox sessions are acquired for a run. */
+export type SandboxStrategy = 'perScenario' | 'perRun'
 
 /** Aggregate results for an entire benchmark run. */
 export interface BenchmarkResult<Input, Meta> {
@@ -41,4 +70,19 @@ export interface BenchmarkResult<Input, Meta> {
 export interface RunnerConfig {
   /** Max concurrent scenario runs. Defaults to 1 (sequential). */
   readonly concurrency?: number | undefined
+  /** Sandbox reuse strategy. Defaults to perScenario. */
+  readonly sandboxStrategy?: SandboxStrategy | undefined
 }
+
+// ---------------------------------------------------------------------------
+// Runner errors
+// ---------------------------------------------------------------------------
+
+export class RunnerError extends Schema.TaggedError<RunnerError>()(
+  'RunnerError',
+  {
+    operation: Schema.String,
+    message: Schema.String,
+    error: Schema.optional(Schema.Defect),
+  }
+) {}

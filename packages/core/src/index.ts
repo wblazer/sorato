@@ -10,6 +10,7 @@
 // Sandbox
 export { Sandbox, CurrentSandbox, SandboxError } from './sandbox/Sandbox.ts'
 export type {
+  ExecCommand,
   SandboxSession,
   SandboxFactory,
   ExecResult,

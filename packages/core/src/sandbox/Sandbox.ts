@@ -32,7 +32,7 @@ export class SandboxError extends Schema.TaggedError<SandboxError>()(
 ) {}
 
 // ---------------------------------------------------------------------------
-// ExecResult
+// Exec
 // ---------------------------------------------------------------------------
 
 /** Structured result from executing a command in a sandbox. */
@@ -42,19 +42,33 @@ export interface ExecResult {
   readonly exitCode: number
 }
 
+/** Structured command input for sandbox execution. */
+export interface ExecCommand {
+  /** Shell command string (passed to the sandbox's shell). */
+  readonly command: string
+  /** Working directory (sandbox-relative; absolute paths are sandbox-relative). */
+  readonly cwd?: string | undefined
+  /** Environment variables to inject for this command. */
+  readonly env?: Readonly<Record<string, string | undefined>> | undefined
+  /** UTF-8 stdin payload. */
+  readonly stdin?: string | undefined
+}
+
 // ---------------------------------------------------------------------------
 // SandboxSession — per-scenario isolated environment
 // ---------------------------------------------------------------------------
 
 /** The session interface that any Sandbox implementation must satisfy. */
 export interface SandboxSession {
-  /** Execute a shell command and return a structured result. */
-  readonly exec: (command: string) => Effect.Effect<ExecResult, SandboxError>
+  /** Execute a command and return a structured result. */
+  readonly exec: (
+    command: ExecCommand
+  ) => Effect.Effect<ExecResult, SandboxError>
 
-  /** Read a file from the sandbox filesystem. */
+  /** Read a file from the sandbox filesystem (path is sandbox-relative). */
   readonly readFile: (path: string) => Effect.Effect<string, SandboxError>
 
-  /** Write a file to the sandbox filesystem. */
+  /** Write a file to the sandbox filesystem (path is sandbox-relative). */
   readonly writeFile: (
     path: string,
     content: string

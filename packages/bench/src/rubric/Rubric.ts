@@ -14,7 +14,7 @@
  * but the real power is in rubrics that inspect the sandbox.
  *
  * Example: a coding benchmark rubric might do:
- *   sandbox.exec("bun test") → check exit code
+ *   sandbox.exec({ command: 'bun test' }) → check exit code
  *   sandbox.readFile("src/foo.ts") → check the implementation
  */
 import type { Prompt } from '@effect/ai'

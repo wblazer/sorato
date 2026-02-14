@@ -4,12 +4,17 @@ The execution environment boundary. Every tool call an agent makes goes through 
 
 ## Files
 
-- `Sandbox.ts` — trait/contract: `SandboxSession`, `SandboxFactory`, `Sandbox` tag, `CurrentSandbox` tag, `SandboxError`. The interface any implementation must satisfy. `CurrentSandbox` is the per-scenario session tag that tools require in their `R` parameter.
-- `LocalSandbox.ts` — default implementation using `@effect/platform` CommandExecutor + Bun file APIs. No isolation. Fine for dev/benchmarks.
+- `Sandbox.ts` — trait/contract: `SandboxSession`, `SandboxFactory`, `Sandbox` tag, `CurrentSandbox` tag, `SandboxError`, `ExecCommand`. `CurrentSandbox` is the per-scenario session tag that tools require in their `R` parameter.
+- `LocalSandbox.ts` — default implementation using `@effect/platform` CommandExecutor + FileSystem. No isolation beyond a per-session temp root. Fine for dev/benchmarks.
 
 ## Key Insight: Agent Loop Runs Outside the Sandbox
 
 The harness (LLM loop) runs in the orchestrator process, NOT inside the sandbox. Tool calls are remoted into the sandbox via `SandboxSession`. If the sandbox environment breaks, the agent loop survives. See `VISION.md` for the full execution model diagram.
+
+## Path Semantics
+
+All file and working-directory paths are resolved relative to the sandbox root.
+Absolute paths are treated as sandbox-relative to preserve isolation.
 
 ## Cloud Implementations (Userland)
 
@@ -18,7 +23,7 @@ The library doesn't ship cloud sandboxes. Users write `SandboxFactory` Layers ba
 ## Never Do
 
 - Never call `child_process` or Bun file APIs directly from tools — go through `SandboxSession`
-- Never share a `SandboxSession` across scenarios — each gets its own from the factory
+- Don't accidentally share a `SandboxSession` across scenarios — reuse should be an explicit strategy in userland (see `packages/bench/src/runner/`)
 
 ## Related Context
 
