@@ -124,8 +124,15 @@ This library's value proposition: make experimentation cheap. Tools are `@effect
 - **Not an opinions factory.** Default implementations ship for convenience, not as prescriptions. Every default is swappable.
 - **Not a framework.** Frameworks call your code. This is a library — you call it, you compose it, you own the main loop.
 
+## Frontend Compatibility
+
+The primitives solve the backend. Frontends are separate work — building web UIs, TUIs, IDE integrations. Rather than build these from scratch, an OpenCode API compatibility layer (`@agents/opencode`) can expose the primitives through the REST + SSE interface that existing frontends expect. This gives immediate access to OpenCode's web UI, TUI, and SDK without coupling to its internal agent implementation. Details left for future exploration.
+
 ## Related Reading
 
 - Ona (formerly Gitpod): [The Last Year of Localhost](https://ona.com/stories/the-last-year-of-localhost) — the case for cloud development environments as agent infrastructure
 - [Dev Container Specification](https://containers.dev/) — the industry-standard environment definition format
 - [alchemy-effect](https://github.com/alchemy-run/alchemy-effect) — Effect-native IaC, a natural fit for provisioning sandbox Layers
+- [OpenCode](https://github.com/anomalyco/opencode) — reference implementation for agent tooling and API design
+- [Sandbox Agent](https://github.com/rivet-dev/sandbox-agent) — HTTP API for controlling coding agents in sandboxes; illustrates the OpenCode compatibility pattern
+- [Agent Communication Protocol](https://agentcommunicationprotocol.dev/) — standardized interface for agent-to-client communication
