@@ -9,7 +9,7 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 **Core primitives** (all in `src/`):
 
 - **Sandbox** (`src/sandbox/`) — execution environment trait for tools. Ships `LocalSandbox`. `CurrentSandbox` tag provides the per-scenario session to tool handlers via `R`.
-- **Tool** (`src/tool/`) — `@effect/ai Toolkit` tools that delegate to `CurrentSandbox`. Ships `ReadFile`. Handlers use `failureMode: "return"` so errors go back to the LLM.
+- **Tool** (`src/tool/`) — `@effect/ai Toolkit` tools that delegate to `CurrentSandbox`. Ships `ReadFile` + `EditFile` using the hashline protocol (content-hash anchored lines). Handlers use `failureMode: "return"` so errors go back to the LLM.
 - **Harness** (`src/harness/`) — system prompt + tools + hooks = agent. Agent loop with multi-turn tool calling. Memory is a harness concern (hooks), not a separate primitive.
 
 **Evaluation primitives** live in `@agents/bench`: `eval_()`, `run()`, Reporter.
@@ -28,7 +28,7 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 ## Related Context
 
 - `src/sandbox/` — Sandbox service, CurrentSandbox tag, and LocalSandbox layer
-- `src/tool/` — Agent tools (ReadFile) and bundled toolkit
+- `src/tool/` — Agent tools: `ReadFile` + `EditFile` (hashline protocol)
 - `src/harness/` — Harness config, hooks, and run function (multi-turn agent loop)
 - `packages/bench/` — eval primitives (`eval_`, `run`, Reporter)
 - `VISION.md` — strategic rationale, execution model, industry context

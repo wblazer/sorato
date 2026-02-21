@@ -6,7 +6,7 @@
     "typecheck": "tsc --noEmit",
     "start": "bun --env-file=../../.env run cli.ts",
     "hello-world": "bun --env-file=../../.env run cli.ts -- run hello-world",
-    "file-read": "bun --env-file=../../.env run cli.ts -- run file-read"
+    "file-edit": "bun --env-file=../../.env run cli.ts -- run file-edit"
   },
   "dependencies": {
     "@agents/bench": "workspace:*",

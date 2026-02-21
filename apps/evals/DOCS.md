@@ -32,7 +32,7 @@ Each suite is fully self-contained — it wires its own layers (model, sandbox, 
 - `suite.ts` — `EvalSuite` interface contract
 - `registry.ts` — static registry mapping names to suites
 - `hello-world/` — trivial prompt/response eval (no tools)
-- `file-read/` — first agentic eval (ReadFile tool + sandbox)
+- `file-edit/` — agentic eval: ReadFile + EditFile with hashline anchors
 
 ## Related Context
 

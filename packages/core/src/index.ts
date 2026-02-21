@@ -26,6 +26,11 @@ export type {
 } from './harness/harness.ts'
 export { run } from './harness/run.ts'
 
-// Tool
+// Tool — hashline bundle (content-hash anchored read + edit)
 export { Toolkit } from '@effect/ai'
-export { ReadFile, ReadFileHandler } from './tool/tool.ts'
+export {
+  ReadFile,
+  ReadFileHandler,
+  EditFile,
+  EditFileHandler,
+} from './tool/hashline/index.ts'

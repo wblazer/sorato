@@ -4,7 +4,7 @@ Agent tools — `@effect/ai Toolkit` tools that delegate to the sandbox.
 
 ## Files
 
-- `Tool.ts` — tool declarations (`ReadFile`), bundled toolkit (`AgentToolkit`), and handler implementations (`AgentToolkitLive`)
+- `hashline/` — `ReadFile` + `EditFile` sharing the hashline protocol. Read returns `<line>:<hash>|<content>` annotations with offset/limit, truncation, and binary detection. Edit references lines by `<line>:<hash>` anchors. See `hashline/encoding.ts` for the hashing scheme.
 
 ## How It Works
 
