@@ -117,10 +117,13 @@ export const encode = (
   const maxLineLen = options?.maxLineLength
   const maxBytes = options?.maxBytes
 
+  const encoder = new TextEncoder()
   const annotated: Array<string> = []
   let byteCount = 0
   let truncatedByBytes = false
-  let lastLine = offset
+  // Start before the first possible line so the footer is correct when
+  // zero lines are emitted (e.g. limit=0 or byte cap too small).
+  let lastLine = offset - 1
 
   for (let i = startIdx; i < endIdx; i++) {
     const lineNum = i + 1
@@ -132,8 +135,9 @@ export const encode = (
     const hash = hashLine(allLines[i]!, hashLength)
     const formatted = `${lineNum}:${hash}|${displayLine}`
 
-    // +1 for the newline between lines
-    const lineBytes = formatted.length + (annotated.length > 0 ? 1 : 0)
+    // Real UTF-8 byte length, +1 for the newline between lines
+    const lineBytes =
+      encoder.encode(formatted).byteLength + (annotated.length > 0 ? 1 : 0)
     if (maxBytes !== undefined && byteCount + lineBytes > maxBytes) {
       truncatedByBytes = true
       break

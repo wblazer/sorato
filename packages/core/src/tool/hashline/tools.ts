@@ -260,14 +260,14 @@ const EditOp = Schema.Union(ReplaceOp, InsertOp, DeleteOp)
 
 export const EditFile = Tool.make('EditFile', {
   description:
-    'Edit a file using line anchors from the last ReadFile output. Each anchor is a `<line>:<hash>` pair that identifies a specific line. Edits in the array are applied sequentially — after all edits, the file is written. You must ReadFile before editing to obtain valid anchors.',
+    'Edit a file using line anchors from the last ReadFile output. Each anchor is a `<line>:<hash>` pair that identifies a specific line. You must ReadFile before editing to obtain valid anchors. Edits must be in ascending line order and must not overlap.',
   parameters: {
     path: Schema.String.annotations({
       description: 'Path to the file (same path used in ReadFile)',
     }),
     edits: Schema.Array(EditOp).annotations({
       description:
-        'Array of edit operations to apply sequentially. Each operation references lines by their `<line>:<hash>` anchors from the last ReadFile call.',
+        'Array of edit operations in ascending line order. Each operation references lines by their `<line>:<hash>` anchors from the last ReadFile call. Edits must not overlap — no two operations can touch the same lines.',
     }),
   },
   success: Schema.String,
@@ -277,106 +277,10 @@ export const EditFile = Tool.make('EditFile', {
 })
 
 // ---------------------------------------------------------------------------
-// EditFile — handler
+// EditFile — handler internals
 // ---------------------------------------------------------------------------
 
 type EditOpType = typeof EditOp.Type
-
-/**
- * Apply a single edit operation to a mutable lines array.
- * Returns an error message on failure, or void on success.
- *
- * After each operation, line numbers shift. The caller is responsible for
- * passing anchors that were valid at the time of the last read — we resolve
- * against the *current* state of `lines` which mutates as edits apply.
- *
- * Wait — that's the subtlety. Multiple edits in one call all reference
- * anchors from the same ReadFile snapshot. But as we apply edits, line
- * numbers shift. So we need to track an offset.
- *
- * Strategy: process edits top-to-bottom, maintaining a running line offset
- * that accounts for insertions and deletions above.
- */
-const applyEdit = (
-  lines: Array<string>,
-  op: EditOpType,
-  offset: number,
-  hashLength: number,
-  originalLines: ReadonlyArray<string>
-): { readonly newOffset: number } | { readonly error: string } => {
-  switch (op.type) {
-    case 'replace': {
-      const startResult = parseAndResolve(
-        op.startAnchor,
-        originalLines,
-        hashLength
-      )
-      if ('error' in startResult) return startResult
-      const endResult = parseAndResolve(op.endAnchor, originalLines, hashLength)
-      if ('error' in endResult) return endResult
-
-      if (startResult.index > endResult.index) {
-        return {
-          error: `startAnchor "${op.startAnchor}" is after endAnchor "${op.endAnchor}"`,
-        }
-      }
-
-      const adjustedStart = startResult.index + offset
-      const adjustedEnd = endResult.index + offset
-      const newLines = op.content.split('\n')
-      const deletedCount = adjustedEnd - adjustedStart + 1
-      lines.splice(adjustedStart, deletedCount, ...newLines)
-
-      return { newOffset: offset + (newLines.length - deletedCount) }
-    }
-
-    case 'insert': {
-      // Special case: "0" means insert at the beginning of the file
-      if (op.afterAnchor === '0') {
-        const newLines = op.content.split('\n')
-        lines.splice(0 + offset, 0, ...newLines)
-        return { newOffset: offset + newLines.length }
-      }
-
-      const afterResult = parseAndResolve(
-        op.afterAnchor,
-        originalLines,
-        hashLength
-      )
-      if ('error' in afterResult) return afterResult
-
-      const adjustedAfter = afterResult.index + offset
-      const newLines = op.content.split('\n')
-      lines.splice(adjustedAfter + 1, 0, ...newLines)
-
-      return { newOffset: offset + newLines.length }
-    }
-
-    case 'delete': {
-      const startResult = parseAndResolve(
-        op.startAnchor,
-        originalLines,
-        hashLength
-      )
-      if ('error' in startResult) return startResult
-      const endResult = parseAndResolve(op.endAnchor, originalLines, hashLength)
-      if ('error' in endResult) return endResult
-
-      if (startResult.index > endResult.index) {
-        return {
-          error: `startAnchor "${op.startAnchor}" is after endAnchor "${op.endAnchor}"`,
-        }
-      }
-
-      const adjustedStart = startResult.index + offset
-      const adjustedEnd = endResult.index + offset
-      const deletedCount = adjustedEnd - adjustedStart + 1
-      lines.splice(adjustedStart, deletedCount)
-
-      return { newOffset: offset - deletedCount }
-    }
-  }
-}
 
 /** Parse an anchor string and resolve it against the original lines. */
 const parseAndResolve = (
@@ -393,6 +297,155 @@ const parseAndResolve = (
   return resolveAnchor(anchor, lines, hashLength)
 }
 
+/**
+ * A resolved edit — anchors have been validated against the original
+ * snapshot and converted to 0-based indices. These are what we actually
+ * apply to the file.
+ *
+ * `sortKey` is the original-snapshot index used for ordering validation.
+ * For inserts at the beginning of the file (afterAnchor "0"), it's -1
+ * so it sorts before everything else.
+ */
+type ResolvedEdit =
+  | {
+      readonly type: 'replace'
+      readonly startIdx: number
+      readonly endIdx: number
+      readonly content: string
+      readonly sortKey: number
+    }
+  | {
+      readonly type: 'insert'
+      readonly afterIdx: number // -1 means beginning of file
+      readonly content: string
+      readonly sortKey: number
+    }
+  | {
+      readonly type: 'delete'
+      readonly startIdx: number
+      readonly endIdx: number
+      readonly sortKey: number
+    }
+
+/**
+ * Resolve a raw edit op against the original lines. Returns a ResolvedEdit
+ * with validated 0-based indices, or an error message.
+ */
+const resolveOp = (
+  op: EditOpType,
+  originalLines: ReadonlyArray<string>,
+  hashLength: number
+): ResolvedEdit | { readonly error: string } => {
+  switch (op.type) {
+    case 'replace': {
+      const start = parseAndResolve(op.startAnchor, originalLines, hashLength)
+      if ('error' in start) return start
+      const end = parseAndResolve(op.endAnchor, originalLines, hashLength)
+      if ('error' in end) return end
+      if (start.index > end.index) {
+        return {
+          error: `startAnchor "${op.startAnchor}" is after endAnchor "${op.endAnchor}"`,
+        }
+      }
+      return {
+        type: 'replace',
+        startIdx: start.index,
+        endIdx: end.index,
+        content: op.content,
+        sortKey: start.index,
+      }
+    }
+    case 'insert': {
+      if (op.afterAnchor === '0') {
+        return {
+          type: 'insert',
+          afterIdx: -1,
+          content: op.content,
+          sortKey: -1,
+        }
+      }
+      const after = parseAndResolve(op.afterAnchor, originalLines, hashLength)
+      if ('error' in after) return after
+      return {
+        type: 'insert',
+        afterIdx: after.index,
+        content: op.content,
+        sortKey: after.index,
+      }
+    }
+    case 'delete': {
+      const start = parseAndResolve(op.startAnchor, originalLines, hashLength)
+      if ('error' in start) return start
+      const end = parseAndResolve(op.endAnchor, originalLines, hashLength)
+      if ('error' in end) return end
+      if (start.index > end.index) {
+        return {
+          error: `startAnchor "${op.startAnchor}" is after endAnchor "${op.endAnchor}"`,
+        }
+      }
+      return {
+        type: 'delete',
+        startIdx: start.index,
+        endIdx: end.index,
+        sortKey: start.index,
+      }
+    }
+  }
+}
+
+/**
+ * Get the range of original-line indices that an edit touches.
+ * Used for overlap detection.
+ *
+ * Returns [start, end] inclusive, or null for inserts (they don't
+ * touch existing lines — they go between them).
+ */
+const touchedRange = (edit: ResolvedEdit): [number, number] | null => {
+  switch (edit.type) {
+    case 'replace':
+      return [edit.startIdx, edit.endIdx]
+    case 'delete':
+      return [edit.startIdx, edit.endIdx]
+    case 'insert':
+      return null // inserts don't touch existing lines
+  }
+}
+
+/**
+ * Validate that resolved edits are in ascending order and don't overlap.
+ * Returns an error message if validation fails.
+ *
+ * "Ascending order" means each edit's sortKey >= the previous one's.
+ * "No overlap" means no two replace/delete ops touch the same original lines.
+ */
+const validateEditOrder = (
+  edits: ReadonlyArray<ResolvedEdit>
+): string | null => {
+  for (let i = 1; i < edits.length; i++) {
+    if (edits[i]!.sortKey < edits[i - 1]!.sortKey) {
+      return `Edits must be in ascending line order. Edit ${i + 1} (line ${edits[i]!.sortKey + 1}) comes before edit ${i} (line ${edits[i - 1]!.sortKey + 1}).`
+    }
+  }
+
+  // Check for overlapping ranges among replace/delete ops
+  let lastEnd = -1
+  for (let i = 0; i < edits.length; i++) {
+    const range = touchedRange(edits[i]!)
+    if (range === null) continue
+    const [start, end] = range
+    if (start <= lastEnd) {
+      return `Edits overlap: edit ${i + 1} touches line ${start + 1}, which was already modified by a previous edit.`
+    }
+    lastEnd = end
+  }
+
+  return null
+}
+
+// ---------------------------------------------------------------------------
+// EditFile — handler
+// ---------------------------------------------------------------------------
+
 export const EditFileHandler = {
   EditFile: ({
     path,
@@ -407,19 +460,54 @@ export const EditFileHandler = {
       const originalLines = content.split('\n')
       const hashLength = pickHashLength(originalLines)
 
-      // Work on a mutable copy
-      const lines = [...originalLines]
-      let offset = 0
-
+      // Phase 1: Resolve all anchors against the original snapshot
+      const resolved: Array<ResolvedEdit> = []
       for (const op of edits) {
-        const result = applyEdit(lines, op, offset, hashLength, originalLines)
+        const result = resolveOp(op, originalLines, hashLength)
         if ('error' in result) {
           return yield* new SandboxError({
             operation: 'EditFile',
             message: result.error,
           })
         }
-        offset = result.newOffset
+        resolved.push(result)
+      }
+
+      // Phase 2: Validate ordering and non-overlap
+      const orderError = validateEditOrder(resolved)
+      if (orderError) {
+        return yield* new SandboxError({
+          operation: 'EditFile',
+          message: orderError,
+        })
+      }
+
+      // Phase 3: Apply edits bottom-to-top so earlier indices stay valid.
+      // We reverse the array since we validated it's in ascending order.
+      const lines = [...originalLines]
+      for (let i = resolved.length - 1; i >= 0; i--) {
+        const edit = resolved[i]!
+        switch (edit.type) {
+          case 'replace': {
+            const newLines = edit.content.split('\n')
+            lines.splice(
+              edit.startIdx,
+              edit.endIdx - edit.startIdx + 1,
+              ...newLines
+            )
+            break
+          }
+          case 'insert': {
+            const newLines = edit.content.split('\n')
+            // afterIdx -1 means beginning of file → splice at 0
+            lines.splice(edit.afterIdx + 1, 0, ...newLines)
+            break
+          }
+          case 'delete': {
+            lines.splice(edit.startIdx, edit.endIdx - edit.startIdx + 1)
+            break
+          }
+        }
       }
 
       const newContent = lines.join('\n')
