@@ -1,7 +1,7 @@
 /**
  * Hashline encoding — content-addressed line anchors for safe file editing.
  *
- * Each line gets a short hex hash derived from its content. When the model
+ * Each line gets a 2-char hex hash derived from its content. When the model
  * reads a file it sees `<line>:<hash>|<content>`, and when it edits it
  * references lines by their `<line>:<hash>` anchor. If the file changed
  * since the last read, the hashes won't match and the edit is rejected
@@ -10,14 +10,18 @@
  * Hashes are deterministic — purely derived from line content, no mutable
  * state. The "state" is the file itself.
  *
- * Uses 2 hex chars by default, expanding to 3 or 4 only when collisions
- * exist within a file. Line numbers still disambiguate regardless, but
- * fewer collisions means more distinctive anchors for the model.
+ * Fixed 2-char hex hashes (256 values). The line number is the primary key;
+ * the hash is a lightweight integrity check. Collisions are possible but
+ * require three compounding unlikely events (file changed + target line
+ * changed + hash collision). oh-my-pi ships the same approach.
  */
 
 // ---------------------------------------------------------------------------
 // Hashing
 // ---------------------------------------------------------------------------
+
+/** Hash length — fixed at 2 hex chars. */
+export const HASH_LENGTH = 2
 
 /**
  * FNV-1a 32-bit hash. Fast, well-distributed, no crypto needed.
@@ -31,31 +35,9 @@ const fnv1a32 = (input: string): number => {
   return hash >>> 0
 }
 
-/** Hex hash of a line's content, truncated to `length` characters. */
-export const hashLine = (content: string, length: number): string =>
-  fnv1a32(content).toString(16).padStart(8, '0').slice(0, length)
-
-/**
- * Pick the shortest hash length (2–4 hex chars) that avoids collisions
- * within the given set of lines. Collisions aren't fatal — line numbers
- * disambiguate — but fewer collisions means more distinctive anchors.
- */
-export const pickHashLength = (lines: ReadonlyArray<string>): number => {
-  for (const len of [2, 3, 4] as const) {
-    const seen = new Set<string>()
-    let collision = false
-    for (const line of lines) {
-      const h = hashLine(line, len)
-      if (seen.has(h)) {
-        collision = true
-        break
-      }
-      seen.add(h)
-    }
-    if (!collision) return len
-  }
-  return 4
-}
+/** 2-char hex hash of a line's content. */
+export const hashLine = (content: string): string =>
+  fnv1a32(content).toString(16).padStart(8, '0').slice(0, HASH_LENGTH)
 
 // ---------------------------------------------------------------------------
 // Encoding (file content → hashline-annotated string)
@@ -63,11 +45,7 @@ export const pickHashLength = (lines: ReadonlyArray<string>): number => {
 
 /** Options for controlling which lines to encode and how to truncate. */
 export interface EncodeOptions {
-  /**
-   * 1-indexed line to start from. Defaults to 1.
-   * Hash length is still computed against the full file so anchors are
-   * stable across reads with different offsets.
-   */
+  /** 1-indexed line to start from. Defaults to 1. */
   readonly offset?: number | undefined
   /** Maximum number of lines to return. Defaults to all remaining lines. */
   readonly limit?: number | undefined
@@ -80,8 +58,6 @@ export interface EncodeOptions {
 export interface EncodeResult {
   /** The formatted hashline string. */
   readonly text: string
-  /** Hash length used (2, 3, or 4). */
-  readonly hashLength: number
   /** Total lines in the file. */
   readonly totalLines: number
   /** 1-indexed line number of the last line included in the output. */
@@ -106,9 +82,6 @@ export const encode = (
   options?: EncodeOptions
 ): EncodeResult => {
   const allLines = content.split('\n')
-  // Hash length computed against the FULL file — anchors must be stable
-  // regardless of which slice the caller requested.
-  const hashLength = pickHashLength(allLines)
 
   const offset = Math.max(1, options?.offset ?? 1)
   const startIdx = offset - 1
@@ -132,7 +105,7 @@ export const encode = (
       maxLineLen !== undefined && raw.length > maxLineLen
         ? raw.slice(0, maxLineLen) + '...'
         : raw
-    const hash = hashLine(allLines[i]!, hashLength)
+    const hash = hashLine(raw)
     const formatted = `${lineNum}:${hash}|${displayLine}`
 
     // Real UTF-8 byte length, +1 for the newline between lines
@@ -150,7 +123,6 @@ export const encode = (
 
   return {
     text: annotated.join('\n'),
-    hashLength,
     totalLines: allLines.length,
     lastLine,
     truncatedByBytes,
@@ -181,14 +153,13 @@ export const parseAnchor = (anchor: string): Anchor | null => {
 
 /**
  * Resolve an anchor against actual file lines. Returns the 0-based index
- * on match, or an error message on mismatch.
+ * on match, or a structured mismatch with context for the error message.
  *
  * Line number is the primary key; hash is the integrity check.
  */
 export const resolveAnchor = (
   anchor: Anchor,
-  lines: ReadonlyArray<string>,
-  hashLength: number
+  lines: ReadonlyArray<string>
 ): { readonly index: number } | { readonly error: string } => {
   const idx = anchor.line - 1
 
@@ -199,11 +170,13 @@ export const resolveAnchor = (
     }
   }
 
-  const expectedHash = hashLine(line, hashLength)
+  const expectedHash = hashLine(line)
 
   if (anchor.hash !== expectedHash) {
+    // Show the model what the correct anchor is so it can self-correct
+    // or decide to re-read.
     return {
-      error: `Hash mismatch at line ${anchor.line}: expected "${expectedHash}", got "${anchor.hash}". The file may have changed since you last read it — re-read to get fresh anchors.`,
+      error: `Hash mismatch at line ${anchor.line}: you provided "${anchor.line}:${anchor.hash}" but the current content has hash "${expectedHash}". Current line content: "${line.length > 120 ? line.slice(0, 120) + '...' : line}". Re-read the file to get fresh anchors.`,
     }
   }
 

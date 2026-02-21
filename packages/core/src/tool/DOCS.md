@@ -14,6 +14,14 @@ Tools use `failureMode: "return"` so errors flow back to the LLM as tool results
 
 The `dependencies: [CurrentSandbox]` on each tool declaration is what makes the `R`-parameter magic work — it tells `@effect/ai` that the handler needs `CurrentSandbox` in scope, and the type system propagates that requirement through the toolkit, through the harness, all the way to the caller.
 
+## Error Philosophy
+
+**Make failure messages guide the model to success.** When a tool call fails, the error message is the model's only signal for what to do next. A good error message tells the model _what went wrong_, _what the correct state is_, and _how to recover_.
+
+For example, a hash mismatch error should include the correct hash and the current line content — not just "mismatch, re-read the file." The model might be able to self-correct without a full re-read.
+
+Similarly, tools should silently fix unambiguous mechanical artifacts (like echoed anchor prefixes in edit content) rather than failing on them. The line between "fix it silently" and "reject and explain" is whether the model's intent is unambiguous. `3:0e|return x;` in edit content is obviously not intended to be file content — strip it. But a wrong indentation level could be intentional — reject it.
+
 ## Never Do
 
 - Never call filesystem or process APIs directly — go through `SandboxSession`

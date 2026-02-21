@@ -4,7 +4,13 @@
  * Import the pair together since they form a protocol:
  *   import { ReadFile, EditFile, ... } from './hashline'
  */
-export { encode, parseAnchor, resolveAnchor } from './encoding.ts'
+export {
+  encode,
+  hashLine,
+  HASH_LENGTH,
+  parseAnchor,
+  resolveAnchor,
+} from './encoding.ts'
 export type { Anchor } from './encoding.ts'
 export {
   ReadFile,
