@@ -34,3 +34,6 @@ export {
   EditFile,
   EditFileHandler,
 } from './tool/hashline/index.ts'
+
+// Tool — bash (shell command execution)
+export { Bash, BashHandler } from './tool/bash.ts'

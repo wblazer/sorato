@@ -40,6 +40,8 @@ export interface ExecResult {
   readonly stdout: string
   readonly stderr: string
   readonly exitCode: number
+  /** True when the command was killed due to timeout. */
+  readonly timedOut?: boolean | undefined
 }
 
 /** Structured command input for sandbox execution. */
@@ -52,6 +54,14 @@ export interface ExecCommand {
   readonly env?: Readonly<Record<string, string | undefined>> | undefined
   /** UTF-8 stdin payload. */
   readonly stdin?: string | undefined
+  /**
+   * Timeout in milliseconds. When exceeded, the sandbox kills the process
+   * (and its children) and returns whatever output was captured so far.
+   * The `ExecResult.timedOut` flag will be set.
+   *
+   * Implementations should use graceful kill escalation (SIGTERM → SIGKILL).
+   */
+  readonly timeout?: number | undefined
 }
 
 // ---------------------------------------------------------------------------

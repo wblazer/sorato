@@ -5,6 +5,8 @@ Agent tools — `@effect/ai Toolkit` tools that delegate to the sandbox.
 ## Files
 
 - `hashline/` — `ReadFile` + `EditFile` sharing the hashline protocol. Read returns `<line>:<hash>|<content>` annotations with offset/limit, truncation, and binary detection. Edit references lines by `<line>:<hash>` anchors. See `hashline/encoding.ts` for the hashing scheme.
+- `bash.ts` — `Bash` tool for shell command execution. Handles output truncation (tail-keep, 2000 lines / 50KB) with spillover to sandbox files accessible via `ReadFile`. Timeout is forwarded to the sandbox; the tool owns display policy, the sandbox owns kill mechanics.
+- `tool.ts` — barrel export for `@agents/core/tool` sub-path.
 
 ## How It Works
 

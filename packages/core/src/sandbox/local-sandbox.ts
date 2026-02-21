@@ -26,6 +26,44 @@ const streamToString = <E>(
   stream: Stream.Stream<Uint8Array, E>
 ): Effect.Effect<string, E> => stream.pipe(Stream.decodeText(), Stream.mkString)
 
+/**
+ * Non-interactive environment defaults. Prevents spawned processes from
+ * blocking on pagers, editors, prompts, or interactive input — the kinds
+ * of things that hang an agent loop indefinitely.
+ *
+ * These are merged *under* any user-supplied env vars, so callers can
+ * override individual values if needed.
+ */
+const NON_INTERACTIVE_ENV: Readonly<Record<string, string>> = {
+  // -- Pagers: force non-interactive output --
+  PAGER: 'cat',
+  GIT_PAGER: 'cat',
+  MANPAGER: 'cat',
+  SYSTEMD_PAGER: 'cat',
+  BAT_PAGER: 'cat',
+  DELTA_PAGER: 'cat',
+  // -- Editors: no-op so git commit etc. don't block --
+  GIT_EDITOR: 'true',
+  VISUAL: 'true',
+  EDITOR: 'true',
+  // -- Git: suppress interactive prompts --
+  GIT_TERMINAL_PROMPT: '0',
+  // -- CI flag: many tools use this to disable interactivity --
+  CI: '1',
+  // -- Package managers: disable prompts, progress bars, update checks --
+  npm_config_yes: 'true',
+  npm_config_update_notifier: 'false',
+  npm_config_fund: 'false',
+  npm_config_progress: 'false',
+  YARN_ENABLE_TELEMETRY: '0',
+  // -- Terminal: suppress colors and control sequences --
+  TERM: 'dumb',
+  NO_COLOR: '1',
+}
+
+/** Grace period between SIGTERM and SIGKILL during timeout kill. */
+const KILL_GRACE_MS = 500
+
 // ---------------------------------------------------------------------------
 // LocalSandbox
 // ---------------------------------------------------------------------------
@@ -87,12 +125,15 @@ export const LocalSandbox: Layer.Layer<
               ? yield* resolvePath(input.cwd, 'exec')
               : rootDir
 
+            // Merge non-interactive defaults under user env (user wins)
+            const mergedEnv: Record<string, string | undefined> = {
+              ...NON_INTERACTIVE_ENV,
+              ...input.env,
+            }
+
             let command = Command.make('/bin/sh', '-c', input.command)
             command = Command.workingDirectory(command, cwd)
-
-            if (input.env) {
-              command = Command.env(command, input.env)
-            }
+            command = Command.env(command, mergedEnv)
 
             if (input.stdin !== undefined) {
               command = Command.feed(command, input.stdin)
@@ -109,6 +150,51 @@ export const LocalSandbox: Layer.Layer<
               )
             )
 
+            /**
+             * Kill the process gracefully: SIGTERM → grace period → SIGKILL.
+             * Ignores errors from kill() since the process may already be dead.
+             */
+            const killGracefully = process.kill('SIGTERM').pipe(
+              Effect.andThen(Effect.sleep(KILL_GRACE_MS)),
+              Effect.andThen(
+                process.isRunning.pipe(
+                  Effect.flatMap((running) =>
+                    running ? process.kill('SIGKILL') : Effect.void
+                  )
+                )
+              ),
+              Effect.catchAll(() => Effect.void)
+            )
+
+            /**
+             * Collect output and wait for exit. If a timeout is set, we race
+             * against a delay. On timeout: kill the process, then still drain
+             * the streams (they'll complete once the process is dead).
+             */
+            let timedOut = false
+
+            if (input.timeout !== undefined) {
+              // Race: timeout fires → kill, then let streams drain naturally
+              yield* Effect.raceFirst(
+                Effect.sleep(input.timeout),
+                process.exitCode.pipe(Effect.asVoid)
+              ).pipe(
+                // If sleep won the race, the process is still alive
+                Effect.andThen(
+                  process.isRunning.pipe(
+                    Effect.flatMap((running) => {
+                      if (running) {
+                        timedOut = true
+                        return killGracefully
+                      }
+                      return Effect.void
+                    })
+                  )
+                ),
+                Effect.catchAll(() => Effect.void)
+              )
+            }
+
             const [stdout, stderr, code] = yield* Effect.all([
               streamToString(process.stdout),
               streamToString(process.stderr),
@@ -124,7 +210,12 @@ export const LocalSandbox: Layer.Layer<
               )
             )
 
-            return { stdout, stderr, exitCode: code } satisfies ExecResult
+            return {
+              stdout,
+              stderr,
+              exitCode: code,
+              ...(timedOut ? { timedOut: true } : {}),
+            } satisfies ExecResult
           })
         ).pipe(Effect.withSpan('Sandbox.exec'))
 

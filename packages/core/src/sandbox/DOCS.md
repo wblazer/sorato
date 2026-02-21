@@ -4,8 +4,8 @@ The execution environment boundary. Every tool call an agent makes goes through 
 
 ## Files
 
-- `Sandbox.ts` — trait/contract: `SandboxSession`, `SandboxFactory`, `Sandbox` tag, `CurrentSandbox` tag, `SandboxError`, `ExecCommand`. `CurrentSandbox` is the per-scenario session tag that tools require in their `R` parameter.
-- `LocalSandbox.ts` — default implementation using `@effect/platform` CommandExecutor + FileSystem. No isolation beyond a per-session temp root. Fine for dev/benchmarks.
+- `Sandbox.ts` — trait/contract: `SandboxSession`, `SandboxFactory`, `Sandbox` tag, `CurrentSandbox` tag, `SandboxError`, `ExecCommand`. `ExecCommand` supports `timeout` — the sandbox owns kill mechanics (SIGTERM → SIGKILL escalation), the tool owns timeout policy. `CurrentSandbox` is the per-scenario session tag that tools require in their `R` parameter.
+- `LocalSandbox.ts` — default implementation using `@effect/platform` CommandExecutor + FileSystem. No isolation beyond a per-session temp root. Bakes in non-interactive env defaults (pager/editor/prompt suppression) so agent-driven commands don't hang. Fine for dev/benchmarks.
 
 ## Key Insight: Agent Loop Runs Outside the Sandbox
 
