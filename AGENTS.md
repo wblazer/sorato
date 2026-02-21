@@ -101,3 +101,7 @@ Patterns that contribute to extraneous cognitive load:
 I hope this one is self explanatory. Duplicate sources of truth for the same information drift over time, leading to confusion and bugs. This is why the agent map is so important - it helps us find pre-existing sources of truth so that we can avoid repeating it.
 
 Just because two sources of information match at any one point in time does not mean that they should be consolidated. Sometimes, they could become meaningfully different in the future. You must think in terms of the problem space, not the current state of the solution. For example, two API endpoints may return the same response schema _right now_ but they are fundamentally _different endpoints_, so the response types should be declared separately.
+
+### Breaking Changes
+
+This code is greenfield, breaking changes are fine. Do not let the cruft of the past dictate this codebase's future.
