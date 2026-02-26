@@ -8,8 +8,8 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 
 **Core primitives** (all in `src/`):
 
-- **Sandbox** (`src/sandbox/`) — execution environment trait for tools. Ships `LocalSandbox`. `CurrentSandbox` tag provides the per-scenario session to tool handlers via `R`.
-- **Tool** (`src/tool/`) — `@effect/ai Toolkit` tools that delegate to `CurrentSandbox`. Ships `ReadFile` + `EditFile` using the hashline protocol (content-hash anchored lines). Handlers use `failureMode: "return"` so errors go back to the LLM.
+- **Sandbox** (`src/sandbox/`) — execution environment with fine-grained services: `Shell` (command execution) and `Files` (filesystem access). Tools declare dependencies on the specific services they need — `CurrentShell`, `CurrentFiles`, or both. Ships `LocalSandbox`.
+- **Tool** (`src/tool/`) — `@effect/ai Toolkit` tools that delegate to sandbox services. Ships `ReadFile` + `EditFile` (depend on `CurrentFiles`) and `Bash` (depends on `CurrentShell` + `CurrentFiles`). Handlers use `failureMode: "return"` so errors go back to the LLM.
 - **Harness** (`src/harness/`) — system prompt + tools + hooks = agent. Agent loop with multi-turn tool calling. Memory is a harness concern (hooks), not a separate primitive.
 
 **Evaluation primitives** live in `@agents/bench`: `eval_()`, `run()`, Reporter.
@@ -22,13 +22,14 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 - Everything is plain data + functions, no classes/inheritance
 - Dependencies flow through Effect's `R` parameter, satisfied via Layers at the edge
 - Sub-path `exports` in `package.json` for granular imports
-- Sandbox is a factory (`SandboxFactory`).
+- Sandbox is a factory (`SandboxFactory`) that returns `{ shell, files }` — fine-grained services, unified lifecycle
+- Tools depend on specific services (not a monolithic session) — a tool that only reads files doesn't carry a phantom shell dependency
 - IaC lives in userland — it provisions resources that satisfy `SandboxFactory` Layers
 
 ## Related Context
 
-- `src/sandbox/` — Sandbox service, CurrentSandbox tag, and LocalSandbox layer
-- `src/tool/` — Agent tools: `ReadFile` + `EditFile` (hashline protocol)
+- `src/sandbox/` — Sandbox factory, Shell/Files services, and LocalSandbox layer
+- `src/tool/` — Agent tools: `ReadFile` + `EditFile` (hashline protocol), `Bash`
 - `src/harness/` — Harness config, hooks, and run function (multi-turn agent loop)
 - `packages/bench/` — eval primitives (`eval_`, `run`, Reporter)
 - `VISION.md` — strategic rationale, execution model, industry context

@@ -24,7 +24,7 @@ Each primitive is an Effect service (`Context.Tag`). The library ships default `
 
 | Primitive    | What it is                                                     | Ships default?   |
 | ------------ | -------------------------------------------------------------- | ---------------- |
-| **Sandbox**  | Isolated execution environment (exec, filesystem, network)     | `LocalSandbox`   |
+| **Sandbox**  | Isolated execution environment (Shell + Files services)        | `LocalSandbox`   |
 | **Harness**  | System prompt + tools + hooks that constitute an agent         | Yes              |
 | **Tool**     | Individual capability given to an agent (`@effect/ai Toolkit`) | Basic set        |
 | **Rubric**   | Evaluates agent output against expectations                    | Several built-in |
@@ -70,7 +70,7 @@ The isolated environment where tool calls execute. File writes, shell commands, 
 │  │   Agent Runtime   │  │  ← Harness (LLM loop)
 │  │   (Harness)       │  │
 │  └────────┬──────────┘  │
-│           │ exec/read/write (remoted via SandboxSession)
+│           │ exec/read/write (remoted via Shell + Files services)
 └───────────┼─────────────┘
             │
    ┌────────▼────────┐
@@ -79,11 +79,11 @@ The isolated environment where tool calls execute. File writes, shell commands, 
    └──────────────────┘
 ```
 
-The `SandboxFactory` trait abstracts over all of this. The same interface works whether operations run locally or are remoted to a cloud VM. The harness doesn't know or care.
+The `SandboxFactory` trait abstracts over all of this. It returns fine-grained services (`Shell` + `Files`) that tools depend on individually. The same interfaces work whether operations run locally or are remoted to a cloud VM. The harness doesn't know or care.
 
 ### How IaC fits
 
-IaC lives in the orchestrator. It provisions sandboxes. Users write a `SandboxFactory` Layer backed by their IaC tool — the Layer provisions resources on acquire and tears them down when the scope closes. The library doesn't depend on any IaC tool. It defines what a sandbox needs (see `src/sandbox/Sandbox.ts`); IaC provides the implementation. Docs and guides bridge the gap.
+IaC lives in the orchestrator. It provisions sandboxes. Users write a `SandboxFactory` Layer backed by their IaC tool — the Layer provisions resources on acquire and tears them down when the scope closes. The library doesn't depend on any IaC tool. It defines what a sandbox needs (see `src/sandbox/sandbox.ts`); IaC provides the implementation. Docs and guides bridge the gap.
 
 ## Industry Context
 

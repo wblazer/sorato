@@ -1,20 +1,24 @@
 /**
- * A Sandbox provides an isolated execution environment for harness runs.
+ * Sandbox — isolated execution environment for agent tool calls.
  *
- * The library defines the *trait* — the contract for what a sandbox can do —
- * and ships a trivial `LocalSandbox` that just runs in the current process
- * (no isolation, fine for development). Real isolation (Docker, Firecracker,
- * etc.) is infrastructure-specific and belongs in consumer-land.
+ * The sandbox provides two fine-grained services:
  *
- * The top-level `Sandbox` tag is a *factory* — it produces isolated
- * `SandboxSession` instances per-scenario. Each session is scoped so that
- * cleanup (temp dirs, containers, etc.) happens automatically when the
- * scope closes.
+ * - **Shell** — execute commands (process spawning, kill mechanics, timeout)
+ * - **Files** — read and write files (path resolution, isolation)
  *
- * The sandbox is the boundary through which tools interact with the outside
- * world. A `Bash` tool, for instance, would call `session.exec(...)` rather
- * than spawning a process directly. This indirection is what makes it possible
- * to swap local dev for containerized CI without touching the tools themselves.
+ * Tools declare dependencies on the specific services they need. A file
+ * editing tool depends on `Files`. A bash tool depends on `Shell` and `Files`.
+ * A game-state tool would depend on neither — it'd define its own service.
+ * The harness is agnostic; Effect's `R` type propagates requirements
+ * automatically and catches incompatible compositions at compile time.
+ *
+ * The top-level `Sandbox` tag is a *factory* — it acquires a scoped
+ * environment and returns the services backed by that environment. Cleanup
+ * (temp dirs, containers, etc.) happens automatically when the scope closes.
+ *
+ * The factory returns `{ shell, files }` — consumers destructure and provide
+ * the tags separately. This keeps lifecycle management unified (one scope,
+ * one rootDir) while giving tools granular `R` types.
  */
 import { Context, Effect, Schema, Scope } from 'effect'
 
@@ -32,10 +36,10 @@ export class SandboxError extends Schema.TaggedError<SandboxError>()(
 ) {}
 
 // ---------------------------------------------------------------------------
-// Exec
+// Shell — command execution service
 // ---------------------------------------------------------------------------
 
-/** Structured result from executing a command in a sandbox. */
+/** Structured result from executing a command. */
 export interface ExecResult {
   readonly stdout: string
   readonly stderr: string
@@ -44,7 +48,7 @@ export interface ExecResult {
   readonly timedOut?: boolean | undefined
 }
 
-/** Structured command input for sandbox execution. */
+/** Structured command input for execution. */
 export interface ExecCommand {
   /** Shell command string (passed to the sandbox's shell). */
   readonly command: string
@@ -64,17 +68,25 @@ export interface ExecCommand {
   readonly timeout?: number | undefined
 }
 
-// ---------------------------------------------------------------------------
-// SandboxSession — per-scenario isolated environment
-// ---------------------------------------------------------------------------
-
-/** The session interface that any Sandbox implementation must satisfy. */
-export interface SandboxSession {
-  /** Execute a command and return a structured result. */
+/** Shell service — execute commands in the sandbox. */
+export interface Shell {
   readonly exec: (
     command: ExecCommand
   ) => Effect.Effect<ExecResult, SandboxError>
+}
 
+/** Per-scenario shell service. Tools that execute commands require this in their `R`. */
+export class CurrentShell extends Context.Tag('@agents/Shell')<
+  CurrentShell,
+  Shell
+>() {}
+
+// ---------------------------------------------------------------------------
+// Files — filesystem service
+// ---------------------------------------------------------------------------
+
+/** Files service — read and write files in the sandbox. */
+export interface Files {
   /** Read a file from the sandbox filesystem (path is sandbox-relative). */
   readonly readFile: (path: string) => Effect.Effect<string, SandboxError>
 
@@ -85,11 +97,27 @@ export interface SandboxSession {
   ) => Effect.Effect<void, SandboxError>
 }
 
+/** Per-scenario files service. Tools that access files require this in their `R`. */
+export class CurrentFiles extends Context.Tag('@agents/Files')<
+  CurrentFiles,
+  Files
+>() {}
+
+// ---------------------------------------------------------------------------
+// SandboxSession — the composite returned by the factory
+// ---------------------------------------------------------------------------
+
+/** What the factory returns — consumers destructure and provide tags separately. */
+export interface SandboxSession {
+  readonly shell: Shell
+  readonly files: Files
+}
+
 // ---------------------------------------------------------------------------
 // SandboxFactory — produces scoped sessions
 // ---------------------------------------------------------------------------
 
-/** Factory that produces isolated SandboxSession instances. */
+/** Factory that produces isolated sandbox sessions. */
 export interface SandboxFactory {
   /** Acquire a new sandbox session. Cleanup runs when the Scope closes. */
   readonly acquire: Effect.Effect<SandboxSession, SandboxError, Scope.Scope>
@@ -100,19 +128,7 @@ export interface SandboxFactory {
 // ---------------------------------------------------------------------------
 
 /**
- * The per-scenario sandbox session. Tools require this in their `R` parameter
- * to delegate operations (exec, readFile, writeFile) into the sandbox.
- *
- * The runner provides this — it acquires a session from the SandboxFactory
- * and layers it into the scope before running the harness.
- */
-export class CurrentSandbox extends Context.Tag('@agents/CurrentSandbox')<
-  CurrentSandbox,
-  SandboxSession
->() {}
-
-/**
- * The sandbox factory — produces scoped SandboxSession instances.
+ * The sandbox factory — produces scoped sessions with Shell + Files services.
  * The runner uses this to acquire sessions per scenario.
  */
 export class Sandbox extends Context.Tag('@agents/Sandbox')<

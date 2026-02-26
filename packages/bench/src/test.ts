@@ -68,8 +68,8 @@ export interface TestOptions {
  * mechanism.
  *
  * The returned Effect's R includes LanguageModel plus whatever the config's
- * toolkit needs (e.g. tool handler tags → CurrentSandbox). Provide those
- * at whatever nesting level you like.
+ * toolkit needs (e.g. tool handler tags → CurrentShell, CurrentFiles).
+ * Provide those at whatever nesting level you like.
  *
  * Usage:
  *   const config = { systemPrompt: "...", toolkit: AgentToolkit }

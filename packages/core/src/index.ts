@@ -8,9 +8,16 @@
  */
 
 // Sandbox
-export { Sandbox, CurrentSandbox, SandboxError } from './sandbox/sandbox.ts'
+export {
+  Sandbox,
+  CurrentShell,
+  CurrentFiles,
+  SandboxError,
+} from './sandbox/sandbox.ts'
 export type {
   ExecCommand,
+  Shell,
+  Files,
   SandboxSession,
   SandboxFactory,
   ExecResult,

@@ -1,6 +1,6 @@
 # Tool
 
-Agent tools — `@effect/ai Toolkit` tools that delegate to the sandbox.
+Agent tools — `@effect/ai Toolkit` tools that delegate to sandbox services.
 
 ## Files
 
@@ -10,11 +10,11 @@ Agent tools — `@effect/ai Toolkit` tools that delegate to the sandbox.
 
 ## How It Works
 
-Each tool is two things: a **declaration** (schema the LLM sees) and a **handler** (Effect that runs when the LLM calls it). Handlers access the sandbox via the `CurrentSandbox` tag in their `R` parameter — Effect's type system carries this requirement up to the caller, which provides it.
+Each tool is two things: a **declaration** (schema the LLM sees) and a **handler** (Effect that runs when the LLM calls it). Handlers access sandbox services via `CurrentShell` and/or `CurrentFiles` tags in their `R` parameter — Effect's type system carries these requirements up to the caller, which provides them.
 
 Tools use `failureMode: "return"` so errors flow back to the LLM as tool results (not crashes). The model can read the error and try a different approach.
 
-The `dependencies: [CurrentSandbox]` on each tool declaration is what makes the `R`-parameter magic work — it tells `@effect/ai` that the handler needs `CurrentSandbox` in scope, and the type system propagates that requirement through the toolkit, through the harness, all the way to the caller.
+The `dependencies` array on each tool declaration is what makes the `R`-parameter magic work — it tells `@effect/ai` which services the handler needs in scope, and the type system propagates those requirements through the toolkit, through the harness, all the way to the caller. File tools declare `dependencies: [CurrentFiles]`. The bash tool declares `dependencies: [CurrentShell, CurrentFiles]`.
 
 ## Error Philosophy
 
@@ -26,11 +26,11 @@ Similarly, tools should silently fix unambiguous mechanical artifacts (like echo
 
 ## Never Do
 
-- Never call filesystem or process APIs directly — go through `SandboxSession`
+- Never call filesystem or process APIs directly — go through `Shell`/`Files` services
 - Never use `failureMode: "error"` for tools (crashes the agent loop on bad input)
 
 ## Related Context
 
-- `src/sandbox/` — `CurrentSandbox` tag and `SandboxSession` interface
+- `src/sandbox/` — `CurrentShell`/`CurrentFiles` tags and `Shell`/`Files` interfaces
 - `src/harness/` — consumes the resolved toolkit via `HarnessConfig`
-- `packages/bench/` — eval primitives; callers provide `CurrentSandbox` explicitly
+- `packages/bench/` — eval primitives; callers provide `CurrentShell`/`CurrentFiles` explicitly

@@ -10,7 +10,7 @@
  */
 import { Tool } from '@effect/ai'
 import { Effect, Schema } from 'effect'
-import { CurrentSandbox, SandboxError } from '../sandbox/sandbox.ts'
+import { CurrentShell, CurrentFiles, SandboxError } from '../sandbox/sandbox.ts'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -102,7 +102,7 @@ export const Bash = Tool.make('Bash', {
   success: Schema.String,
   failure: SandboxError,
   failureMode: 'return',
-  dependencies: [CurrentSandbox],
+  dependencies: [CurrentShell, CurrentFiles],
 })
 
 // ---------------------------------------------------------------------------
@@ -122,7 +122,8 @@ export const BashHandler = {
     readonly description?: string | undefined
   }) =>
     Effect.gen(function* () {
-      const sandbox = yield* CurrentSandbox
+      const shell = yield* CurrentShell
+      const files = yield* CurrentFiles
 
       const timeoutMs = timeout ?? DEFAULT_TIMEOUT_MS
       if (timeoutMs <= 0) {
@@ -132,7 +133,7 @@ export const BashHandler = {
         })
       }
 
-      const result = yield* sandbox.exec({
+      const result = yield* shell.exec({
         command,
         cwd,
         timeout: timeoutMs,
@@ -152,7 +153,7 @@ export const BashHandler = {
         const id = Date.now().toString(36)
         spilloverPath = `${SPILLOVER_DIR}/${id}.txt`
 
-        yield* sandbox
+        yield* files
           .writeFile(spilloverPath, combined)
           .pipe(Effect.catchAll(() => Effect.void))
       }

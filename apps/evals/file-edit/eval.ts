@@ -27,7 +27,8 @@ import {
   EditFile,
   EditFileHandler,
   Sandbox,
-  CurrentSandbox,
+  CurrentShell,
+  CurrentFiles,
   LocalSandboxLive,
 } from '@agents/core'
 import type { EvalSuite } from '../suite.ts'
@@ -185,10 +186,10 @@ const tests = scenarios.map((scenario) =>
     const sandboxFactory = yield* Sandbox
     return yield* Effect.scoped(
       Effect.gen(function* () {
-        const sandbox = yield* sandboxFactory.acquire
+        const { shell, files } = yield* sandboxFactory.acquire
 
         // Seed the mutated file
-        yield* sandbox.writeFile(scenario.filePath, scenario.mutated)
+        yield* files.writeFile(scenario.filePath, scenario.mutated)
 
         const result = yield* test(
           { systemPrompt, toolkit: FileTools },
@@ -197,10 +198,17 @@ const tests = scenarios.map((scenario) =>
             prompt: scenario.prompt,
             check: () => true, // placeholder — we check file content below
           }
-        ).pipe(Effect.provide(Layer.succeed(CurrentSandbox, sandbox)))
+        ).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.succeed(CurrentShell, shell),
+              Layer.succeed(CurrentFiles, files)
+            )
+          )
+        )
 
         // The real check: did the file get fixed?
-        const finalContent = yield* sandbox.readFile(scenario.filePath)
+        const finalContent = yield* files.readFile(scenario.filePath)
         const passed = normalize(finalContent) === normalize(scenario.original)
 
         return {

@@ -8,7 +8,7 @@ The library primitives exist and compose. One working eval. Make it actually usa
 
 - **CLI** — wire up `@effect/cli` so `bun run start` does something (run evals, list datasets, show results)
 - **Real evals** — coding evals that exercise sandbox access in rubrics (write a function, fix a bug, refactor). Discovers if the abstractions hold.
-- **Agent tools** — file read, file write, shell exec, file search. `@effect/ai Toolkit` tools that delegate to `SandboxSession`. The local minima zone — start simple, benchmark, iterate.
+- **Agent tools** — file read, file write, shell exec, file search. `@effect/ai Toolkit` tools that delegate to `Shell`/`Files` services. The local minima zone — start simple, benchmark, iterate.
 
 ## Phase 2: Capable Harness
 
@@ -25,7 +25,7 @@ This is the highest-risk phase. Benchmarking infrastructure from Phase 1 is how 
 
 Agents leave your laptop.
 
-- **Remote `SandboxFactory` Layer** — SSH or API-based session that remotes operations to a cloud VM
+- **Remote `SandboxFactory` Layer** — SSH or API-based `Shell`/`Files` implementations that remote operations to a cloud VM
 - **IaC for provisioning** — Alchemy, Terraform, or Nix to spin up VMs on demand. Layer acquires on start, tears down on scope close.
 - **Environment definition** — what's in the VM (git, runtimes, deps). Nix, Dev Containers, or golden image — the sandbox abstraction doesn't care.
 

@@ -13,7 +13,7 @@
  */
 import { Tool } from '@effect/ai'
 import { Effect, Schema } from 'effect'
-import { CurrentSandbox, SandboxError } from '../../sandbox/sandbox.ts'
+import { CurrentFiles, SandboxError } from '../../sandbox/sandbox.ts'
 import {
   encode,
   hashLine,
@@ -132,7 +132,7 @@ export const ReadFile = Tool.make('ReadFile', {
   success: Schema.String,
   failure: SandboxError,
   failureMode: 'return',
-  dependencies: [CurrentSandbox],
+  dependencies: [CurrentFiles],
 })
 
 export const ReadFileHandler = {
@@ -146,7 +146,7 @@ export const ReadFileHandler = {
     readonly limit?: number | undefined
   }) =>
     Effect.gen(function* () {
-      const sandbox = yield* CurrentSandbox
+      const files = yield* CurrentFiles
 
       // Binary extension check — fast reject before reading content
       if (BINARY_EXTENSIONS.has(extOf(path))) {
@@ -156,7 +156,7 @@ export const ReadFileHandler = {
         })
       }
 
-      const content = yield* sandbox.readFile(path)
+      const content = yield* files.readFile(path)
 
       // Binary content check — catch files without known extensions
       if (isBinaryContent(content)) {
@@ -274,7 +274,7 @@ export const EditFile = Tool.make('EditFile', {
   success: Schema.String,
   failure: SandboxError,
   failureMode: 'return',
-  dependencies: [CurrentSandbox],
+  dependencies: [CurrentFiles],
 })
 
 // ---------------------------------------------------------------------------
@@ -498,8 +498,8 @@ export const EditFileHandler = {
     readonly edits: ReadonlyArray<EditOpType>
   }) =>
     Effect.gen(function* () {
-      const sandbox = yield* CurrentSandbox
-      const content = yield* sandbox.readFile(path)
+      const files = yield* CurrentFiles
+      const content = yield* files.readFile(path)
       const originalLines = content.split('\n')
 
       // Phase 1: Resolve all anchors against the original snapshot
@@ -558,7 +558,7 @@ export const EditFileHandler = {
       }
 
       const newContent = lines.join('\n')
-      yield* sandbox.writeFile(path, newContent)
+      yield* files.writeFile(path, newContent)
 
       return `Successfully applied ${edits.length} edit(s) to ${path}`
     }),

@@ -14,6 +14,8 @@ import {
   SandboxError,
   type ExecCommand,
   type ExecResult,
+  type Shell,
+  type Files,
   type SandboxSession,
 } from './sandbox.ts'
 
@@ -116,6 +118,8 @@ export const LocalSandbox: Layer.Layer<
         )
       }
 
+      // -- Shell service --------------------------------------------------
+
       const exec = (
         input: ExecCommand
       ): Effect.Effect<ExecResult, SandboxError> =>
@@ -217,9 +221,13 @@ export const LocalSandbox: Layer.Layer<
               ...(timedOut ? { timedOut: true } : {}),
             } satisfies ExecResult
           })
-        ).pipe(Effect.withSpan('Sandbox.exec'))
+        ).pipe(Effect.withSpan('Shell.exec'))
 
-      const readFile = Effect.fn('Sandbox.readFile')(function* (
+      const shell: Shell = { exec }
+
+      // -- Files service --------------------------------------------------
+
+      const readFile = Effect.fn('Files.readFile')(function* (
         filePath: string
       ) {
         const resolved = yield* resolvePath(filePath, 'readFile')
@@ -253,7 +261,7 @@ export const LocalSandbox: Layer.Layer<
         )
       })
 
-      const writeFile = Effect.fn('Sandbox.writeFile')(function* (
+      const writeFile = Effect.fn('Files.writeFile')(function* (
         filePath: string,
         content: string
       ) {
@@ -270,7 +278,9 @@ export const LocalSandbox: Layer.Layer<
         )
       })
 
-      return { exec, readFile, writeFile } satisfies SandboxSession
+      const files: Files = { readFile, writeFile }
+
+      return { shell, files } satisfies SandboxSession
     })
 
     return Sandbox.of({ acquire })
