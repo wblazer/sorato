@@ -44,3 +44,17 @@ export {
 
 // Tool — bash (shell command execution)
 export { Bash, BashHandler } from './tool/bash.ts'
+
+// Session — persistent conversation storage with tree-structured history
+export {
+  SessionStorage,
+  StorageError,
+  SessionId,
+  MessageId,
+} from './session/session.ts'
+export type {
+  Session,
+  MessageNode,
+  SessionStorageApi,
+} from './session/session.ts'
+export { SqliteSession } from './session/sqlite-session.ts'

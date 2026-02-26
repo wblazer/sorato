@@ -6,15 +6,21 @@
     ".": "./src/index.ts",
     "./sandbox": "./src/sandbox/sandbox.ts",
     "./harness": "./src/harness/harness.ts",
-    "./tool": "./src/tool/tool.ts"
+    "./tool": "./src/tool/tool.ts",
+    "./session": "./src/session/session.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun --bun vitest run"
   },
   "dependencies": {
     "@effect/ai": "^0.33.2",
     "@effect/platform": "^0.94.2",
     "@effect/platform-bun": "^0.87.1",
     "effect": "^3.19.15"
+  },
+  "devDependencies": {
+    "@effect/vitest": "^0.27.0",
+    "vitest": "^4.0.18"
   }
 }

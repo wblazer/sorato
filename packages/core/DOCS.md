@@ -11,6 +11,7 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 - **Sandbox** (`src/sandbox/`) — execution environment with fine-grained services: `Shell` (command execution) and `Files` (filesystem access). Tools declare dependencies on the specific services they need — `CurrentShell`, `CurrentFiles`, or both. Ships `LocalSandbox`.
 - **Tool** (`src/tool/`) — `@effect/ai Toolkit` tools that delegate to sandbox services. Ships `ReadFile` + `EditFile` (depend on `CurrentFiles`) and `Bash` (depends on `CurrentShell` + `CurrentFiles`). Handlers use `failureMode: "return"` so errors go back to the LLM.
 - **Harness** (`src/harness/`) — system prompt + tools + hooks = agent. Agent loop with multi-turn tool calling. Memory is a harness concern (hooks), not a separate primitive.
+- **Session** (`src/session/`) — persistent conversation storage with tree-structured history. Messages form a tree via parent pointers (like git commits). Supports forking and branch switching. Ships `SqliteSession`.
 
 **Evaluation primitives** live in `@agents/bench`: `eval_()`, `run()`, Reporter.
 
@@ -31,6 +32,7 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 - `src/sandbox/` — Sandbox factory, Shell/Files services, and LocalSandbox layer
 - `src/tool/` — Agent tools: `ReadFile` + `EditFile` (hashline protocol), `Bash`
 - `src/harness/` — Harness config, hooks, and run function (multi-turn agent loop)
+- `src/session/` — Session storage: `SessionStorage` tag, `SqliteSession` layer, tree-structured messages
 - `packages/bench/` — eval primitives (`eval_`, `run`, Reporter)
 - `VISION.md` — strategic rationale, execution model, industry context
 - `ROADMAP.md` — phased plan from current state to production
