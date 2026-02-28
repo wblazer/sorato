@@ -8,6 +8,7 @@ Agent tools — `@effect/ai Toolkit` tools that delegate to sandbox services.
 - `bash.ts` — `Bash` tool for shell command execution. Handles output truncation (tail-keep, 2000 lines / 50KB) with spillover to sandbox files accessible via `ReadFile`. Timeout is forwarded to the sandbox; the tool owns display policy, the sandbox owns kill mechanics.
 - `write.ts` — `WriteFile` tool for creating/overwriting files. Thin wrapper over `CurrentFiles.writeFile`. Parent directory creation is a sandbox concern.
 - `glob.ts` — `Glob` tool for file pattern matching. Delegates to `CurrentFiles.glob` with result capping at 500 entries to prevent context window explosions.
+- `grep.ts` — `Grep` tool for regex content search. Shells out to `rg` (ripgrep) via `CurrentShell`. Results sorted by file mtime (most recent first), capped at 100 matches. Requires `rg` in the sandbox — fails explicitly if missing.
 - `tool.ts` — barrel export for `@agents/core/tool` sub-path.
 
 ## How It Works
@@ -16,7 +17,7 @@ Each tool is two things: a **declaration** (schema the LLM sees) and a **handler
 
 Tools use `failureMode: "return"` so errors flow back to the LLM as tool results (not crashes). The model can read the error and try a different approach.
 
-The `dependencies` array on each tool declaration is what makes the `R`-parameter magic work — it tells `@effect/ai` which services the handler needs in scope, and the type system propagates those requirements through the toolkit, through the harness, all the way to the caller. File tools declare `dependencies: [CurrentFiles]`. The bash tool declares `dependencies: [CurrentShell, CurrentFiles]`.
+The `dependencies` array on each tool declaration is what makes the `R`-parameter magic work — it tells `@effect/ai` which services the handler needs in scope, and the type system propagates those requirements through the toolkit, through the harness, all the way to the caller. File tools declare `dependencies: [CurrentFiles]`. The bash tool declares `dependencies: [CurrentShell, CurrentFiles]`. The grep tool declares `dependencies: [CurrentShell]` — it only needs to exec `rg`.
 
 ## Error Philosophy
 

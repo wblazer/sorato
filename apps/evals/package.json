@@ -8,7 +8,8 @@
     "hello-world": "bun --env-file=../../.env run cli.ts -- run hello-world",
     "file-edit": "bun --env-file=../../.env run cli.ts -- run file-edit",
     "write-file": "bun --env-file=../../.env run cli.ts -- run write-file",
-    "glob": "bun --env-file=../../.env run cli.ts -- run glob"
+    "glob": "bun --env-file=../../.env run cli.ts -- run glob",
+    "grep": "bun --env-file=../../.env run cli.ts -- run grep"
   },
   "dependencies": {
     "@agents/bench": "workspace:*",

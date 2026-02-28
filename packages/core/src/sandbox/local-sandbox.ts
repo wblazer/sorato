@@ -6,7 +6,7 @@
  * all paths are resolved under it. Fine for development and benchmarks.
  * `LocalSandboxLive` is a convenience layer with BunContext already wired in.
  */
-import { Effect, Layer, Stream } from 'effect'
+import { Effect, Fiber, Layer, Stream } from 'effect'
 import { Command, CommandExecutor, FileSystem, Path } from '@effect/platform'
 import { BunContext } from '@effect/platform-bun'
 import {
@@ -171,33 +171,35 @@ export const LocalSandbox: Layer.Layer<
             )
 
             /**
-             * Collect output and wait for exit. If a timeout is set, we race
-             * against a delay. On timeout: kill the process, then still drain
-             * the streams (they'll complete once the process is dead).
+             * Collect output and wait for exit. If a timeout is set, fork a
+             * background killer that fires after the deadline. The killer runs
+             * concurrently — it doesn't interfere with stream collection.
+             *
+             * Previous approach raced `process.exitCode` against the timeout
+             * *before* collecting streams. This consumed process state and
+             * caused stdout/stderr to be empty when a timeout was specified
+             * (even if the process finished well before the deadline).
              */
             let timedOut = false
 
-            if (input.timeout !== undefined) {
-              // Race: timeout fires → kill, then let streams drain naturally
-              yield* Effect.raceFirst(
-                Effect.sleep(input.timeout),
-                process.exitCode.pipe(Effect.asVoid)
-              ).pipe(
-                // If sleep won the race, the process is still alive
-                Effect.andThen(
-                  process.isRunning.pipe(
-                    Effect.flatMap((running) => {
-                      if (running) {
-                        timedOut = true
-                        return killGracefully
-                      }
-                      return Effect.void
-                    })
+            const timeoutFiber =
+              input.timeout !== undefined
+                ? yield* Effect.sleep(input.timeout).pipe(
+                    Effect.andThen(
+                      process.isRunning.pipe(
+                        Effect.flatMap((running) => {
+                          if (running) {
+                            timedOut = true
+                            return killGracefully
+                          }
+                          return Effect.void
+                        })
+                      )
+                    ),
+                    Effect.catchAll(() => Effect.void),
+                    Effect.fork
                   )
-                ),
-                Effect.catchAll(() => Effect.void)
-              )
-            }
+                : undefined
 
             const [stdout, stderr, code] = yield* Effect.all([
               streamToString(process.stdout),
@@ -213,6 +215,11 @@ export const LocalSandbox: Layer.Layer<
                   })
               )
             )
+
+            // Cancel the timeout killer if it hasn't fired
+            if (timeoutFiber) {
+              yield* Fiber.interrupt(timeoutFiber)
+            }
 
             return {
               stdout,

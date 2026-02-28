@@ -51,6 +51,9 @@ export { WriteFile, WriteFileHandler } from './tool/write.ts'
 // Tool — glob (file pattern matching)
 export { Glob, GlobHandler } from './tool/glob.ts'
 
+// Tool — grep (regex content search)
+export { Grep, GrepHandler } from './tool/grep.ts'
+
 // Session — persistent conversation storage with tree-structured history
 export {
   SessionStorage,

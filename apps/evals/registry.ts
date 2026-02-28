@@ -14,6 +14,7 @@ import { suite as helloWorld } from './hello-world/eval.ts'
 import { suite as fileEdit } from './file-edit/eval.ts'
 import { suite as writeFile } from './write-file/eval.ts'
 import { suite as glob } from './glob/eval.ts'
+import { suite as grep } from './grep/eval.ts'
 
 /** All registered eval suites, keyed by name. */
 export const suites: ReadonlyArray<EvalSuite> = [
@@ -21,6 +22,7 @@ export const suites: ReadonlyArray<EvalSuite> = [
   fileEdit,
   writeFile,
   glob,
+  grep,
 ]
 
 /** Look up a suite by name. Returns undefined if not found. */

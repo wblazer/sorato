@@ -26,3 +26,6 @@ export { WriteFile, WriteFileHandler } from './write.ts'
 
 // Glob — file pattern matching
 export { Glob, GlobHandler } from './glob.ts'
+
+// Grep — regex content search
+export { Grep, GrepHandler } from './grep.ts'

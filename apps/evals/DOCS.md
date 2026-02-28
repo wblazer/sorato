@@ -35,6 +35,7 @@ Each suite is fully self-contained — it wires its own layers (model, sandbox, 
 - `file-edit/` — agentic eval: ReadFile + EditFile with hashline anchors
 - `write-file/` — agentic eval: WriteFile creates files (text, JSON, nested paths)
 - `glob/` — agentic eval: Glob finds files by pattern
+- `grep/` — agentic eval: Grep searches file contents by regex pattern
 
 ## Related Context
 
