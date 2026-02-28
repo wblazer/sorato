@@ -45,6 +45,12 @@ export {
 // Tool — bash (shell command execution)
 export { Bash, BashHandler } from './tool/bash.ts'
 
+// Tool — write (file creation)
+export { WriteFile, WriteFileHandler } from './tool/write.ts'
+
+// Tool — glob (file pattern matching)
+export { Glob, GlobHandler } from './tool/glob.ts'
+
 // Session — persistent conversation storage with tree-structured history
 export {
   SessionStorage,

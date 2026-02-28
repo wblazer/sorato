@@ -12,9 +12,16 @@
 import type { EvalSuite } from './suite.ts'
 import { suite as helloWorld } from './hello-world/eval.ts'
 import { suite as fileEdit } from './file-edit/eval.ts'
+import { suite as writeFile } from './write-file/eval.ts'
+import { suite as glob } from './glob/eval.ts'
 
 /** All registered eval suites, keyed by name. */
-export const suites: ReadonlyArray<EvalSuite> = [helloWorld, fileEdit]
+export const suites: ReadonlyArray<EvalSuite> = [
+  helloWorld,
+  fileEdit,
+  writeFile,
+  glob,
+]
 
 /** Look up a suite by name. Returns undefined if not found. */
 export const findSuite = (name: string): EvalSuite | undefined =>

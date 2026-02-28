@@ -90,11 +90,22 @@ export interface Files {
   /** Read a file from the sandbox filesystem (path is sandbox-relative). */
   readonly readFile: (path: string) => Effect.Effect<string, SandboxError>
 
-  /** Write a file to the sandbox filesystem (path is sandbox-relative). */
+  /**
+   * Write a file to the sandbox filesystem (path is sandbox-relative).
+   * Implementations should create parent directories automatically.
+   */
   readonly writeFile: (
     path: string,
     content: string
   ) => Effect.Effect<void, SandboxError>
+
+  /**
+   * Find files matching a glob pattern (evaluated from sandbox root).
+   * Returns sandbox-relative paths, sorted alphabetically.
+   */
+  readonly glob: (
+    pattern: string
+  ) => Effect.Effect<ReadonlyArray<string>, SandboxError>
 }
 
 /** Per-scenario files service. Tools that access files require this in their `R`. */

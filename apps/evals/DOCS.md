@@ -33,6 +33,8 @@ Each suite is fully self-contained — it wires its own layers (model, sandbox, 
 - `registry.ts` — static registry mapping names to suites
 - `hello-world/` — trivial prompt/response eval (no tools)
 - `file-edit/` — agentic eval: ReadFile + EditFile with hashline anchors
+- `write-file/` — agentic eval: WriteFile creates files (text, JSON, nested paths)
+- `glob/` — agentic eval: Glob finds files by pattern
 
 ## Related Context
 

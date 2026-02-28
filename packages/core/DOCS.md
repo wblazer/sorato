@@ -9,7 +9,7 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 **Core primitives** (all in `src/`):
 
 - **Sandbox** (`src/sandbox/`) — execution environment with fine-grained services: `Shell` (command execution) and `Files` (filesystem access). Tools declare dependencies on the specific services they need — `CurrentShell`, `CurrentFiles`, or both. Ships `LocalSandbox`.
-- **Tool** (`src/tool/`) — `@effect/ai Toolkit` tools that delegate to sandbox services. Ships `ReadFile` + `EditFile` (depend on `CurrentFiles`) and `Bash` (depends on `CurrentShell` + `CurrentFiles`). Handlers use `failureMode: "return"` so errors go back to the LLM.
+- **Tool** (`src/tool/`) — `@effect/ai Toolkit` tools that delegate to sandbox services. Ships `ReadFile` + `EditFile` (hashline protocol), `Bash` (shell execution), `WriteFile` (file creation), and `Glob` (file pattern matching). Handlers use `failureMode: "return"` so errors go back to the LLM.
 - **Harness** (`src/harness/`) — system prompt + tools + hooks = agent. Agent loop with multi-turn tool calling. Memory is a harness concern (hooks), not a separate primitive.
 - **Session** (`src/session/`) — persistent conversation storage with tree-structured history. Messages form a tree via parent pointers (like git commits). Supports forking and branch switching. Ships `SqliteSession`.
 

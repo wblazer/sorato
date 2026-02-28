@@ -266,6 +266,20 @@ export const LocalSandbox: Layer.Layer<
         content: string
       ) {
         const resolved = yield* resolvePath(filePath, 'writeFile')
+
+        // Create parent directories automatically
+        const dir = path.dirname(resolved)
+        yield* fs.makeDirectory(dir, { recursive: true }).pipe(
+          Effect.mapError(
+            (error) =>
+              new SandboxError({
+                operation: 'writeFile',
+                message: `Failed to create parent directories for: ${filePath}`,
+                error,
+              })
+          )
+        )
+
         yield* fs.writeFileString(resolved, content).pipe(
           Effect.mapError(
             (error) =>
@@ -278,7 +292,27 @@ export const LocalSandbox: Layer.Layer<
         )
       })
 
-      const files: Files = { readFile, writeFile }
+      const glob = Effect.fn('Files.glob')(function* (pattern: string) {
+        const g = new Bun.Glob(pattern)
+        const entries = yield* Effect.tryPromise({
+          try: async () => {
+            const results: string[] = []
+            for await (const file of g.scan({ cwd: rootDir, dot: false })) {
+              results.push(file)
+            }
+            return results.sort()
+          },
+          catch: (error) =>
+            new SandboxError({
+              operation: 'glob',
+              message: `Glob failed for pattern: ${pattern}`,
+              error,
+            }),
+        })
+        return entries
+      })
+
+      const files: Files = { readFile, writeFile, glob }
 
       return { shell, files } satisfies SandboxSession
     })
