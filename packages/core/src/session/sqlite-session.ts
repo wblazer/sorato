@@ -14,6 +14,8 @@
  * layer's scope finalizes.
  */
 import { Database } from 'bun:sqlite'
+import { mkdirSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { Prompt } from '@effect/ai'
 import { Effect, Layer, Schema } from 'effect'
 import {
@@ -195,6 +197,9 @@ export const SqliteSession = (options: {
     Effect.gen(function* () {
       const db = yield* Effect.try({
         try: () => {
+          if (options.path !== ':memory:') {
+            mkdirSync(dirname(options.path), { recursive: true })
+          }
           const database = new Database(options.path)
           database.run('PRAGMA journal_mode = WAL')
           database.run('PRAGMA foreign_keys = ON')

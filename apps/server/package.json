@@ -1,0 +1,16 @@
+{
+  "name": "@agents/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "dev": "bun --env-file=../../.env --watch run src/main.ts",
+    "start": "bun --env-file=../../.env run src/main.ts"
+  },
+  "dependencies": {
+    "@agents/core": "workspace:*",
+    "@effect/platform": "^0.94.2",
+    "@effect/platform-bun": "^0.87.1",
+    "effect": "^3.19.15"
+  }
+}
