@@ -1,7 +1,7 @@
 import { Effect, Schema } from 'effect'
 import { Prompt } from '@effect/ai'
 import { describe, expect, it } from '@effect/vitest'
-import { SessionStorage, StorageError, SqliteSession } from '../src/index.ts'
+import { SessionStorage, SqliteSession } from '../src/index.ts'
 
 // ---------------------------------------------------------------------------
 // Test layer — in-memory sqlite per test
@@ -129,7 +129,7 @@ describe('SessionStorage', () => {
       Effect.gen(function* () {
         const storage = yield* SessionStorage
         const s1 = yield* storage.create('first')
-        const s2 = yield* storage.create('second')
+        yield* storage.create('second')
 
         // Append to s1 so it gets a newer updated_at than s2
         yield* storage.append(s1.id, [userMsg('bump')])
@@ -227,8 +227,8 @@ describe('SessionStorage', () => {
         expect(prompt.content.length).toBe(5)
 
         // The conversation round-trips — we can re-encode it
-        const json = Schema.encodeSync(Prompt.FromJson)(prompt)
-        const decoded = Schema.decodeSync(Prompt.FromJson)(json)
+        const json = yield* Schema.encode(Prompt.FromJson)(prompt)
+        const decoded = yield* Schema.decode(Prompt.FromJson)(json)
         expect(decoded.content.length).toBe(5)
       }).pipe(Effect.provide(testLayer))
     )
@@ -283,8 +283,6 @@ describe('SessionStorage', () => {
         // Get all leaves to find messages. The head is at assistant1.
         const tips1 = yield* storage.leaves(session.id)
         expect(tips1.length).toBe(1)
-        const assistant1Id = tips1[0]!.id
-
         // The system message is the root — find it by walking from assistant1
         // We need to get the parent chain. Let's use leaves to get the tip,
         // then setHead to its grandparent (system msg).
