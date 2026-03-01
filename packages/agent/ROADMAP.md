@@ -1,48 +1,48 @@
 # Roadmap
 
-From composable primitives to an agent system with tree-structured conversations, tracked side effects, and decoupled execution.
+Building a coding agent with tree-structured conversations, tracked side effects, and decoupled execution.
 
 ## Phase 1: Foundation (current)
 
-The core primitives exist and compose. Evals exercise them. Make it actually usable.
+The bones. Tools work, the sandbox works, sessions persist, evals run, the server talks to the web UI.
 
-- **CLI** — wire up `@effect/cli` so `bun run start` does something (run evals, list datasets, show results)
-- **Real evals** — coding evals that exercise sandbox access in rubrics (write a function, fix a bug, refactor). Discovers if the abstractions hold.
-- **Agent tools** — file read, file write, shell exec, file search. `@effect/ai Toolkit` tools that delegate to `Shell`/`Files` services. The local minima zone — start simple, benchmark, iterate.
+- **Agent tools** — file read, file edit (hashline protocol), shell exec, file search, file write. `@effect/ai Toolkit` tools that delegate to `Shell`/`Files` services. Start simple, benchmark, iterate.
+- **Sandbox** — local execution environment (`Shell` + `Files`). The harness dispatches tool calls; the sandbox executes them.
+- **Session storage** — tree-structured conversation persistence via SQLite. Messages have parent pointers. Forking and branch switching work at the data layer.
+- **Evals** — coding evals that exercise real sandbox access (write a function, fix a bug, refactor). Discovers if the tools and harness actually work.
+- **Server + Web UI** — basic agent server with HTTP/WebSocket API. SvelteKit web UI that can send messages and display responses. Enough to use the agent interactively.
 
 ## Phase 2: Tracked Side Effects
 
-The architectural differentiator. Every message in the conversation tree gets associated side effects that can be checkpointed, branched, reverted, and diffed.
+The key differentiator. Every message in the conversation tree gets associated filesystem changes that can be checkpointed, branched, reverted, and diffed.
 
-- **Side-Effect trait** — the service interface for tracking state changes associated with message IDs. Operations: checkpoint, revert, diff, branch.
-- **Git implementation** — the first concrete implementation for coding agents. Each assistant message that causes file changes = a git commit. Branching the conversation branches the repo state. Reverting checks out the earlier state.
-- **Session ↔ Side-Effect coordination** — the harness coordinates: after tool calls execute, side effects are checkpointed and linked to the message. On branch switch, state reverts to match.
-- **Conversation branching UX** — fork at any point, try a different approach, compare results. The tree structure that already exists in `Session` becomes a user-facing feature.
+- **Git-backed tracking** — each assistant message that causes file changes = a git commit. Branching the conversation branches the repo state. Reverting checks out the earlier state.
+- **Session/side-effect coordination** — the harness coordinates: after tool calls execute, side effects are checkpointed and linked to the message. On branch switch, filesystem state reverts to match.
+- **Conversation branching UX** — fork at any point in the web UI, try a different approach, compare results. The tree structure in session storage becomes a user-facing feature with visible diffs.
 
-## Phase 3: Capable Harness
+## Phase 3: Capable Agent
 
-Agent harness good enough to use for real coding work — and other domains.
+Good enough to use for real coding work, every day.
 
-- **System prompt + tool set** tuned for coding tasks
-- **Observability hooks** — logging, cost tracking
-- **Memory hooks** — DOCS.md injection, conversation history, vector search
-- **Multi-turn robustness** — tool errors, context window limits, stuck loops
-- **Non-coding sandbox experiments** — prove the architecture is domain-agnostic. A game-playing harness, a REPL agent, something that isn't files-and-shell.
+- **System prompt tuning** — iterating on the system prompt against the eval suite until the agent reliably handles common coding tasks.
+- **Multi-turn robustness** — graceful handling of tool errors, context window limits, stuck loops, and model refusals.
+- **Memory** — DOCS.md injection, conversation history summarization, project-level context that persists across sessions.
+- **Context management** — smart truncation, token budgeting, knowing when to drop old context vs. summarize it.
+- **Observability** — logging, cost tracking, token usage, latency. Visible in the web UI.
 
 ## Phase 4: Remote Execution
 
-Agents leave your laptop. The decoupled execution model pays off.
+Agents leave localhost. The decoupled execution model pays off.
 
-- **Remote `SandboxFactory` Layer** — SSH or API-based `Shell`/`Files` implementations that remote operations to a cloud VM
-- **IaC for provisioning** — Alchemy, Terraform, or Nix to spin up VMs on demand. Layer acquires on start, tears down on scope close.
-- **Environment definition** — what's in the VM (git, runtimes, deps). Nix, Dev Containers, or golden image — the sandbox abstraction doesn't care.
+- **Remote sandbox** — SSH or API-based `Shell`/`Files` implementations that remote operations to a cloud VM. Same tool interfaces, different execution target.
+- **Provisioning** — spin up VMs on demand. Acquire on session start, tear down on close.
+- **Environment definition** — what's in the VM (git, runtimes, deps). Nix, Dev Containers, or golden image.
 
 ## Phase 5: Product
 
-Daily use by you and your company.
+Daily-driver for real coding work.
 
-- **Web UI** — launch agents, monitor runs, navigate the conversation tree, view side-effect diffs, inspect context. Web-first — TUIs are a limiting platform for what this product needs to show.
-- **Background agents** — trigger infrastructure (webhooks, queues, cron), concurrency management, cost budgets
+- **Background agents** — trigger infrastructure (webhooks, queues, cron), concurrency management, cost budgets. Kick off a task and come back to it.
 - **Git integration** — agents clone, branch, commit, push, open PRs. Ephemeral credentials in sandboxes.
-- **Auth / multi-tenancy** — if/when multi-user becomes relevant
-- **Continuous benchmarking** — eval suite on every tool/prompt change, CI integration
+- **Continuous benchmarking** — eval suite runs on every tool/prompt change, CI integration. Regressions are caught before they ship.
+- **Multi-session workflows** — multiple agents working on related tasks, sharing context, coordinating through git.

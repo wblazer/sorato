@@ -1,6 +1,6 @@
 # Agents
 
-Composable primitives for building AI agent systems.
+A coding agent with tree-structured conversations, tracked side effects, and decoupled execution.
 
 ## Tech Stack
 
@@ -13,7 +13,7 @@ Composable primitives for building AI agent systems.
 
 Bun workspaces. Packages depend on each other via `workspace:*`.
 
-- `packages/agent/` — agent primitives + server. See `packages/agent/DOCS.md`.
+- `packages/agent/` — the coding agent: sandbox, tools, harness, session, server. See `packages/agent/DOCS.md`.
 - `packages/evals/` — benchmark eval suites (including in-package bench primitives)
 - `packages/web/` — web UI
 
