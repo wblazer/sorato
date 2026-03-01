@@ -13,6 +13,7 @@ import { BunHttpServer, BunRuntime } from '@effect/platform-bun'
 import { Layer } from 'effect'
 import { SqliteSession } from '../index.ts'
 import { Api } from './Api.ts'
+import { DirectoriesLive } from './Directories.ts'
 import { SessionsLive } from './Sessions.ts'
 
 // ── Data directory ──────────────────────────────────────────────────
@@ -26,7 +27,10 @@ const dataDir =
 
 // ── Compose layers ──────────────────────────────────────────────────
 
-const ApiLive = HttpApiBuilder.api(Api).pipe(Layer.provide(SessionsLive))
+const ApiLive = HttpApiBuilder.api(Api).pipe(
+  Layer.provide(SessionsLive),
+  Layer.provide(DirectoriesLive)
+)
 
 const StorageLive = SqliteSession({ path: join(dataDir, 'sessions.db') })
 

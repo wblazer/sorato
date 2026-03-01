@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { sessionStore } from "$lib/stores/sessions.svelte.js";
+	import DirectoryPicker from "$lib/components/directory-picker.svelte";
 	import ChevronsUpDown from "@lucide/svelte/icons/chevrons-up-down";
 	import FolderOpen from "@lucide/svelte/icons/folder-open";
 	import { cn } from "$lib/utils.js";
 
 	let open = $state(false);
+	let pickerOpen = $state(false);
 	let triggerEl: HTMLButtonElement | null = $state(null);
 
 	const directoryName = $derived(
@@ -20,6 +22,15 @@
 	function selectDirectory(dir: string) {
 		sessionStore.selectDirectory(dir);
 		open = false;
+	}
+
+	function handleOpenDirectory() {
+		open = false;
+		pickerOpen = true;
+	}
+
+	function handlePickerSelect(path: string) {
+		sessionStore.openDirectory(path);
 	}
 </script>
 
@@ -86,7 +97,7 @@
 					"flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm transition-colors",
 					"text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground",
 				)}
-				onclick={() => (open = false)}
+				onclick={handleOpenDirectory}
 			>
 				<FolderOpen class="size-4" />
 				Open Directory…
@@ -94,3 +105,7 @@
 		</div>
 	{/if}
 </div>
+
+{#if pickerOpen}
+	<DirectoryPicker bind:open={pickerOpen} onSelect={handlePickerSelect} />
+{/if}

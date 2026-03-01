@@ -8,8 +8,14 @@ function createSessionStore() {
   let loading = $state(false)
   let error = $state<string | null>(null)
 
+  // Directories the user has explicitly opened (may not have sessions yet)
+  let openedDirectories = $state<string[]>([])
+
+  // Merge session-derived directories with explicitly opened ones
   const directories = $derived(
-    [...new Set(sessions.map((s) => s.directory))].sort()
+    [
+      ...new Set([...openedDirectories, ...sessions.map((s) => s.directory)]),
+    ].sort()
   )
 
   let selectedDirectory = $state('')
@@ -29,9 +35,8 @@ function createSessionStore() {
       sessions = await res.json()
 
       // Auto-select first directory if none selected
-      if (!selectedDirectory && sessions.length > 0) {
-        const dirs = [...new Set(sessions.map((s) => s.directory))].sort()
-        selectedDirectory = dirs[0] ?? ''
+      if (!selectedDirectory && directories.length > 0) {
+        selectedDirectory = directories[0] ?? ''
       }
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to fetch sessions'
@@ -63,6 +68,14 @@ function createSessionStore() {
       return error
     },
     selectDirectory(dir: string) {
+      selectedDirectory = dir
+      selectedSessionId = null
+    },
+    /** Open a directory — adds it to the known list and selects it */
+    openDirectory(dir: string) {
+      if (!openedDirectories.includes(dir)) {
+        openedDirectories = [...openedDirectories, dir]
+      }
       selectedDirectory = dir
       selectedSessionId = null
     },
