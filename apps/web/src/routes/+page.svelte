@@ -1,19 +1,22 @@
 <script lang="ts">
-	// Placeholder — will become the sessions list / new session view
+	import { sessionStore } from '$lib/stores/sessions.svelte.js';
+
+	const selectedSession = $derived(
+		sessionStore.sessions.find((s) => s.id === sessionStore.selectedSessionId),
+	);
 </script>
 
-<main>
-	<h1>Agents</h1>
-	<p>Session list and agent chat will live here.</p>
-</main>
-
-<style>
-	main {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		flex: 1;
-		font-family: system-ui, -apple-system, sans-serif;
-	}
-</style>
+<div class="flex flex-1 items-center justify-center p-8">
+	{#if selectedSession}
+		<div class="space-y-1 text-center">
+			<h1 class="text-lg font-semibold text-foreground">
+				{selectedSession.title ?? 'Untitled'}
+			</h1>
+			<p class="text-sm text-muted-foreground">
+				{selectedSession.id}
+			</p>
+		</div>
+	{:else}
+		<p class="text-sm text-muted-foreground">Select a session to get started</p>
+	{/if}
+</div>

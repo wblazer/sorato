@@ -34,6 +34,7 @@ const StorageLive = SqliteSession({ path: join(dataDir, 'sessions.db') })
 
 const HttpLive = HttpApiBuilder.serve(HttpMiddleware.logger).pipe(
   HttpServer.withLogAddress,
+  Layer.provide(HttpApiBuilder.middlewareCors()),
   Layer.provide(ApiLive),
   Layer.provide(StorageLive),
   Layer.provide(BunHttpServer.layer({ port: 3100 }))
