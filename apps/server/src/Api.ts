@@ -19,6 +19,7 @@ export class SessionResponse extends Schema.Class<SessionResponse>(
   'SessionResponse'
 )({
   id: Schema.String,
+  directory: Schema.String,
   title: Schema.NullOr(Schema.String),
   headId: Schema.NullOr(Schema.String),
   createdAt: Schema.Number,
@@ -47,7 +48,12 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
   )
   .add(
     HttpApiEndpoint.post('create', '/')
-      .setPayload(Schema.Struct({ title: Schema.optional(Schema.String) }))
+      .setPayload(
+        Schema.Struct({
+          directory: Schema.String,
+          title: Schema.optional(Schema.String),
+        })
+      )
       .addSuccess(SessionResponse)
       .addError(StorageError, { status: 500 })
   )

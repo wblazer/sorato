@@ -11,6 +11,7 @@ import { Api, MessageNodeResponse, SessionResponse } from './Api.js'
 
 const toSessionResponse = (s: {
   readonly id: string
+  readonly directory: string
   readonly title: string | null
   readonly headId: string | null
   readonly createdAt: number
@@ -18,6 +19,7 @@ const toSessionResponse = (s: {
 }) =>
   new SessionResponse({
     id: s.id,
+    directory: s.directory,
     title: s.title,
     headId: s.headId,
     createdAt: s.createdAt,
@@ -50,7 +52,9 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
           .pipe(Effect.map((sessions) => sessions.map(toSessionResponse)))
       )
       .handle('create', ({ payload }) =>
-        storage.create(payload.title).pipe(Effect.map(toSessionResponse))
+        storage
+          .create(payload.directory, payload.title)
+          .pipe(Effect.map(toSessionResponse))
       )
       .handle('get', ({ path }) =>
         storage.get(path.id).pipe(Effect.map(toSessionResponse))

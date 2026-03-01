@@ -35,6 +35,7 @@ import {
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS sessions (
     id          TEXT PRIMARY KEY,
+    directory   TEXT NOT NULL,
     title       TEXT,
     head_id     TEXT,
     created_at  INTEGER NOT NULL,
@@ -61,6 +62,7 @@ const SCHEMA = `
 
 interface SessionRow {
   id: string
+  directory: string
   title: string | null
   head_id: string | null
   created_at: number
@@ -81,6 +83,7 @@ interface MessageRow {
 
 const toSession = (row: SessionRow): Session => ({
   id: SessionId.make(row.id),
+  directory: row.directory,
   title: row.title,
   headId: row.head_id ? MessageId.make(row.head_id) : null,
   createdAt: row.created_at,
@@ -102,9 +105,9 @@ const toMessageNode = (row: MessageRow): MessageNode => ({
 const prepareStatements = (db: Database) => {
   const insertSession = db.prepare<
     void,
-    [string, string | null, number, number]
+    [string, string, string | null, number, number]
   >(
-    'INSERT INTO sessions (id, title, created_at, updated_at) VALUES (?, ?, ?, ?)'
+    'INSERT INTO sessions (id, directory, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
   )
 
   const getSession = db.prepare<SessionRow, [string]>(
@@ -221,13 +224,15 @@ export const SqliteSession = (options: {
       // -- Service methods --------------------------------------------------
 
       const create = Effect.fn('SessionStorage.create')(function* (
+        directory: string,
         title?: string
       ) {
         const id = SessionId.make(crypto.randomUUID())
         const now = Date.now()
 
         yield* Effect.try({
-          try: () => stmts.insertSession.run(id, title ?? null, now, now),
+          try: () =>
+            stmts.insertSession.run(id, directory, title ?? null, now, now),
           catch: (error) =>
             new StorageError({
               operation: 'create',
@@ -238,6 +243,7 @@ export const SqliteSession = (options: {
 
         return {
           id,
+          directory,
           title: title ?? null,
           headId: null,
           createdAt: now,
