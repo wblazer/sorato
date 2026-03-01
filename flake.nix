@@ -20,6 +20,7 @@
           bun
           typescript
           nodePackages.typescript-language-server
+          nodePackages.svelte-language-server
         ];
       };
     });

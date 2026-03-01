@@ -17,3 +17,8 @@ formatter = { command = "./node_modules/.bin/prettier", args = ["--stdin-filepat
 [[language]]
 name = "json"
 formatter = { command = "./node_modules/.bin/prettier", args = ["--stdin-filepath", "{buffer_name}"] }
+
+[[language]]
+name = "svelte"
+language-servers = ["svelteserver"]
+formatter = { command = "./node_modules/.bin/prettier", args = ["--plugin", "prettier-plugin-svelte", "--stdin-filepath", "{buffer_name}"] }
