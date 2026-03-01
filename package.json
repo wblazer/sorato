@@ -2,8 +2,7 @@
   "name": "agents",
   "private": true,
   "workspaces": [
-    "packages/*",
-    "apps/*"
+    "packages/*"
   ],
   "scripts": {
     "prepare": "effect-language-service patch",

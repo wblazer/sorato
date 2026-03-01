@@ -11,11 +11,24 @@
         "typescript": "^5",
       },
     },
-    "apps/evals": {
+    "packages/agent": {
+      "name": "@agents/agent",
+      "dependencies": {
+        "@effect/ai": "^0.33.2",
+        "@effect/platform": "^0.94.2",
+        "@effect/platform-bun": "^0.87.1",
+        "effect": "^3.19.15",
+      },
+      "devDependencies": {
+        "@effect/vitest": "^0.27.0",
+        "vitest": "^4.0.18",
+      },
+    },
+    "packages/evals": {
       "name": "@agents/evals",
       "dependencies": {
-        "@agents/bench": "workspace:*",
-        "@agents/core": "workspace:*",
+        "@agents/agent": "workspace:*",
+        "@effect/ai": "^0.33.2",
         "@effect/ai-anthropic": "^0.23.0",
         "@effect/cli": "^0.73.2",
         "@effect/platform": "^0.94.2",
@@ -23,16 +36,7 @@
         "effect": "^3.19.15",
       },
     },
-    "apps/server": {
-      "name": "@agents/server",
-      "dependencies": {
-        "@agents/core": "workspace:*",
-        "@effect/platform": "^0.94.2",
-        "@effect/platform-bun": "^0.87.1",
-        "effect": "^3.19.15",
-      },
-    },
-    "apps/web": {
+    "packages/web": {
       "name": "@agents/web",
       "version": "0.0.1",
       "devDependencies": {
@@ -54,38 +58,13 @@
         "vite": "^7.3.1",
       },
     },
-    "packages/bench": {
-      "name": "@agents/bench",
-      "dependencies": {
-        "@agents/core": "workspace:*",
-        "@effect/ai": "^0.33.2",
-        "effect": "^3.19.15",
-      },
-    },
-    "packages/core": {
-      "name": "@agents/core",
-      "dependencies": {
-        "@effect/ai": "^0.33.2",
-        "@effect/platform": "^0.94.2",
-        "@effect/platform-bun": "^0.87.1",
-        "effect": "^3.19.15",
-      },
-      "devDependencies": {
-        "@effect/vitest": "^0.27.0",
-        "vitest": "^4.0.18",
-      },
-    },
   },
   "packages": {
-    "@agents/bench": ["@agents/bench@workspace:packages/bench"],
+    "@agents/agent": ["@agents/agent@workspace:packages/agent"],
 
-    "@agents/core": ["@agents/core@workspace:packages/core"],
+    "@agents/evals": ["@agents/evals@workspace:packages/evals"],
 
-    "@agents/evals": ["@agents/evals@workspace:apps/evals"],
-
-    "@agents/server": ["@agents/server@workspace:apps/server"],
-
-    "@agents/web": ["@agents/web@workspace:apps/web"],
+    "@agents/web": ["@agents/web@workspace:packages/web"],
 
     "@anthropic-ai/tokenizer": ["@anthropic-ai/tokenizer@0.0.4", "", { "dependencies": { "@types/node": "^18.11.18", "tiktoken": "^1.0.10" } }, "sha512-EHRKbxlxlc8W4KCBEseByJ7YwyYCmgu9OyN59H9+IYIGPoKv8tXyQXinkeGDI+cI8Tiuz9wk2jZb/kK7AyvL7g=="],
 
