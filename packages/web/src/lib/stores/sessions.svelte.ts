@@ -8,6 +8,12 @@ function createSessionStore() {
   let loading = $state(false)
   let error = $state<string | null>(null)
 
+  /**
+   * When true, the main area shows the new-session composer
+   * instead of an existing session view.
+   */
+  let composing = $state(false)
+
   // Directories the user has explicitly opened (may not have sessions yet)
   let openedDirectories = $state<string[]>([])
 
@@ -45,6 +51,58 @@ function createSessionStore() {
     }
   }
 
+  /**
+   * Create a new session in the currently selected directory.
+   * Returns the new session, or null on error.
+   */
+  async function createSession(directory?: string): Promise<Session | null> {
+    const dir = directory ?? selectedDirectory
+    if (!dir) return null
+
+    try {
+      const res = await fetch(`${API_BASE}/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ directory: dir }),
+      })
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+
+      const session: Session = await res.json()
+      sessions = [session, ...sessions]
+      selectedSessionId = session.id
+      composing = false
+      return session
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to create session'
+      return null
+    }
+  }
+
+  /**
+   * Start an agent run on a session.
+   * Fire-and-forget — events stream via SSE.
+   */
+  async function runAgent(sessionId: string, input: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input }),
+      })
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+      return true
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to start agent run'
+      return false
+    }
+  }
+
+  /** Enter new-session composer mode. */
+  function startComposing() {
+    selectedSessionId = null
+    composing = true
+  }
+
   return {
     get sessions() {
       return sessions
@@ -61,6 +119,9 @@ function createSessionStore() {
     get selectedSessionId() {
       return selectedSessionId
     },
+    get composing() {
+      return composing
+    },
     get loading() {
       return loading
     },
@@ -70,6 +131,7 @@ function createSessionStore() {
     selectDirectory(dir: string) {
       selectedDirectory = dir
       selectedSessionId = null
+      composing = false
     },
     /** Open a directory — adds it to the known list and selects it */
     openDirectory(dir: string) {
@@ -78,10 +140,15 @@ function createSessionStore() {
       }
       selectedDirectory = dir
       selectedSessionId = null
+      composing = false
     },
     selectSession(id: string) {
       selectedSessionId = id
+      composing = false
     },
+    startComposing,
+    createSession,
+    runAgent,
     fetchSessions,
   }
 }

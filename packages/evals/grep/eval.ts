@@ -176,7 +176,7 @@ const tests = scenarios.map((scenario) =>
     const sandboxFactory = yield* Sandbox
     return yield* Effect.scoped(
       Effect.gen(function* () {
-        const { shell, files } = yield* sandboxFactory.acquire
+        const { shell, files } = yield* sandboxFactory.acquire()
 
         // Seed the filesystem
         for (const file of scenario.files) {

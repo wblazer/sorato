@@ -109,6 +109,17 @@ export interface SessionStorageApi {
   ) => Effect.Effect<Prompt.Prompt, StorageError>
 
   /**
+   * Return the message nodes for the current branch in chronological order.
+   *
+   * Walks from `headId` to the root via parent pointers, then reverses
+   * to chronological order. Unlike `conversation()`, this preserves the
+   * full `MessageNode` metadata (IDs, parent pointers, timestamps).
+   */
+  readonly messages: (
+    sessionId: SessionId
+  ) => Effect.Effect<ReadonlyArray<MessageNode>, StorageError>
+
+  /**
    * Append messages after the current head and advance it.
    *
    * Each message becomes a child of the previous one. The first message's

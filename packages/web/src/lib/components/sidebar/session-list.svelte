@@ -30,7 +30,9 @@
 				"border border-dashed border-sidebar-border",
 				"text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
 				"transition-colors",
+				sessionStore.composing && "border-solid border-sidebar-primary bg-sidebar-accent text-sidebar-accent-foreground",
 			)}
+			onclick={() => sessionStore.startComposing()}
 		>
 			<Plus class="size-4" />
 			New Session

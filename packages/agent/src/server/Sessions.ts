@@ -7,7 +7,13 @@
 import { HttpApiBuilder } from '@effect/platform'
 import { Effect } from 'effect'
 import { SessionStorage } from '../session/session.ts'
-import { Api, MessageNodeResponse, SessionResponse } from './Api.ts'
+import {
+  Api,
+  MessageNodeResponse,
+  RunResponse,
+  SessionResponse,
+} from './Api.ts'
+import { runAgent } from './Agent.ts'
 
 const toSessionResponse = (s: {
   readonly id: string
@@ -64,6 +70,22 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
         storage
           .leaves(path.id)
           .pipe(Effect.map((nodes) => nodes.map(toMessageNodeResponse)))
+      )
+      .handle('messages', ({ path }) =>
+        storage
+          .messages(path.id)
+          .pipe(Effect.map((nodes) => nodes.map(toMessageNodeResponse)))
+      )
+      .handle('run', ({ path, payload }) =>
+        Effect.gen(function* () {
+          // Verify session exists
+          yield* storage.get(path.id)
+
+          // Fork the agent run as a daemon — returns immediately
+          yield* runAgent(path.id, payload.input).pipe(Effect.forkDaemon)
+
+          return new RunResponse({ status: 'started' })
+        })
       )
   })
 )

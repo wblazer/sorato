@@ -12,9 +12,11 @@ import { HttpApiBuilder, HttpMiddleware, HttpServer } from '@effect/platform'
 import { BunHttpServer, BunRuntime } from '@effect/platform-bun'
 import { Layer } from 'effect'
 import { SqliteSession } from '../index.ts'
+import { AgentLive } from './Agent.ts'
 import { Api } from './Api.ts'
 import { DirectoriesLive } from './Directories.ts'
 import { SessionsLive } from './Sessions.ts'
+import { withSse } from './Sse.ts'
 
 // ── Data directory ──────────────────────────────────────────────────
 
@@ -36,11 +38,12 @@ const StorageLive = SqliteSession({ path: join(dataDir, 'sessions.db') })
 
 // ── Serve ───────────────────────────────────────────────────────────
 
-const HttpLive = HttpApiBuilder.serve(HttpMiddleware.logger).pipe(
+const HttpLive = HttpApiBuilder.serve(withSse(HttpMiddleware.logger)).pipe(
   HttpServer.withLogAddress,
   Layer.provide(HttpApiBuilder.middlewareCors()),
   Layer.provide(ApiLive),
   Layer.provide(StorageLive),
+  Layer.provide(AgentLive),
   Layer.provide(BunHttpServer.layer({ port: 3100 }))
 )
 

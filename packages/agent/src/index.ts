@@ -67,3 +67,7 @@ export type {
   SessionStorageApi,
 } from './session/session.ts'
 export { SqliteSession } from './session/sqlite-session.ts'
+
+// Server — event bus for real-time streaming
+export { publish, subscribe, createBusHook } from './server/EventBus.ts'
+export type { ServerEvent } from './server/EventBus.ts'

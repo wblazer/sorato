@@ -130,8 +130,16 @@ export interface SandboxSession {
 
 /** Factory that produces isolated sandbox sessions. */
 export interface SandboxFactory {
-  /** Acquire a new sandbox session. Cleanup runs when the Scope closes. */
-  readonly acquire: Effect.Effect<SandboxSession, SandboxError, Scope.Scope>
+  /**
+   * Acquire a new sandbox session.
+   *
+   * When `directory` is provided, the session uses it as-is (no temp dir,
+   * no cleanup). When omitted, a temp directory is created and cleaned up
+   * when the Scope closes.
+   */
+  readonly acquire: (
+    directory?: string
+  ) => Effect.Effect<SandboxSession, SandboxError, Scope.Scope>
 }
 
 // ---------------------------------------------------------------------------

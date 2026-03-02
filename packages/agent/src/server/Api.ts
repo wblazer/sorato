@@ -36,6 +36,14 @@ export class MessageNodeResponse extends Schema.Class<MessageNodeResponse>(
   createdAt: Schema.Number,
 }) {}
 
+export class RunResponse extends Schema.Class<RunResponse>('RunResponse')({
+  status: Schema.Literal('started'),
+}) {}
+
+export class RunError extends Schema.TaggedError<RunError>()('RunError', {
+  message: Schema.String,
+}) {}
+
 export class DirectoryEntry extends Schema.Class<DirectoryEntry>(
   'DirectoryEntry'
 )({
@@ -96,6 +104,18 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
     HttpApiEndpoint.get('leaves')`/${idParam}/leaves`
       .addSuccess(Schema.Array(MessageNodeResponse))
       .addError(StorageError, { status: 500 })
+  )
+  .add(
+    HttpApiEndpoint.get('messages')`/${idParam}/messages`
+      .addSuccess(Schema.Array(MessageNodeResponse))
+      .addError(StorageError, { status: 500 })
+  )
+  .add(
+    HttpApiEndpoint.post('run')`/${idParam}/run`
+      .setPayload(Schema.Struct({ input: Schema.String }))
+      .addSuccess(RunResponse)
+      .addError(StorageError, { status: 500 })
+      .addError(RunError, { status: 500 })
   )
   .prefix('/sessions') {}
 

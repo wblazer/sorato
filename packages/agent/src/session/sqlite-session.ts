@@ -338,6 +338,29 @@ export const SqliteSession = (options: {
         return prompt
       })
 
+      const messages = Effect.fn('SessionStorage.messages')(function* (
+        sessionId: SessionId
+      ) {
+        const session = yield* get(sessionId)
+
+        if (!session.headId) {
+          return [] as ReadonlyArray<MessageNode>
+        }
+
+        const rows = yield* Effect.try({
+          try: () => stmts.walkToRoot.all(session.headId!),
+          catch: (error) =>
+            new StorageError({
+              operation: 'messages',
+              message: `Failed to walk messages: ${sessionId}`,
+              error,
+            }),
+        })
+
+        // Rows come back leaf-to-root; reverse for chronological order
+        return rows.reverse().map(toMessageNode)
+      })
+
       const append = Effect.fn('SessionStorage.append')(function* (
         sessionId: SessionId,
         messages: ReadonlyArray<Prompt.MessageEncoded>
@@ -438,6 +461,7 @@ export const SqliteSession = (options: {
         list,
         delete: del,
         conversation,
+        messages,
         append,
         setHead,
         leaves,
