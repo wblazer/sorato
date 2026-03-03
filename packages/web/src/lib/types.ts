@@ -3,6 +3,8 @@ export interface Session {
   directory: string
   title: string | null
   headId: string | null
+  /** Ephemeral run status — 'running' if an agent run is active. */
+  status: 'idle' | 'running'
   createdAt: number
   updatedAt: number
 }
@@ -97,18 +99,23 @@ export type MessagePart =
 
 // ---------------------------------------------------------------------------
 // Server event types — mirrors ServerEvent from the agent package
+//
+// Content events (TextDelta, ToolCall, ToolResult) carry a monotonic `seq`
+// per session. Clients use seq to deduplicate replay-buffer events against
+// live SSE events when joining a session mid-run.
 // ---------------------------------------------------------------------------
 
 export type ServerEvent =
   | { _tag: 'SessionUpdated'; sessionId: string }
   | { _tag: 'MessagesAppended'; sessionId: string }
-  | { _tag: 'TextDelta'; sessionId: string; delta: string }
+  | { _tag: 'TextDelta'; sessionId: string; delta: string; seq: number }
   | {
       _tag: 'ToolCall'
       sessionId: string
       id: string
       name: string
       params: unknown
+      seq: number
     }
   | {
       _tag: 'ToolResult'
@@ -117,6 +124,16 @@ export type ServerEvent =
       name: string
       result: unknown
       isFailure: boolean
+      seq: number
     }
   | { _tag: 'RunStart'; sessionId: string }
   | { _tag: 'RunEnd'; sessionId: string }
+
+// ---------------------------------------------------------------------------
+// Stream state — returned by GET /sessions/:id/stream-state
+// ---------------------------------------------------------------------------
+
+export interface StreamState {
+  status: 'idle' | 'running'
+  events: ServerEvent[]
+}

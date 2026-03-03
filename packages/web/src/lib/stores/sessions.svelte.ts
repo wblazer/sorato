@@ -1,4 +1,5 @@
 import type { Session } from '$lib/types.js'
+import { sseStore } from './sse.svelte.js'
 
 const API_BASE = 'http://localhost:3100'
 
@@ -31,6 +32,42 @@ function createSessionStore() {
       .filter((s) => s.directory === selectedDirectory)
       .sort((a, b) => b.updatedAt - a.updatedAt)
   )
+
+  // ── Running state from SSE ────────────────────────────────────────
+  //
+  // Track which sessions are currently running, updated in real-time
+  // from the global SSE stream. Initial state comes from the `status`
+  // field on sessions fetched from the server.
+
+  sseStore.onEvent((event) => {
+    if (event._tag === 'RunStart') {
+      // Update the session's status in the local list
+      sessions = sessions.map((s) =>
+        s.id === event.sessionId ? { ...s, status: 'running' as const } : s
+      )
+    } else if (event._tag === 'RunEnd') {
+      sessions = sessions.map((s) =>
+        s.id === event.sessionId ? { ...s, status: 'idle' as const } : s
+      )
+    } else if (event._tag === 'SessionUpdated') {
+      // Session metadata changed — re-fetch to pick up title changes etc.
+      refreshSession(event.sessionId)
+    }
+  })
+
+  /** Re-fetch a single session's metadata (background, silent). */
+  async function refreshSession(sessionId: string) {
+    try {
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}`)
+      if (!res.ok) return
+      const fresh: Session = await res.json()
+      sessions = sessions.map((s) => (s.id === sessionId ? fresh : s))
+    } catch {
+      // Silent
+    }
+  }
+
+  // ── Public API ────────────────────────────────────────────────────
 
   async function fetchSessions() {
     loading = true
@@ -103,6 +140,12 @@ function createSessionStore() {
     composing = true
   }
 
+  /** Check if a session currently has an active run. */
+  function isRunning(sessionId: string): boolean {
+    const session = sessions.find((s) => s.id === sessionId)
+    return session?.status === 'running'
+  }
+
   return {
     get sessions() {
       return sessions
@@ -146,6 +189,7 @@ function createSessionStore() {
       selectedSessionId = id
       composing = false
     },
+    isRunning,
     startComposing,
     createSession,
     runAgent,

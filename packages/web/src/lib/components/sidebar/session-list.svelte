@@ -55,6 +55,7 @@
 		{:else}
 			{#each sessionStore.filteredSessions as session (session.id)}
 				{@const isSelected = session.id === sessionStore.selectedSessionId}
+				{@const running = session.status === 'running'}
 				<button
 					class={cn(
 						"flex w-full flex-col rounded-md px-3 py-2 text-left transition-colors",
@@ -64,9 +65,14 @@
 					)}
 					onclick={() => sessionStore.selectSession(session.id)}
 				>
-					<span class="truncate text-sm text-sidebar-foreground">
-						{session.title ?? "Untitled"}
-					</span>
+					<div class="flex items-center gap-2">
+						<span class="min-w-0 truncate text-sm text-sidebar-foreground">
+							{session.title ?? "Untitled"}
+						</span>
+						{#if running}
+							<span class="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-blue-400"></span>
+						{/if}
+					</div>
 					<span class="text-xs text-muted-foreground">
 						{formatRelativeTime(session.updatedAt)}
 					</span>

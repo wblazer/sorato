@@ -12,8 +12,7 @@
 
 	// Load messages when sessionId changes.
 	// untrack prevents the effect from subscribing to reactive state
-	// read inside loadMessages (e.g. sseConnection), which would cause
-	// an infinite re-trigger loop.
+	// read inside loadMessages, which would cause an infinite re-trigger loop.
 	$effect(() => {
 		if (sessionId) {
 			untrack(() => messagesStore.loadMessages(sessionId));

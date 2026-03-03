@@ -14,16 +14,13 @@
 			const session = await sessionStore.createSession();
 			if (!session) return;
 
-			// Pre-connect SSE and show the user's message BEFORE starting
-			// the run. loadMessages connects SSE synchronously (EventSource
-			// constructor), then fetches messages in the background. The
-			// optimistic message gives instant feedback. When SessionView
-			// mounts and calls loadMessages again, the dedup guard skips
-			// the teardown — SSE stays connected, no events lost.
-			messagesStore.loadMessages(session.id);
+			// Show the user's message immediately. Global SSE is already
+			// connected — no per-session pre-connect needed. When SessionView
+			// mounts and calls loadMessages, the optimistic message is
+			// visible until the fetch replaces it with real data.
 			messagesStore.addOptimisticUserMessage(session.id, input);
 
-			// Now start the run — SSE is already listening
+			// Fire-and-forget — events stream via global SSE
 			await sessionStore.runAgent(session.id, input);
 
 			// selectSession is already called by createSession,

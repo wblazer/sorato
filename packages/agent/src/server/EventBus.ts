@@ -3,14 +3,18 @@
  *
  * Uses a plain EventEmitter for simplicity. Events flow from:
  *   - Harness hooks (via `createBusHook`)
- *   - Storage mutations (when we add them)
+ *   - Direct `publish()` calls (e.g. MessagesAppended from Agent.ts)
  *
  * To:
  *   - SSE connections (via `subscribe`)
+ *   - RunState (via `subscribe`) — materializes running set + replay buffer
+ *
+ * Content events (TextDelta, ToolCall, ToolResult) carry a monotonic `seq`
+ * per session, stamped by the bus hook. Clients use seq to deduplicate
+ * replay-buffer events against live SSE events.
  *
  * Note: this is in-process only. If the harness runs in a different
- * process, events won't bridge. The natural next step is running the
- * harness within the server process, at which point this Just Works.
+ * process, events won't bridge.
  */
 import { EventEmitter } from 'node:events'
 import type { HarnessHook, HarnessEvent } from '../harness/harness.ts'
@@ -27,6 +31,7 @@ export type ServerEvent =
       readonly _tag: 'TextDelta'
       readonly sessionId: string
       readonly delta: string
+      readonly seq: number
     }
   | {
       readonly _tag: 'ToolCall'
@@ -34,6 +39,7 @@ export type ServerEvent =
       readonly id: string
       readonly name: string
       readonly params: unknown
+      readonly seq: number
     }
   | {
       readonly _tag: 'ToolResult'
@@ -42,6 +48,7 @@ export type ServerEvent =
       readonly name: string
       readonly result: unknown
       readonly isFailure: boolean
+      readonly seq: number
     }
   | { readonly _tag: 'RunStart'; readonly sessionId: string }
   | { readonly _tag: 'RunEnd'; readonly sessionId: string }
@@ -65,6 +72,24 @@ export function subscribe(listener: (event: ServerEvent) => void): () => void {
 }
 
 // ---------------------------------------------------------------------------
+// Sequence counters — monotonic per session, reset on RunStart
+// ---------------------------------------------------------------------------
+
+const seqCounters = new Map<string, number>()
+
+/** Get the next seq for a session's current run. */
+function nextSeq(sessionId: string): number {
+  const seq = (seqCounters.get(sessionId) ?? 0) + 1
+  seqCounters.set(sessionId, seq)
+  return seq
+}
+
+/** Reset a session's seq counter (called on RunStart / RunEnd). */
+function resetSeq(sessionId: string): void {
+  seqCounters.delete(sessionId)
+}
+
+// ---------------------------------------------------------------------------
 // Harness hook bridge
 // ---------------------------------------------------------------------------
 
@@ -72,7 +97,7 @@ export function subscribe(listener: (event: ServerEvent) => void): () => void {
  * Create a `HarnessHook` that forwards harness events to the event bus.
  *
  * Bind it to a sessionId so consumers know which session the events
- * belong to.
+ * belong to. Content events are stamped with a monotonic `seq`.
  */
 export const createBusHook = (sessionId: string): HarnessHook => ({
   name: 'event-bus',
@@ -80,10 +105,16 @@ export const createBusHook = (sessionId: string): HarnessHook => ({
     Effect.sync(() => {
       switch (event._tag) {
         case 'RunStart':
+          resetSeq(sessionId)
           publish({ _tag: 'RunStart', sessionId })
           break
         case 'TextDelta':
-          publish({ _tag: 'TextDelta', sessionId, delta: event.delta })
+          publish({
+            _tag: 'TextDelta',
+            sessionId,
+            delta: event.delta,
+            seq: nextSeq(sessionId),
+          })
           break
         case 'ToolCall':
           publish({
@@ -92,6 +123,7 @@ export const createBusHook = (sessionId: string): HarnessHook => ({
             id: event.id,
             name: event.name,
             params: event.params,
+            seq: nextSeq(sessionId),
           })
           break
         case 'ToolResult':
@@ -102,10 +134,12 @@ export const createBusHook = (sessionId: string): HarnessHook => ({
             name: event.name,
             result: event.result,
             isFailure: event.isFailure,
+            seq: nextSeq(sessionId),
           })
           break
         case 'RunEnd':
           publish({ _tag: 'RunEnd', sessionId })
+          resetSeq(sessionId)
           break
       }
     }),

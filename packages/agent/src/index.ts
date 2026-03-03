@@ -71,3 +71,10 @@ export { SqliteSession } from './session/sqlite-session.ts'
 // Server — event bus for real-time streaming
 export { publish, subscribe, createBusHook } from './server/EventBus.ts'
 export type { ServerEvent } from './server/EventBus.ts'
+
+// Server — in-memory run state (replay buffer, running status)
+export {
+  isRunning,
+  getRunningSessionIds,
+  getReplayBuffer,
+} from './server/RunState.ts'

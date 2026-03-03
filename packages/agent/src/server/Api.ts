@@ -22,6 +22,8 @@ export class SessionResponse extends Schema.Class<SessionResponse>(
   directory: Schema.String,
   title: Schema.NullOr(Schema.String),
   headId: Schema.NullOr(Schema.String),
+  /** Ephemeral run status — 'running' if an agent run is active. */
+  status: Schema.Literal('idle', 'running'),
   createdAt: Schema.Number,
   updatedAt: Schema.Number,
 }) {}
@@ -42,6 +44,22 @@ export class RunResponse extends Schema.Class<RunResponse>('RunResponse')({
 
 export class RunError extends Schema.TaggedError<RunError>()('RunError', {
   message: Schema.String,
+}) {}
+
+/**
+ * Stream state for a session — current run status + replay buffer.
+ *
+ * The `events` array contains content events (TextDelta, ToolCall,
+ * ToolResult) accumulated since RunStart. Empty when idle.
+ *
+ * The client uses this to reconstruct streaming state when joining
+ * a session mid-run (page load, navigation, reconnect).
+ */
+export class StreamStateResponse extends Schema.Class<StreamStateResponse>(
+  'StreamStateResponse'
+)({
+  status: Schema.Literal('idle', 'running'),
+  events: Schema.Array(Schema.Unknown),
 }) {}
 
 export class DirectoryEntry extends Schema.Class<DirectoryEntry>(
@@ -108,6 +126,11 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
   .add(
     HttpApiEndpoint.get('messages')`/${idParam}/messages`
       .addSuccess(Schema.Array(MessageNodeResponse))
+      .addError(StorageError, { status: 500 })
+  )
+  .add(
+    HttpApiEndpoint.get('streamState')`/${idParam}/stream-state`
+      .addSuccess(StreamStateResponse)
       .addError(StorageError, { status: 500 })
   )
   .add(
