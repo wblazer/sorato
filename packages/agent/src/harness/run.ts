@@ -1,9 +1,10 @@
 /**
- * Run a complete agent loop for a single scenario input.
+ * Run a complete agent loop, continuing from an existing conversation.
  *
- * Uses `streamText` in a loop — each iteration sends the conversation to
- * the model, streams the response, and resolves any tool calls. The loop
- * continues until a turn produces no tool calls (the model is "done").
+ * The caller builds the conversation (system prompt, user messages, prior
+ * turns) and passes it in. `run()` seeds a `Chat` with it, calls
+ * `streamText` in a loop until no tool calls remain, and returns the
+ * full conversation + accumulated text.
  *
  * `@effect/ai`'s `Chat` maintains conversation history across calls, so
  * tool results from one turn are visible to the model in the next.
@@ -19,12 +20,21 @@ import { LanguageModel as LanguageModel_, Chat as Chat_ } from '@effect/ai'
 /** Maximum agent loop iterations to prevent runaway tool-call cycles. */
 const MAX_TURNS = 25
 
+/**
+ * Continue an agent conversation from where it left off.
+ *
+ * @param conversation - The full conversation so far (system prompt + all
+ *   prior messages + the latest user message). The model will respond to
+ *   whatever the conversation ends with.
+ * @param config - Toolkit and hooks. `systemPrompt` on config is ignored
+ *   here — it exists for callers like `test()` that build conversations.
+ */
 export const run = <
   Tools extends Record<string, Tool.Any>,
   HookE = never,
   HookR = never,
 >(
-  input: string,
+  conversation: Prompt.Prompt,
   config: HarnessConfig<Tools, HookE, HookR>
 ): Effect_.Effect<
   HarnessResult,
@@ -32,11 +42,7 @@ export const run = <
   LanguageModel_.LanguageModel | HookR
 > =>
   Effect_.gen(function* () {
-    const chat = yield* Chat_.fromPrompt(
-      config.systemPrompt
-        ? [{ role: 'system', content: config.systemPrompt }]
-        : []
-    )
+    const chat = yield* Chat_.fromPrompt(conversation)
 
     const fireHooks = (event: HarnessEvent) =>
       Effect_.gen(function* () {
@@ -47,17 +53,16 @@ export const run = <
         }
       })
 
-    yield* fireHooks({ _tag: 'RunStart', input })
+    yield* fireHooks({ _tag: 'RunStart' })
 
     // Accumulate text and usage across all turns
     let outputText = ''
     const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
 
-    // The first turn uses the user's input as the prompt.
-    // Subsequent turns pass an empty message array — Chat.streamText merges
-    // this with the existing history (which already contains tool results),
-    // and the empty array is a no-op in Prompt.merge.
-    let prompt: Prompt.RawInput = input
+    // First turn: empty prompt — the conversation already ends with the
+    // user's message, so Chat.streamText sends it as-is to the model.
+    // Subsequent turns also use empty (tool results are already in Chat).
+    let prompt: Prompt.RawInput = [] as Array<Prompt.MessageEncoded>
 
     for (let turn = 0; turn < MAX_TURNS; turn++) {
       let hadToolCalls = false
@@ -114,12 +119,15 @@ export const run = <
 
     yield* fireHooks({
       _tag: 'RunEnd',
-      input,
       output: outputText,
       usage,
     })
 
-    const conversation = yield* Ref_.get(chat.history)
+    const fullConversation = yield* Ref_.get(chat.history)
 
-    return { conversation, text: outputText, usage } satisfies HarnessResult
+    return {
+      conversation: fullConversation,
+      text: outputText,
+      usage,
+    } satisfies HarnessResult
   })

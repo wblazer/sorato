@@ -23,11 +23,11 @@
 		};
 	});
 
-	// Auto-scroll to bottom when new messages arrive or streaming text changes
+	// Auto-scroll to bottom when new messages arrive or streaming parts change
 	$effect(() => {
 		// Touch reactive dependencies
 		messagesStore.messages.length;
-		messagesStore.streamingText;
+		messagesStore.streamingParts;
 
 		if (messagesContainer) {
 			const { scrollTop, scrollHeight, clientHeight } = messagesContainer;
@@ -44,6 +44,9 @@
 	});
 
 	function handleSend(input: string) {
+		// Show the user's message immediately — don't wait for the server
+		// round-trip. The optimistic node is replaced on the next refresh.
+		messagesStore.addOptimisticUserMessage(sessionId, input);
 		sessionStore.runAgent(sessionId, input);
 	}
 </script>
@@ -84,7 +87,7 @@
 				{/each}
 
 				<StreamingIndicator
-					text={messagesStore.streamingText}
+					parts={messagesStore.streamingParts}
 					isStreaming={messagesStore.isStreaming}
 				/>
 			</div>

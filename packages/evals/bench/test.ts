@@ -12,7 +12,7 @@
  * The `run` combinator collects tests into a SuiteResult.
  */
 import type { AiError, Tool } from '@effect/ai'
-import { LanguageModel } from '@effect/ai'
+import { LanguageModel, Prompt } from '@effect/ai'
 import { Effect } from 'effect'
 import type { HarnessConfig } from '@agents/agent'
 import { run as runHarness } from '@agents/agent'
@@ -94,7 +94,16 @@ export const test = <
   options: TestOptions
 ): Test<LanguageModel.LanguageModel | HookR, AiError.AiError | HookE> =>
   Effect.gen(function* () {
-    const result = yield* runHarness(options.prompt, config)
+    // Build the conversation from config.systemPrompt + the test prompt.
+    // run() takes a complete conversation and continues it.
+    const messages: Array<Prompt.MessageEncoded> = []
+    if (config.systemPrompt) {
+      messages.push({ role: 'system', content: config.systemPrompt })
+    }
+    messages.push({ role: 'user', content: options.prompt })
+    const conversation = Prompt.make(messages)
+
+    const result = yield* runHarness(conversation, config)
     const response = result.text
 
     return {

@@ -111,17 +111,42 @@ export const runAgent = (sessionId: SessionId, input: string) =>
 
     const session = yield* storage.get(sessionId)
 
+    // ---------------------------------------------------------------
+    // Phase 1: Persist the user message (+ system prompt if first)
+    // BEFORE starting the harness. This way the user's message shows
+    // up in the UI immediately via MessagesAppended, regardless of
+    // how long the model takes to respond.
+    // ---------------------------------------------------------------
+    const existingConversation = yield* storage.conversation(sessionId)
+    const isFirstMessage = existingConversation.content.length === 0
+
+    const preamble: Array<Prompt.MessageEncoded> = isFirstMessage
+      ? [
+          { role: 'system' as const, content: SYSTEM_PROMPT },
+          { role: 'user' as const, content: input },
+        ]
+      : [{ role: 'user' as const, content: input }]
+
+    yield* storage.append(sessionId, preamble)
+    publish({ _tag: 'MessagesAppended', sessionId })
+
+    // ---------------------------------------------------------------
+    // Phase 2: Load the full conversation (now includes user message)
+    // and run the harness. run() continues from the conversation as-is.
+    // ---------------------------------------------------------------
+    const conversation = yield* storage.conversation(sessionId)
+    const messageCountBeforeRun = conversation.content.length
+
     yield* Effect.scoped(
       Effect.gen(function* () {
         const { shell, files } = yield* sandbox.acquire(session.directory)
 
         const config = {
-          systemPrompt: SYSTEM_PROMPT,
           toolkit: AllTools,
           hooks: [createBusHook(sessionId)],
         }
 
-        const result = yield* run(input, config).pipe(
+        const result = yield* run(conversation, config).pipe(
           Effect.provide(
             Layer.mergeAll(
               Layer.succeed(CurrentShell, shell),
@@ -130,7 +155,11 @@ export const runAgent = (sessionId: SessionId, input: string) =>
           )
         )
 
-        // Encode the conversation and persist to storage
+        // ---------------------------------------------------------------
+        // Phase 3: Persist only the NEW messages from the harness run
+        // (assistant response, tool calls/results). The user message and
+        // system prompt were already persisted in Phase 1.
+        // ---------------------------------------------------------------
         const encoded = yield* Schema.encode(Prompt.Prompt)(
           result.conversation
         ).pipe(
@@ -143,9 +172,10 @@ export const runAgent = (sessionId: SessionId, input: string) =>
           )
         )
 
-        yield* storage.append(sessionId, encoded.content)
+        const newMessages = encoded.content.slice(messageCountBeforeRun)
+        yield* storage.append(sessionId, newMessages)
 
-        // Notify clients that messages are available
+        // Notify clients that the assistant's messages are available
         publish({ _tag: 'MessagesAppended', sessionId })
         publish({ _tag: 'SessionUpdated', sessionId })
       })

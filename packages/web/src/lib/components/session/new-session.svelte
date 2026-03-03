@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { sessionStore } from '$lib/stores/sessions.svelte.js';
+	import { messagesStore } from '$lib/stores/messages.svelte.js';
 	import Composer from './composer.svelte';
 
 	let sending = $state(false);
@@ -13,7 +14,16 @@
 			const session = await sessionStore.createSession();
 			if (!session) return;
 
-			// Kick off the agent run — events will stream via SSE
+			// Pre-connect SSE and show the user's message BEFORE starting
+			// the run. loadMessages connects SSE synchronously (EventSource
+			// constructor), then fetches messages in the background. The
+			// optimistic message gives instant feedback. When SessionView
+			// mounts and calls loadMessages again, the dedup guard skips
+			// the teardown — SSE stays connected, no events lost.
+			messagesStore.loadMessages(session.id);
+			messagesStore.addOptimisticUserMessage(session.id, input);
+
+			// Now start the run — SSE is already listening
 			await sessionStore.runAgent(session.id, input);
 
 			// selectSession is already called by createSession,

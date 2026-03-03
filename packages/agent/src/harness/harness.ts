@@ -26,7 +26,7 @@ import type { Effect } from 'effect'
  * as the agent loop streams.
  */
 export type HarnessEvent =
-  | { readonly _tag: 'RunStart'; readonly input: string }
+  | { readonly _tag: 'RunStart' }
   | { readonly _tag: 'TextDelta'; readonly delta: string }
   | {
       readonly _tag: 'ToolCall'
@@ -43,7 +43,6 @@ export type HarnessEvent =
     }
   | {
       readonly _tag: 'RunEnd'
-      readonly input: string
       readonly output: string
       readonly usage: {
         readonly inputTokens: number
@@ -72,7 +71,11 @@ export interface HarnessConfig<
   HookE = never,
   HookR = never,
 > {
-  /** System prompt prepended to every scenario run. */
+  /**
+   * System prompt — convenience field for callers (evals). The `run()`
+   * function itself does NOT read this; callers like `test()` use it to
+   * build the initial conversation before passing it to `run()`.
+   */
   readonly systemPrompt?: string | undefined
 
   /**
