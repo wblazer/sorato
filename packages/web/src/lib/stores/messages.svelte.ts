@@ -1,14 +1,26 @@
 /**
- * Messages store — fetches and streams messages for the active session.
+ * Messages store — streaming content and persisted messages for the
+ * active session.
  *
  * Receives events from the global SSE store (no per-session connections).
- * Filters events by `currentSessionId` — navigating between sessions is
- * just a filter change, no SSE teardown/reconnect.
+ * Filters by `currentSessionId` — navigating between sessions is just
+ * a filter change, no SSE teardown/reconnect.
+ *
+ * Running state lives in the session store (single source of truth for
+ * all sessions). This store tracks streaming *content* — the parts
+ * accumulating for the in-flight turn — and the persisted message list.
+ * Components derive "is running" from the session store and decide how
+ * to render (pulsing indicators vs static content) based on that.
  *
  * When joining a running session (page load, navigation), the store
  * fetches the replay buffer from `/stream-state` and replays it to
- * reconstruct the current streaming state. A `seq` dedup mechanism
- * prevents double-counting events that arrive via both replay and live SSE.
+ * reconstruct streaming content. A `seq` dedup mechanism prevents
+ * double-counting events from both replay and live SSE.
+ *
+ * After replaying, we synchronously check `sessionStore.isRunning()`.
+ * If a RunEnd arrived during the fetch, the session store already
+ * knows — the stale replay is discarded immediately. No manual
+ * generation counters; the session store is always correct.
  */
 import type {
   MessageNode,
@@ -17,6 +29,7 @@ import type {
   StreamState,
 } from '$lib/types.js'
 import { sseStore } from './sse.svelte.js'
+import { sessionStore } from './sessions.svelte.js'
 
 const API_BASE = 'http://localhost:3100'
 
@@ -27,20 +40,15 @@ function createMessagesStore() {
   let error = $state<string | null>(null)
   let currentSessionId = $state<string | null>(null)
 
-  // Streaming state: an ordered list of parts as they arrive.
+  // Streaming content: the in-flight turn's parts as they arrive.
+  // Cleared when the run ends and persisted messages replace it.
   let streamingParts = $state<MessagePart[]>([])
-  let isStreaming = $state(false)
 
   // Dedup: highest seq from the replay buffer. Live events with
   // seq <= this value were already replayed and should be skipped.
   let replaySeq = 0
 
   // ── Global SSE subscription ─────────────────────────────────────
-  //
-  // Registered at module init. The handler checks currentSessionId
-  // on every event — before loadMessages sets it, events are ignored.
-  // After loadMessages, events flow through and are deduped against
-  // any replay buffer that was already applied.
 
   sseStore.onEvent((event) => {
     if (!('sessionId' in event) || event.sessionId !== currentSessionId) return
@@ -50,7 +58,6 @@ function createMessagesStore() {
 
     switch (event._tag) {
       case 'RunStart':
-        isStreaming = true
         streamingParts = []
         replaySeq = 0
         break
@@ -85,10 +92,12 @@ function createMessagesStore() {
         break
 
       case 'RunEnd':
-        // Don't clear streaming state yet — keep it visible until
-        // the refresh lands to avoid the flash.
+        // Refresh messages to pick up the persisted conversation.
+        // Streaming parts stay visible until the refresh lands —
+        // clearParts: true ensures they're removed atomically with
+        // the fresh messages, preventing the flash.
         if (currentSessionId) {
-          refreshMessages(currentSessionId, { clearStreaming: true })
+          refreshMessages(currentSessionId, { clearParts: true })
         }
         break
 
@@ -105,7 +114,6 @@ function createMessagesStore() {
   function appendTextDelta(delta: string) {
     const last = streamingParts[streamingParts.length - 1]
     if (last && last.type === 'text') {
-      // Svelte 5 reactivity needs a new array reference.
       streamingParts = [
         ...streamingParts.slice(0, -1),
         { type: 'text', text: last.text + delta },
@@ -118,6 +126,11 @@ function createMessagesStore() {
   // ── Replay buffer → streaming parts ─────────────────────────────
 
   function replayEvents(events: ServerEvent[]) {
+    // Reset — the replay buffer is the authoritative source for all
+    // content up to its max seq.
+    streamingParts = []
+    replaySeq = 0
+
     for (const event of events) {
       switch (event._tag) {
         case 'TextDelta':
@@ -156,21 +169,37 @@ function createMessagesStore() {
   // ── Loading ─────────────────────────────────────────────────────
 
   /**
+   * Prepare the store for a new session without fetching.
+   *
+   * Sets `currentSessionId` so SSE events flow, marks the store as
+   * loaded so the UI renders immediately. Used by the new-session
+   * flow: the caller adds an optimistic message after this, and
+   * SSE events drive all subsequent updates. SessionView's
+   * `loadMessages` sees the session is already set up and does a
+   * background refresh instead of a full load.
+   */
+  function prepareSession(sessionId: string) {
+    messages = []
+    currentSessionId = sessionId
+    loading = false
+    loaded = true
+    error = null
+    streamingParts = []
+    replaySeq = 0
+  }
+
+  /**
    * Load messages and stream state for a session.
    *
-   * If the session is mid-run, the replay buffer is applied to
-   * reconstruct streaming state. Live SSE events arriving after
-   * this call are deduped against the replay via `seq`.
+   * If `currentSessionId` is already set for this session (e.g. via
+   * `prepareSession`), does a background refresh — no loading indicator,
+   * existing messages preserved until the server catches up.
    */
   async function loadMessages(sessionId: string) {
-    // Show loading indicator only if we have no messages to display
-    // (avoids flash when navigating back to a session we've seen before
-    // or when an optimistic message is already visible).
     const hasExisting = currentSessionId === sessionId && messages.length > 0
 
-    // Reset streaming state — replay will rebuild if the session is running
+    // Reset streaming content — replay will rebuild if needed.
     streamingParts = []
-    isStreaming = false
     replaySeq = 0
     error = null
 
@@ -179,38 +208,45 @@ function createMessagesStore() {
       loaded = false
     }
 
-    // Set currentSessionId AFTER resetting streaming state but BEFORE
-    // the async fetch. This is safe: JavaScript is single-threaded, so
-    // no SSE handler can fire between the reset above and this assignment.
-    // Any SSE events that arrive during the fetch will be processed
-    // normally (and deduped against the replay when it lands).
-    //
-    // HOWEVER: events that arrived before we set currentSessionId are
-    // gone — they were filtered out by our SSE handler. The replay
-    // buffer covers them.
     currentSessionId = sessionId
 
     try {
-      // Fetch messages and stream state in parallel
       const [messagesRes, stateRes] = await Promise.all([
         fetch(`${API_BASE}/sessions/${sessionId}/messages`),
         fetch(`${API_BASE}/sessions/${sessionId}/stream-state`),
       ])
 
-      // Bail if the user navigated away during the fetch
       if (currentSessionId !== sessionId) return
 
       if (!messagesRes.ok)
         throw new Error(`${messagesRes.status} ${messagesRes.statusText}`)
-      messages = await messagesRes.json()
+
+      const serverMessages: MessageNode[] = await messagesRes.json()
+
+      // During a background refresh, the server might not have caught
+      // up yet (e.g. the run's Phase 1 hasn't persisted the user
+      // message). Keep existing messages (including optimistic ones)
+      // until the server has real data. MessagesAppended will trigger
+      // another refresh when the server persists.
+      if (hasExisting && serverMessages.length === 0) {
+        // Server hasn't caught up — keep what we have
+      } else {
+        messages = serverMessages
+      }
 
       // Replay stream state if the session is running
       if (stateRes.ok) {
         const state: StreamState = await stateRes.json()
         if (state.status === 'running') {
-          isStreaming = true
           replayEvents(state.events)
         }
+      }
+
+      // Stale stream-state check: the session store is the authority.
+      // If RunEnd arrived during the fetch, discard the stale replay.
+      if (!sessionStore.isRunning(sessionId)) {
+        streamingParts = []
+        replaySeq = 0
       }
     } catch (e) {
       if (currentSessionId !== sessionId) return
@@ -240,13 +276,14 @@ function createMessagesStore() {
   }
 
   /**
-   * Re-fetch messages without changing loading state (background refresh).
-   * When `clearStreaming` is true, streaming state is cleared after the
-   * fetch resolves — prevents the flash on RunEnd.
+   * Re-fetch messages (background, no loading indicator).
+   * When `clearParts` is true, streaming parts are cleared after the
+   * fetch — used on RunEnd to atomically swap streaming content for
+   * persisted messages.
    */
   async function refreshMessages(
     sessionId: string,
-    opts?: { clearStreaming?: boolean }
+    opts?: { clearParts?: boolean }
   ) {
     try {
       const res = await fetch(`${API_BASE}/sessions/${sessionId}/messages`)
@@ -254,16 +291,13 @@ function createMessagesStore() {
       const fresh: MessageNode[] = await res.json()
       if (currentSessionId === sessionId) {
         messages = fresh
-        if (opts?.clearStreaming) {
-          isStreaming = false
+        if (opts?.clearParts) {
           streamingParts = []
           replaySeq = 0
         }
       }
     } catch {
-      // Silent failure — still clear streaming to avoid stuck indicator
-      if (opts?.clearStreaming && currentSessionId === sessionId) {
-        isStreaming = false
+      if (opts?.clearParts && currentSessionId === sessionId) {
         streamingParts = []
         replaySeq = 0
       }
@@ -278,7 +312,6 @@ function createMessagesStore() {
     loaded = false
     error = null
     streamingParts = []
-    isStreaming = false
     replaySeq = 0
   }
 
@@ -301,9 +334,7 @@ function createMessagesStore() {
     get streamingParts() {
       return streamingParts
     },
-    get isStreaming() {
-      return isStreaming
-    },
+    prepareSession,
     loadMessages,
     addOptimisticUserMessage,
     clear,

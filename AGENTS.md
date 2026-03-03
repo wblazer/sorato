@@ -101,6 +101,14 @@ I hope this one is self explanatory. Duplicate sources of truth for the same inf
 
 Just because two sources of information match at any one point in time does not mean that they should be consolidated. Sometimes, they could become meaningfully different in the future. You must think in terms of the problem space, not the current state of the solution. For example, two API endpoints may return the same response schema _right now_ but they are fundamentally _different endpoints_, so the response types should be declared separately.
 
+### Comments Describe What Is, Not What Was
+
+Comments should make sense to a reader with zero context about the code's history. A comment like "this store does NOT track X" only makes sense if you know it _used to_ — to everyone else it's a bizarre unprompted denial, like a stranger assuring you they definitely didn't eat your sandwich.
+
+- **Describe the current design and why.** Not what was removed, refactored, or "no longer" done.
+- **Avoid negations of past behavior.** If you find yourself writing "we don't do X anymore" or "this is NOT Y", rewrite it as a positive statement about what the code _does_.
+- **If a "why not" is genuinely important** (e.g. documenting a deliberate omission that future readers might try to re-add), frame it as a design decision: "Running state is intentionally excluded here — it lives in the session store to maintain a single source of truth."
+
 ### Breaking Changes
 
 This code is greenfield, breaking changes are fine. Do not let the cruft of the past dictate this codebase's future.

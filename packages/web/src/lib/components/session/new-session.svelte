@@ -14,10 +14,13 @@
 			const session = await sessionStore.createSession();
 			if (!session) return;
 
-			// Show the user's message immediately. Global SSE is already
-			// connected — no per-session pre-connect needed. When SessionView
-			// mounts and calls loadMessages, the optimistic message is
-			// visible until the fetch replaces it with real data.
+			// Prepare the messages store for this session BEFORE Svelte
+			// transitions to SessionView. This sets currentSessionId and
+			// marks the store as loaded, so when SessionView mounts and
+			// calls loadMessages, it sees the session is already set up
+			// and does a background refresh — preserving the optimistic
+			// message instead of hiding it behind "Loading messages...".
+			messagesStore.prepareSession(session.id);
 			messagesStore.addOptimisticUserMessage(session.id, input);
 
 			// Fire-and-forget — events stream via global SSE

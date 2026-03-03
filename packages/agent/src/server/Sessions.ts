@@ -10,6 +10,7 @@ import { SessionStorage } from '../session/session.ts'
 import {
   Api,
   MessageNodeResponse,
+  RunError,
   RunResponse,
   SessionResponse,
   StreamStateResponse,
@@ -97,6 +98,15 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
         Effect.gen(function* () {
           // Verify session exists
           yield* storage.get(path.id)
+
+          // Guard: reject if a run is already active for this session.
+          // Two concurrent runs on the same session corrupt the conversation
+          // (interleaved events, stomped replay buffer, mixed responses).
+          if (isRunning(path.id)) {
+            return yield* new RunError({
+              message: `Session ${path.id} already has an active run`,
+            })
+          }
 
           // Fork the agent run as a daemon — returns immediately
           yield* runAgent(path.id, payload.input).pipe(Effect.forkDaemon)

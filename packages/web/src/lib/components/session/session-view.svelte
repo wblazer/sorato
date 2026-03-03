@@ -10,6 +10,10 @@
 
 	let messagesContainer: HTMLDivElement | undefined = $state();
 
+	// Running state is derived from the session store — the single source
+	// of truth. The messages store only tracks streaming *content*.
+	const isRunning = $derived(sessionStore.isRunning(sessionId));
+
 	// Load messages when sessionId changes.
 	// untrack prevents the effect from subscribing to reactive state
 	// read inside loadMessages, which would cause an infinite re-trigger loop.
@@ -57,7 +61,7 @@
 			{title ?? 'Untitled'}
 		</h1>
 		<span class="text-xs text-muted-foreground">{sessionId.slice(0, 8)}</span>
-		{#if messagesStore.isStreaming}
+		{#if isRunning}
 			<span class="flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2 py-0.5">
 				<span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400"></span>
 				<span class="text-[10px] font-medium text-blue-400">live</span>
@@ -75,11 +79,11 @@
 			<div class="flex items-center justify-center p-8">
 				<span class="text-sm text-destructive">{messagesStore.error}</span>
 			</div>
-		{:else if messagesStore.loaded && messagesStore.messages.length === 0 && !messagesStore.isStreaming}
+		{:else if messagesStore.loaded && messagesStore.messages.length === 0 && !isRunning}
 			<div class="flex items-center justify-center p-8">
 				<span class="text-sm text-muted-foreground">No messages yet</span>
 			</div>
-		{:else if messagesStore.loaded || messagesStore.isStreaming}
+		{:else if messagesStore.loaded || isRunning}
 			<div class="flex flex-col gap-1 p-4">
 				{#each messagesStore.messages as message (message.id)}
 					<MessageBubble {message} />
@@ -87,7 +91,7 @@
 
 				<StreamingIndicator
 					parts={messagesStore.streamingParts}
-					isStreaming={messagesStore.isStreaming}
+					{isRunning}
 				/>
 			</div>
 		{/if}
@@ -96,7 +100,7 @@
 	<!-- Composer -->
 	<Composer
 		onSend={handleSend}
-		disabled={messagesStore.isStreaming}
-		placeholder={messagesStore.isStreaming ? 'Agent is responding...' : 'Send a follow-up message...'}
+		disabled={isRunning}
+		placeholder={isRunning ? 'Agent is responding...' : 'Send a follow-up message...'}
 	/>
 </div>
