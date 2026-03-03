@@ -10,7 +10,7 @@ Tools depend on the specific services they need. File tools depend on `CurrentFi
 ## Files
 
 - `sandbox.ts` — trait/contract: `Shell`, `Files`, `SandboxSession`, `SandboxFactory`, `Sandbox` tag, `CurrentShell` tag, `CurrentFiles` tag, `SandboxError`, `ExecCommand`. `ExecCommand` supports `timeout` — the sandbox owns kill mechanics (SIGTERM → SIGKILL escalation), the tool owns timeout policy.
-- `local-sandbox.ts` — default implementation using `@effect/platform` CommandExecutor + FileSystem. No isolation beyond a per-session temp root. Bakes in non-interactive env defaults (pager/editor/prompt suppression) so agent-driven commands don't hang. Fine for dev/benchmarks.
+- `local-sandbox.ts` — default implementation using `@effect/platform` CommandExecutor + FileSystem. No isolation beyond a caller-provided root directory. Bakes in non-interactive env defaults (pager/editor/prompt suppression) so agent-driven commands don't hang. The sandbox does not create or clean up directories — that's the caller's job. Fine for dev/benchmarks.
 
 ## Key Insight: Agent Loop Runs Outside the Sandbox
 
@@ -18,7 +18,7 @@ The harness (LLM loop) runs in the orchestrator process, NOT inside the sandbox.
 
 ## Factory Returns a Composite
 
-`SandboxFactory.acquire` returns `{ shell, files }` — consumers destructure and provide `CurrentShell` + `CurrentFiles` tags separately. This keeps lifecycle management unified (one scope, one rootDir) while giving tools granular `R` types.
+`SandboxFactory.acquire(directory)` takes a root directory and returns `{ shell, files }` — consumers destructure and provide `CurrentShell` + `CurrentFiles` tags separately. Directory lifecycle is the caller's concern; the sandbox just roots operations under it. This keeps lifecycle management unified (one scope, one rootDir) while giving tools granular `R` types.
 
 ## Path Semantics
 

@@ -6,6 +6,10 @@
  *
  * Dependencies provided via Effect Layers at the edge.
  */
+import { Effect, type Scope } from 'effect'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 // Test API
 export type {
@@ -25,3 +29,21 @@ export {
   saveSuiteResult,
   defaultSuiteResultPath,
 } from './reporter/format.ts'
+
+// ---------------------------------------------------------------------------
+// Sandbox helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a scoped temporary directory. Automatically removed when the
+ * enclosing `Effect.scoped` block closes. Use this to provision throwaway
+ * roots for `Sandbox.acquire` in eval scenarios.
+ */
+export const makeTempDir: Effect.Effect<string, never, Scope.Scope> =
+  Effect.acquireRelease(
+    Effect.promise(() => mkdtemp(join(tmpdir(), 'agents-sandbox-'))),
+    (dir) =>
+      Effect.promise(() => rm(dir, { recursive: true, force: true })).pipe(
+        Effect.orDie
+      )
+  )

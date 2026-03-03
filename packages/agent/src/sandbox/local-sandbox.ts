@@ -2,8 +2,9 @@
  * LocalSandbox — runs in the current process, no isolation.
  *
  * Uses `@effect/platform` CommandExecutor and FileSystem for process +
- * filesystem operations. Each session gets a temporary root directory and
- * all paths are resolved under it. Fine for development and benchmarks.
+ * filesystem operations. The caller provides a root directory; all paths
+ * are resolved under it. The sandbox does not create or clean up
+ * directories — lifecycle management is the caller's responsibility.
  * `LocalSandboxLive` is a convenience layer with BunContext already wired in.
  */
 import { Effect, Fiber, Layer, Stream } from 'effect'
@@ -81,24 +82,9 @@ export const LocalSandbox: Layer.Layer<
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
 
-    const acquire = (directory?: string) =>
+    const acquire = (directory: string) =>
       Effect.gen(function* () {
         const rootDir = directory
-          ? directory
-          : yield* fs
-              .makeTempDirectoryScoped({
-                prefix: 'agents-sandbox-',
-              })
-              .pipe(
-                Effect.mapError(
-                  (error) =>
-                    new SandboxError({
-                      operation: 'acquire',
-                      message: 'Failed to create sandbox root',
-                      error,
-                    })
-                )
-              )
 
         const resolvePath = (target: string, operation: string) => {
           const relative = path.isAbsolute(target)

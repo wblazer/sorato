@@ -19,6 +19,7 @@ import {
   formatSuiteSummary,
   saveSuiteResult,
   defaultSuiteResultPath,
+  makeTempDir,
 } from '../bench/index.ts'
 import {
   Toolkit,
@@ -186,7 +187,8 @@ const tests = scenarios.map((scenario) =>
     const sandboxFactory = yield* Sandbox
     return yield* Effect.scoped(
       Effect.gen(function* () {
-        const { shell, files } = yield* sandboxFactory.acquire()
+        const dir = yield* makeTempDir
+        const { shell, files } = yield* sandboxFactory.acquire(dir)
 
         // Seed the mutated file
         yield* files.writeFile(scenario.filePath, scenario.mutated)
