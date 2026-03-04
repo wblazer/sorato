@@ -9,7 +9,9 @@
     "eval": "bun run --filter @agents/evals start --",
     "typecheck": "bun --filter '*' typecheck",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "web": "bun run --filter @agents/web dev",
+    "server": "bun run --filter @agents/agent dev"
   },
   "devDependencies": {
     "@effect/language-service": "^0.72.0",
