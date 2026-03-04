@@ -2,6 +2,8 @@
 
 A coding agent with tree-structured conversations, tracked side effects, decoupled execution, and a web UI that shows you everything.
 
+One server, many clients, many simultaneous agent loops. People can collaborate on sessions. The server/client separation makes this possible — and demands that we be thoughtful about efficiency from the start.
+
 ## Features
 
 ### Tree Conversations
@@ -18,7 +20,7 @@ Agents explore. They try things, hit walls, backtrack. A tree makes that structu
 
 ### Tracked Side Effects
 
-Every message's filesystem changes are checkpointed via git. Branching the conversation branches the repo state. Reverting checks out the earlier state.
+Every message's filesystem changes are checkpointed via VCS (likely jj). Branching the conversation branches the repo state. Reverting checks out the earlier state.
 
 ```
 Conversation Tree          Side-Effect Tree
@@ -33,9 +35,11 @@ System                     (initial state)
 ```
 
 - **Diff**: what did this message change?
-- **Revert**: undo the last N actions
+- **Session diff**: review all changes across a session
+- **Revert / Undo / Redo**: navigate tracked state, not just conversation state
 - **Branch**: parallel exploration with isolated filesystem state
-- **Replay**: reproduce the exact working directory from any conversation branch
+- **Merge**: combine results from different branches
+- **External change detection**: untracked sandbox mutations (user edits outside the agent) are auto-committed and surfaced as messages in the conversation
 
 ### Decoupled Execution
 
@@ -55,15 +59,32 @@ The agent loop runs outside the sandbox. If the sandbox breaks (segfault, OOM, i
    +------------------+
 ```
 
-Locally, the sandbox is your machine. Eventually, a container or cloud VM — same interface, different execution target.
+Locally, the sandbox is your machine. Eventually, a container or cloud VM — same interface, different execution target. Session directories are polymorphic: a local directory today, a repo+branch on a remote sandbox tomorrow.
+
+### Multi-Tenant Server
+
+A single server hosts many agent loops for many clients simultaneously. Clients connect to a server (local or remote) and can switch between connections. A local server serves directory-based sessions; a company server serves repo/branch-based sessions with remote sandboxes.
+
+Streaming is per-session, not firehose. The server routes events efficiently so clients only receive what they've subscribed to.
 
 ### Transparent Context
 
-You see exactly what the model sees. System prompts are visible and editable. Tool calls show the full payload — what the model emitted, what the tool received, what it returned. Context injection is explicit. Token counts and truncation decisions are inspectable. No hidden magic.
+You see exactly what the model sees. System prompts are visible and editable. Tool calls show the full payload — what the model emitted, what the tool received, what it returned. Context injection is explicit. Token counts, cost, and truncation decisions are inspectable. No hidden magic.
 
 ### Web-First UI
 
 Tree conversations need spatial navigation. Side-effect diffs need real rendering. Context inspection needs room. The UI is a SvelteKit web app, not a terminal.
+
+The UI is keyboard-first — looks like a tasteful web app, navigable like a TUI. The layout is built on a configurable pane system with draggable borders. Tree view, conversation view, review view, sessions — all resizable, all rearrangeable.
+
+### Configuration
+
+Configuration is split by concern:
+
+- **Client config**: theme, layout, keybindings, server connections
+- **Server config**: custom tools, hooks, plugins, model providers, AGENTS.md / skills loading
+
+Inspired by OpenCode's architecture where a similar client/server split exists.
 
 ## Related Reading
 
