@@ -13,10 +13,9 @@ import {
   RunError,
   RunResponse,
   SessionResponse,
-  StreamStateResponse,
 } from './Api.ts'
 import { runAgent } from './Agent.ts'
-import { isRunning, getReplayBuffer } from './RunState.ts'
+import { isRunning } from './RunState.ts'
 
 const toSessionResponse = (s: {
   readonly id: string
@@ -79,20 +78,6 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
         storage
           .messages(path.id)
           .pipe(Effect.map((nodes) => nodes.map(toMessageNodeResponse)))
-      )
-      .handle('streamState', ({ path }) =>
-        Effect.gen(function* () {
-          // Verify session exists
-          yield* storage.get(path.id)
-
-          const running = isRunning(path.id)
-          const events = running ? getReplayBuffer(path.id) : []
-
-          return new StreamStateResponse({
-            status: running ? 'running' : 'idle',
-            events: events as unknown[],
-          })
-        })
       )
       .handle('run', ({ path, payload }) =>
         Effect.gen(function* () {

@@ -5,27 +5,29 @@
  * and maintains two things:
  *
  * 1. **Running set** — which sessions have an active agent run.
- * 2. **Replay buffer** — streaming events (TextDelta, ToolCall, ToolResult)
- *    accumulated since RunStart, per session. When a client connects mid-run,
- *    it fetches the buffer to reconstruct the current streaming state.
+ * 2. **Replay buffer** — streaming content events (TextDelta, ToolCall,
+ *    ToolResult) accumulated since RunStart, per session. When a client
+ *    connects mid-run, the SSE middleware replays missed events by `eventId`.
  *
  * Both are ephemeral — lost on server restart, which is correct: if the
  * server restarts, no sessions are running. The persistent conversation
  * history lives in SessionStorage; this module only tracks the in-flight
  * turn that hasn't been persisted yet.
  *
- * Content events carry a monotonic `seq` number (stamped by the bus hook
- * via `nextSeq`) so clients can deduplicate events they received live
- * against events in the replay buffer.
+ * Content events carry a monotonic per-session `eventId` (stamped by the bus
+ * hook). Session streams use it as a cursor for replay and reconnect.
  */
-import { subscribe, type ServerEvent } from './EventBus.ts'
+import { isContentEvent, subscribe, type ContentEvent } from './EventBus.ts'
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
 const running = new Set<string>()
-const buffers = new Map<string, ServerEvent[]>()
+const buffers = new Map<string, ContentEvent[]>()
+
+/** Hard cap for per-session replay memory during a run. */
+const MAX_REPLAY_EVENTS = 5000
 
 // ---------------------------------------------------------------------------
 // Bus subscription — maintains state from events
@@ -43,10 +45,16 @@ subscribe((event) => {
       buffers.delete(event.sessionId)
       break
 
-    case 'TextDelta':
-    case 'ToolCall':
-    case 'ToolResult':
-      buffers.get(event.sessionId)?.push(event)
+    default:
+      if (isContentEvent(event)) {
+        const buffer = buffers.get(event.sessionId)
+        if (!buffer) return
+
+        buffer.push(event)
+        if (buffer.length > MAX_REPLAY_EVENTS) {
+          buffer.shift()
+        }
+      }
       break
   }
 })
@@ -66,10 +74,18 @@ export function getRunningSessionIds(): ReadonlySet<string> {
 }
 
 /**
- * Get the replay buffer for a session — all content events since RunStart.
+ * Get a session replay slice — all content events with eventId > `afterEventId`.
  *
  * Returns an empty array if the session is not running.
  */
-export function getReplayBuffer(sessionId: string): readonly ServerEvent[] {
-  return buffers.get(sessionId) ?? []
+export function getReplayBufferSince(
+  sessionId: string,
+  afterEventId: number
+): readonly ContentEvent[] {
+  const buffer = buffers.get(sessionId)
+  if (!buffer) return []
+
+  if (afterEventId <= 0) return buffer
+
+  return buffer.filter((event) => event.eventId > afterEventId)
 }

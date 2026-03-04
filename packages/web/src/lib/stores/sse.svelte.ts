@@ -1,17 +1,17 @@
 /**
  * Global SSE store — one connection for the app's lifetime.
  *
- * Connects to `/events` (no sessionId filter) so every event from every
- * session flows through. Individual stores subscribe and filter by
- * sessionId as needed.
+ * Connects to `/events` (no sessionId filter) for the control-plane stream
+ * only: session metadata updates and run lifecycle events across sessions.
+ * Heavy per-session content is streamed separately by the messages store.
  *
  * Lifecycle:
  *   - `connect()` in the root layout's `$effect`
  *   - `disconnect()` in the layout's cleanup (page unload)
  *   - Stores call `onEvent()` at module init time to register handlers
  *
- * This eliminates the per-session SSE teardown/reconnect dance entirely.
- * Navigation between sessions is just a filter change — no events lost.
+ * Session indicators (running/idle, title updates) stay live everywhere,
+ * without fanning out full TextDelta / tool payloads to every client.
  */
 import { connectSse, type SseConnection } from '$lib/sse.js'
 import type { ServerEvent } from '$lib/types.js'

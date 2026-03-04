@@ -1,7 +1,7 @@
 /**
  * SSE client — connects to the server's event stream.
  *
- * Uses native EventSource with automatic reconnection.
+ * Uses native EventSource with reconnect handled in this module.
  * Emits typed ServerEvent objects via a callback.
  */
 import type { ServerEvent } from '$lib/types.js'
@@ -26,48 +26,86 @@ export interface SseConnection {
   readonly connected: boolean
 }
 
+export interface ConnectSseOptions {
+  /** Filter events to one session. Omit for global control stream. */
+  sessionId?: string
+  /** Cursor getter used when opening/reconnecting a session stream. */
+  getSince?: () => number
+}
+
 /**
  * Open an SSE connection to the server.
  *
  * @param onEvent - called for each parsed ServerEvent
- * @param sessionId - optional filter to only receive events for one session
+ * @param options - session filter and replay cursor hook
  */
 export function connectSse(
   onEvent: (event: ServerEvent) => void,
-  sessionId?: string
+  options: ConnectSseOptions = {}
 ): SseConnection {
-  const url = new URL('/events', API_BASE)
-  if (sessionId) {
-    url.searchParams.set('sessionId', sessionId)
-  }
-
   let connected = false
-  const es = new EventSource(url.toString())
+  let closed = false
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  let es: EventSource | null = null
 
-  es.addEventListener('connected', () => {
-    connected = true
-  })
-
-  // Register listeners for each event type
-  for (const tag of EVENT_TAGS) {
-    es.addEventListener(tag, (e: MessageEvent) => {
-      try {
-        const data = JSON.parse(e.data) as ServerEvent
-        onEvent(data)
-      } catch {
-        // Malformed event — skip
+  const buildUrl = () => {
+    const url = new URL('/events', API_BASE)
+    if (options.sessionId) {
+      url.searchParams.set('sessionId', options.sessionId)
+      if (options.getSince) {
+        url.searchParams.set('since', String(options.getSince()))
       }
-    })
+    }
+    return url
   }
 
-  es.onerror = () => {
-    connected = false
-    // EventSource auto-reconnects
+  const scheduleReconnect = () => {
+    if (closed || reconnectTimer) return
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
+      open()
+    }, 500)
   }
+
+  const open = () => {
+    if (closed) return
+
+    es = new EventSource(buildUrl().toString())
+
+    es.addEventListener('connected', () => {
+      connected = true
+    })
+
+    for (const tag of EVENT_TAGS) {
+      es.addEventListener(tag, (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data) as ServerEvent
+          onEvent(data)
+        } catch {
+          // Malformed event — skip
+        }
+      })
+    }
+
+    es.onerror = () => {
+      connected = false
+      es?.close()
+      es = null
+      scheduleReconnect()
+    }
+  }
+
+  open()
 
   return {
     close() {
-      es.close()
+      closed = true
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
+      es?.close()
+      es = null
       connected = false
     },
     get connected() {

@@ -100,22 +100,21 @@ export type MessagePart =
 // ---------------------------------------------------------------------------
 // Server event types — mirrors ServerEvent from the agent package
 //
-// Content events (TextDelta, ToolCall, ToolResult) carry a monotonic `seq`
-// per session. Clients use seq to deduplicate replay-buffer events against
-// live SSE events when joining a session mid-run.
+// Content events (TextDelta, ToolCall, ToolResult) carry a monotonic
+// per-session `eventId`. Session streams use it as a replay cursor.
 // ---------------------------------------------------------------------------
 
 export type ServerEvent =
   | { _tag: 'SessionUpdated'; sessionId: string }
   | { _tag: 'MessagesAppended'; sessionId: string }
-  | { _tag: 'TextDelta'; sessionId: string; delta: string; seq: number }
+  | { _tag: 'TextDelta'; sessionId: string; delta: string; eventId: number }
   | {
       _tag: 'ToolCall'
       sessionId: string
       id: string
       name: string
       params: unknown
-      seq: number
+      eventId: number
     }
   | {
       _tag: 'ToolResult'
@@ -124,16 +123,7 @@ export type ServerEvent =
       name: string
       result: unknown
       isFailure: boolean
-      seq: number
+      eventId: number
     }
   | { _tag: 'RunStart'; sessionId: string }
   | { _tag: 'RunEnd'; sessionId: string }
-
-// ---------------------------------------------------------------------------
-// Stream state — returned by GET /sessions/:id/stream-state
-// ---------------------------------------------------------------------------
-
-export interface StreamState {
-  status: 'idle' | 'running'
-  events: ServerEvent[]
-}

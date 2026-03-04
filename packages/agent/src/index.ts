@@ -76,5 +76,5 @@ export type { ServerEvent } from './server/EventBus.ts'
 export {
   isRunning,
   getRunningSessionIds,
-  getReplayBuffer,
+  getReplayBufferSince,
 } from './server/RunState.ts'
