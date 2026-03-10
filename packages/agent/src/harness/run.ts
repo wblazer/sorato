@@ -22,21 +22,11 @@
  * interrupted. The harness tracks per-turn text and appends a synthetic
  * assistant message for any un-flushed content on interrupt.
  */
-import type { AiError, Prompt, Response, Tool } from '@effect/ai'
+import type { AiError, Response, Tool } from '@effect/ai'
 import type { HarnessConfig, HarnessEvent, HarnessResult } from './harness.ts'
 
-import {
-  Cause as Cause_,
-  Effect as Effect_,
-  Exit as Exit_,
-  Ref as Ref_,
-  Stream as Stream_,
-} from 'effect'
-import {
-  LanguageModel as LanguageModel_,
-  Chat as Chat_,
-  Prompt as Prompt_,
-} from '@effect/ai'
+import { Cause, Effect, Exit, Ref, Stream } from 'effect'
+import { Chat, LanguageModel, Prompt } from '@effect/ai'
 
 /** Maximum agent loop iterations to prevent runaway tool-call cycles. */
 const MAX_TURNS = 25
@@ -57,16 +47,16 @@ export const run = <
 >(
   conversation: Prompt.Prompt,
   config: HarnessConfig<Tools, HookE, HookR>
-): Effect_.Effect<
+): Effect.Effect<
   HarnessResult,
   AiError.AiError | HookE,
-  LanguageModel_.LanguageModel | HookR
+  LanguageModel.LanguageModel | HookR
 > =>
-  Effect_.gen(function* () {
-    const chat = yield* Chat_.fromPrompt(conversation)
+  Effect.gen(function* () {
+    const chat = yield* Chat.fromPrompt(conversation)
 
     const fireHooks = (event: HarnessEvent) =>
-      Effect_.gen(function* () {
+      Effect.gen(function* () {
         if (config.hooks) {
           for (const hook of config.hooks) {
             yield* hook.handle(event)
@@ -94,11 +84,11 @@ export const run = <
     // uninterruptibleMask gives us both: `restore` re-enables interrupts
     // for the inner loop, while everything after Effect.exit runs in
     // the uninterruptible outer region.
-    return yield* Effect_.uninterruptibleMask((restore) =>
-      Effect_.gen(function* () {
-        const exit = yield* Effect_.exit(
+    return yield* Effect.uninterruptibleMask((restore) =>
+      Effect.gen(function* () {
+        const exit = yield* Effect.exit(
           restore(
-            Effect_.gen(function* () {
+            Effect.gen(function* () {
               // First turn: empty prompt — the conversation already
               // ends with the user's message, so Chat.streamText sends
               // it as-is. Subsequent turns also use empty (tool results
@@ -114,10 +104,10 @@ export const run = <
                   toolkit: config.toolkit,
                 })
 
-                yield* Stream_.runForEach(
+                yield* Stream.runForEach(
                   stream,
                   (part: Response.StreamPart<Tools>) =>
-                    Effect_.gen(function* () {
+                    Effect.gen(function* () {
                       switch (part.type) {
                         case 'text-delta': {
                           outputText += part.delta
@@ -181,17 +171,17 @@ export const run = <
           usage,
         })
 
-        let fullConversation = yield* Ref_.get(chat.history)
+        let fullConversation = yield* Ref.get(chat.history)
 
         // On interrupt, @effect/ai's Prompt.fromResponseParts drops
         // in-flight text (it only flushes on `text-end`, which never
         // arrives). If there's partial text from the interrupted turn,
         // append a synthetic assistant message so it gets persisted.
         const wasInterrupted =
-          Exit_.isFailure(exit) && Cause_.isInterruptedOnly(exit.cause)
+          Exit.isFailure(exit) && Cause.isInterruptedOnly(exit.cause)
 
         if (wasInterrupted && currentTurnText.length > 0) {
-          fullConversation = Prompt_.merge(fullConversation, [
+          fullConversation = Prompt.merge(fullConversation, [
             {
               role: 'assistant' as const,
               content: currentTurnText,
@@ -202,8 +192,8 @@ export const run = <
         // Re-surface real failures so the caller's error channel is
         // preserved. Interrupts are swallowed — the partial result IS
         // the return value.
-        if (Exit_.isFailure(exit) && !wasInterrupted) {
-          return yield* Effect_.failCause(exit.cause)
+        if (Exit.isFailure(exit) && !wasInterrupted) {
+          return yield* Effect.failCause(exit.cause)
         }
 
         const result = {
