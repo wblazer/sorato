@@ -33,24 +33,35 @@ function createSessionStore() {
       .sort((a, b) => b.updatedAt - a.updatedAt)
   )
 
-  // ── Running state from SSE ────────────────────────────────────────
+  // ── Running / stopping state from SSE ───────────────────────────────
   //
   // Track which sessions are currently running, updated in real-time
   // from the global SSE stream. Initial state comes from the `status`
   // field on sessions fetched from the server.
+  //
+  // `stopping` is a frontend-only transitional state: the user has
+  // requested a stop but the server hasn't confirmed it yet (RunEnd
+  // hasn't arrived). Used for immediate visual feedback and to block
+  // duplicate stop requests.
+
+  let stoppingSessions = $state(new Set<string>())
 
   sseStore.onEvent((event) => {
     if (event._tag === 'RunStart') {
-      // Update the session's status in the local list
       sessions = sessions.map((s) =>
         s.id === event.sessionId ? { ...s, status: 'running' as const } : s
       )
     } else if (event._tag === 'RunEnd') {
+      // Clear stopping state — the run is definitively done.
+      if (stoppingSessions.has(event.sessionId)) {
+        const next = new Set(stoppingSessions)
+        next.delete(event.sessionId)
+        stoppingSessions = next
+      }
       sessions = sessions.map((s) =>
         s.id === event.sessionId ? { ...s, status: 'idle' as const } : s
       )
     } else if (event._tag === 'SessionUpdated') {
-      // Session metadata changed — re-fetch to pick up title changes etc.
       refreshSession(event.sessionId)
     }
   })
@@ -134,6 +145,47 @@ function createSessionStore() {
     }
   }
 
+  /**
+   * Stop an active agent run on a session.
+   *
+   * Transitions to 'stopping' immediately for visual feedback, then
+   * fires the server request. The 'stopping' state is cleared when
+   * RunEnd arrives via SSE, not when the HTTP response returns —
+   * this ensures the UI stays in "stopping" until the run is truly done.
+   */
+  async function stopAgent(
+    sessionId: string
+  ): Promise<'stopped' | 'not_running' | 'error'> {
+    // Guard: don't send duplicate stop requests.
+    if (stoppingSessions.has(sessionId)) return 'stopped'
+
+    // Optimistic: mark as stopping immediately for UI feedback.
+    stoppingSessions = new Set([...stoppingSessions, sessionId])
+
+    try {
+      const res = await fetch(`${API_BASE}/sessions/${sessionId}/stop`, {
+        method: 'POST',
+      })
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+      const data: { status: 'stopped' | 'not_running' } = await res.json()
+      // If the server says it wasn't running, clear stopping state
+      // immediately (no RunEnd will arrive).
+      if (data.status === 'not_running') {
+        const next = new Set(stoppingSessions)
+        next.delete(sessionId)
+        stoppingSessions = next
+      }
+      return data.status
+    } catch (e) {
+      // On error, clear stopping state so the user can retry.
+      const next = new Set(stoppingSessions)
+      next.delete(sessionId)
+      stoppingSessions = next
+      error = e instanceof Error ? e.message : 'Failed to stop agent run'
+      return 'error'
+    }
+  }
+
   /** Enter new-session composer mode. */
   function startComposing() {
     selectedSessionId = null
@@ -144,6 +196,11 @@ function createSessionStore() {
   function isRunning(sessionId: string): boolean {
     const session = sessions.find((s) => s.id === sessionId)
     return session?.status === 'running'
+  }
+
+  /** Check if a stop has been requested but hasn't completed yet. */
+  function isStopping(sessionId: string): boolean {
+    return stoppingSessions.has(sessionId)
   }
 
   return {
@@ -190,9 +247,11 @@ function createSessionStore() {
       composing = false
     },
     isRunning,
+    isStopping,
     startComposing,
     createSession,
     runAgent,
+    stopAgent,
     fetchSessions,
   }
 }

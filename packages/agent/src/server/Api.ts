@@ -42,6 +42,10 @@ export class RunResponse extends Schema.Class<RunResponse>('RunResponse')({
   status: Schema.Literal('started'),
 }) {}
 
+export class StopResponse extends Schema.Class<StopResponse>('StopResponse')({
+  status: Schema.Literal('stopped', 'not_running'),
+}) {}
+
 export class RunError extends Schema.TaggedError<RunError>()('RunError', {
   message: Schema.String,
 }) {}
@@ -118,6 +122,11 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
       .addSuccess(RunResponse)
       .addError(StorageError, { status: 500 })
       .addError(RunError, { status: 500 })
+  )
+  .add(
+    HttpApiEndpoint.post('stop')`/${idParam}/stop`
+      .addSuccess(StopResponse)
+      .addError(StorageError, { status: 500 })
   )
   .prefix('/sessions') {}
 

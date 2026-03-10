@@ -3,8 +3,10 @@
 		CommandPalette,
 		type KeyHint,
 	} from "$lib/components/ui/command-palette/index.js";
+	import { hotkeyStore } from "$lib/stores/hotkeys.svelte.js";
 	import Folder from "@lucide/svelte/icons/folder";
 	import { cn } from "$lib/utils.js";
+	import { untrack } from "svelte";
 
 	const API_BASE = "http://localhost:3100";
 
@@ -20,6 +22,17 @@
 	}
 
 	let { open = $bindable(false), onSelect }: Props = $props();
+
+	// Push/pop overlay scope when the dialog opens/closes so Escape
+	// doesn't pass through to stop the agent run.
+	$effect(() => {
+		if (open) {
+			// untrack: pushScope/popScope mutate $state (overlayStack), which
+			// would re-trigger this effect and cause an infinite loop.
+			untrack(() => hotkeyStore.pushScope('command-palette'));
+			return () => untrack(() => hotkeyStore.popScope('command-palette'));
+		}
+	});
 
 	let query = $state("");
 	let entries = $state<DirectoryEntry[]>([]);

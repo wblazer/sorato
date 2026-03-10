@@ -21,6 +21,7 @@
  */
 import type { MessageNode, MessagePart } from '$lib/types.js'
 import { connectSse, type SseConnection } from '$lib/sse.js'
+import { sseStore } from './sse.svelte.js'
 
 const API_BASE = 'http://localhost:3100'
 
@@ -253,6 +254,20 @@ function createMessagesStore() {
       }
     }
   }
+
+  // Listen for MessagesAppended on the global SSE stream.
+  // Session-scoped streams only carry content events + RunStart/RunEnd,
+  // so appends that happen outside a run (e.g. the system message injected
+  // by the stop handler) only show up on the global stream.
+  sseStore.onEvent((event) => {
+    if (
+      event._tag === 'MessagesAppended' &&
+      currentSessionId &&
+      event.sessionId === currentSessionId
+    ) {
+      refreshMessages(event.sessionId)
+    }
+  })
 
   /** Reset all state. Called when SessionView unmounts. */
   function clear() {

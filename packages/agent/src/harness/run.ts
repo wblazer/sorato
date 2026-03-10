@@ -10,12 +10,33 @@
  * tool results from one turn are visible to the model in the next.
  *
  * Hooks fire on every stream part — text deltas, tool calls, tool results.
+ *
+ * On interruption (e.g. user hitting stop), the agent loop runs inside
+ * `Effect.uninterruptibleMask` with the loop itself restored to
+ * interruptible. When interrupted, `Effect.exit` captures the
+ * interruption as a value, and the cleanup phase (RunEnd hook +
+ * history read + partial text recovery) runs uninterruptibly.
+ *
+ * Partial text recovery: @effect/ai's `Prompt.fromResponseParts` only
+ * flushes text on `text-end`, which never fires when a stream is
+ * interrupted. The harness tracks per-turn text and appends a synthetic
+ * assistant message for any un-flushed content on interrupt.
  */
 import type { AiError, Prompt, Response, Tool } from '@effect/ai'
 import type { HarnessConfig, HarnessEvent, HarnessResult } from './harness.ts'
 
-import { Effect as Effect_, Ref as Ref_, Stream as Stream_ } from 'effect'
-import { LanguageModel as LanguageModel_, Chat as Chat_ } from '@effect/ai'
+import {
+  Cause as Cause_,
+  Effect as Effect_,
+  Exit as Exit_,
+  Ref as Ref_,
+  Stream as Stream_,
+} from 'effect'
+import {
+  LanguageModel as LanguageModel_,
+  Chat as Chat_,
+  Prompt as Prompt_,
+} from '@effect/ai'
 
 /** Maximum agent loop iterations to prevent runaway tool-call cycles. */
 const MAX_TURNS = 25
@@ -53,81 +74,153 @@ export const run = <
         }
       })
 
-    yield* fireHooks({ _tag: 'RunStart' })
-
     // Accumulate text and usage across all turns
     let outputText = ''
     const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
 
-    // First turn: empty prompt — the conversation already ends with the
-    // user's message, so Chat.streamText sends it as-is to the model.
-    // Subsequent turns also use empty (tool results are already in Chat).
-    let prompt: Prompt.RawInput = [] as Array<Prompt.MessageEncoded>
+    // Text accumulated in the CURRENT turn only. Reset at the start of
+    // each turn. Used to recover partial text on interrupt — @effect/ai's
+    // Prompt.fromResponseParts only flushes text on `text-end`, which
+    // never fires when the stream is interrupted mid-text.
+    let currentTurnText = ''
 
-    for (let turn = 0; turn < MAX_TURNS; turn++) {
-      let hadToolCalls = false
+    yield* fireHooks({ _tag: 'RunStart' })
 
-      const stream = chat.streamText({
-        prompt,
-        toolkit: config.toolkit,
-      })
+    // The agent loop runs interruptibly so the user can stop it mid-
+    // stream. But cleanup (RunEnd hook, reading history, returning the
+    // result) MUST run even after interrupt — otherwise callers can't
+    // persist partial content.
+    //
+    // uninterruptibleMask gives us both: `restore` re-enables interrupts
+    // for the inner loop, while everything after Effect.exit runs in
+    // the uninterruptible outer region.
+    return yield* Effect_.uninterruptibleMask((restore) =>
+      Effect_.gen(function* () {
+        const exit = yield* Effect_.exit(
+          restore(
+            Effect_.gen(function* () {
+              // First turn: empty prompt — the conversation already
+              // ends with the user's message, so Chat.streamText sends
+              // it as-is. Subsequent turns also use empty (tool results
+              // are in Chat).
+              let prompt: Prompt.RawInput = [] as Array<Prompt.MessageEncoded>
 
-      yield* Stream_.runForEach(stream, (part: Response.StreamPart<Tools>) =>
-        Effect_.gen(function* () {
-          switch (part.type) {
-            case 'text-delta': {
-              outputText += part.delta
-              yield* fireHooks({ _tag: 'TextDelta', delta: part.delta })
-              break
-            }
-            case 'tool-call': {
-              hadToolCalls = true
-              yield* fireHooks({
-                _tag: 'ToolCall',
-                id: part.id,
-                name: part.name,
-                params: part.params,
-              })
-              break
-            }
-            case 'tool-result': {
-              yield* fireHooks({
-                _tag: 'ToolResult',
-                id: part.id,
-                name: part.name,
-                result: part.result,
-                isFailure: part.isFailure,
-              })
-              break
-            }
-            case 'finish': {
-              usage.inputTokens += part.usage.inputTokens ?? 0
-              usage.outputTokens += part.usage.outputTokens ?? 0
-              usage.totalTokens += part.usage.totalTokens ?? 0
-              break
-            }
-          }
+              for (let turn = 0; turn < MAX_TURNS; turn++) {
+                let hadToolCalls = false
+                currentTurnText = ''
+
+                const stream = chat.streamText({
+                  prompt,
+                  toolkit: config.toolkit,
+                })
+
+                yield* Stream_.runForEach(
+                  stream,
+                  (part: Response.StreamPart<Tools>) =>
+                    Effect_.gen(function* () {
+                      switch (part.type) {
+                        case 'text-delta': {
+                          outputText += part.delta
+                          currentTurnText += part.delta
+                          yield* fireHooks({
+                            _tag: 'TextDelta',
+                            delta: part.delta,
+                          })
+                          break
+                        }
+                        case 'tool-call': {
+                          hadToolCalls = true
+                          yield* fireHooks({
+                            _tag: 'ToolCall',
+                            id: part.id,
+                            name: part.name,
+                            params: part.params,
+                          })
+                          break
+                        }
+                        case 'tool-result': {
+                          yield* fireHooks({
+                            _tag: 'ToolResult',
+                            id: part.id,
+                            name: part.name,
+                            result: part.result,
+                            isFailure: part.isFailure,
+                          })
+                          break
+                        }
+                        case 'finish': {
+                          // Turn completed normally — clear
+                          // currentTurnText so the interrupt
+                          // path knows there's nothing to recover.
+                          currentTurnText = ''
+                          usage.inputTokens += part.usage.inputTokens ?? 0
+                          usage.outputTokens += part.usage.outputTokens ?? 0
+                          usage.totalTokens += part.usage.totalTokens ?? 0
+                          break
+                        }
+                      }
+                    })
+                )
+
+                // If no tool calls this turn, the model is done
+                if (!hadToolCalls) break
+
+                // Turn completed — reset for next turn
+                currentTurnText = ''
+                prompt = [] as Array<Prompt.MessageEncoded>
+              }
+            })
+          )
+        )
+
+        // Uninterruptible from here: fire RunEnd, read history, and
+        // return the result — guaranteed to complete even after interrupt.
+        yield* fireHooks({
+          _tag: 'RunEnd',
+          output: outputText,
+          usage,
         })
-      )
 
-      // If no tool calls this turn, the model is done
-      if (!hadToolCalls) break
+        let fullConversation = yield* Ref_.get(chat.history)
 
-      // Empty array merges as no-op with existing Chat history
-      prompt = [] as Array<Prompt.MessageEncoded>
-    }
+        // On interrupt, @effect/ai's Prompt.fromResponseParts drops
+        // in-flight text (it only flushes on `text-end`, which never
+        // arrives). If there's partial text from the interrupted turn,
+        // append a synthetic assistant message so it gets persisted.
+        const wasInterrupted =
+          Exit_.isFailure(exit) && Cause_.isInterruptedOnly(exit.cause)
 
-    yield* fireHooks({
-      _tag: 'RunEnd',
-      output: outputText,
-      usage,
-    })
+        if (wasInterrupted && currentTurnText.length > 0) {
+          fullConversation = Prompt_.merge(fullConversation, [
+            {
+              role: 'assistant' as const,
+              content: currentTurnText,
+            },
+          ])
+        }
 
-    const fullConversation = yield* Ref_.get(chat.history)
+        // Re-surface real failures so the caller's error channel is
+        // preserved. Interrupts are swallowed — the partial result IS
+        // the return value.
+        if (Exit_.isFailure(exit) && !wasInterrupted) {
+          return yield* Effect_.failCause(exit.cause)
+        }
 
-    return {
-      conversation: fullConversation,
-      text: outputText,
-      usage,
-    } satisfies HarnessResult
+        const result = {
+          conversation: fullConversation,
+          text: outputText,
+          usage,
+        } satisfies HarnessResult
+
+        // Fire RunResult inside the uninterruptible region so hooks
+        // (e.g. persistence) are guaranteed to run even on interrupt.
+        yield* fireHooks({
+          _tag: 'RunResult',
+          result,
+          interrupted: wasInterrupted,
+        })
+
+        return result
+      })
+    )
   })

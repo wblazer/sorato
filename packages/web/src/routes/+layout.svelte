@@ -4,6 +4,7 @@
 	import { Sidebar } from '$lib/components/sidebar/index.js';
 	import { sseStore } from '$lib/stores/sse.svelte.js';
 	import { sessionStore } from '$lib/stores/sessions.svelte.js';
+	import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js';
 
 	let { children } = $props();
 
@@ -17,6 +18,11 @@
 		return () => {
 			sseStore.disconnect();
 		};
+	});
+
+	// Keep hotkey enabled states in sync with overlay scopes.
+	$effect(() => {
+		hotkeyStore.syncScopes();
 	});
 </script>
 

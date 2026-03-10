@@ -4,7 +4,9 @@
  * A materialized view of the event stream. Subscribes to the EventBus
  * and maintains two things:
  *
- * 1. **Running set** — which sessions have an active agent run.
+ * 1. **Running map** — which sessions have an active agent run, keyed
+ *    by session ID → the fiber executing the run. Fiber refs enable
+ *    interruption from the stop endpoint.
  * 2. **Replay buffer** — streaming content events (TextDelta, ToolCall,
  *    ToolResult) accumulated since RunStart, per session. When a client
  *    connects mid-run, the SSE middleware replays missed events by `eventId`.
@@ -17,13 +19,14 @@
  * Content events carry a monotonic per-session `eventId` (stamped by the bus
  * hook). Session streams use it as a cursor for replay and reconnect.
  */
+import type { Fiber } from 'effect'
 import { isContentEvent, subscribe, type ContentEvent } from './EventBus.ts'
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
-const running = new Set<string>()
+const running = new Map<string, Fiber.RuntimeFiber<void, never>>()
 const buffers = new Map<string, ContentEvent[]>()
 
 /** Hard cap for per-session replay memory during a run. */
@@ -36,7 +39,9 @@ const MAX_REPLAY_EVENTS = 5000
 subscribe((event) => {
   switch (event._tag) {
     case 'RunStart':
-      running.add(event.sessionId)
+      // Fiber is registered separately via `registerFiber()` — RunStart
+      // only initialises the replay buffer. The fiber may already be set
+      // (register happens before RunStart fires via hooks).
       buffers.set(event.sessionId, [])
       break
 
@@ -60,6 +65,32 @@ subscribe((event) => {
 })
 
 // ---------------------------------------------------------------------------
+// Fiber registration
+// ---------------------------------------------------------------------------
+
+/**
+ * Register the fiber executing a session's agent run.
+ *
+ * Called from the HTTP handler after `forkDaemon`. This lets the stop
+ * endpoint interrupt the specific fiber later.
+ */
+export function registerFiber(
+  sessionId: string,
+  fiber: Fiber.RuntimeFiber<void, never>
+): void {
+  running.set(sessionId, fiber)
+}
+
+/**
+ * Get the running fiber for a session (if any).
+ */
+export function getFiber(
+  sessionId: string
+): Fiber.RuntimeFiber<void, never> | undefined {
+  return running.get(sessionId)
+}
+
+// ---------------------------------------------------------------------------
 // Queries
 // ---------------------------------------------------------------------------
 
@@ -70,7 +101,7 @@ export function isRunning(sessionId: string): boolean {
 
 /** Get all currently-running session IDs. */
 export function getRunningSessionIds(): ReadonlySet<string> {
-  return running
+  return new Set(running.keys())
 }
 
 /**

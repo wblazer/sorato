@@ -113,7 +113,8 @@ export const createBusHook = (sessionId: string): HarnessHook => ({
     Effect.sync(() => {
       switch (event._tag) {
         case 'RunStart':
-          publish({ _tag: 'RunStart', sessionId })
+          // RunStart/RunEnd lifecycle events are published by Agent.ts
+          // (which owns the run lifecycle), not the harness hook.
           break
         case 'TextDelta':
           publish({
@@ -145,7 +146,10 @@ export const createBusHook = (sessionId: string): HarnessHook => ({
           })
           break
         case 'RunEnd':
-          publish({ _tag: 'RunEnd', sessionId })
+          // See RunStart comment — lifecycle managed by Agent.ts.
+          break
+        case 'RunResult':
+          // Persistence is handled by the persist hook in Agent.ts.
           break
       }
     }),

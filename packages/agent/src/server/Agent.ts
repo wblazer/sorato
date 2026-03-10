@@ -16,7 +16,7 @@
 import { Prompt } from '@effect/ai'
 import { AnthropicClient, AnthropicLanguageModel } from '@effect/ai-anthropic'
 import { FetchHttpClient } from '@effect/platform'
-import { Config, Effect, Layer, Schema } from 'effect'
+import { Cause, Config, Effect, Layer, Schema } from 'effect'
 import { StorageError } from '../session/session.ts'
 import {
   run,
@@ -38,6 +38,8 @@ import {
   Grep,
   GrepHandler,
   SessionStorage,
+  type HarnessEvent,
+  type HarnessHook,
   type SessionId,
 } from '../index.ts'
 import { createBusHook, publish } from './EventBus.ts'
@@ -130,12 +132,53 @@ export const runAgent = (sessionId: SessionId, input: string) =>
     yield* storage.append(sessionId, preamble)
     publish({ _tag: 'MessagesAppended', sessionId })
 
+    // Notify clients the run is live — drives the "running" indicator.
+    publish({ _tag: 'RunStart', sessionId })
+
     // ---------------------------------------------------------------
     // Phase 2: Load the full conversation (now includes user message)
     // and run the harness. run() continues from the conversation as-is.
+    //
+    // run() manages interruptibility internally via its own
+    // uninterruptibleMask — the agent loop is interruptible (so the
+    // user can stop mid-stream) but cleanup always completes.
+    //
+    // Persistence happens via a RunResult hook that fires inside
+    // run()'s uninterruptible cleanup region — guaranteed on both
+    // normal completion and interrupt. No Ref side-channel needed.
     // ---------------------------------------------------------------
     const conversation = yield* storage.conversation(sessionId)
     const messageCountBeforeRun = conversation.content.length
+
+    // Hook that persists new messages when run() completes (or is
+    // interrupted). Fires inside run()'s uninterruptible region,
+    // so it's guaranteed to execute in all cases.
+    const persistHook: HarnessHook<StorageError> = {
+      name: 'persist',
+      handle: (event: HarnessEvent) =>
+        Effect.gen(function* () {
+          if (event._tag !== 'RunResult') return
+
+          const encoded = yield* Schema.encode(Prompt.Prompt)(
+            event.result.conversation
+          ).pipe(
+            Effect.mapError(
+              (error) =>
+                new StorageError({
+                  operation: 'run',
+                  message: `Failed to encode conversation: ${String(error)}`,
+                })
+            )
+          )
+
+          const newMessages = encoded.content.slice(messageCountBeforeRun)
+          if (newMessages.length === 0) return
+
+          yield* storage.append(sessionId, newMessages)
+          publish({ _tag: 'MessagesAppended', sessionId })
+          publish({ _tag: 'SessionUpdated', sessionId })
+        }),
+    }
 
     yield* Effect.scoped(
       Effect.gen(function* () {
@@ -143,10 +186,10 @@ export const runAgent = (sessionId: SessionId, input: string) =>
 
         const config = {
           toolkit: AllTools,
-          hooks: [createBusHook(sessionId)],
+          hooks: [createBusHook(sessionId), persistHook],
         }
 
-        const result = yield* run(conversation, config).pipe(
+        yield* run(conversation, config).pipe(
           Effect.provide(
             Layer.mergeAll(
               Layer.succeed(CurrentShell, shell),
@@ -154,38 +197,19 @@ export const runAgent = (sessionId: SessionId, input: string) =>
             )
           )
         )
-
-        // ---------------------------------------------------------------
-        // Phase 3: Persist only the NEW messages from the harness run
-        // (assistant response, tool calls/results). The user message and
-        // system prompt were already persisted in Phase 1.
-        // ---------------------------------------------------------------
-        const encoded = yield* Schema.encode(Prompt.Prompt)(
-          result.conversation
-        ).pipe(
-          Effect.mapError(
-            (error) =>
-              new StorageError({
-                operation: 'run',
-                message: `Failed to encode conversation: ${String(error)}`,
-              })
-          )
-        )
-
-        const newMessages = encoded.content.slice(messageCountBeforeRun)
-        yield* storage.append(sessionId, newMessages)
-
-        // Notify clients that the assistant's messages are available
-        publish({ _tag: 'MessagesAppended', sessionId })
-        publish({ _tag: 'SessionUpdated', sessionId })
       })
     )
   }).pipe(
+    // RunEnd fires unconditionally — success, failure, or interrupt.
+    // This is the single source of truth for "the run is done".
+    Effect.ensuring(Effect.sync(() => publish({ _tag: 'RunEnd', sessionId }))),
     Effect.catchAllCause((cause) =>
       Effect.sync(() => {
-        // Log the error and notify clients the run ended (even on failure)
-        console.error(`Agent run failed for session ${sessionId}:`, cause)
-        publish({ _tag: 'RunEnd', sessionId })
+        if (Cause.isInterruptedOnly(cause)) {
+          console.log(`Agent run interrupted for session ${sessionId}`)
+        } else {
+          console.error(`Agent run failed for session ${sessionId}:`, cause)
+        }
       })
     ),
     Effect.annotateLogs('sessionId', sessionId)

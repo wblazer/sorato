@@ -5,7 +5,7 @@
  * SessionStorage in its environment — the caller provides it (e.g. SqliteSession).
  */
 import { HttpApiBuilder } from '@effect/platform'
-import { Effect } from 'effect'
+import { Effect, Fiber } from 'effect'
 import { SessionStorage } from '../session/session.ts'
 import {
   Api,
@@ -13,9 +13,11 @@ import {
   RunError,
   RunResponse,
   SessionResponse,
+  StopResponse,
 } from './Api.ts'
 import { runAgent } from './Agent.ts'
-import { isRunning } from './RunState.ts'
+import { isRunning, registerFiber, getFiber } from './RunState.ts'
+import { publish } from './EventBus.ts'
 
 const toSessionResponse = (s: {
   readonly id: string
@@ -93,10 +95,41 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
             })
           }
 
-          // Fork the agent run as a daemon — returns immediately
-          yield* runAgent(path.id, payload.input).pipe(Effect.forkDaemon)
+          // Fork the agent run as a daemon and register the fiber
+          // so the stop endpoint can interrupt it later.
+          const fiber = yield* runAgent(path.id, payload.input).pipe(
+            Effect.forkDaemon
+          )
+          registerFiber(path.id, fiber)
 
           return new RunResponse({ status: 'started' })
+        })
+      )
+      .handle('stop', ({ path }) =>
+        Effect.gen(function* () {
+          const fiber = getFiber(path.id)
+          if (!fiber) {
+            return new StopResponse({ status: 'not_running' })
+          }
+
+          // Interrupt the running fiber and wait for it to finish.
+          // The fiber's uninterruptible cleanup persists partial
+          // assistant content before terminating, so the system message
+          // we append below is guaranteed to come AFTER the partial turn.
+          yield* Fiber.interrupt(fiber)
+
+          // Persist a system message so the LLM knows it was interrupted
+          // on the next turn.
+          yield* storage.append(path.id, [
+            {
+              role: 'system' as const,
+              content:
+                '[The user interrupted the previous response. The assistant message above may be incomplete.]',
+            },
+          ])
+          publish({ _tag: 'MessagesAppended', sessionId: path.id })
+
+          return new StopResponse({ status: 'stopped' })
         })
       )
   })

@@ -50,6 +50,11 @@ export type HarnessEvent =
         readonly totalTokens: number
       }
     }
+  | {
+      readonly _tag: 'RunResult'
+      readonly result: HarnessResult
+      readonly interrupted: boolean
+    }
 
 /**
  * A hook is a named function that reacts to harness events.
