@@ -15,6 +15,13 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 
 **Evaluation primitives** live in `packages/evals/bench`: `test()`, `run()`, Reporter.
 
+**HTTP Server** (`src/server/`) — Bun HTTP server exposing:
+
+- `GET /handshake` — Connection validation (returns `{ version, status: 'ok' }`)
+- Sessions API — create, list, get, delete, run agent, stop, message history
+- Directories API — browse filesystem with `~` expansion
+- SSE `/events` — streaming for session updates and run lifecycle
+
 **Execution model**: Three distinct contexts — orchestrator, agent runtime (harness), and sandbox. The harness runs outside the sandbox so a broken environment doesn't kill the agent loop. See `VISION.md` and `src/sandbox/DOCS.md`.
 
 **Key design decisions**:
@@ -33,6 +40,8 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 - `src/tool/` — Agent tools: `ReadFile` + `EditFile` (hashline protocol), `Bash`
 - `src/harness/` — Harness config, hooks, and run function (multi-turn agent loop)
 - `src/session/` — Session storage: `SessionStorage` tag, `SqliteSession` layer, tree-structured messages
+- `src/server/` — HTTP API: sessions, directories, handshake, SSE streaming
 - `packages/evals/bench/` — eval primitives (`test`, `run`, Reporter)
+- `packages/web/` — Svelte web UI with connection management
 - `VISION.md` — strategic rationale, execution model, industry context
 - `ROADMAP.md` — phased plan from current state to production

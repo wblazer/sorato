@@ -6,8 +6,6 @@
  */
 import type { ServerEvent } from '$lib/types.js'
 
-const API_BASE = 'http://localhost:3100'
-
 /** Known event tags that the server emits. */
 const EVENT_TAGS = [
   'SessionUpdated',
@@ -36,10 +34,12 @@ export interface ConnectSseOptions {
 /**
  * Open an SSE connection to the server.
  *
+ * @param apiBase - the base URL of the server (e.g., 'http://localhost:3100')
  * @param onEvent - called for each parsed ServerEvent
  * @param options - session filter and replay cursor hook
  */
 export function connectSse(
+  apiBase: string,
   onEvent: (event: ServerEvent) => void,
   options: ConnectSseOptions = {}
 ): SseConnection {
@@ -49,7 +49,7 @@ export function connectSse(
   let es: EventSource | null = null
 
   const buildUrl = () => {
-    const url = new URL('/events', API_BASE)
+    const url = new URL('/events', apiBase)
     if (options.sessionId) {
       url.searchParams.set('sessionId', options.sessionId)
       if (options.getSince) {

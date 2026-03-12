@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "format": "prettier --write ."
   },
   "devDependencies": {
     "@internationalized/date": "^3.10.0",
@@ -20,6 +21,8 @@
     "@tailwindcss/vite": "^4.2.1",
     "bits-ui": "^2.14.4",
     "clsx": "^2.1.1",
+    "prettier": "^3.8.1",
+    "prettier-plugin-svelte": "^3.5.1",
     "svelte": "^5.51.0",
     "svelte-check": "^4.3.6",
     "tailwind-merge": "^3.4.0",

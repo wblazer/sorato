@@ -10,13 +10,15 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { HttpApiBuilder, HttpMiddleware, HttpServer } from '@effect/platform'
 import { BunHttpServer, BunRuntime } from '@effect/platform-bun'
-import { Layer } from 'effect'
+import { Effect, Layer } from 'effect'
 import { SqliteSession } from '../index.ts'
 import { AgentLive } from './Agent.ts'
 import { Api } from './Api.ts'
 import { DirectoriesLive } from './Directories.ts'
 import { SessionsLive } from './Sessions.ts'
 import { withSse } from './Sse.ts'
+
+import { HandshakeResponse } from './Api.ts'
 
 // ── Data directory ──────────────────────────────────────────────────
 
@@ -29,9 +31,18 @@ const dataDir =
 
 // ── Compose layers ──────────────────────────────────────────────────
 
+const HandshakeLive = HttpApiBuilder.group(Api, 'handshake', (handlers) =>
+  Effect.succeed(
+    handlers.handle('check', () =>
+      Effect.succeed(new HandshakeResponse({ version: '0.0.1', status: 'ok' }))
+    )
+  )
+)
+
 const ApiLive = HttpApiBuilder.api(Api).pipe(
   Layer.provide(SessionsLive),
-  Layer.provide(DirectoriesLive)
+  Layer.provide(DirectoriesLive),
+  Layer.provide(HandshakeLive)
 )
 
 const StorageLive = SqliteSession({ path: join(dataDir, 'sessions.db') })

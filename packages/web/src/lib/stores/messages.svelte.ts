@@ -22,8 +22,7 @@
 import type { MessageNode, MessagePart } from '$lib/types.js'
 import { connectSse, type SseConnection } from '$lib/sse.js'
 import { sseStore } from './sse.svelte.js'
-
-const API_BASE = 'http://localhost:3100'
+import { connectionsStore } from './connections.svelte.js'
 
 function createMessagesStore() {
   let messages = $state<MessageNode[]>([])
@@ -59,7 +58,11 @@ function createMessagesStore() {
   function openSessionStream(sessionId: string) {
     closeSessionStream()
 
+    const apiBase = connectionsStore.getApiBase()
+    if (!apiBase) return
+
     streamConnection = connectSse(
+      apiBase,
       (event) => {
         if (!('sessionId' in event) || event.sessionId !== currentSessionId)
           return
@@ -182,7 +185,7 @@ function createMessagesStore() {
 
     try {
       const messagesRes = await fetch(
-        `${API_BASE}/sessions/${sessionId}/messages`
+        `${connectionsStore.getApiBase()}/sessions/${sessionId}/messages`
       )
 
       if (currentSessionId !== sessionId) return
@@ -239,7 +242,9 @@ function createMessagesStore() {
     opts?: { clearParts?: boolean }
   ) {
     try {
-      const res = await fetch(`${API_BASE}/sessions/${sessionId}/messages`)
+      const res = await fetch(
+        `${connectionsStore.getApiBase()}/sessions/${sessionId}/messages`
+      )
       if (!res.ok) return
       const fresh: MessageNode[] = await res.json()
       if (currentSessionId === sessionId) {

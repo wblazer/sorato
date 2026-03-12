@@ -1,7 +1,6 @@
 import type { Session } from '$lib/types.js'
 import { sseStore } from './sse.svelte.js'
-
-const API_BASE = 'http://localhost:3100'
+import { connectionsStore } from './connections.svelte.js'
 
 function createSessionStore() {
   let sessions = $state<Session[]>([])
@@ -69,7 +68,9 @@ function createSessionStore() {
   /** Re-fetch a single session's metadata (background, silent). */
   async function refreshSession(sessionId: string) {
     try {
-      const res = await fetch(`${API_BASE}/sessions/${sessionId}`)
+      const res = await fetch(
+        `${connectionsStore.getApiBase()}/sessions/${sessionId}`
+      )
       if (!res.ok) return
       const fresh: Session = await res.json()
       sessions = sessions.map((s) => (s.id === sessionId ? fresh : s))
@@ -84,7 +85,7 @@ function createSessionStore() {
     loading = true
     error = null
     try {
-      const res = await fetch(`${API_BASE}/sessions`)
+      const res = await fetch(`${connectionsStore.getApiBase()}/sessions`)
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
       sessions = await res.json()
 
@@ -108,7 +109,7 @@ function createSessionStore() {
     if (!dir) return null
 
     try {
-      const res = await fetch(`${API_BASE}/sessions`, {
+      const res = await fetch(`${connectionsStore.getApiBase()}/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ directory: dir }),
@@ -132,11 +133,14 @@ function createSessionStore() {
    */
   async function runAgent(sessionId: string, input: string): Promise<boolean> {
     try {
-      const res = await fetch(`${API_BASE}/sessions/${sessionId}/run`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input }),
-      })
+      const res = await fetch(
+        `${connectionsStore.getApiBase()}/sessions/${sessionId}/run`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input }),
+        }
+      )
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
       return true
     } catch (e) {
@@ -163,9 +167,12 @@ function createSessionStore() {
     stoppingSessions = new Set([...stoppingSessions, sessionId])
 
     try {
-      const res = await fetch(`${API_BASE}/sessions/${sessionId}/stop`, {
-        method: 'POST',
-      })
+      const res = await fetch(
+        `${connectionsStore.getApiBase()}/sessions/${sessionId}/stop`,
+        {
+          method: 'POST',
+        }
+      )
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
       const data: { status: 'stopped' | 'not_running' } = await res.json()
       // If the server says it wasn't running, clear stopping state

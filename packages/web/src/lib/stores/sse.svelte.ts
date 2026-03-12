@@ -15,6 +15,7 @@
  */
 import { connectSse, type SseConnection } from '$lib/sse.js'
 import type { ServerEvent } from '$lib/types.js'
+import { connectionsStore } from './connections.svelte.js'
 
 type EventHandler = (event: ServerEvent) => void
 
@@ -28,7 +29,9 @@ function createSseStore() {
    */
   function connect() {
     if (connection) return
-    connection = connectSse((event) => {
+    const apiBase = connectionsStore.getApiBase()
+    if (!apiBase) return
+    connection = connectSse(apiBase, (event) => {
       for (const listener of listeners) {
         listener(event)
       }

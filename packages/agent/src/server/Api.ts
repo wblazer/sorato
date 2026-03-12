@@ -75,6 +75,15 @@ export class DirectoryError extends Schema.TaggedError<DirectoryError>()(
   { message: Schema.String }
 ) {}
 
+export class HandshakeResponse extends Schema.Class<HandshakeResponse>(
+  'HandshakeResponse'
+)({
+  /** Server version identifier */
+  version: Schema.String,
+  /** Server status — 'ok' if healthy */
+  status: Schema.Literal('ok'),
+}) {}
+
 // ── Sessions Group ──────────────────────────────────────────────────
 
 const idParam = HttpApiSchema.param('id', SessionId)
@@ -147,8 +156,15 @@ export class DirectoriesGroup extends HttpApiGroup.make('directories')
   )
   .prefix('/directories') {}
 
+// ── Handshake Group ─────────────────────────────────────────────────
+
+export class HandshakeGroup extends HttpApiGroup.make('handshake')
+  .add(HttpApiEndpoint.get('check', '/').addSuccess(HandshakeResponse))
+  .prefix('/handshake') {}
+
 // ── Root API ────────────────────────────────────────────────────────
 
 export class Api extends HttpApi.make('agents')
   .add(SessionsGroup)
-  .add(DirectoriesGroup) {}
+  .add(DirectoriesGroup)
+  .add(HandshakeGroup) {}
