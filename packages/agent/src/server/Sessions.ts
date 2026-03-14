@@ -16,7 +16,13 @@ import {
   StopResponse,
 } from './Api.ts'
 import { runAgent } from './Agent.ts'
-import { isRunning, registerFiber, getFiber } from './RunState.ts'
+import {
+  claimRun,
+  getFiber,
+  isRunning,
+  registerFiber,
+  releaseRun,
+} from './RunState.ts'
 import { publish } from './EventBus.ts'
 
 const toSessionResponse = (s: {
@@ -86,21 +92,19 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
           // Verify session exists
           yield* storage.get(path.id)
 
-          // Guard: reject if a run is already active for this session.
-          // Two concurrent runs on the same session corrupt the conversation
-          // (interleaved events, stomped replay buffer, mixed responses).
-          if (isRunning(path.id)) {
+          if (!claimRun(path.id)) {
             return yield* new RunError({
               message: `Session ${path.id} already has an active run`,
             })
           }
 
-          // Fork the agent run as a daemon and register the fiber
-          // so the stop endpoint can interrupt it later.
-          const fiber = yield* runAgent(path.id, payload.input).pipe(
-            Effect.forkDaemon
+          yield* runAgent(path.id, payload.input).pipe(
+            Effect.forkDaemon,
+            Effect.tap((fiber) =>
+              Effect.sync(() => registerFiber(path.id, fiber))
+            ),
+            Effect.onError(() => Effect.sync(() => releaseRun(path.id)))
           )
-          registerFiber(path.id, fiber)
 
           return new RunResponse({ status: 'started' })
         })
@@ -109,6 +113,11 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
         Effect.gen(function* () {
           const fiber = getFiber(path.id)
           if (!fiber) {
+            if (isRunning(path.id)) {
+              releaseRun(path.id)
+              return new StopResponse({ status: 'stopped' })
+            }
+
             return new StopResponse({ status: 'not_running' })
           }
 

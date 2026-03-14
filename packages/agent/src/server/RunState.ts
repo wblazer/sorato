@@ -5,8 +5,8 @@
  * and maintains two things:
  *
  * 1. **Running map** — which sessions have an active agent run, keyed
- *    by session ID → the fiber executing the run. Fiber refs enable
- *    interruption from the stop endpoint.
+ *    by session ID → attached fiber (or a start claim before attachment).
+ *    Fiber refs enable interruption from the stop endpoint.
  * 2. **Replay buffer** — streaming content events (TextDelta, ToolCall,
  *    ToolResult) accumulated since RunStart, per session. When a client
  *    connects mid-run, the SSE middleware replays missed events by `eventId`.
@@ -26,7 +26,7 @@ import { isContentEvent, subscribe, type ContentEvent } from './EventBus.ts'
 // State
 // ---------------------------------------------------------------------------
 
-const running = new Map<string, Fiber.RuntimeFiber<void, never>>()
+const running = new Map<string, Fiber.RuntimeFiber<void, never> | null>()
 const buffers = new Map<string, ContentEvent[]>()
 
 /** Hard cap for per-session replay memory during a run. */
@@ -69,16 +69,35 @@ subscribe((event) => {
 // ---------------------------------------------------------------------------
 
 /**
- * Register the fiber executing a session's agent run.
+ * Atomically reserve a session for a new run.
  *
- * Called from the HTTP handler after `forkDaemon`. This lets the stop
- * endpoint interrupt the specific fiber later.
+ * Returns false when another run already owns the session.
+ */
+export function claimRun(sessionId: string): boolean {
+  if (running.has(sessionId)) return false
+  running.set(sessionId, null)
+  return true
+}
+
+/**
+ * Attach the fiber executing a session's agent run.
+ *
+ * Called from the HTTP handler after `forkDaemon`. The session is already
+ * marked running via `claimRun()` before the fiber exists.
  */
 export function registerFiber(
   sessionId: string,
   fiber: Fiber.RuntimeFiber<void, never>
 ): void {
+  if (!running.has(sessionId)) {
+    throw new Error(`Cannot register fiber for unclaimed session ${sessionId}`)
+  }
   running.set(sessionId, fiber)
+}
+
+/** Release a claimed or running session. */
+export function releaseRun(sessionId: string): void {
+  running.delete(sessionId)
 }
 
 /**
@@ -87,7 +106,7 @@ export function registerFiber(
 export function getFiber(
   sessionId: string
 ): Fiber.RuntimeFiber<void, never> | undefined {
-  return running.get(sessionId)
+  return running.get(sessionId) ?? undefined
 }
 
 // ---------------------------------------------------------------------------
@@ -102,6 +121,12 @@ export function isRunning(sessionId: string): boolean {
 /** Get all currently-running session IDs. */
 export function getRunningSessionIds(): ReadonlySet<string> {
   return new Set(running.keys())
+}
+
+/** Reset in-memory run state for tests. */
+export function resetRunState(): void {
+  running.clear()
+  buffers.clear()
 }
 
 /**
