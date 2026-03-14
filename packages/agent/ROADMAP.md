@@ -17,7 +17,7 @@ The bones. Tools work, the sandbox works, sessions persist, the server talks to 
 The server serves many clients running many sessions. It needs to be efficient.
 
 - [x] **Per-session event routing** — currently all events from all sessions stream to every client. Investigate and implement subscription-based routing so clients only receive events for sessions they care about.
-- [ ] **Agent interruption** — ability to cancel a running agent loop mid-execution.
+- [x] **Agent interruption** — ability to cancel a running agent loop mid-execution.
 - [ ] **Message queuing** — queue user messages when the agent is mid-loop and insert the user message as soon as possible
 - [ ] **Configurable server connections** — clients connect to a named server (local or remote) and can switch between them. No more hardcoded localhost.
 
