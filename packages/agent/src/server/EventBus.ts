@@ -3,7 +3,7 @@
  *
  * Uses a plain EventEmitter for simplicity. Events flow from:
  *   - Harness hooks (via `createBusHook`)
- *   - Direct `publish()` calls (e.g. MessagesAppended from Agent.ts)
+ *   - Direct `publish()` calls from server run orchestration
  *
  * To:
  *   - SSE connections (via `subscribe`)
@@ -113,7 +113,7 @@ export const createBusHook = (sessionId: string): HarnessHook => ({
     Effect.sync(() => {
       switch (event._tag) {
         case 'RunStart':
-          // RunStart/RunEnd lifecycle events are published by Agent.ts
+          // RunStart/RunEnd lifecycle events are published by run-agent.ts
           // (which owns the run lifecycle), not the harness hook.
           break
         case 'TextDelta':
@@ -146,10 +146,10 @@ export const createBusHook = (sessionId: string): HarnessHook => ({
           })
           break
         case 'RunEnd':
-          // See RunStart comment — lifecycle managed by Agent.ts.
+          // See RunStart comment — lifecycle managed by run-agent.ts.
           break
         case 'RunResult':
-          // Persistence is handled by the persist hook in Agent.ts.
+          // Persistence is handled by the run persistence hook.
           break
       }
     }),

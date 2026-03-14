@@ -15,7 +15,7 @@ import {
   SessionResponse,
   StopResponse,
 } from './Api.ts'
-import { runAgent } from './Agent.ts'
+import { runAgent } from './run-agent.ts'
 import {
   claimRun,
   getFiber,
