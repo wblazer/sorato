@@ -19,7 +19,7 @@
  * delivery on the same connection. No separate stream-state fetch means no
  * overlap/gap race at the replay/live boundary.
  */
-import type { MessageNode, MessagePart } from '$lib/types.js'
+import type { MessageNode, MessagePart, StreamCursor } from '$lib/types.js'
 import { connectSse, type SseConnection } from '$lib/sse.js'
 import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
@@ -37,16 +37,25 @@ function createMessagesStore() {
 
   // Cursor of the last streamed content event seen per session.
   // Used for catch-up when (re)opening a session stream.
-  const lastEventIds = new Map<string, number>()
+  const lastCursors = new Map<string, StreamCursor>()
 
   let streamConnection: SseConnection | null = null
 
-  const getLastEventId = (sessionId: string) => lastEventIds.get(sessionId) ?? 0
+  const getLastCursor = (sessionId: string) =>
+    lastCursors.get(sessionId) ?? null
 
-  const setLastEventId = (sessionId: string, eventId: number) => {
-    const prev = getLastEventId(sessionId)
-    if (eventId > prev) {
-      lastEventIds.set(sessionId, eventId)
+  const setRunCursor = (sessionId: string, runId: string) => {
+    lastCursors.set(sessionId, { runId, eventId: 0 })
+  }
+
+  const setContentCursor = (
+    sessionId: string,
+    runId: string,
+    eventId: number
+  ) => {
+    const prev = getLastCursor(sessionId)
+    if (!prev || prev.runId !== runId || eventId > prev.eventId) {
+      lastCursors.set(sessionId, { runId, eventId })
     }
   }
 
@@ -70,17 +79,18 @@ function createMessagesStore() {
         switch (event._tag) {
           case 'RunStart':
             streamingParts = []
+            setRunCursor(sessionId, event.runId)
             // User message is persisted before run starts; refresh to show it.
             refreshMessages(sessionId)
             break
 
           case 'TextDelta':
-            setLastEventId(sessionId, event.eventId)
+            setContentCursor(sessionId, event.runId, event.eventId)
             appendTextDelta(event.delta)
             break
 
           case 'ToolCall':
-            setLastEventId(sessionId, event.eventId)
+            setContentCursor(sessionId, event.runId, event.eventId)
             streamingParts = [
               ...streamingParts,
               {
@@ -93,7 +103,7 @@ function createMessagesStore() {
             break
 
           case 'ToolResult':
-            setLastEventId(sessionId, event.eventId)
+            setContentCursor(sessionId, event.runId, event.eventId)
             streamingParts = [
               ...streamingParts,
               {
@@ -120,7 +130,7 @@ function createMessagesStore() {
       },
       {
         sessionId,
-        getSince: () => getLastEventId(sessionId),
+        getSince: () => getLastCursor(sessionId),
       }
     )
   }

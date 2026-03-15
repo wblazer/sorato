@@ -19,10 +19,13 @@ import {
 } from '../index.ts'
 import { AllTools, SYSTEM_PROMPT } from './agent-config.ts'
 import { createBusHook, publish } from './event-bus.ts'
+import { endEventReplay, startEventReplay } from './event-replay.ts'
 import { createPersistenceHook } from './run-persistence.ts'
 
-export const runAgent = (sessionId: SessionId, input: string) =>
-  Effect.gen(function* () {
+export const runAgent = (sessionId: SessionId, input: string) => {
+  const runId = crypto.randomUUID()
+
+  return Effect.gen(function* () {
     const storage = yield* SessionStorage
     const sandbox = yield* Sandbox
 
@@ -39,7 +42,8 @@ export const runAgent = (sessionId: SessionId, input: string) =>
 
     yield* storage.append(sessionId, preamble)
     publish({ _tag: 'MessagesAppended', sessionId })
-    publish({ _tag: 'RunStart', sessionId })
+    startEventReplay(sessionId, runId)
+    publish({ _tag: 'RunStart', sessionId, runId })
 
     const conversation = yield* storage.conversation(sessionId)
     const messageCountBeforeRun = conversation.content.length
@@ -51,7 +55,7 @@ export const runAgent = (sessionId: SessionId, input: string) =>
         yield* run(conversation, {
           toolkit: AllTools,
           hooks: [
-            createBusHook(sessionId),
+            createBusHook(sessionId, runId),
             createPersistenceHook(sessionId, messageCountBeforeRun),
           ],
         }).pipe(
@@ -65,7 +69,12 @@ export const runAgent = (sessionId: SessionId, input: string) =>
       })
     )
   }).pipe(
-    Effect.ensuring(Effect.sync(() => publish({ _tag: 'RunEnd', sessionId }))),
+    Effect.ensuring(
+      Effect.sync(() => {
+        endEventReplay(sessionId, runId)
+        publish({ _tag: 'RunEnd', sessionId, runId })
+      })
+    ),
     Effect.catchAllCause((cause) =>
       Effect.sync(() => {
         if (Cause.isInterruptedOnly(cause)) {
@@ -77,3 +86,4 @@ export const runAgent = (sessionId: SessionId, input: string) =>
     ),
     Effect.annotateLogs('sessionId', sessionId)
   )
+}

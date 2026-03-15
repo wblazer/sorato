@@ -4,7 +4,7 @@
  * Uses native EventSource with reconnect handled in this module.
  * Emits typed ServerEvent objects via a callback.
  */
-import type { ServerEvent } from '$lib/types.js'
+import type { ServerEvent, StreamCursor } from '$lib/types.js'
 
 /** Known event tags that the server emits. */
 const EVENT_TAGS = [
@@ -28,7 +28,11 @@ export interface ConnectSseOptions {
   /** Filter events to one session. Omit for global control stream. */
   sessionId?: string
   /** Cursor getter used when opening/reconnecting a session stream. */
-  getSince?: () => number
+  getSince?: () => StreamCursor | null
+}
+
+function formatCursor(cursor: StreamCursor): string {
+  return `${cursor.runId}:${cursor.eventId}`
 }
 
 /**
@@ -52,8 +56,9 @@ export function connectSse(
     const url = new URL('/events', apiBase)
     if (options.sessionId) {
       url.searchParams.set('sessionId', options.sessionId)
-      if (options.getSince) {
-        url.searchParams.set('since', String(options.getSince()))
+      const cursor = options.getSince?.()
+      if (cursor) {
+        url.searchParams.set('since', formatCursor(cursor))
       }
     }
     return url

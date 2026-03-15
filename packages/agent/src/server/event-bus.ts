@@ -10,15 +10,16 @@
  *   - Run registry + replay buffer (via `subscribe`) — materialized views for run control and SSE replay
  *
  * Content events (TextDelta, ToolCall, ToolResult) carry a monotonic
- * per-session `eventId`, stamped by the bus hook. Session SSE streams use
- * this cursor to replay missed events and continue live without gaps.
+ * `eventId` within a single `runId`. Session SSE streams use the pair as a
+ * run-scoped replay cursor.
  *
  * Note: this is in-process only. If the harness runs in a different
  * process, events won't bridge.
  */
 import { EventEmitter } from 'node:events'
-import type { HarnessHook, HarnessEvent } from '../harness/harness.ts'
 import { Effect } from 'effect'
+import type { HarnessEvent, HarnessHook } from '../harness/harness.ts'
+import { appendReplayEvent } from './event-replay.ts'
 
 // ---------------------------------------------------------------------------
 // Event types
@@ -30,12 +31,14 @@ export type ServerEvent =
   | {
       readonly _tag: 'TextDelta'
       readonly sessionId: string
+      readonly runId: string
       readonly delta: string
       readonly eventId: number
     }
   | {
       readonly _tag: 'ToolCall'
       readonly sessionId: string
+      readonly runId: string
       readonly id: string
       readonly name: string
       readonly params: unknown
@@ -44,14 +47,23 @@ export type ServerEvent =
   | {
       readonly _tag: 'ToolResult'
       readonly sessionId: string
+      readonly runId: string
       readonly id: string
       readonly name: string
       readonly result: unknown
       readonly isFailure: boolean
       readonly eventId: number
     }
-  | { readonly _tag: 'RunStart'; readonly sessionId: string }
-  | { readonly _tag: 'RunEnd'; readonly sessionId: string }
+  | {
+      readonly _tag: 'RunStart'
+      readonly sessionId: string
+      readonly runId: string
+    }
+  | {
+      readonly _tag: 'RunEnd'
+      readonly sessionId: string
+      readonly runId: string
+    }
 
 export type ContentEvent = Extract<
   ServerEvent,
@@ -85,19 +97,6 @@ export function subscribe(listener: (event: ServerEvent) => void): () => void {
 }
 
 // ---------------------------------------------------------------------------
-// Event IDs — monotonic per session
-// ---------------------------------------------------------------------------
-
-const eventCounters = new Map<string, number>()
-
-/** Get the next content event ID for a session. */
-function nextEventId(sessionId: string): number {
-  const eventId = (eventCounters.get(sessionId) ?? 0) + 1
-  eventCounters.set(sessionId, eventId)
-  return eventId
-}
-
-// ---------------------------------------------------------------------------
 // Harness hook bridge
 // ---------------------------------------------------------------------------
 
@@ -105,9 +104,13 @@ function nextEventId(sessionId: string): number {
  * Create a `HarnessHook` that forwards harness events to the event bus.
  *
  * Bind it to a sessionId so consumers know which session the events
- * belong to. Content events are stamped with a monotonic `eventId`.
+ * belong to. Content events are stamped with a monotonic `eventId`
+ * within the current run.
  */
-export const createBusHook = (sessionId: string): HarnessHook => ({
+export const createBusHook = (
+  sessionId: string,
+  runId: string
+): HarnessHook => ({
   name: 'event-bus',
   handle: (event: HarnessEvent) =>
     Effect.sync(() => {
@@ -117,33 +120,39 @@ export const createBusHook = (sessionId: string): HarnessHook => ({
           // (which owns the run lifecycle), not the harness hook.
           break
         case 'TextDelta':
-          publish({
-            _tag: 'TextDelta',
-            sessionId,
-            delta: event.delta,
-            eventId: nextEventId(sessionId),
-          })
+          publish(
+            appendReplayEvent(sessionId, runId, {
+              _tag: 'TextDelta',
+              sessionId,
+              runId,
+              delta: event.delta,
+            })
+          )
           break
         case 'ToolCall':
-          publish({
-            _tag: 'ToolCall',
-            sessionId,
-            id: event.id,
-            name: event.name,
-            params: event.params,
-            eventId: nextEventId(sessionId),
-          })
+          publish(
+            appendReplayEvent(sessionId, runId, {
+              _tag: 'ToolCall',
+              sessionId,
+              runId,
+              id: event.id,
+              name: event.name,
+              params: event.params,
+            })
+          )
           break
         case 'ToolResult':
-          publish({
-            _tag: 'ToolResult',
-            sessionId,
-            id: event.id,
-            name: event.name,
-            result: event.result,
-            isFailure: event.isFailure,
-            eventId: nextEventId(sessionId),
-          })
+          publish(
+            appendReplayEvent(sessionId, runId, {
+              _tag: 'ToolResult',
+              sessionId,
+              runId,
+              id: event.id,
+              name: event.name,
+              result: event.result,
+              isFailure: event.isFailure,
+            })
+          )
           break
         case 'RunEnd':
           // See RunStart comment — lifecycle managed by run-agent.ts.

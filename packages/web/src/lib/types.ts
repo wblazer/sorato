@@ -101,16 +101,29 @@ export type MessagePart =
 // Server event types — mirrors ServerEvent from the agent package
 //
 // Content events (TextDelta, ToolCall, ToolResult) carry a monotonic
-// per-session `eventId`. Session streams use it as a replay cursor.
+// `eventId` within a single `runId`. Session streams use the pair as a
+// replay cursor.
 // ---------------------------------------------------------------------------
+
+export interface StreamCursor {
+  runId: string
+  eventId: number
+}
 
 export type ServerEvent =
   | { _tag: 'SessionUpdated'; sessionId: string }
   | { _tag: 'MessagesAppended'; sessionId: string }
-  | { _tag: 'TextDelta'; sessionId: string; delta: string; eventId: number }
+  | {
+      _tag: 'TextDelta'
+      sessionId: string
+      runId: string
+      delta: string
+      eventId: number
+    }
   | {
       _tag: 'ToolCall'
       sessionId: string
+      runId: string
       id: string
       name: string
       params: unknown
@@ -119,11 +132,12 @@ export type ServerEvent =
   | {
       _tag: 'ToolResult'
       sessionId: string
+      runId: string
       id: string
       name: string
       result: unknown
       isFailure: boolean
       eventId: number
     }
-  | { _tag: 'RunStart'; sessionId: string }
-  | { _tag: 'RunEnd'; sessionId: string }
+  | { _tag: 'RunStart'; sessionId: string; runId: string }
+  | { _tag: 'RunEnd'; sessionId: string; runId: string }

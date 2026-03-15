@@ -1,43 +1,82 @@
-import { isContentEvent, subscribe, type ContentEvent } from './event-bus.ts'
+import type { ContentEvent } from './event-bus.ts'
 
-const buffers = new Map<string, ContentEvent[]>()
+export interface StreamCursor {
+  readonly runId: string
+  readonly eventId: number
+}
+
+interface ReplayState {
+  readonly runId: string
+  nextEventId: number
+  readonly events: ContentEvent[]
+}
+
+type UnstampedContentEvent = ContentEvent extends infer Event
+  ? Event extends ContentEvent
+    ? Omit<Event, 'eventId'>
+    : never
+  : never
+
+const buffers = new Map<string, ReplayState>()
 
 const MAX_REPLAY_EVENTS = 5000
 
-subscribe((event) => {
-  switch (event._tag) {
-    case 'RunStart':
-      buffers.set(event.sessionId, [])
-      break
+export function startEventReplay(sessionId: string, runId: string): void {
+  buffers.set(sessionId, { runId, nextEventId: 1, events: [] })
+}
 
-    case 'RunEnd':
-      buffers.delete(event.sessionId)
-      break
-
-    default:
-      if (isContentEvent(event)) {
-        const buffer = buffers.get(event.sessionId)
-        if (!buffer) return
-
-        buffer.push(event)
-        if (buffer.length > MAX_REPLAY_EVENTS) {
-          buffer.shift()
-        }
-      }
-      break
+export function appendReplayEvent(
+  sessionId: string,
+  runId: string,
+  event: UnstampedContentEvent
+): ContentEvent {
+  const state = buffers.get(sessionId)
+  if (!state || state.runId !== runId) {
+    throw new Error(
+      `No active replay state for session ${sessionId} and run ${runId}`
+    )
   }
-})
+
+  const replayEvent = { ...event, eventId: state.nextEventId++ }
+  state.events.push(replayEvent)
+  if (state.events.length > MAX_REPLAY_EVENTS) {
+    state.events.shift()
+  }
+
+  return replayEvent
+}
+
+export function endEventReplay(sessionId: string, runId: string): void {
+  const state = buffers.get(sessionId)
+  if (state?.runId === runId) {
+    buffers.delete(sessionId)
+  }
+}
+
+export function getReplaySnapshot(
+  sessionId: string
+): { readonly runId: string; readonly events: readonly ContentEvent[] } | null {
+  const state = buffers.get(sessionId)
+  if (!state) return null
+
+  return {
+    runId: state.runId,
+    events: [...state.events],
+  }
+}
 
 export function getReplayBufferSince(
   sessionId: string,
-  afterEventId: number
+  cursor: StreamCursor | null
 ): readonly ContentEvent[] {
-  const buffer = buffers.get(sessionId)
-  if (!buffer) return []
+  const state = buffers.get(sessionId)
+  if (!state) return []
 
-  if (afterEventId <= 0) return buffer
+  if (!cursor || cursor.runId !== state.runId || cursor.eventId <= 0) {
+    return state.events
+  }
 
-  return buffer.filter((event) => event.eventId > afterEventId)
+  return state.events.filter((event) => event.eventId > cursor.eventId)
 }
 
 export function resetEventReplay(): void {

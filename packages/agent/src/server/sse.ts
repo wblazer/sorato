@@ -7,8 +7,8 @@
  *
  * Query params:
  *   - `sessionId` (optional) — filter events to a specific session
- *   - `since` (optional, session streams only) — replay content events with
- *     `eventId > since` before switching to live delivery
+ *   - `since` (optional, session streams only) — replay content events after
+ *     the `runId:eventId` cursor before switching to live delivery
  */
 import {
   HttpMiddleware,
@@ -18,8 +18,31 @@ import {
 import type { HttpApp } from '@effect/platform'
 import { Effect } from 'effect'
 import { isContentEvent, subscribe, type ServerEvent } from './event-bus.ts'
-import { getReplayBufferSince } from './event-replay.ts'
-import { isRunning } from './run-registry.ts'
+import {
+  getReplayBufferSince,
+  getReplaySnapshot,
+  type StreamCursor,
+} from './event-replay.ts'
+
+function formatCursor(cursor: StreamCursor): string {
+  return `${cursor.runId}:${cursor.eventId}`
+}
+
+function parseCursor(raw: string | null): StreamCursor | null {
+  if (!raw) return null
+
+  const separator = raw.lastIndexOf(':')
+  if (separator <= 0) return null
+
+  const runId = raw.slice(0, separator)
+  const eventId = Number(raw.slice(separator + 1))
+  if (!runId || !Number.isFinite(eventId)) return null
+
+  return {
+    runId,
+    eventId: Math.max(0, Math.floor(eventId)),
+  }
+}
 
 // ---------------------------------------------------------------------------
 // SSE response factory
@@ -27,7 +50,7 @@ import { isRunning } from './run-registry.ts'
 
 function createSSEResponse(
   sessionId: string | null,
-  afterEventId: number
+  cursor: StreamCursor | null
 ): globalThis.Response {
   const encoder = new TextEncoder()
   let unsubscribe: (() => void) | null = null
@@ -59,7 +82,7 @@ function createSSEResponse(
       const writeEvent = (event: ServerEvent) => {
         if (isContentEvent(event)) {
           write(
-            `id: ${event.eventId}\nevent: ${event._tag}\ndata: ${JSON.stringify(event)}\n\n`
+            `id: ${formatCursor({ runId: event.runId, eventId: event.eventId })}\nevent: ${event._tag}\ndata: ${JSON.stringify(event)}\n\n`
           )
           return
         }
@@ -78,7 +101,7 @@ function createSSEResponse(
         })
       } else {
         // Session stream: replay content since cursor, then continue live.
-        let lastEventId = afterEventId
+        let lastCursor = cursor
         let replaying = true
         const pending: ServerEvent[] = []
 
@@ -96,8 +119,14 @@ function createSSEResponse(
             return
           }
 
-          if (event.eventId <= lastEventId) return
-          lastEventId = event.eventId
+          if (
+            lastCursor?.runId === event.runId &&
+            event.eventId <= lastCursor.eventId
+          ) {
+            return
+          }
+
+          lastCursor = { runId: event.runId, eventId: event.eventId }
           writeEvent(event)
         }
 
@@ -112,8 +141,29 @@ function createSSEResponse(
           writeSessionEvent(event)
         })
 
-        if (isRunning(sessionId)) {
-          const replay = getReplayBufferSince(sessionId, afterEventId)
+        const replaySnapshot = getReplaySnapshot(sessionId)
+        if (replaySnapshot) {
+          const pendingRunStartIds = new Set(
+            pending
+              .filter(
+                (event): event is Extract<ServerEvent, { _tag: 'RunStart' }> =>
+                  event._tag === 'RunStart'
+              )
+              .map((event) => event.runId)
+          )
+
+          if (
+            cursor?.runId !== replaySnapshot.runId &&
+            !pendingRunStartIds.has(replaySnapshot.runId)
+          ) {
+            writeEvent({
+              _tag: 'RunStart',
+              sessionId,
+              runId: replaySnapshot.runId,
+            })
+          }
+
+          const replay = getReplayBufferSince(sessionId, cursor)
           for (const event of replay) {
             writeSessionEvent(event)
           }
@@ -168,12 +218,9 @@ export const withSse = (
 
         if (url.pathname === '/events') {
           const sessionId = url.searchParams.get('sessionId')
-          const sinceRaw = Number(url.searchParams.get('since') ?? '0')
-          const afterEventId = Number.isFinite(sinceRaw)
-            ? Math.max(0, Math.floor(sinceRaw))
-            : 0
+          const cursor = parseCursor(url.searchParams.get('since'))
           return HttpServerResponse.fromWeb(
-            createSSEResponse(sessionId, afterEventId)
+            createSSEResponse(sessionId, cursor)
           )
         }
 
