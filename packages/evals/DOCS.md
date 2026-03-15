@@ -26,18 +26,20 @@ Requires `ANTHROPIC_API_KEY` in the environment.
 
 Each suite is fully self-contained — it wires its own layers (model, sandbox, etc.). The CLI's only job is discovery and execution.
 
-## Files
+## Structure
 
-- `cli.ts` — `@effect/cli` entrypoint: `list` and `run` commands
-- `suite.ts` — `EvalSuite` interface contract
-- `registry.ts` — static registry mapping names to suites
-- `hello-world/` — trivial prompt/response eval (no tools)
-- `file-edit/` — agentic eval: ReadFile + EditFile with hashline anchors
-- `write-file/` — agentic eval: WriteFile creates files (text, JSON, nested paths)
-- `glob/` — agentic eval: Glob finds files by pattern
-- `grep/` — agentic eval: Grep searches file contents by regex pattern
+- Top-level files define discovery and registration (`cli.ts`, `registry.ts`, `suite.ts`). Change those when the eval package itself needs new capabilities.
+- Suite directories stay self-contained. Add fixtures, layer wiring, and checks next to the suite that needs them.
+- Shared execution/reporting primitives live in `bench/`. If multiple suites need the same test or reporting behavior, put it there instead of copying it between suites.
+
+## Design Constraints
+
+- A suite should say what it is testing, not hide global behavior in the package root.
+- Shared bench code should stay generic enough to serve many suites.
+- The registry is the source of truth for which suites currently exist. Docs should explain the pattern, not enumerate the current list.
 
 ## Related Context
 
+- `bench/DOCS.md` — shared eval primitives and reporting boundary
 - `packages/agent/` — the library these evals exercise
 - `packages/agent/DOCS.md` — library architecture overview

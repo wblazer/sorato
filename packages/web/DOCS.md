@@ -4,59 +4,38 @@ SvelteKit web interface for the agents system.
 
 ## Architecture
 
-Static SPA mode (`adapter-static`) with no SSR. All state lives in the browser with optional server persistence.
+Static SPA mode (`adapter-static`) with no SSR. The browser owns UI state and treats the agent server as a remote API plus SSE event source.
 
-## Connection Management
+## Where To Add Code
 
-The app supports multiple server connections with runtime switching:
+- Add code in `src/lib/stores/` when the change is about client-side state ownership, fetching, or SSE coordination.
+- Add code in `src/lib/components/` when the change is about presentation or user interaction.
+- Add code in `src/lib/storage.ts` when browser persistence needs to change.
+- Avoid putting domain logic directly in route files; this package is organized around reusable stores and components.
 
-- **Storage**: `packages/web/src/lib/storage.ts` — localStorage abstraction, ready for electron-store
-- **State**: `packages/web/src/lib/stores/connections.svelte.ts` — persisted connection list with timestamps
-- **UI**: Connection status badge in sidebar bottom-left, popover for server switching
-- **Handshake**: Validates server reachability via `/handshake` endpoint
+## State Ownership
 
-### Features
+- `connections.svelte.ts` owns which server the browser is talking to.
+- `sessions.svelte.ts` owns the session list, selected directory/session, and the app-wide view of run state.
+- `messages.svelte.ts` owns the active session's message history and streaming turn content.
+- `sse.svelte.ts` owns the app-lifetime global SSE connection for lightweight control-plane events.
 
-- Add/edit/delete connections
-- Live URL validation with green/red indicator
-- Auto-sorted by last used
-- Empty state prompts for first connection
-- Immediate switch when clicking a server
+That split matters: app-wide state lives in `sessions`, active-session streaming lives in `messages`. Keep those responsibilities separate so every store does not need to understand full chat streaming.
 
-### Usage
+## Connection Model
 
-```typescript
-import { connectionsStore } from '$lib/stores/connections.svelte.js'
+- Multiple server connections are a first-class feature, not just a settings nicety.
+- The app should always be able to switch servers at runtime without reload.
+- Reachability checks belong to the connection flow, not scattered through feature stores.
 
-// All connections sorted by lastUsedAt
-connectionsStore.connections
+## Future Desktop Wrapper
 
-// Currently active connection
-connectionsStore.activeConnection
+The package is intentionally browser-first but desktop-friendly. Keep browser persistence and server discovery abstract enough that an Electron wrapper can swap storage and optionally launch a bundled server process without rewriting feature code.
 
-// Get API base for fetch calls
-connectionsStore.getApiBase() // 'http://localhost:3100' or ''
+## Related Context
 
-// Add new connection
-connectionsStore.add({ url: 'http://localhost:3100', name: 'Local' })
-
-// Switch active
-connectionsStore.activate(connectionId)
-```
-
-## Stores
-
-- `connections.svelte.ts` — Server connections (client state)
-- `sessions.svelte.ts` — Session list, directory tree
-- `messages.svelte.ts` — Chat messages, streaming content
-- `sse.svelte.ts` — Global SSE connection
-- `hotkeys.svelte.ts` — TanStack hotkeys wrapper
-
-## Components
-
-- `connection-manager.svelte` — Server selector popover
-- `connection-dialog.svelte` — Add/edit server modal
-- `no-connections.svelte` — Empty state screen
+- `../agent/src/server/DOCS.md` — server-side transport and run lifecycle
+- `../agent/DOCS.md` — core agent architecture
 
 ## Development
 
@@ -65,12 +44,3 @@ bun run dev        # Vite dev server
 bun run build      # Static build to build/
 bun run check      # svelte-check
 ```
-
-## Future: Electron
-
-The storage abstraction (`storage.ts`) and SPA mode make this trivial to wrap in Electron. The desktop app will:
-
-1. Load same built files
-2. Swap storage to `electron-store`
-3. Optionally spawn bundled server subprocess
-4. Expose `coupledServerUrl` to renderer for auto-connect
