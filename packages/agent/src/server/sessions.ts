@@ -22,7 +22,7 @@ import {
   isRunning,
   registerFiber,
   releaseRun,
-} from './run-state.ts'
+} from './run-registry.ts'
 import { publish } from './event-bus.ts'
 
 const toSessionResponse = (s: {

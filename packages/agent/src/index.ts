@@ -72,9 +72,8 @@ export { SqliteSession } from './session/sqlite-session.ts'
 export { publish, subscribe, createBusHook } from './server/event-bus.ts'
 export type { ServerEvent } from './server/event-bus.ts'
 
-// Server — in-memory run state (replay buffer, running status)
-export {
-  isRunning,
-  getRunningSessionIds,
-  getReplayBufferSince,
-} from './server/run-state.ts'
+// Server — in-memory run registry
+export { isRunning, getRunningSessionIds } from './server/run-registry.ts'
+
+// Server — in-memory event replay buffer
+export { getReplayBufferSince } from './server/event-replay.ts'

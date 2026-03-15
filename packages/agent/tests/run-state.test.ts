@@ -6,12 +6,12 @@ import {
   isRunning,
   registerFiber,
   releaseRun,
-  resetRunState,
-} from '../src/server/run-state.ts'
+  resetRunRegistry,
+} from '../src/server/run-registry.ts'
 
-describe('RunState', () => {
+describe('RunRegistry', () => {
   it('marks a session running as soon as it is claimed', () => {
-    resetRunState()
+    resetRunRegistry()
 
     expect(claimRun('session-1')).toBe(true)
     expect(isRunning('session-1')).toBe(true)
@@ -21,7 +21,7 @@ describe('RunState', () => {
   })
 
   it('rejects a second claim for the same session', () => {
-    resetRunState()
+    resetRunRegistry()
 
     expect(claimRun('session-1')).toBe(true)
     expect(claimRun('session-1')).toBe(false)
@@ -30,7 +30,7 @@ describe('RunState', () => {
   })
 
   it('releases a claim when startup fails before a fiber is attached', () => {
-    resetRunState()
+    resetRunRegistry()
 
     expect(claimRun('session-1')).toBe(true)
     releaseRun('session-1')
@@ -43,7 +43,7 @@ describe('RunState', () => {
 
   it.effect('attaches a fiber to an existing claim', () =>
     Effect.gen(function* () {
-      resetRunState()
+      resetRunRegistry()
 
       expect(claimRun('session-1')).toBe(true)
 

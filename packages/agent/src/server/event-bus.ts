@@ -7,7 +7,7 @@
  *
  * To:
  *   - SSE connections (via `subscribe`)
- *   - RunState (via `subscribe`) — materializes running set + replay buffer
+ *   - Run registry + replay buffer (via `subscribe`) — materialized views for run control and SSE replay
  *
  * Content events (TextDelta, ToolCall, ToolResult) carry a monotonic
  * per-session `eventId`, stamped by the bus hook. Session SSE streams use

@@ -18,7 +18,8 @@ import {
 import type { HttpApp } from '@effect/platform'
 import { Effect } from 'effect'
 import { isContentEvent, subscribe, type ServerEvent } from './event-bus.ts'
-import { getReplayBufferSince, isRunning } from './run-state.ts'
+import { getReplayBufferSince } from './event-replay.ts'
+import { isRunning } from './run-registry.ts'
 
 // ---------------------------------------------------------------------------
 // SSE response factory
