@@ -49,6 +49,12 @@ bun install
 bun run --filter @agents/evals hello-world
 ```
 
+## Naming Conventions
+
+- Files and folders use kebab-case
+- Exported classes, Effect services/tags, and schema types use PascalCase
+- Functions, values, and store instances use camelCase
+
 ## Never Do
 
 - Never bypass Effect's type system with `any` or `unknown` casts
