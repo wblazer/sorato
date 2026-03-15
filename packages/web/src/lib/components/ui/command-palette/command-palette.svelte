@@ -8,8 +8,10 @@
    * (fetching, selection, extra keybindings) through props.
    */
   import * as Dialog from '$lib/components/ui/dialog/index.js'
+  import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
   import { cn } from '$lib/utils.js'
   import type { Snippet } from 'svelte'
+  import { untrack } from 'svelte'
 
   export interface KeyHint {
     key: string
@@ -39,6 +41,8 @@
     selectOnOpen?: boolean
     /** Keyboard shortcut hints shown in the footer */
     hints?: KeyHint[]
+    /** Overlay scope name used to suppress app-level hotkeys while open */
+    scope?: string
     /** The list content. Use the bound selectedIndex prop for highlighting. */
     items: Snippet
     /** Shown when itemCount is 0 and not loading */
@@ -56,12 +60,19 @@
     onKeydown,
     selectOnOpen = false,
     hints = [],
+    scope = 'command-palette',
     items,
     empty,
   }: Props = $props()
 
   let inputEl: HTMLInputElement | null = $state(null)
   let listEl: HTMLDivElement | null = $state(null)
+
+  $effect(() => {
+    if (!open) return
+    untrack(() => hotkeyStore.pushScope(scope))
+    return () => untrack(() => hotkeyStore.popScope(scope))
+  })
 
   // Focus + select input when dialog opens
   $effect(() => {

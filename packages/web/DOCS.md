@@ -10,6 +10,7 @@ Static SPA mode (`adapter-static`) with no SSR. The browser owns UI state and tr
 
 - Add code in `src/lib/stores/` when the change is about client-side state ownership, fetching, or SSE coordination.
 - Add code in `src/lib/components/` when the change is about presentation or user interaction.
+- Add action ids and registry behavior in `src/lib/stores/actions.svelte.ts`; mounted components register the actions they own.
 - Add code in `src/lib/storage.ts` when browser persistence needs to change.
 - Avoid putting domain logic directly in route files; this package is organized around reusable stores and components.
 
@@ -19,8 +20,11 @@ Static SPA mode (`adapter-static`) with no SSR. The browser owns UI state and tr
 - `sessions.svelte.ts` owns the session list, selected directory/session, and the app-wide view of run state.
 - `messages.svelte.ts` owns the active session's message history and streaming turn content.
 - `sse.svelte.ts` owns the app-lifetime global SSE connection for lightweight control-plane events.
+- `actions.svelte.ts` owns the app's action ids, registration, availability, and hotkey-triggered execution.
 
 That split matters: app-wide state lives in `sessions`, active-session streaming lives in `messages`. Keep those responsibilities separate so every store does not need to understand full chat streaming.
+
+Action definitions are centralized, but UI ownership stays local. Register actions from the mounted component that owns the behavior or dialog they open; do not move that UI state into the action store just to make the command palette work.
 
 ## Connection Model
 

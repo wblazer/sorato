@@ -1,6 +1,7 @@
 <script lang="ts">
   import '../app.css'
   import favicon from '$lib/assets/favicon.svg'
+  import GlobalActionHost from '$lib/components/global-action-host.svelte'
   import { Sidebar } from '$lib/components/sidebar/index.js'
   import { sseStore } from '$lib/stores/sse.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
@@ -35,6 +36,8 @@
   <link rel="icon" href={favicon} />
   <title>Agents</title>
 </svelte:head>
+
+<GlobalActionHost />
 
 {#if connectionsStore.hasConnections}
   <div class="flex h-screen overflow-hidden">

@@ -1,7 +1,9 @@
 <script lang="ts">
   import * as Dialog from '$lib/components/ui/dialog/index.js'
   import Button from '$lib/components/ui/button/button.svelte'
+  import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
   import type { Connection } from '$lib/stores/connections.svelte.js'
+  import { untrack } from 'svelte'
 
   interface Props {
     open: boolean
@@ -23,6 +25,12 @@
   let urlError = $state('')
   let isChecking = $state(false)
   let checkStatus = $state<'idle' | 'loading' | 'success' | 'error'>('idle')
+
+  $effect(() => {
+    if (!open) return
+    untrack(() => hotkeyStore.pushScope('connection-dialog'))
+    return () => untrack(() => hotkeyStore.popScope('connection-dialog'))
+  })
 
   // Reset form when connection changes or dialog opens
   $effect(() => {

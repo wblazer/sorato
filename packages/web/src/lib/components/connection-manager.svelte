@@ -5,6 +5,7 @@
     PopoverTrigger,
   } from '$lib/components/ui/popover/index.js'
   import Button from '$lib/components/ui/button/button.svelte'
+  import { actionStore } from '$lib/stores/actions.svelte.js'
   import {
     connectionsStore,
     type Connection,
@@ -14,15 +15,16 @@
   import MoreVerticalIcon from '@lucide/svelte/icons/more-vertical'
   import TrashIcon from '@lucide/svelte/icons/trash'
   import PencilIcon from '@lucide/svelte/icons/pencil'
+  import { onMount } from 'svelte'
 
   let popoverOpen = $state(false)
   let dialogOpen = $state(false)
   let editingConnection = $state<Connection | null>(null)
 
   function handleAdd() {
-    editingConnection = null
-    dialogOpen = true
     popoverOpen = false
+    dialogOpen = true
+    editingConnection = null
   }
 
   function handleEdit(connection: Connection) {
@@ -32,15 +34,10 @@
   }
 
   function handleSave(data: { url: string; name?: string }) {
-    if (editingConnection) {
-      connectionsStore.update(editingConnection.id, data)
-    } else {
-      const newConnection = connectionsStore.add(data)
-      // Auto-activate the first connection
-      if (connectionsStore.connections.length === 1) {
-        connectionsStore.activate(newConnection.id)
-      }
-    }
+    if (!editingConnection) return
+    connectionsStore.update(editingConnection.id, data)
+    dialogOpen = false
+    editingConnection = null
   }
 
   function handleActivate(id: string) {
@@ -59,6 +56,26 @@
   function isActive(connection: Connection): boolean {
     return connectionsStore.activeConnection?.id === connection.id
   }
+
+  onMount(() => {
+    return actionStore.register({
+      id: 'connection.add',
+      title: 'Add Connection',
+      category: 'Connections',
+      description: 'Add an agents server to the connection list.',
+      keywords: ['server', 'endpoint', 'url'],
+      run: () => {
+        editingConnection = null
+        dialogOpen = true
+      },
+    })
+  })
+
+  $effect(() => {
+    if (!dialogOpen && editingConnection) {
+      editingConnection = null
+    }
+  })
 </script>
 
 <div class="flex items-center gap-2 px-2 py-1.5">
@@ -189,5 +206,8 @@
   bind:open={dialogOpen}
   connection={editingConnection}
   onSave={handleSave}
-  onClose={() => (dialogOpen = false)}
+  onClose={() => {
+    dialogOpen = false
+    editingConnection = null
+  }}
 />

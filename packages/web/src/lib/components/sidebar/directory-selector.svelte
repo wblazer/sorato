@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import DirectoryPicker from '$lib/components/directory-picker.svelte'
+  import { sessionStore } from '$lib/stores/sessions.svelte.js'
+  import { actionStore } from '$lib/stores/actions.svelte.js'
   import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down'
   import FolderOpen from '@lucide/svelte/icons/folder-open'
   import { cn } from '$lib/utils.js'
+  import { onMount } from 'svelte'
 
   let open = $state(false)
   let pickerOpen = $state(false)
@@ -26,12 +28,25 @@
 
   function handleOpenDirectory() {
     open = false
-    pickerOpen = true
+    actionStore.trigger('directory.open')
   }
 
   function handlePickerSelect(path: string) {
     sessionStore.openDirectory(path)
   }
+
+  onMount(() => {
+    return actionStore.register({
+      id: 'directory.open',
+      title: 'Open Directory...',
+      category: 'Sessions',
+      description: 'Browse for a directory and switch the sidebar to it.',
+      keywords: ['folder', 'project', 'workspace'],
+      run: () => {
+        pickerOpen = true
+      },
+    })
+  })
 </script>
 
 <svelte:window onclick={handleWindowClick} />

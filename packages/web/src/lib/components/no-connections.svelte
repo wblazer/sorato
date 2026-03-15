@@ -1,8 +1,10 @@
 <script lang="ts">
   import Button from '$lib/components/ui/button/button.svelte'
-  import ConnectionDialog from './connection-dialog.svelte'
+  import { actionStore } from '$lib/stores/actions.svelte.js'
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
   import ServerIcon from '@lucide/svelte/icons/server'
+  import ConnectionDialog from './connection-dialog.svelte'
+  import { onMount } from 'svelte'
 
   let dialogOpen = $state(false)
 
@@ -11,6 +13,19 @@
     connectionsStore.activate(newConnection.id)
     dialogOpen = false
   }
+
+  onMount(() => {
+    return actionStore.register({
+      id: 'connection.add',
+      title: 'Add Connection',
+      category: 'Connections',
+      description: 'Add an agents server to the connection list.',
+      keywords: ['server', 'endpoint', 'url'],
+      run: () => {
+        dialogOpen = true
+      },
+    })
+  })
 </script>
 
 <div class="flex h-full flex-col items-center justify-center p-8">
