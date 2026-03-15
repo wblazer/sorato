@@ -12,13 +12,13 @@ import { HttpApiBuilder, HttpMiddleware, HttpServer } from '@effect/platform'
 import { BunHttpServer, BunRuntime } from '@effect/platform-bun'
 import { Effect, Layer } from 'effect'
 import { SqliteSession } from '../index.ts'
-import { Api } from './Api.ts'
+import { Api } from './api.ts'
 import { AgentLive } from './agent-config.ts'
-import { DirectoriesLive } from './Directories.ts'
-import { SessionsLive } from './Sessions.ts'
-import { withSse } from './Sse.ts'
+import { DirectoriesLive } from './directories.ts'
+import { SessionsLive } from './sessions.ts'
+import { withSse } from './sse.ts'
 
-import { HandshakeResponse } from './Api.ts'
+import { HandshakeResponse } from './api.ts'
 
 // ── Data directory ──────────────────────────────────────────────────
 

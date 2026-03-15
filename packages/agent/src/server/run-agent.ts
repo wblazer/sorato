@@ -18,7 +18,7 @@ import {
   type SessionId,
 } from '../index.ts'
 import { AllTools, SYSTEM_PROMPT } from './agent-config.ts'
-import { createBusHook, publish } from './EventBus.ts'
+import { createBusHook, publish } from './event-bus.ts'
 import { createPersistenceHook } from './run-persistence.ts'
 
 export const runAgent = (sessionId: SessionId, input: string) =>

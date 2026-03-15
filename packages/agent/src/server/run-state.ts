@@ -20,7 +20,7 @@
  * hook). Session streams use it as a cursor for replay and reconnect.
  */
 import type { Fiber } from 'effect'
-import { isContentEvent, subscribe, type ContentEvent } from './EventBus.ts'
+import { isContentEvent, subscribe, type ContentEvent } from './event-bus.ts'
 
 // ---------------------------------------------------------------------------
 // State

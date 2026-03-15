@@ -7,7 +7,7 @@ import {
   type HarnessHook,
   type SessionId,
 } from '../index.ts'
-import { publish } from './EventBus.ts'
+import { publish } from './event-bus.ts'
 
 export const createPersistenceHook = (
   sessionId: SessionId,

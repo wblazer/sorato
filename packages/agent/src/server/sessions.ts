@@ -14,7 +14,7 @@ import {
   RunResponse,
   SessionResponse,
   StopResponse,
-} from './Api.ts'
+} from './api.ts'
 import { runAgent } from './run-agent.ts'
 import {
   claimRun,
@@ -22,8 +22,8 @@ import {
   isRunning,
   registerFiber,
   releaseRun,
-} from './RunState.ts'
-import { publish } from './EventBus.ts'
+} from './run-state.ts'
+import { publish } from './event-bus.ts'
 
 const toSessionResponse = (s: {
   readonly id: string

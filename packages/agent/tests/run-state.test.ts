@@ -7,7 +7,7 @@ import {
   registerFiber,
   releaseRun,
   resetRunState,
-} from '../src/server/RunState.ts'
+} from '../src/server/run-state.ts'
 
 describe('RunState', () => {
   it('marks a session running as soon as it is claimed', () => {
