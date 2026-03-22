@@ -1,6 +1,7 @@
 export { default as SessionView } from './session-view.svelte'
 export { default as NewSession } from './new-session.svelte'
 export { default as MessageBubble } from './message-bubble.svelte'
+export { default as QueuedMessageBubble } from './queued-message-bubble.svelte'
 export { default as MessagePart } from './message-part.svelte'
 export { default as StreamingIndicator } from './streaming-indicator.svelte'
 export { default as Composer } from './composer.svelte'

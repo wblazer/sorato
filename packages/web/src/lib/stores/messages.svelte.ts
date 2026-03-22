@@ -40,6 +40,7 @@ function createMessagesStore() {
   const lastCursors = new Map<string, StreamCursor>()
 
   let streamConnection: SseConnection | null = null
+  let activeRunId = $state<string | null>(null)
 
   const getLastCursor = (sessionId: string) =>
     lastCursors.get(sessionId) ?? null
@@ -78,6 +79,11 @@ function createMessagesStore() {
 
         switch (event._tag) {
           case 'RunStart':
+            if (activeRunId === event.runId) {
+              break
+            }
+
+            activeRunId = event.runId
             streamingParts = []
             setRunCursor(sessionId, event.runId)
             // User message is persisted before run starts; refresh to show it.
@@ -119,7 +125,7 @@ function createMessagesStore() {
           case 'RunEnd':
             // Refresh messages to pick up the persisted conversation.
             // Streaming parts stay visible until the refresh lands.
-            refreshMessages(sessionId, { clearParts: true })
+            refreshMessages(sessionId, { clearPartsForRun: event.runId })
             break
 
           case 'MessagesAppended':
@@ -168,6 +174,7 @@ function createMessagesStore() {
     loaded = true
     error = null
     streamingParts = []
+    activeRunId = null
     openSessionStream(sessionId)
   }
 
@@ -183,6 +190,7 @@ function createMessagesStore() {
 
     // Reset current turn parts when changing sessions.
     streamingParts = []
+    activeRunId = null
     error = null
 
     if (!hasExisting) {
@@ -249,7 +257,7 @@ function createMessagesStore() {
    */
   async function refreshMessages(
     sessionId: string,
-    opts?: { clearParts?: boolean }
+    opts?: { clearPartsForRun?: string }
   ) {
     try {
       const res = await fetch(
@@ -259,13 +267,19 @@ function createMessagesStore() {
       const fresh: MessageNode[] = await res.json()
       if (currentSessionId === sessionId) {
         messages = fresh
-        if (opts?.clearParts) {
+        if (opts?.clearPartsForRun && activeRunId === opts.clearPartsForRun) {
           streamingParts = []
+          activeRunId = null
         }
       }
     } catch {
-      if (opts?.clearParts && currentSessionId === sessionId) {
+      if (
+        opts?.clearPartsForRun &&
+        currentSessionId === sessionId &&
+        activeRunId === opts.clearPartsForRun
+      ) {
         streamingParts = []
+        activeRunId = null
       }
     }
   }
@@ -293,6 +307,7 @@ function createMessagesStore() {
     loaded = false
     error = null
     streamingParts = []
+    activeRunId = null
   }
 
   return {

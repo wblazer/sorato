@@ -55,10 +55,32 @@
       onkeydown={handleKeydown}
       oninput={handleInput}
       {placeholder}
-      disabled={disabled && !isRunning}
+      {disabled}
       rows={1}
       class="max-h-[200px] min-h-[24px] flex-1 resize-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
     ></textarea>
+    <button
+      onclick={handleSubmit}
+      disabled={disabled || !input.trim()}
+      class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+      title="Send message"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="m5 12 7-7 7 7" />
+        <path d="M12 19V5" />
+      </svg>
+    </button>
+
     {#if isRunning}
       <button
         onclick={onStop}
@@ -76,28 +98,6 @@
           stroke="none"
         >
           <rect x="4" y="4" width="16" height="16" rx="2" />
-        </svg>
-      </button>
-    {:else}
-      <button
-        onclick={handleSubmit}
-        disabled={disabled || !input.trim()}
-        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        <!-- Arrow up (send) icon -->
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="m5 12 7-7 7 7" />
-          <path d="M12 19V5" />
         </svg>
       </button>
     {/if}

@@ -1,29 +1,86 @@
 import type { Fiber } from 'effect'
-import { subscribe } from './event-bus.ts'
 
-const running = new Map<string, Fiber.RuntimeFiber<void, never> | null>()
-
-subscribe((event) => {
-  if (event._tag === 'RunEnd') {
-    running.delete(event.sessionId)
-  }
-})
-
-export function claimRun(sessionId: string): boolean {
-  if (running.has(sessionId)) return false
-  running.set(sessionId, null)
-  return true
+interface SessionRunState {
+  workerFiber: Fiber.RuntimeFiber<void, never> | null
+  activeRunFiber: Fiber.RuntimeFiber<void, never> | null
+  queuedInputs: Array<string>
+  stopRequested: boolean
 }
 
-export function registerFiber(
+const running = new Map<string, SessionRunState>()
+
+export function enqueueRun(
+  sessionId: string,
+  input: string
+): 'started' | 'queued' {
+  const state = running.get(sessionId)
+  if (state) {
+    state.queuedInputs.push(input)
+    return 'queued'
+  }
+
+  running.set(sessionId, {
+    workerFiber: null,
+    activeRunFiber: null,
+    queuedInputs: [input],
+    stopRequested: false,
+  })
+  return 'started'
+}
+
+export function registerWorkerFiber(
   sessionId: string,
   fiber: Fiber.RuntimeFiber<void, never>
 ): void {
-  if (!running.has(sessionId)) {
-    throw new Error(`Cannot register fiber for unclaimed session ${sessionId}`)
+  const state = running.get(sessionId)
+  if (!state) {
+    throw new Error(`Cannot register worker for unknown session ${sessionId}`)
   }
 
-  running.set(sessionId, fiber)
+  state.workerFiber = fiber
+}
+
+export function registerActiveFiber(
+  sessionId: string,
+  fiber: Fiber.RuntimeFiber<void, never>
+): void {
+  const state = running.get(sessionId)
+  if (!state) {
+    throw new Error(
+      `Cannot register active run for unknown session ${sessionId}`
+    )
+  }
+
+  state.activeRunFiber = fiber
+}
+
+export function clearActiveFiber(sessionId: string): void {
+  const state = running.get(sessionId)
+  if (!state) return
+  state.activeRunFiber = null
+}
+
+export function shiftQueuedRun(sessionId: string): string | undefined {
+  return running.get(sessionId)?.queuedInputs.shift()
+}
+
+export function requestStop(sessionId: string): void {
+  const state = running.get(sessionId)
+  if (!state) return
+  state.stopRequested = true
+}
+
+export function shouldStop(sessionId: string): boolean {
+  return running.get(sessionId)?.stopRequested ?? false
+}
+
+export function drainQueuedRuns(sessionId: string): Array<string> {
+  const state = running.get(sessionId)
+  if (!state) return []
+
+  const queued = [...state.queuedInputs]
+  state.queuedInputs = []
+  return queued
 }
 
 export function releaseRun(sessionId: string): void {
@@ -33,11 +90,15 @@ export function releaseRun(sessionId: string): void {
 export function getFiber(
   sessionId: string
 ): Fiber.RuntimeFiber<void, never> | undefined {
-  return running.get(sessionId) ?? undefined
+  return running.get(sessionId)?.activeRunFiber ?? undefined
 }
 
 export function isRunning(sessionId: string): boolean {
   return running.has(sessionId)
+}
+
+export function getQueuedRunCount(sessionId: string): number {
+  return running.get(sessionId)?.queuedInputs.length ?? 0
 }
 
 export function getRunningSessionIds(): ReadonlySet<string> {

@@ -2,6 +2,12 @@ import type { Session } from '$lib/types.js'
 import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
 
+export interface QueuedMessageDraft {
+  id: string
+  content: string
+  createdAt: number
+}
+
 function createSessionStore() {
   let sessions = $state<Session[]>([])
   let selectedSessionId = $state<string | null>(null)
@@ -44,9 +50,33 @@ function createSessionStore() {
   // duplicate stop requests.
 
   let stoppingSessions = $state(new Set<string>())
+  let queuedMessages = $state(new Map<string, QueuedMessageDraft[]>())
+  let pendingRunStarts = $state(new Map<string, number>())
 
   sseStore.onEvent((event) => {
     if (event._tag === 'RunStart') {
+      const pendingStarts = pendingRunStarts.get(event.sessionId) ?? 0
+      if (pendingStarts > 0) {
+        const next = new Map(pendingRunStarts)
+        if (pendingStarts === 1) {
+          next.delete(event.sessionId)
+        } else {
+          next.set(event.sessionId, pendingStarts - 1)
+        }
+        pendingRunStarts = next
+      } else {
+        const drafts = queuedMessages.get(event.sessionId) ?? []
+        if (drafts.length > 0) {
+          const next = new Map(queuedMessages)
+          if (drafts.length === 1) {
+            next.delete(event.sessionId)
+          } else {
+            next.set(event.sessionId, drafts.slice(1))
+          }
+          queuedMessages = next
+        }
+      }
+
       sessions = sessions.map((s) =>
         s.id === event.sessionId ? { ...s, status: 'running' as const } : s
       )
@@ -57,9 +87,7 @@ function createSessionStore() {
         next.delete(event.sessionId)
         stoppingSessions = next
       }
-      sessions = sessions.map((s) =>
-        s.id === event.sessionId ? { ...s, status: 'idle' as const } : s
-      )
+      void refreshSession(event.sessionId)
     } else if (event._tag === 'SessionUpdated') {
       refreshSession(event.sessionId)
     }
@@ -74,6 +102,16 @@ function createSessionStore() {
       if (!res.ok) return
       const fresh: Session = await res.json()
       sessions = sessions.map((s) => (s.id === sessionId ? fresh : s))
+
+      if (fresh.status === 'idle') {
+        const nextQueued = new Map(queuedMessages)
+        nextQueued.delete(sessionId)
+        queuedMessages = nextQueued
+
+        const nextPending = new Map(pendingRunStarts)
+        nextPending.delete(sessionId)
+        pendingRunStarts = nextPending
+      }
     } catch {
       // Silent
     }
@@ -142,6 +180,30 @@ function createSessionStore() {
         }
       )
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+
+      const data: { status: 'started' | 'queued' } = await res.json()
+
+      sessions = sessions.map((s) =>
+        s.id === sessionId ? { ...s, status: 'running' as const } : s
+      )
+
+      if (data.status === 'started') {
+        const next = new Map(pendingRunStarts)
+        next.set(sessionId, (next.get(sessionId) ?? 0) + 1)
+        pendingRunStarts = next
+      } else {
+        const next = new Map(queuedMessages)
+        next.set(sessionId, [
+          ...(next.get(sessionId) ?? []),
+          {
+            id: crypto.randomUUID(),
+            content: input,
+            createdAt: Date.now(),
+          },
+        ])
+        queuedMessages = next
+      }
+
       return true
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to start agent run'
@@ -210,6 +272,10 @@ function createSessionStore() {
     return stoppingSessions.has(sessionId)
   }
 
+  function queuedMessagesFor(sessionId: string): QueuedMessageDraft[] {
+    return queuedMessages.get(sessionId) ?? []
+  }
+
   return {
     get sessions() {
       return sessions
@@ -255,6 +321,7 @@ function createSessionStore() {
     },
     isRunning,
     isStopping,
+    queuedMessagesFor,
     startComposing,
     createSession,
     runAgent,

@@ -4,6 +4,7 @@
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
   import MessageBubble from './message-bubble.svelte'
+  import QueuedMessageBubble from './queued-message-bubble.svelte'
   import StreamingIndicator from './streaming-indicator.svelte'
   import Composer from './composer.svelte'
 
@@ -16,6 +17,7 @@
   // of truth. The messages store only tracks streaming *content*.
   const isRunning = $derived(sessionStore.isRunning(sessionId))
   const isStopping = $derived(sessionStore.isStopping(sessionId))
+  const queuedMessages = $derived(sessionStore.queuedMessagesFor(sessionId))
 
   // Detect if the conversation was recently interrupted — the last
   // message will be the system interruption marker. Used to show
@@ -48,6 +50,7 @@
     // Touch reactive dependencies
     messagesStore.messages.length
     messagesStore.streamingParts
+    queuedMessages.length
 
     if (messagesContainer) {
       const { scrollTop, scrollHeight, clientHeight } = messagesContainer
@@ -80,9 +83,12 @@
   })
 
   function handleSend(input: string) {
-    // Show the user's message immediately — don't wait for the server
-    // round-trip. The optimistic node is replaced on the next refresh.
-    messagesStore.addOptimisticUserMessage(sessionId, input)
+    if (!sessionStore.isRunning(sessionId)) {
+      // Show the user's message immediately — don't wait for the server
+      // round-trip. The optimistic node is replaced on the next refresh.
+      messagesStore.addOptimisticUserMessage(sessionId, input)
+    }
+
     sessionStore.runAgent(sessionId, input)
   }
 
@@ -148,6 +154,10 @@
         {/each}
 
         <StreamingIndicator parts={messagesStore.streamingParts} {isRunning} />
+
+        {#each queuedMessages as message (message.id)}
+          <QueuedMessageBubble {message} />
+        {/each}
       </div>
     {/if}
   </div>
@@ -185,11 +195,6 @@
     onStop={handleStop}
     {isRunning}
     {isStopping}
-    disabled={isRunning}
-    placeholder={isStopping
-      ? 'Stopping...'
-      : isRunning
-        ? 'Agent is responding...'
-        : 'Send a follow-up message...'}
+    disabled={isStopping}
   />
 </div>

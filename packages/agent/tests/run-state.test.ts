@@ -1,59 +1,94 @@
 import { Effect, Fiber } from 'effect'
 import { describe, expect, it } from '@effect/vitest'
 import {
-  claimRun,
+  clearActiveFiber,
+  drainQueuedRuns,
+  enqueueRun,
   getFiber,
+  getQueuedRunCount,
   isRunning,
-  registerFiber,
+  requestStop,
+  registerActiveFiber,
+  registerWorkerFiber,
   releaseRun,
   resetRunRegistry,
+  shouldStop,
+  shiftQueuedRun,
 } from '../src/server/run-registry.ts'
 
 describe('RunRegistry', () => {
-  it('marks a session running as soon as it is claimed', () => {
+  it('marks a session running as soon as a run is enqueued', () => {
     resetRunRegistry()
 
-    expect(claimRun('session-1')).toBe(true)
+    expect(enqueueRun('session-1', 'hello')).toBe('started')
     expect(isRunning('session-1')).toBe(true)
     expect(getFiber('session-1')).toBeUndefined()
+    expect(getQueuedRunCount('session-1')).toBe(1)
 
     releaseRun('session-1')
   })
 
-  it('rejects a second claim for the same session', () => {
+  it('queues follow-up runs for the same session', () => {
     resetRunRegistry()
 
-    expect(claimRun('session-1')).toBe(true)
-    expect(claimRun('session-1')).toBe(false)
+    expect(enqueueRun('session-1', 'first')).toBe('started')
+    expect(enqueueRun('session-1', 'second')).toBe('queued')
+    expect(getQueuedRunCount('session-1')).toBe(2)
+    expect(shiftQueuedRun('session-1')).toBe('first')
+    expect(shiftQueuedRun('session-1')).toBe('second')
+    expect(getQueuedRunCount('session-1')).toBe(0)
 
     releaseRun('session-1')
   })
 
-  it('releases a claim when startup fails before a fiber is attached', () => {
+  it('releases a session when startup fails before a worker is attached', () => {
     resetRunRegistry()
 
-    expect(claimRun('session-1')).toBe(true)
+    expect(enqueueRun('session-1', 'hello')).toBe('started')
     releaseRun('session-1')
 
     expect(isRunning('session-1')).toBe(false)
-    expect(claimRun('session-1')).toBe(true)
+    expect(enqueueRun('session-1', 'again')).toBe('started')
 
     releaseRun('session-1')
   })
 
-  it.effect('attaches a fiber to an existing claim', () =>
+  it.effect('tracks worker and active run fibers separately', () =>
     Effect.gen(function* () {
       resetRunRegistry()
 
-      expect(claimRun('session-1')).toBe(true)
+      expect(enqueueRun('session-1', 'hello')).toBe('started')
 
-      const fiber = yield* Effect.forkDaemon(Effect.void)
-      registerFiber('session-1', fiber)
+      const worker = yield* Effect.forkDaemon(Effect.void)
+      registerWorkerFiber('session-1', worker)
 
-      expect(getFiber('session-1')).toBe(fiber)
+      const active = yield* Effect.forkDaemon(Effect.void)
+      registerActiveFiber('session-1', active)
+
+      expect(getFiber('session-1')).toBe(active)
+
+      clearActiveFiber('session-1')
+      expect(getFiber('session-1')).toBeUndefined()
 
       releaseRun('session-1')
-      yield* Fiber.interrupt(fiber)
+      yield* Fiber.interrupt(worker)
+      yield* Fiber.interrupt(active)
     })
   )
+
+  it('marks a session as stopping and drains queued inputs', () => {
+    resetRunRegistry()
+
+    expect(enqueueRun('session-1', 'first')).toBe('started')
+    expect(enqueueRun('session-1', 'second')).toBe('queued')
+    expect(shouldStop('session-1')).toBe(false)
+
+    requestStop('session-1')
+
+    expect(shouldStop('session-1')).toBe(true)
+    expect(drainQueuedRuns('session-1')).toEqual(['first', 'second'])
+    expect(getQueuedRunCount('session-1')).toBe(0)
+
+    releaseRun('session-1')
+  })
 })

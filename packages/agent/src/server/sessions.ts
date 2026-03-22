@@ -6,24 +6,50 @@
  */
 import { HttpApiBuilder } from '@effect/platform'
 import { Effect, Fiber } from 'effect'
-import { SessionStorage } from '../session/session.ts'
+import { SessionStorage, type SessionId } from '../session/session.ts'
 import {
   Api,
   MessageNodeResponse,
-  RunError,
   RunResponse,
   SessionResponse,
   StopResponse,
 } from './api.ts'
 import { runAgent } from './run-agent.ts'
 import {
-  claimRun,
+  clearActiveFiber,
+  drainQueuedRuns as drainQueuedInputs,
+  enqueueRun,
   getFiber,
   isRunning,
-  registerFiber,
+  requestStop,
+  registerActiveFiber,
+  registerWorkerFiber,
   releaseRun,
+  shouldStop,
+  shiftQueuedRun,
 } from './run-registry.ts'
 import { publish } from './event-bus.ts'
+
+const drainQueuedRuns = (sessionId: SessionId) =>
+  Effect.gen(function* () {
+    while (true) {
+      const stopRequested = yield* Effect.sync(() => shouldStop(sessionId))
+      if (stopRequested) break
+
+      const input = yield* Effect.sync(() => shiftQueuedRun(sessionId))
+      if (!input) break
+
+      const fiber = yield* runAgent(sessionId, input).pipe(
+        Effect.forkDaemon,
+        Effect.tap((activeFiber) =>
+          Effect.sync(() => registerActiveFiber(sessionId, activeFiber))
+        )
+      )
+
+      yield* Fiber.join(fiber)
+      yield* Effect.sync(() => clearActiveFiber(sessionId))
+    }
+  }).pipe(Effect.ensuring(Effect.sync(() => releaseRun(sessionId))))
 
 const toSessionResponse = (s: {
   readonly id: string
@@ -92,29 +118,45 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
           // Verify session exists
           yield* storage.get(path.id)
 
-          if (!claimRun(path.id)) {
-            return yield* new RunError({
-              message: `Session ${path.id} already has an active run`,
-            })
+          const status = enqueueRun(path.id, payload.input)
+
+          if (status === 'queued') {
+            return new RunResponse({ status })
           }
 
-          yield* runAgent(path.id, payload.input).pipe(
+          yield* drainQueuedRuns(path.id).pipe(
             Effect.forkDaemon,
             Effect.tap((fiber) =>
-              Effect.sync(() => registerFiber(path.id, fiber))
+              Effect.sync(() => registerWorkerFiber(path.id, fiber))
             ),
             Effect.onError(() => Effect.sync(() => releaseRun(path.id)))
           )
 
-          return new RunResponse({ status: 'started' })
+          return new RunResponse({ status })
         })
       )
       .handle('stop', ({ path }) =>
         Effect.gen(function* () {
+          yield* Effect.sync(() => requestStop(path.id))
           const fiber = getFiber(path.id)
+
           if (!fiber) {
             if (isRunning(path.id)) {
-              releaseRun(path.id)
+              const queuedInputs = yield* Effect.sync(() =>
+                drainQueuedInputs(path.id)
+              )
+
+              if (queuedInputs.length > 0) {
+                yield* storage.append(
+                  path.id,
+                  queuedInputs.map((input) => ({
+                    role: 'user' as const,
+                    content: input,
+                  }))
+                )
+                publish({ _tag: 'MessagesAppended', sessionId: path.id })
+              }
+
               return new StopResponse({ status: 'stopped' })
             }
 
@@ -127,6 +169,10 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
           // we append below is guaranteed to come AFTER the partial turn.
           yield* Fiber.interrupt(fiber)
 
+          const queuedInputs = yield* Effect.sync(() =>
+            drainQueuedInputs(path.id)
+          )
+
           // Persist a system message so the LLM knows it was interrupted
           // on the next turn.
           yield* storage.append(path.id, [
@@ -135,6 +181,10 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
               content:
                 '[The user interrupted the previous response. The assistant message above may be incomplete.]',
             },
+            ...queuedInputs.map((input) => ({
+              role: 'user' as const,
+              content: input,
+            })),
           ])
           publish({ _tag: 'MessagesAppended', sessionId: path.id })
 
