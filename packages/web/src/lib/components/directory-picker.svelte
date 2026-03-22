@@ -3,8 +3,8 @@
     CommandPalette,
     type KeyHint,
   } from '$lib/components/ui/command-palette/index.js'
+  import FolderIcon from 'phosphor-svelte/lib/FolderIcon'
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
-  import Folder from '@lucide/svelte/icons/folder'
   import { cn } from '$lib/utils.js'
 
   interface DirectoryEntry {
@@ -216,7 +216,7 @@
           }}
           onmouseenter={() => (selectedIndex = i)}
         >
-          <Folder class="size-4 shrink-0 text-muted-foreground" />
+          <FolderIcon class="size-4 shrink-0 text-muted-foreground" />
           <span class="min-w-0 truncate">
             <span class="text-muted-foreground">{display.dim}</span><span
               class="font-medium">{display.bright}</span

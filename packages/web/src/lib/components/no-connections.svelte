@@ -2,7 +2,7 @@
   import Button from '$lib/components/ui/button/button.svelte'
   import { actionStore } from '$lib/stores/actions.svelte.js'
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
-  import ServerIcon from '@lucide/svelte/icons/server'
+  import HardDrivesIcon from 'phosphor-svelte/lib/HardDrivesIcon'
   import ConnectionDialog from './connection-dialog.svelte'
   import { onMount } from 'svelte'
 
@@ -30,7 +30,7 @@
 
 <div class="flex h-full flex-col items-center justify-center p-8">
   <div class="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-    <ServerIcon class="h-8 w-8 text-muted-foreground" />
+    <HardDrivesIcon class="h-8 w-8 text-muted-foreground" />
   </div>
 
   <h2 class="mt-4 text-lg font-semibold">No Server Connection</h2>

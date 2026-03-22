@@ -12,8 +12,8 @@
 
 <div
   bind:this={ref}
-  data-slot="dialog-header"
-  class={cn('flex flex-col gap-1', className)}
+  data-slot="popover-title"
+  class={cn('text-sm font-medium', className)}
   {...restProps}
 >
   {@render children?.()}

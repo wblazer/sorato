@@ -1,6 +1,6 @@
 <script lang="ts">
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
-  import Plus from '@lucide/svelte/icons/plus'
+  import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
   import { cn } from '$lib/utils.js'
 
   function formatRelativeTime(timestamp: number): string {
@@ -35,7 +35,7 @@
       )}
       onclick={() => sessionStore.startComposing()}
     >
-      <Plus class="size-4" />
+      <PlusIcon class="size-4" />
       New Session
     </button>
   </div>

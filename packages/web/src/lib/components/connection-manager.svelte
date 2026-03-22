@@ -10,11 +10,12 @@
     connectionsStore,
     type Connection,
   } from '$lib/stores/connections.svelte.js'
+  import DotsThreeVerticalIcon from 'phosphor-svelte/lib/DotsThreeVerticalIcon'
+  import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon'
+  import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
+  import TrashIcon from 'phosphor-svelte/lib/TrashIcon'
+  import XIcon from 'phosphor-svelte/lib/XIcon'
   import ConnectionDialog from './connection-dialog.svelte'
-  import PlusIcon from '@lucide/svelte/icons/plus'
-  import MoreVerticalIcon from '@lucide/svelte/icons/more-vertical'
-  import TrashIcon from '@lucide/svelte/icons/trash'
-  import PencilIcon from '@lucide/svelte/icons/pencil'
   import { onMount } from 'svelte'
 
   let popoverOpen = $state(false)
@@ -109,19 +110,11 @@
           <span class="text-sm font-medium">Servers</span>
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon"
             onclick={() => (popoverOpen = false)}
           >
             <span class="sr-only">Close</span>
-            <svg
-              class="h-4 w-4"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
+            <XIcon />
           </Button>
         </div>
 
@@ -156,25 +149,25 @@
 
                 <Popover>
                   <PopoverTrigger>
-                    <Button variant="ghost" size="icon-sm">
-                      <MoreVerticalIcon />
+                    <Button variant="ghost" size="icon-lg">
+                      <DotsThreeVerticalIcon />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent class="w-32 p-1" align="end" side="right">
+                  <PopoverContent class="w-32 gap-0.5 p-1" align="end" side="right">
                     <Button
                       variant="ghost"
                       size="sm"
                       onclick={() => handleEdit(connection)}
                       class="w-full justify-start"
                     >
-                      <PencilIcon />
+                      <PencilSimpleIcon />
                       Edit
                     </Button>
                     <Button
-                      variant="ghost"
+                      variant="ghost-destructive"
                       size="sm"
                       onclick={() => handleDelete(connection.id)}
-                      class="w-full justify-start text-destructive hover:bg-destructive/10"
+                      class="w-full justify-start"
                     >
                       <TrashIcon />
                       Delete

@@ -2,8 +2,8 @@
   import DirectoryPicker from '$lib/components/directory-picker.svelte'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { actionStore } from '$lib/stores/actions.svelte.js'
-  import ChevronsUpDown from '@lucide/svelte/icons/chevrons-up-down'
-  import FolderOpen from '@lucide/svelte/icons/folder-open'
+  import CaretUpDownIcon from 'phosphor-svelte/lib/CaretUpDownIcon'
+  import FolderOpenIcon from 'phosphor-svelte/lib/FolderOpenIcon'
   import { cn } from '$lib/utils.js'
   import { onMount } from 'svelte'
 
@@ -73,7 +73,7 @@
         <div class="text-sm text-muted-foreground">No directory selected</div>
       {/if}
     </div>
-    <ChevronsUpDown
+    <CaretUpDownIcon
       class={cn('size-4 shrink-0 text-muted-foreground transition-transform')}
     />
   </button>
@@ -112,7 +112,7 @@
         )}
         onclick={handleOpenDirectory}
       >
-        <FolderOpen class="size-4" />
+        <FolderOpenIcon class="size-4" />
         Open Directory…
       </button>
     </div>

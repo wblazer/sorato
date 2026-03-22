@@ -1,16 +1,17 @@
 <script lang="ts">
   import { Popover as PopoverPrimitive } from 'bits-ui'
-  import type { Snippet } from 'svelte'
+  import { cn } from '$lib/utils.js'
 
   let {
     ref = $bindable(null),
-    children,
+    class: className,
     ...restProps
-  }: PopoverPrimitive.TriggerProps & {
-    children: Snippet
-  } = $props()
+  }: PopoverPrimitive.TriggerProps = $props()
 </script>
 
-<PopoverPrimitive.Trigger bind:ref {...restProps}>
-  {@render children?.()}
-</PopoverPrimitive.Trigger>
+<PopoverPrimitive.Trigger
+  bind:ref
+  data-slot="popover-trigger"
+  class={cn('', className)}
+  {...restProps}
+/>
