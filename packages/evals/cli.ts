@@ -5,8 +5,8 @@
  *   bun run cli.ts run hello-world
  *   bun run cli.ts list
  */
-import { Args, Command } from '@effect/cli'
-import { BunContext, BunRuntime } from '@effect/platform-bun'
+import { Argument, Command } from 'effect/unstable/cli'
+import { BunRuntime, BunServices } from '@effect/platform-bun'
 import { Console, Effect } from 'effect'
 import { suites, findSuite } from './registry.ts'
 
@@ -33,8 +33,8 @@ const list = Command.make('list', {}, () =>
 // `run` — execute an eval suite by name
 // ---------------------------------------------------------------------------
 
-const evalName = Args.text({ name: 'eval' }).pipe(
-  Args.withDescription('Name of the eval suite to run')
+const evalName = Argument.string('eval').pipe(
+  Argument.withDescription('Name of the eval suite to run')
 )
 
 const run = Command.make('run', { evalName }, ({ evalName }) =>
@@ -66,11 +66,7 @@ const agents = Command.make('agents', {}).pipe(
 // ---------------------------------------------------------------------------
 
 const cli = Command.run(agents, {
-  name: 'agents',
   version: '0.0.1',
 })
 
-Effect.suspend(() => cli(process.argv)).pipe(
-  Effect.provide(BunContext.layer),
-  BunRuntime.runMain
-)
+cli.pipe(Effect.provide(BunServices.layer), BunRuntime.runMain)

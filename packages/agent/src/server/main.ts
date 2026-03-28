@@ -8,7 +8,8 @@
  */
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import { HttpApiBuilder, HttpMiddleware, HttpServer } from '@effect/platform'
+import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { HttpMiddleware, HttpRouter, HttpServer } from 'effect/unstable/http'
 import { BunHttpServer, BunRuntime } from '@effect/platform-bun'
 import { Effect, Layer } from 'effect'
 import { SqliteSession } from '../index.ts'
@@ -32,14 +33,12 @@ const dataDir =
 // ── Compose layers ──────────────────────────────────────────────────
 
 const HandshakeLive = HttpApiBuilder.group(Api, 'handshake', (handlers) =>
-  Effect.succeed(
-    handlers.handle('check', () =>
-      Effect.succeed(new HandshakeResponse({ version: '0.0.1', status: 'ok' }))
-    )
+  handlers.handle('check', () =>
+    Effect.succeed(new HandshakeResponse({ version: '0.0.1', status: 'ok' }))
   )
 )
 
-const ApiLive = HttpApiBuilder.api(Api).pipe(
+const ApiLive = HttpApiBuilder.layer(Api).pipe(
   Layer.provide(SessionsLive),
   Layer.provide(DirectoriesLive),
   Layer.provide(HandshakeLive)
@@ -49,12 +48,20 @@ const StorageLive = SqliteSession({ path: join(dataDir, 'sessions.db') })
 
 // ── Serve ───────────────────────────────────────────────────────────
 
-const HttpLive = HttpApiBuilder.serve(withSse(HttpMiddleware.logger)).pipe(
+const HttpLive = HttpRouter.toHttpEffect(ApiLive).pipe(
+  Effect.map((app) =>
+    HttpServer.serve(
+      app,
+      withSse((httpApp) =>
+        HttpMiddleware.cors()(HttpMiddleware.logger(httpApp))
+      )
+    )
+  ),
+  Layer.unwrap,
   HttpServer.withLogAddress,
-  Layer.provide(HttpApiBuilder.middlewareCors()),
-  Layer.provide(ApiLive),
   Layer.provide(StorageLive),
   Layer.provide(AgentLive),
+  Layer.provide(HttpRouter.layer),
   Layer.provide(BunHttpServer.layer({ port: 3100 }))
 )
 

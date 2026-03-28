@@ -14,7 +14,7 @@
  *   - **Hooks**: arbitrary code on lifecycle events. Just functions → Effects.
  *   - **Model**: provided via Effect's `LanguageModel` service in R.
  */
-import type { Prompt, Tool, Toolkit } from '@effect/ai'
+import type { LanguageModel, Prompt, Tool } from 'effect/unstable/ai'
 import type { Effect } from 'effect'
 
 // ---------------------------------------------------------------------------
@@ -87,10 +87,7 @@ export interface HarnessConfig<
    * The toolkit — tools + handlers. Accepts either a resolved `WithHandler`
    * or a `Toolkit` Effect (which resolves handlers from the Effect context).
    */
-  readonly toolkit?:
-    | Toolkit.WithHandler<Tools>
-    | Effect.Effect<Toolkit.WithHandler<Tools>, never, Tool.HandlersFor<Tools>>
-    | undefined
+  readonly toolkit?: LanguageModel.ToolkitInput<Tools> | undefined
 
   /** Lifecycle hooks. All hooks run for every event — compose freely. */
   readonly hooks?: ReadonlyArray<HarnessHook<HookE, HookR>> | undefined

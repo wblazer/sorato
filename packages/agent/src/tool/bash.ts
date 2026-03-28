@@ -8,7 +8,7 @@
  * Security and process management are sandbox concerns — the tool just
  * calls `session.exec()` and formats the result.
  */
-import { Tool } from '@effect/ai'
+import { Tool } from 'effect/unstable/ai'
 import { Effect, Schema } from 'effect'
 import { CurrentShell, CurrentFiles, SandboxError } from '../sandbox/sandbox.ts'
 
@@ -83,22 +83,22 @@ const truncateOutput = (output: string): TruncationResult => {
 export const Bash = Tool.make('Bash', {
   description:
     'Execute a shell command in the sandbox. Returns combined stdout and stderr. Use the `cwd` parameter instead of `cd dir && ...`. Commands run non-interactively — pagers, editors, and prompts are suppressed.',
-  parameters: {
-    command: Schema.String.annotations({
+  parameters: Schema.Struct({
+    command: Schema.String.annotate({
       description: 'The shell command to execute (passed to /bin/sh -c).',
     }),
-    cwd: Schema.optional(Schema.String).annotations({
+    cwd: Schema.optional(Schema.String).annotate({
       description:
         'Working directory (sandbox-relative). Defaults to the sandbox root.',
     }),
-    timeout: Schema.optional(Schema.Number).annotations({
+    timeout: Schema.optional(Schema.Number).annotate({
       description: `Timeout in milliseconds. Defaults to ${DEFAULT_TIMEOUT_MS}ms (${DEFAULT_TIMEOUT_MS / 1000}s). Use a longer timeout for builds/tests.`,
     }),
-    description: Schema.optional(Schema.String).annotations({
+    description: Schema.optional(Schema.String).annotate({
       description:
         'Brief (5-10 word) description of what this command does, for logging.',
     }),
-  },
+  }),
   success: Schema.String,
   failure: SandboxError,
   failureMode: 'return',
@@ -155,7 +155,7 @@ export const BashHandler = {
 
         yield* files
           .writeFile(spilloverPath, combined)
-          .pipe(Effect.catchAll(() => Effect.void))
+          .pipe(Effect.catch(() => Effect.void))
       }
 
       // Build the result message

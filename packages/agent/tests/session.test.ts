@@ -1,5 +1,5 @@
 import { Effect, Schema } from 'effect'
-import { Prompt } from '@effect/ai'
+import { Prompt } from 'effect/unstable/ai'
 import { describe, expect, it } from '@effect/vitest'
 import { SessionStorage, SqliteSession } from '../src/index.ts'
 
@@ -230,8 +230,8 @@ describe('SessionStorage', () => {
         expect(prompt.content.length).toBe(5)
 
         // The conversation round-trips — we can re-encode it
-        const json = yield* Schema.encode(Prompt.FromJson)(prompt)
-        const decoded = yield* Schema.decode(Prompt.FromJson)(json)
+        const json = yield* Schema.encodeEffect(Prompt.Prompt)(prompt)
+        const decoded = yield* Schema.decodeEffect(Prompt.Prompt)(json)
         expect(decoded.content.length).toBe(5)
       }).pipe(Effect.provide(testLayer))
     )

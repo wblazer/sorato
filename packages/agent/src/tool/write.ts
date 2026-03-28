@@ -10,7 +10,7 @@
  * hashline anchors. The two serve different purposes and models should
  * reach for the right one.
  */
-import { Tool } from '@effect/ai'
+import { Tool } from 'effect/unstable/ai'
 import { Effect, Schema } from 'effect'
 import { CurrentFiles, SandboxError } from '../sandbox/sandbox.ts'
 
@@ -21,15 +21,15 @@ import { CurrentFiles, SandboxError } from '../sandbox/sandbox.ts'
 export const WriteFile = Tool.make('WriteFile', {
   description:
     'Create or overwrite a file. Parent directories are created automatically. Use this to create new files — for editing existing files, prefer EditFile instead.',
-  parameters: {
-    path: Schema.String.annotations({
+  parameters: Schema.Struct({
+    path: Schema.String.annotate({
       description:
         'Path to the file (relative to sandbox root). Parent directories are created if needed.',
     }),
-    content: Schema.String.annotations({
+    content: Schema.String.annotate({
       description: 'The full content to write to the file.',
     }),
-  },
+  }),
   success: Schema.String,
   failure: SandboxError,
   failureMode: 'return',

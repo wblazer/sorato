@@ -11,8 +11,8 @@
  *
  * The `run` combinator collects tests into a SuiteResult.
  */
-import type { AiError, Tool } from '@effect/ai'
-import { LanguageModel, Prompt } from '@effect/ai'
+import type { AiError, Tool } from 'effect/unstable/ai'
+import { LanguageModel, Prompt } from 'effect/unstable/ai'
 import { Effect } from 'effect'
 import type { HarnessConfig } from '@agents/agent'
 import { run as runHarness } from '@agents/agent'

@@ -9,7 +9,7 @@ import {
   HttpApiEndpoint,
   HttpApiGroup,
   HttpApiSchema,
-} from '@effect/platform'
+} from 'effect/unstable/httpapi'
 import { Schema } from 'effect'
 import { SessionId, StorageError } from '../session/session.ts'
 
@@ -23,7 +23,7 @@ export class SessionResponse extends Schema.Class<SessionResponse>(
   title: Schema.NullOr(Schema.String),
   headId: Schema.NullOr(Schema.String),
   /** Ephemeral run status — 'running' if an agent run is active. */
-  status: Schema.Literal('idle', 'running'),
+  status: Schema.Literals(['idle', 'running']),
   createdAt: Schema.Number,
   updatedAt: Schema.Number,
 }) {}
@@ -39,14 +39,14 @@ export class MessageNodeResponse extends Schema.Class<MessageNodeResponse>(
 }) {}
 
 export class RunResponse extends Schema.Class<RunResponse>('RunResponse')({
-  status: Schema.Literal('started', 'queued'),
+  status: Schema.Literals(['started', 'queued']),
 }) {}
 
 export class StopResponse extends Schema.Class<StopResponse>('StopResponse')({
-  status: Schema.Literal('stopped', 'not_running'),
+  status: Schema.Literals(['stopped', 'not_running']),
 }) {}
 
-export class RunError extends Schema.TaggedError<RunError>()('RunError', {
+export class RunError extends Schema.TaggedErrorClass<RunError>()('RunError', {
   message: Schema.String,
 }) {}
 
@@ -57,7 +57,7 @@ export class DirectoryEntry extends Schema.Class<DirectoryEntry>(
   name: Schema.String,
   /** Fully resolved absolute path */
   path: Schema.String,
-  type: Schema.Literal('directory', 'file'),
+  type: Schema.Literals(['directory', 'file']),
 }) {}
 
 export class DirectoryListResponse extends Schema.Class<DirectoryListResponse>(
@@ -70,7 +70,7 @@ export class DirectoryListResponse extends Schema.Class<DirectoryListResponse>(
   entries: Schema.Array(DirectoryEntry),
 }) {}
 
-export class DirectoryError extends Schema.TaggedError<DirectoryError>()(
+export class DirectoryError extends Schema.TaggedErrorClass<DirectoryError>()(
   'DirectoryError',
   { message: Schema.String }
 ) {}
@@ -86,56 +86,68 @@ export class HandshakeResponse extends Schema.Class<HandshakeResponse>(
 
 // ── Sessions Group ──────────────────────────────────────────────────
 
-const idParam = HttpApiSchema.param('id', SessionId)
-
 export class SessionsGroup extends HttpApiGroup.make('sessions')
   .add(
-    HttpApiEndpoint.get('list', '/')
-      .addSuccess(Schema.Array(SessionResponse))
-      .addError(StorageError, { status: 500 })
+    HttpApiEndpoint.get('list', '/', {
+      success: Schema.Array(SessionResponse),
+      error: StorageError.pipe(HttpApiSchema.status(500)),
+    })
   )
   .add(
-    HttpApiEndpoint.post('create', '/')
-      .setPayload(
-        Schema.Struct({
-          directory: Schema.String,
-          title: Schema.optional(Schema.String),
-        })
-      )
-      .addSuccess(SessionResponse)
-      .addError(StorageError, { status: 500 })
+    HttpApiEndpoint.post('create', '/', {
+      payload: Schema.Struct({
+        directory: Schema.String,
+        title: Schema.optional(Schema.String),
+      }),
+      success: SessionResponse,
+      error: StorageError.pipe(HttpApiSchema.status(500)),
+    })
   )
   .add(
-    HttpApiEndpoint.get('get')`/${idParam}`
-      .addSuccess(SessionResponse)
-      .addError(StorageError, { status: 500 })
+    HttpApiEndpoint.get('get', '/:id', {
+      params: { id: SessionId },
+      success: SessionResponse,
+      error: StorageError.pipe(HttpApiSchema.status(500)),
+    })
   )
   .add(
-    HttpApiEndpoint.del('delete')`/${idParam}`
-      .addSuccess(Schema.Void)
-      .addError(StorageError, { status: 500 })
+    HttpApiEndpoint.delete('delete', '/:id', {
+      params: { id: SessionId },
+      success: Schema.Void,
+      error: StorageError.pipe(HttpApiSchema.status(500)),
+    })
   )
   .add(
-    HttpApiEndpoint.get('leaves')`/${idParam}/leaves`
-      .addSuccess(Schema.Array(MessageNodeResponse))
-      .addError(StorageError, { status: 500 })
+    HttpApiEndpoint.get('leaves', '/:id/leaves', {
+      params: { id: SessionId },
+      success: Schema.Array(MessageNodeResponse),
+      error: StorageError.pipe(HttpApiSchema.status(500)),
+    })
   )
   .add(
-    HttpApiEndpoint.get('messages')`/${idParam}/messages`
-      .addSuccess(Schema.Array(MessageNodeResponse))
-      .addError(StorageError, { status: 500 })
+    HttpApiEndpoint.get('messages', '/:id/messages', {
+      params: { id: SessionId },
+      success: Schema.Array(MessageNodeResponse),
+      error: StorageError.pipe(HttpApiSchema.status(500)),
+    })
   )
   .add(
-    HttpApiEndpoint.post('run')`/${idParam}/run`
-      .setPayload(Schema.Struct({ input: Schema.String }))
-      .addSuccess(RunResponse)
-      .addError(StorageError, { status: 500 })
-      .addError(RunError, { status: 500 })
+    HttpApiEndpoint.post('run', '/:id/run', {
+      params: { id: SessionId },
+      payload: Schema.Struct({ input: Schema.String }),
+      success: RunResponse,
+      error: [
+        StorageError.pipe(HttpApiSchema.status(500)),
+        RunError.pipe(HttpApiSchema.status(500)),
+      ],
+    })
   )
   .add(
-    HttpApiEndpoint.post('stop')`/${idParam}/stop`
-      .addSuccess(StopResponse)
-      .addError(StorageError, { status: 500 })
+    HttpApiEndpoint.post('stop', '/:id/stop', {
+      params: { id: SessionId },
+      success: StopResponse,
+      error: StorageError.pipe(HttpApiSchema.status(500)),
+    })
   )
   .prefix('/sessions') {}
 
@@ -143,23 +155,20 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
 
 export class DirectoriesGroup extends HttpApiGroup.make('directories')
   .add(
-    HttpApiEndpoint.get('list', '/')
-      .setUrlParams(
-        Schema.Struct({
-          /** Path to list — supports ~, absolute, and relative paths.
-           *  Server resolves ~ to home dir. Empty/missing = home dir. */
-          path: Schema.optionalWith(Schema.String, { default: () => '~' }),
-        })
-      )
-      .addSuccess(DirectoryListResponse)
-      .addError(DirectoryError, { status: 400 })
+    HttpApiEndpoint.get('list', '/', {
+      query: {
+        path: Schema.String.pipe(Schema.withDecodingDefault(() => '~')),
+      },
+      success: DirectoryListResponse,
+      error: DirectoryError.pipe(HttpApiSchema.status(400)),
+    })
   )
   .prefix('/directories') {}
 
 // ── Handshake Group ─────────────────────────────────────────────────
 
 export class HandshakeGroup extends HttpApiGroup.make('handshake')
-  .add(HttpApiEndpoint.get('check', '/').addSuccess(HandshakeResponse))
+  .add(HttpApiEndpoint.get('check', '/', { success: HandshakeResponse }))
   .prefix('/handshake') {}
 
 // ── Root API ────────────────────────────────────────────────────────

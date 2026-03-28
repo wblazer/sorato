@@ -1,15 +1,16 @@
 /**
  * LocalSandbox — runs in the current process, no isolation.
  *
- * Uses `@effect/platform` CommandExecutor and FileSystem for process +
+ * Uses Effect's ChildProcess and FileSystem services for process +
  * filesystem operations. The caller provides a root directory; all paths
  * are resolved under it. The sandbox does not create or clean up
  * directories — lifecycle management is the caller's responsibility.
- * `LocalSandboxLive` is a convenience layer with BunContext already wired in.
+ * `LocalSandboxLive` is a convenience layer with Bun services already wired in.
  */
 import { Effect, Fiber, Layer, Stream } from 'effect'
-import { Command, CommandExecutor, FileSystem, Path } from '@effect/platform'
-import { BunContext } from '@effect/platform-bun'
+import { FileSystem, Path } from 'effect'
+import { ChildProcess, ChildProcessSpawner } from 'effect/unstable/process'
+import { BunServices } from '@effect/platform-bun'
 import {
   Sandbox,
   SandboxError,
@@ -74,11 +75,10 @@ const KILL_GRACE_MS = 500
 export const LocalSandbox: Layer.Layer<
   Sandbox,
   never,
-  CommandExecutor.CommandExecutor | FileSystem.FileSystem | Path.Path
-> = Layer.effect(
-  Sandbox,
+  FileSystem.FileSystem | Path.Path | BunServices.BunServices
+> = Layer.effect(Sandbox)(
   Effect.gen(function* () {
-    const executor = yield* CommandExecutor.CommandExecutor
+    const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
 
@@ -124,16 +124,22 @@ export const LocalSandbox: Layer.Layer<
                 ...input.env,
               }
 
-              let command = Command.make('/bin/sh', '-c', input.command)
-              command = Command.workingDirectory(command, cwd)
-              command = Command.env(command, mergedEnv)
+              const command = ChildProcess.make(
+                '/bin/sh',
+                ['-c', input.command],
+                {
+                  cwd,
+                  env: mergedEnv,
+                  extendEnv: true,
+                  stdin:
+                    input.stdin === undefined
+                      ? undefined
+                      : Stream.succeed(new TextEncoder().encode(input.stdin)),
+                }
+              )
 
-              if (input.stdin !== undefined) {
-                command = Command.feed(command, input.stdin)
-              }
-
-              const process = yield* executor.start(command).pipe(
-                Effect.catchAll(
+              const process = yield* childProcessSpawner.spawn(command).pipe(
+                Effect.mapError(
                   (error) =>
                     new SandboxError({
                       operation: 'exec',
@@ -147,17 +153,12 @@ export const LocalSandbox: Layer.Layer<
                * Kill the process gracefully: SIGTERM → grace period → SIGKILL.
                * Ignores errors from kill() since the process may already be dead.
                */
-              const killGracefully = process.kill('SIGTERM').pipe(
-                Effect.andThen(Effect.sleep(KILL_GRACE_MS)),
-                Effect.andThen(
-                  process.isRunning.pipe(
-                    Effect.flatMap((running) =>
-                      running ? process.kill('SIGKILL') : Effect.void
-                    )
-                  )
-                ),
-                Effect.catchAll(() => Effect.void)
-              )
+              const killGracefully = process
+                .kill({
+                  killSignal: 'SIGTERM',
+                  forceKillAfter: `${KILL_GRACE_MS} millis`,
+                })
+                .pipe(Effect.catch(() => Effect.void))
 
               /**
                * Collect output and wait for exit. If a timeout is set, fork a
@@ -185,8 +186,8 @@ export const LocalSandbox: Layer.Layer<
                           })
                         )
                       ),
-                      Effect.catchAll(() => Effect.void),
-                      Effect.fork
+                      Effect.catch(() => Effect.void),
+                      Effect.forkChild
                     )
                   : undefined
 
@@ -195,7 +196,7 @@ export const LocalSandbox: Layer.Layer<
                 streamToString(process.stderr),
                 process.exitCode,
               ] as const).pipe(
-                Effect.catchAll(
+                Effect.mapError(
                   (error) =>
                     new SandboxError({
                       operation: 'exec',
@@ -211,9 +212,9 @@ export const LocalSandbox: Layer.Layer<
               }
 
               return {
-                stdout,
-                stderr,
-                exitCode: code,
+                stdout: stdout ?? '',
+                stderr: stderr ?? '',
+                exitCode: Number(code),
                 ...(timedOut ? { timedOut: true } : {}),
               } satisfies ExecResult
             })
@@ -313,7 +314,7 @@ export const LocalSandbox: Layer.Layer<
         return { shell, files } satisfies SandboxSession
       })
 
-    return Sandbox.of({ acquire })
+    return { acquire }
   })
 )
 
@@ -322,5 +323,5 @@ export const LocalSandbox: Layer.Layer<
  * already wired in. Use this in scripts/tests where you want zero setup.
  */
 export const LocalSandboxLive: Layer.Layer<Sandbox> = LocalSandbox.pipe(
-  Layer.provide(BunContext.layer)
+  Layer.provide(BunServices.layer)
 )

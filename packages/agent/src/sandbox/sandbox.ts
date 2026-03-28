@@ -20,13 +20,13 @@
  * the tags separately. This keeps lifecycle management unified (one scope,
  * one rootDir) while giving tools granular `R` types.
  */
-import { Context, Effect, Schema, Scope } from 'effect'
+import { Effect, Schema, Scope, ServiceMap } from 'effect'
 
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
 
-export class SandboxError extends Schema.TaggedError<SandboxError>()(
+export class SandboxError extends Schema.TaggedErrorClass<SandboxError>()(
   'SandboxError',
   {
     operation: Schema.String,
@@ -76,10 +76,9 @@ export interface Shell {
 }
 
 /** Per-scenario shell service. Tools that execute commands require this in their `R`. */
-export class CurrentShell extends Context.Tag('@agents/Shell')<
-  CurrentShell,
-  Shell
->() {}
+export class CurrentShell extends ServiceMap.Service<CurrentShell, Shell>()(
+  '@agents/Shell'
+) {}
 
 // ---------------------------------------------------------------------------
 // Files — filesystem service
@@ -109,10 +108,9 @@ export interface Files {
 }
 
 /** Per-scenario files service. Tools that access files require this in their `R`. */
-export class CurrentFiles extends Context.Tag('@agents/Files')<
-  CurrentFiles,
-  Files
->() {}
+export class CurrentFiles extends ServiceMap.Service<CurrentFiles, Files>()(
+  '@agents/Files'
+) {}
 
 // ---------------------------------------------------------------------------
 // SandboxSession — the composite returned by the factory
@@ -149,7 +147,6 @@ export interface SandboxFactory {
  * The sandbox factory — produces scoped sessions with Shell + Files services.
  * The runner uses this to acquire sessions per scenario.
  */
-export class Sandbox extends Context.Tag('@agents/Sandbox')<
-  Sandbox,
-  SandboxFactory
->() {}
+export class Sandbox extends ServiceMap.Service<Sandbox, SandboxFactory>()(
+  '@agents/Sandbox'
+) {}

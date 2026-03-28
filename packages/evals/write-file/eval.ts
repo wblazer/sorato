@@ -7,7 +7,7 @@
  * needs to do fluently in real-world coding tasks.
  */
 import { AnthropicClient, AnthropicLanguageModel } from '@effect/ai-anthropic'
-import { FetchHttpClient } from '@effect/platform'
+import { FetchHttpClient } from 'effect/unstable/http'
 import { Config, Effect, Layer } from 'effect'
 import {
   test,
@@ -148,7 +148,7 @@ const tests = scenarios.map((scenario) =>
         // The real check: did the file get written correctly?
         const content = yield* files
           .readFile(scenario.filePath)
-          .pipe(Effect.catchAll(() => Effect.succeed('')))
+          .pipe(Effect.catch(() => Effect.succeed('')))
         const passed = scenario.check(normalize(content))
 
         return {

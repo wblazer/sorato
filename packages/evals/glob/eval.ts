@@ -9,7 +9,7 @@
  * requests into correct glob patterns — a core skill for codebase navigation.
  */
 import { AnthropicClient, AnthropicLanguageModel } from '@effect/ai-anthropic'
-import { FetchHttpClient } from '@effect/platform'
+import { FetchHttpClient } from 'effect/unstable/http'
 import { Config, Effect, Layer } from 'effect'
 import {
   test,

@@ -1,4 +1,4 @@
-import { Prompt } from '@effect/ai'
+import { Prompt } from 'effect/unstable/ai'
 import { Effect, Schema } from 'effect'
 import { StorageError } from '../session/session.ts'
 import {
@@ -19,17 +19,14 @@ export const createPersistenceHook = (
       if (event._tag !== 'RunResult') return
 
       const storage = yield* SessionStorage
-      const encoded = yield* Schema.encode(Prompt.Prompt)(
-        event.result.conversation
-      ).pipe(
-        Effect.mapError(
-          (error) =>
-            new StorageError({
-              operation: 'run',
-              message: `Failed to encode conversation: ${String(error)}`,
-            })
-        )
-      )
+      const encoded = yield* Effect.try({
+        try: () => Schema.encodeSync(Prompt.Prompt)(event.result.conversation),
+        catch: (error) =>
+          new StorageError({
+            operation: 'run',
+            message: `Failed to encode conversation: ${String(error)}`,
+          }),
+      })
 
       const newMessages = encoded.content.slice(messageCountBeforeRun)
       if (newMessages.length === 0) return

@@ -8,7 +8,7 @@
  * Results are capped to prevent context window explosions on overly broad
  * patterns. When truncated, the LLM gets a hint to narrow the pattern.
  */
-import { Tool } from '@effect/ai'
+import { Tool } from 'effect/unstable/ai'
 import { Effect, Schema } from 'effect'
 import { CurrentFiles, SandboxError } from '../sandbox/sandbox.ts'
 
@@ -26,16 +26,16 @@ const MAX_RESULTS = 500
 export const Glob = Tool.make('Glob', {
   description:
     'Find files matching a glob pattern. Returns matching file paths sorted alphabetically. Supports standard glob syntax: * (any segment chars), ** (any directory depth), ? (single char), {a,b} (alternatives). Example patterns: "**/*.ts", "src/**/*.json", "*.md".',
-  parameters: {
-    pattern: Schema.String.annotations({
+  parameters: Schema.Struct({
+    pattern: Schema.String.annotate({
       description:
         'Glob pattern to match against. Evaluated from the sandbox root (or from `path` if provided). Examples: "**/*.ts", "src/**/*.json", "*.md".',
     }),
-    path: Schema.optional(Schema.String).annotations({
+    path: Schema.optional(Schema.String).annotate({
       description:
         'Optional base directory to search within (sandbox-relative). The pattern is evaluated relative to this directory. Defaults to the sandbox root.',
     }),
-  },
+  }),
   success: Schema.String,
   failure: SandboxError,
   failureMode: 'return',

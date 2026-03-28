@@ -1,8 +1,8 @@
 import type { Fiber } from 'effect'
 
 interface SessionRunState {
-  workerFiber: Fiber.RuntimeFiber<void, never> | null
-  activeRunFiber: Fiber.RuntimeFiber<void, never> | null
+  workerFiber: Fiber.Fiber<void, never> | null
+  activeRunFiber: Fiber.Fiber<void, never> | null
   queuedInputs: Array<string>
   stopRequested: boolean
 }
@@ -30,7 +30,7 @@ export function enqueueRun(
 
 export function registerWorkerFiber(
   sessionId: string,
-  fiber: Fiber.RuntimeFiber<void, never>
+  fiber: Fiber.Fiber<void, never>
 ): void {
   const state = running.get(sessionId)
   if (!state) {
@@ -42,7 +42,7 @@ export function registerWorkerFiber(
 
 export function registerActiveFiber(
   sessionId: string,
-  fiber: Fiber.RuntimeFiber<void, never>
+  fiber: Fiber.Fiber<void, never>
 ): void {
   const state = running.get(sessionId)
   if (!state) {
@@ -89,7 +89,7 @@ export function releaseRun(sessionId: string): void {
 
 export function getFiber(
   sessionId: string
-): Fiber.RuntimeFiber<void, never> | undefined {
+): Fiber.Fiber<void, never> | undefined {
   return running.get(sessionId)?.activeRunFiber ?? undefined
 }
 

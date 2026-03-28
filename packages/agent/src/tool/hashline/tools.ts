@@ -11,7 +11,7 @@
  * These two tools are a unit. A different edit strategy (str_replace, patch)
  * would pair with a different read format. That's why they live together.
  */
-import { Tool } from '@effect/ai'
+import { Tool } from 'effect/unstable/ai'
 import { Effect, Schema } from 'effect'
 import { CurrentFiles, SandboxError } from '../../sandbox/sandbox.ts'
 import {
@@ -117,18 +117,18 @@ const extOf = (path: string): string => {
 export const ReadFile = Tool.make('ReadFile', {
   description:
     'Read a file. Returns lines annotated with content-hash anchors in the format `<line>:<hash>|<content>`. Use these `<line>:<hash>` anchors when calling EditFile. Supports reading specific line ranges via offset/limit.',
-  parameters: {
-    path: Schema.String.annotations({
+  parameters: Schema.Struct({
+    path: Schema.String.annotate({
       description: 'Absolute or relative path to the file',
     }),
-    offset: Schema.optional(Schema.Number).annotations({
+    offset: Schema.optional(Schema.Number).annotate({
       description:
         '1-indexed line number to start reading from. Defaults to 1.',
     }),
-    limit: Schema.optional(Schema.Number).annotations({
+    limit: Schema.optional(Schema.Number).annotate({
       description: `Maximum number of lines to return. Defaults to ${DEFAULT_LIMIT}.`,
     }),
-  },
+  }),
   success: Schema.String,
   failure: SandboxError,
   failureMode: 'return',
@@ -206,23 +206,23 @@ export const ReadFileHandler = {
 // EditFile — schema types
 // ---------------------------------------------------------------------------
 
-const AnchorSchema = Schema.String.annotations({
+const AnchorSchema = Schema.String.annotate({
   description:
     'A line anchor in the format "<line>:<hash>" from the last ReadFile output, e.g. "3:0e"',
 })
 
-const ContentSchema = Schema.String.annotations({
+const ContentSchema = Schema.String.annotate({
   description: 'The new content to insert (may contain newlines)',
 })
 
 const ReplaceOp = Schema.Struct({
-  type: Schema.Literal('replace').annotations({
+  type: Schema.Literal('replace').annotate({
     description: 'Replace a range of lines (inclusive) with new content',
   }),
-  startAnchor: AnchorSchema.annotations({
+  startAnchor: AnchorSchema.annotate({
     description: 'Anchor of the first line to replace',
   }),
-  endAnchor: AnchorSchema.annotations({
+  endAnchor: AnchorSchema.annotate({
     description:
       'Anchor of the last line to replace (inclusive). Same as startAnchor for a single-line replace.',
   }),
@@ -230,10 +230,10 @@ const ReplaceOp = Schema.Struct({
 })
 
 const InsertOp = Schema.Struct({
-  type: Schema.Literal('insert').annotations({
+  type: Schema.Literal('insert').annotate({
     description: 'Insert new content after the referenced line',
   }),
-  afterAnchor: AnchorSchema.annotations({
+  afterAnchor: AnchorSchema.annotate({
     description:
       'Anchor of the line after which to insert. Use "0" to insert at the beginning of the file.',
   }),
@@ -241,19 +241,19 @@ const InsertOp = Schema.Struct({
 })
 
 const DeleteOp = Schema.Struct({
-  type: Schema.Literal('delete').annotations({
+  type: Schema.Literal('delete').annotate({
     description: 'Delete a range of lines (inclusive)',
   }),
-  startAnchor: AnchorSchema.annotations({
+  startAnchor: AnchorSchema.annotate({
     description: 'Anchor of the first line to delete',
   }),
-  endAnchor: AnchorSchema.annotations({
+  endAnchor: AnchorSchema.annotate({
     description:
       'Anchor of the last line to delete (inclusive). Same as startAnchor for a single-line delete.',
   }),
 })
 
-const EditOp = Schema.Union(ReplaceOp, InsertOp, DeleteOp)
+const EditOp = Schema.Union([ReplaceOp, InsertOp, DeleteOp])
 
 // ---------------------------------------------------------------------------
 // EditFile — tool declaration
@@ -262,15 +262,15 @@ const EditOp = Schema.Union(ReplaceOp, InsertOp, DeleteOp)
 export const EditFile = Tool.make('EditFile', {
   description:
     'Edit a file using line anchors from the last ReadFile output. Each anchor is a `<line>:<hash>` pair that identifies a specific line. You must ReadFile before editing to obtain valid anchors. Edits must not overlap — no two operations can touch the same lines.',
-  parameters: {
-    path: Schema.String.annotations({
+  parameters: Schema.Struct({
+    path: Schema.String.annotate({
       description: 'Path to the file (same path used in ReadFile)',
     }),
-    edits: Schema.Array(EditOp).annotations({
+    edits: Schema.Array(EditOp).annotate({
       description:
         'Array of edit operations. Each operation references lines by their `<line>:<hash>` anchors from the last ReadFile call. Edits must not overlap — no two operations can touch the same lines. Edits are automatically sorted by line position.',
     }),
-  },
+  }),
   success: Schema.String,
   failure: SandboxError,
   failureMode: 'return',

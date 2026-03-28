@@ -14,8 +14,7 @@ import {
   HttpMiddleware,
   HttpServerRequest,
   HttpServerResponse,
-} from '@effect/platform'
-import type { HttpApp } from '@effect/platform'
+} from 'effect/unstable/http'
 import { Effect } from 'effect'
 import { isContentEvent, subscribe, type ServerEvent } from './event-bus.ts'
 import {
@@ -208,10 +207,30 @@ function createSSEResponse(
  * ```
  */
 export const withSse = (
-  inner: <E, R>(app: HttpApp.Default<E, R>) => HttpApp.Default<E, R>
+  inner: <E, R>(
+    app: Effect.Effect<
+      HttpServerResponse.HttpServerResponse,
+      E,
+      HttpServerRequest.HttpServerRequest | R
+    >
+  ) => Effect.Effect<
+    HttpServerResponse.HttpServerResponse,
+    E,
+    HttpServerRequest.HttpServerRequest | R
+  >
 ) =>
   HttpMiddleware.make(
-    <E, R>(app: HttpApp.Default<E, R>): HttpApp.Default<E, R> =>
+    <E, R>(
+      app: Effect.Effect<
+        HttpServerResponse.HttpServerResponse,
+        E,
+        HttpServerRequest.HttpServerRequest | R
+      >
+    ): Effect.Effect<
+      HttpServerResponse.HttpServerResponse,
+      E,
+      HttpServerRequest.HttpServerRequest | R
+    > =>
       Effect.gen(function* () {
         const req = yield* HttpServerRequest.HttpServerRequest
         const url = new URL(req.url, 'http://localhost')
@@ -226,5 +245,9 @@ export const withSse = (
 
         // Pass through to inner middleware + API
         return yield* inner(app)
-      }) as HttpApp.Default<E, R>
+      }) as Effect.Effect<
+        HttpServerResponse.HttpServerResponse,
+        E,
+        HttpServerRequest.HttpServerRequest | R
+      >
   )

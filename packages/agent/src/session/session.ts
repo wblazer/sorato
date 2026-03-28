@@ -21,24 +21,24 @@
  * into `Prompt.Prompt` on read. Other systems (VCS, analytics) can join on
  * message IDs without coupling to this module.
  */
-import { Context, Effect, Schema } from 'effect'
-import type { Prompt } from '@effect/ai'
+import { Effect, Schema, ServiceMap } from 'effect'
+import type { Prompt } from 'effect/unstable/ai'
 
 // ---------------------------------------------------------------------------
 // Branded IDs
 // ---------------------------------------------------------------------------
 
-export const SessionId = Schema.String.pipe(Schema.brand('SessionId'))
-export type SessionId = typeof SessionId.Type
+export const SessionId = Schema.String
+export type SessionId = string
 
-export const MessageId = Schema.String.pipe(Schema.brand('MessageId'))
-export type MessageId = typeof MessageId.Type
+export const MessageId = Schema.String
+export type MessageId = string
 
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
 
-export class StorageError extends Schema.TaggedError<StorageError>()(
+export class StorageError extends Schema.TaggedErrorClass<StorageError>()(
   'StorageError',
   {
     operation: Schema.String,
@@ -161,7 +161,7 @@ export interface SessionStorageApi {
  * Session storage factory — the primary tag consumers `yield*` to
  * interact with persistent conversation storage.
  */
-export class SessionStorage extends Context.Tag('@agents/SessionStorage')<
+export class SessionStorage extends ServiceMap.Service<
   SessionStorage,
   SessionStorageApi
->() {}
+>()('@agents/SessionStorage') {}

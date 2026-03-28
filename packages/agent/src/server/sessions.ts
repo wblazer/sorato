@@ -4,7 +4,7 @@
  * Delegates to SessionStorage from @agents/agent. The handler Layer requires
  * SessionStorage in its environment — the caller provides it (e.g. SqliteSession).
  */
-import { HttpApiBuilder } from '@effect/platform'
+import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { Effect, Fiber } from 'effect'
 import { SessionStorage, type SessionId } from '../session/session.ts'
 import {
@@ -40,7 +40,7 @@ const drainQueuedRuns = (sessionId: SessionId) =>
       if (!input) break
 
       const fiber = yield* runAgent(sessionId, input).pipe(
-        Effect.forkDaemon,
+        Effect.forkDetach,
         Effect.tap((activeFiber) =>
           Effect.sync(() => registerActiveFiber(sessionId, activeFiber))
         )
@@ -99,62 +99,62 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
           .create(payload.directory, payload.title)
           .pipe(Effect.map(toSessionResponse))
       )
-      .handle('get', ({ path }) =>
-        storage.get(path.id).pipe(Effect.map(toSessionResponse))
+      .handle('get', ({ params }) =>
+        storage.get(params.id).pipe(Effect.map(toSessionResponse))
       )
-      .handle('delete', ({ path }) => storage.delete(path.id))
-      .handle('leaves', ({ path }) =>
+      .handle('delete', ({ params }) => storage.delete(params.id))
+      .handle('leaves', ({ params }) =>
         storage
-          .leaves(path.id)
+          .leaves(params.id)
           .pipe(Effect.map((nodes) => nodes.map(toMessageNodeResponse)))
       )
-      .handle('messages', ({ path }) =>
+      .handle('messages', ({ params }) =>
         storage
-          .messages(path.id)
+          .messages(params.id)
           .pipe(Effect.map((nodes) => nodes.map(toMessageNodeResponse)))
       )
-      .handle('run', ({ path, payload }) =>
+      .handle('run', ({ params, payload }) =>
         Effect.gen(function* () {
           // Verify session exists
-          yield* storage.get(path.id)
+          yield* storage.get(params.id)
 
-          const status = enqueueRun(path.id, payload.input)
+          const status = enqueueRun(params.id, payload.input)
 
           if (status === 'queued') {
             return new RunResponse({ status })
           }
 
-          yield* drainQueuedRuns(path.id).pipe(
-            Effect.forkDaemon,
+          yield* drainQueuedRuns(params.id).pipe(
+            Effect.forkDetach,
             Effect.tap((fiber) =>
-              Effect.sync(() => registerWorkerFiber(path.id, fiber))
+              Effect.sync(() => registerWorkerFiber(params.id, fiber))
             ),
-            Effect.onError(() => Effect.sync(() => releaseRun(path.id)))
+            Effect.onError(() => Effect.sync(() => releaseRun(params.id)))
           )
 
           return new RunResponse({ status })
         })
       )
-      .handle('stop', ({ path }) =>
+      .handle('stop', ({ params }) =>
         Effect.gen(function* () {
-          yield* Effect.sync(() => requestStop(path.id))
-          const fiber = getFiber(path.id)
+          yield* Effect.sync(() => requestStop(params.id))
+          const fiber = getFiber(params.id)
 
           if (!fiber) {
-            if (isRunning(path.id)) {
+            if (isRunning(params.id)) {
               const queuedInputs = yield* Effect.sync(() =>
-                drainQueuedInputs(path.id)
+                drainQueuedInputs(params.id)
               )
 
               if (queuedInputs.length > 0) {
                 yield* storage.append(
-                  path.id,
+                  params.id,
                   queuedInputs.map((input) => ({
                     role: 'user' as const,
                     content: input,
                   }))
                 )
-                publish({ _tag: 'MessagesAppended', sessionId: path.id })
+                publish({ _tag: 'MessagesAppended', sessionId: params.id })
               }
 
               return new StopResponse({ status: 'stopped' })
@@ -170,12 +170,12 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
           yield* Fiber.interrupt(fiber)
 
           const queuedInputs = yield* Effect.sync(() =>
-            drainQueuedInputs(path.id)
+            drainQueuedInputs(params.id)
           )
 
           // Persist a system message so the LLM knows it was interrupted
           // on the next turn.
-          yield* storage.append(path.id, [
+          yield* storage.append(params.id, [
             {
               role: 'system' as const,
               content:
@@ -186,7 +186,7 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
               content: input,
             })),
           ])
-          publish({ _tag: 'MessagesAppended', sessionId: path.id })
+          publish({ _tag: 'MessagesAppended', sessionId: params.id })
 
           return new StopResponse({ status: 'stopped' })
         })

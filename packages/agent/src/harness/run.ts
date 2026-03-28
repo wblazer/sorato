@@ -22,11 +22,11 @@
  * interrupted. The harness tracks per-turn text and appends a synthetic
  * assistant message for any un-flushed content on interrupt.
  */
-import type { AiError, Response, Tool } from '@effect/ai'
+import type { AiError, Response, Tool } from 'effect/unstable/ai'
 import type { HarnessConfig, HarnessEvent, HarnessResult } from './harness.ts'
 
 import { Cause, Effect, Exit, Ref, Stream } from 'effect'
-import { Chat, LanguageModel, Prompt } from '@effect/ai'
+import { Chat, LanguageModel, Prompt } from 'effect/unstable/ai'
 
 /** Maximum agent loop iterations to prevent runaway tool-call cycles. */
 const MAX_TURNS = 25
@@ -99,10 +99,10 @@ export const run = <
                 let hadToolCalls = false
                 currentTurnText = ''
 
-                const stream = chat.streamText({
-                  prompt,
-                  toolkit: config.toolkit,
-                })
+                const stream =
+                  config.toolkit === undefined
+                    ? chat.streamText({ prompt })
+                    : chat.streamText({ prompt, toolkit: config.toolkit })
 
                 yield* Stream.runForEach(
                   stream,
@@ -143,9 +143,12 @@ export const run = <
                           // currentTurnText so the interrupt
                           // path knows there's nothing to recover.
                           currentTurnText = ''
-                          usage.inputTokens += part.usage.inputTokens ?? 0
-                          usage.outputTokens += part.usage.outputTokens ?? 0
-                          usage.totalTokens += part.usage.totalTokens ?? 0
+                          const inputTokens = part.usage.inputTokens.total ?? 0
+                          const outputTokens =
+                            part.usage.outputTokens.total ?? 0
+                          usage.inputTokens += inputTokens
+                          usage.outputTokens += outputTokens
+                          usage.totalTokens += inputTokens + outputTokens
                           break
                         }
                       }
@@ -178,13 +181,15 @@ export const run = <
         // arrives). If there's partial text from the interrupted turn,
         // append a synthetic assistant message so it gets persisted.
         const wasInterrupted =
-          Exit.isFailure(exit) && Cause.isInterruptedOnly(exit.cause)
+          Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)
 
         if (wasInterrupted && currentTurnText.length > 0) {
-          fullConversation = Prompt.merge(fullConversation, [
+          fullConversation = Prompt.fromMessages([
+            ...fullConversation.content,
             {
-              role: 'assistant' as const,
-              content: currentTurnText,
+              ...Prompt.makeMessage('assistant', {
+                content: [Prompt.makePart('text', { text: currentTurnText })],
+              }),
             },
           ])
         }

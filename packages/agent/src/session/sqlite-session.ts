@@ -16,7 +16,7 @@
 import { Database } from 'bun:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { Prompt } from '@effect/ai'
+import { Prompt } from 'effect/unstable/ai'
 import { Effect, Layer, Schema } from 'effect'
 import {
   SessionStorage,
@@ -82,18 +82,18 @@ interface MessageRow {
 // ---------------------------------------------------------------------------
 
 const toSession = (row: SessionRow): Session => ({
-  id: SessionId.make(row.id),
+  id: row.id,
   directory: row.directory,
   title: row.title,
-  headId: row.head_id ? MessageId.make(row.head_id) : null,
+  headId: row.head_id,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 })
 
 const toMessageNode = (row: MessageRow): MessageNode => ({
-  id: MessageId.make(row.id),
-  sessionId: SessionId.make(row.session_id),
-  parentId: row.parent_id ? MessageId.make(row.parent_id) : null,
+  id: row.id,
+  sessionId: row.session_id,
+  parentId: row.parent_id,
   encoded: JSON.parse(row.encoded) as Prompt.MessageEncoded,
   createdAt: row.created_at,
 })
@@ -195,8 +195,7 @@ const prepareStatements = (db: Database) => {
 export const SqliteSession = (options: {
   readonly path: string
 }): Layer.Layer<SessionStorage, StorageError> =>
-  Layer.scoped(
-    SessionStorage,
+  Layer.effect(SessionStorage)(
     Effect.gen(function* () {
       const db = yield* Effect.try({
         try: () => {
@@ -227,7 +226,7 @@ export const SqliteSession = (options: {
         directory: string,
         title?: string
       ) {
-        const id = SessionId.make(crypto.randomUUID())
+        const id = crypto.randomUUID()
         const now = Date.now()
 
         yield* Effect.try({
@@ -322,18 +321,16 @@ export const SqliteSession = (options: {
           .reverse()
           .map((row) => JSON.parse(row.encoded) as Prompt.MessageEncoded)
 
-        const prompt = yield* Schema.decode(Prompt.Prompt)({
-          content: encoded,
-        }).pipe(
-          Effect.mapError(
-            (error) =>
-              new StorageError({
-                operation: 'conversation',
-                message: `Failed to decode conversation: ${sessionId}`,
-                error,
-              })
-          )
-        )
+        const prompt = yield* Effect.try({
+          try: () =>
+            Schema.decodeUnknownSync(Prompt.Prompt)({ content: encoded }),
+          catch: (error) =>
+            new StorageError({
+              operation: 'conversation',
+              message: `Failed to decode conversation: ${sessionId}`,
+              error,
+            }),
+        })
 
         return prompt
       })
@@ -455,7 +452,7 @@ export const SqliteSession = (options: {
         return rows.map(toMessageNode)
       })
 
-      return SessionStorage.of({
+      return {
         create,
         get,
         list,
@@ -465,6 +462,6 @@ export const SqliteSession = (options: {
         append,
         setHead,
         leaves,
-      } satisfies SessionStorageApi)
+      } satisfies SessionStorageApi
     })
   )

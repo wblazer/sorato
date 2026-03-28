@@ -7,7 +7,7 @@
  *   - Persists the conversation to SessionStorage after completion
  *   - Runs as a daemon fiber (fire-and-forget from the HTTP handler)
  */
-import { Prompt } from '@effect/ai'
+import { Prompt } from 'effect/unstable/ai'
 import { Cause, Effect, Layer } from 'effect'
 import {
   run,
@@ -75,9 +75,9 @@ export const runAgent = (sessionId: SessionId, input: string) => {
         publish({ _tag: 'RunEnd', sessionId, runId })
       })
     ),
-    Effect.catchAllCause((cause) =>
+    Effect.catchCause((cause) =>
       Effect.sync(() => {
-        if (Cause.isInterruptedOnly(cause)) {
+        if (Cause.hasInterruptsOnly(cause)) {
           console.log(`Agent run interrupted for session ${sessionId}`)
         } else {
           console.error(`Agent run failed for session ${sessionId}:`, cause)

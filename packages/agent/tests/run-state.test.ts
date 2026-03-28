@@ -59,10 +59,10 @@ describe('RunRegistry', () => {
 
       expect(enqueueRun('session-1', 'hello')).toBe('started')
 
-      const worker = yield* Effect.forkDaemon(Effect.void)
+      const worker = yield* Effect.forkDetach(Effect.void)
       registerWorkerFiber('session-1', worker)
 
-      const active = yield* Effect.forkDaemon(Effect.void)
+      const active = yield* Effect.forkDetach(Effect.void)
       registerActiveFiber('session-1', active)
 
       expect(getFiber('session-1')).toBe(active)

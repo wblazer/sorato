@@ -14,7 +14,7 @@ import { Schema } from 'effect'
 // Errors
 // ---------------------------------------------------------------------------
 
-export class ReporterError extends Schema.TaggedError<ReporterError>()(
+export class ReporterError extends Schema.TaggedErrorClass<ReporterError>()(
   'ReporterError',
   {
     operation: Schema.String,

@@ -9,7 +9,7 @@
  * Requires `rg` to be installed in the sandbox environment. Fails
  * explicitly if it's missing — no silent downloads, no fallbacks.
  */
-import { Tool } from '@effect/ai'
+import { Tool } from 'effect/unstable/ai'
 import { Effect, Schema } from 'effect'
 import { CurrentShell, SandboxError } from '../sandbox/sandbox.ts'
 
@@ -148,19 +148,19 @@ const formatOutput = (
 export const Grep = Tool.make('Grep', {
   description:
     'Search file contents using a regex pattern. Returns matching file paths and line numbers, sorted by modification time (most recently modified files first). Supports full regex syntax (e.g. "log.*Error", "function\\s+\\w+"). Use `include` to filter by file type (e.g. "*.ts", "*.{js,jsx}").',
-  parameters: {
-    pattern: Schema.String.annotations({
+  parameters: Schema.Struct({
+    pattern: Schema.String.annotate({
       description: 'The regex pattern to search for in file contents.',
     }),
-    path: Schema.optional(Schema.String).annotations({
+    path: Schema.optional(Schema.String).annotate({
       description:
         'Directory to search in (sandbox-relative). Defaults to the sandbox root.',
     }),
-    include: Schema.optional(Schema.String).annotations({
+    include: Schema.optional(Schema.String).annotate({
       description:
         'Glob pattern to filter files (e.g. "*.ts", "*.{js,jsx}"). Only files matching this pattern will be searched.',
     }),
-  },
+  }),
   success: Schema.String,
   failure: SandboxError,
   failureMode: 'return',
