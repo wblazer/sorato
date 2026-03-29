@@ -1,6 +1,4 @@
-import { AnthropicClient, AnthropicLanguageModel } from '@effect/ai-anthropic'
-import { FetchHttpClient } from 'effect/unstable/http'
-import { Config, Layer } from 'effect'
+import { Layer } from 'effect'
 import {
   LocalSandboxLive,
   Toolkit,
@@ -45,19 +43,4 @@ export const AllToolsLayer = AllTools.toLayer({
   ...GrepHandler,
 })
 
-export const ModelLive = AnthropicLanguageModel.layer({
-  model: 'claude-sonnet-4-20250514',
-}).pipe(
-  Layer.provide(
-    AnthropicClient.layerConfig({
-      apiKey: Config.redacted('ANTHROPIC_API_KEY'),
-    })
-  ),
-  Layer.provide(FetchHttpClient.layer)
-)
-
-export const AgentLive = Layer.mergeAll(
-  AllToolsLayer,
-  LocalSandboxLive,
-  ModelLive
-)
+export const AgentLive = Layer.mergeAll(AllToolsLayer, LocalSandboxLive)

@@ -16,6 +16,7 @@ import { SqliteSession } from '../index.ts'
 import { Api } from './api.ts'
 import { AgentLive } from './agent-config.ts'
 import { DirectoriesLive } from './directories.ts'
+import { ModelsLive } from './models.ts'
 import { SessionsLive } from './sessions.ts'
 import { withSse } from './sse.ts'
 
@@ -41,6 +42,7 @@ const HandshakeLive = HttpApiBuilder.group(Api, 'handshake', (handlers) =>
 const ApiLive = HttpApiBuilder.layer(Api).pipe(
   Layer.provide(SessionsLive),
   Layer.provide(DirectoriesLive),
+  Layer.provide(ModelsLive),
   Layer.provide(HandshakeLive)
 )
 

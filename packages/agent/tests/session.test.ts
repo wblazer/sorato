@@ -10,6 +10,7 @@ import { SessionStorage, SqliteSession } from '../src/index.ts'
 const testLayer = SqliteSession({ path: ':memory:' })
 
 const TEST_DIR = '/tmp/test-project'
+const TEST_MODEL = 'anthropic/claude-sonnet-4-20250514'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -87,10 +88,15 @@ describe('SessionStorage', () => {
     it.effect('creates a session with generated ID', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'test session')
+        const session = yield* storage.create(
+          TEST_DIR,
+          TEST_MODEL,
+          'test session'
+        )
 
         expect(session.id).toBeTruthy()
         expect(session.directory).toBe(TEST_DIR)
+        expect(session.model).toBe(TEST_MODEL)
         expect(session.title).toBe('test session')
         expect(session.headId).toBeNull()
       }).pipe(Effect.provide(testLayer))
@@ -99,7 +105,7 @@ describe('SessionStorage', () => {
     it.effect('creates a session with null title by default', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR)
+        const session = yield* storage.create(TEST_DIR, TEST_MODEL)
 
         expect(session.title).toBeNull()
       }).pipe(Effect.provide(testLayer))
@@ -108,10 +114,11 @@ describe('SessionStorage', () => {
     it.effect('gets a session by ID', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const created = yield* storage.create(TEST_DIR, 'test')
+        const created = yield* storage.create(TEST_DIR, TEST_MODEL, 'test')
         const fetched = yield* storage.get(created.id)
 
         expect(fetched.id).toBe(created.id)
+        expect(fetched.model).toBe(TEST_MODEL)
         expect(fetched.title).toBe('test')
       }).pipe(Effect.provide(testLayer))
     )
@@ -131,8 +138,8 @@ describe('SessionStorage', () => {
     it.effect('lists sessions ordered by updated_at desc', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const s1 = yield* storage.create(TEST_DIR, 'first')
-        yield* storage.create(TEST_DIR, 'second')
+        const s1 = yield* storage.create(TEST_DIR, TEST_MODEL, 'first')
+        yield* storage.create(TEST_DIR, TEST_MODEL, 'second')
 
         // Append to s1 so it gets a newer updated_at than s2
         yield* storage.append(s1.id, [userMsg('bump')])
@@ -148,7 +155,7 @@ describe('SessionStorage', () => {
     it.effect('deletes a session', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'doomed')
+        const session = yield* storage.create(TEST_DIR, TEST_MODEL, 'doomed')
         yield* storage.delete(session.id)
 
         const result = yield* storage.get(session.id).pipe(Effect.flip)
@@ -163,7 +170,7 @@ describe('SessionStorage', () => {
     it.effect('appends messages and reconstructs conversation', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'chat')
+        const session = yield* storage.create(TEST_DIR, TEST_MODEL, 'chat')
 
         yield* storage.append(session.id, [
           systemMsg('You are helpful.'),
@@ -183,7 +190,11 @@ describe('SessionStorage', () => {
     it.effect('appends incrementally', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'incremental')
+        const session = yield* storage.create(
+          TEST_DIR,
+          TEST_MODEL,
+          'incremental'
+        )
 
         // First turn
         yield* storage.append(session.id, [
@@ -206,7 +217,7 @@ describe('SessionStorage', () => {
     it.effect('handles empty session conversation', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'empty')
+        const session = yield* storage.create(TEST_DIR, TEST_MODEL, 'empty')
         const prompt = yield* storage.conversation(session.id)
 
         expect(prompt.content.length).toBe(0)
@@ -216,7 +227,7 @@ describe('SessionStorage', () => {
     it.effect('handles tool calls and results', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'tools')
+        const session = yield* storage.create(TEST_DIR, TEST_MODEL, 'tools')
 
         yield* storage.append(session.id, [
           systemMsg('You have tools.'),
@@ -239,7 +250,7 @@ describe('SessionStorage', () => {
     it.effect('no-ops on empty append', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'noop')
+        const session = yield* storage.create(TEST_DIR, TEST_MODEL, 'noop')
         yield* storage.append(session.id, [])
 
         const fetched = yield* storage.get(session.id)
@@ -254,7 +265,7 @@ describe('SessionStorage', () => {
     it.effect('lists leaves (single branch = one leaf)', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'linear')
+        const session = yield* storage.create(TEST_DIR, TEST_MODEL, 'linear')
 
         yield* storage.append(session.id, [
           userMsg('Hello'),
@@ -269,7 +280,7 @@ describe('SessionStorage', () => {
     it.effect('forks conversation by setting head to earlier message', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'fork-test')
+        const session = yield* storage.create(TEST_DIR, TEST_MODEL, 'fork-test')
 
         // Build initial conversation: system -> user1 -> assistant1
         yield* storage.append(session.id, [
@@ -329,7 +340,11 @@ describe('SessionStorage', () => {
     it.effect('switches between branches', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'switch-test')
+        const session = yield* storage.create(
+          TEST_DIR,
+          TEST_MODEL,
+          'switch-test'
+        )
 
         // Branch A: system -> user -> assistantA
         yield* storage.append(session.id, [
@@ -373,8 +388,8 @@ describe('SessionStorage', () => {
     it.effect('fails to setHead to a message from another session', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const s1 = yield* storage.create(TEST_DIR, 'session 1')
-        const s2 = yield* storage.create(TEST_DIR, 'session 2')
+        const s1 = yield* storage.create(TEST_DIR, TEST_MODEL, 'session 1')
+        const s2 = yield* storage.create(TEST_DIR, TEST_MODEL, 'session 2')
 
         yield* storage.append(s1.id, [userMsg('Hello from s1')])
 
@@ -391,7 +406,7 @@ describe('SessionStorage', () => {
     it.effect('empty session has no leaves', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'empty')
+        const session = yield* storage.create(TEST_DIR, TEST_MODEL, 'empty')
         const tips = yield* storage.leaves(session.id)
 
         expect(tips.length).toBe(0)
@@ -405,7 +420,11 @@ describe('SessionStorage', () => {
     it.effect('advances head on append', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'head-tracking')
+        const session = yield* storage.create(
+          TEST_DIR,
+          TEST_MODEL,
+          'head-tracking'
+        )
 
         yield* storage.append(session.id, [userMsg('msg1')])
         const after1 = yield* storage.get(session.id)
@@ -421,7 +440,11 @@ describe('SessionStorage', () => {
     it.live('updates updatedAt on append', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'timestamps')
+        const session = yield* storage.create(
+          TEST_DIR,
+          TEST_MODEL,
+          'timestamps'
+        )
         const created = session.updatedAt
 
         // Small delay to ensure timestamp differs (it.live uses real clock)
@@ -432,6 +455,18 @@ describe('SessionStorage', () => {
         expect(after.updatedAt).toBeGreaterThan(created)
       }).pipe(Effect.provide(testLayer))
     )
+
+    it.effect('updates session model', () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionStorage
+        const session = yield* storage.create(TEST_DIR, TEST_MODEL, 'model')
+
+        yield* storage.setModel(session.id, 'anthropic/claude-haiku-4-5')
+
+        const next = yield* storage.get(session.id)
+        expect(next.model).toBe('anthropic/claude-haiku-4-5')
+      }).pipe(Effect.provide(testLayer))
+    )
   })
 
   // -- Cascade delete -------------------------------------------------------
@@ -440,7 +475,7 @@ describe('SessionStorage', () => {
     it.effect('deleting session removes all messages', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'cascade')
+        const session = yield* storage.create(TEST_DIR, TEST_MODEL, 'cascade')
 
         yield* storage.append(session.id, [
           userMsg('Hello'),

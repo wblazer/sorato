@@ -142,15 +142,18 @@ function createSessionStore() {
    * Create a new session in the currently selected directory.
    * Returns the new session, or null on error.
    */
-  async function createSession(directory?: string): Promise<Session | null> {
+  async function createSession(
+    directory?: string,
+    model?: string
+  ): Promise<Session | null> {
     const dir = directory ?? selectedDirectory
-    if (!dir) return null
+    if (!dir || !model) return null
 
     try {
       const res = await fetch(`${connectionsStore.getApiBase()}/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ directory: dir }),
+        body: JSON.stringify({ directory: dir, model }),
       })
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
 
@@ -162,6 +165,35 @@ function createSessionStore() {
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to create session'
       return null
+    }
+  }
+
+  async function setModel(sessionId: string, model: string): Promise<boolean> {
+    const prev = sessions
+    sessions = sessions.map((session) =>
+      session.id === sessionId ? { ...session, model } : session
+    )
+
+    try {
+      const res = await fetch(
+        `${connectionsStore.getApiBase()}/sessions/${sessionId}/model`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model }),
+        }
+      )
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+
+      const session: Session = await res.json()
+      sessions = sessions.map((item) =>
+        item.id === sessionId ? session : item
+      )
+      return true
+    } catch (e) {
+      sessions = prev
+      error = e instanceof Error ? e.message : 'Failed to update model'
+      return false
     }
   }
 
@@ -324,6 +356,7 @@ function createSessionStore() {
     queuedMessagesFor,
     startComposing,
     createSession,
+    setModel,
     runAgent,
     stopAgent,
     fetchSessions,

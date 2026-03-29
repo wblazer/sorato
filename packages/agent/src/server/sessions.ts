@@ -14,6 +14,7 @@ import {
   SessionResponse,
   StopResponse,
 } from './api.ts'
+import { ensureModel } from './model-catalog.ts'
 import { runAgent } from './run-agent.ts'
 import {
   clearActiveFiber,
@@ -54,6 +55,7 @@ const drainQueuedRuns = (sessionId: SessionId) =>
 const toSessionResponse = (s: {
   readonly id: string
   readonly directory: string
+  readonly model: string
   readonly title: string | null
   readonly headId: string | null
   readonly createdAt: number
@@ -62,6 +64,7 @@ const toSessionResponse = (s: {
   new SessionResponse({
     id: s.id,
     directory: s.directory,
+    model: s.model,
     title: s.title,
     headId: s.headId,
     status: isRunning(s.id) ? 'running' : 'idle',
@@ -95,9 +98,15 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
           .pipe(Effect.map((sessions) => sessions.map(toSessionResponse)))
       )
       .handle('create', ({ payload }) =>
-        storage
-          .create(payload.directory, payload.title)
-          .pipe(Effect.map(toSessionResponse))
+        Effect.gen(function* () {
+          yield* ensureModel(payload.directory, payload.model)
+          const session = yield* storage.create(
+            payload.directory,
+            payload.model,
+            payload.title
+          )
+          return toSessionResponse(session)
+        })
       )
       .handle('get', ({ params }) =>
         storage.get(params.id).pipe(Effect.map(toSessionResponse))
@@ -112,6 +121,14 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
         storage
           .messages(params.id)
           .pipe(Effect.map((nodes) => nodes.map(toMessageNodeResponse)))
+      )
+      .handle('setModel', ({ params, payload }) =>
+        Effect.gen(function* () {
+          const session = yield* storage.get(params.id)
+          yield* ensureModel(session.directory, payload.model)
+          yield* storage.setModel(params.id, payload.model)
+          return toSessionResponse(yield* storage.get(params.id))
+        })
       )
       .handle('run', ({ params, payload }) =>
         Effect.gen(function* () {

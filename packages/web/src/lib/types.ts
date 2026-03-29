@@ -1,12 +1,24 @@
 export interface Session {
   id: string
   directory: string
+  model: string
   title: string | null
   headId: string | null
   /** Ephemeral run status — 'running' if an agent run is active. */
   status: 'idle' | 'running'
   createdAt: number
   updatedAt: number
+}
+
+export interface AvailableModel {
+  id: string
+  name: string
+  provider: string
+}
+
+export interface AvailableModelsResponse {
+  models: AvailableModel[]
+  defaultModel?: string
 }
 
 // ---------------------------------------------------------------------------

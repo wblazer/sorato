@@ -20,6 +20,7 @@ export class SessionResponse extends Schema.Class<SessionResponse>(
 )({
   id: Schema.String,
   directory: Schema.String,
+  model: Schema.String,
   title: Schema.NullOr(Schema.String),
   headId: Schema.NullOr(Schema.String),
   /** Ephemeral run status — 'running' if an agent run is active. */
@@ -48,6 +49,26 @@ export class StopResponse extends Schema.Class<StopResponse>('StopResponse')({
 
 export class RunError extends Schema.TaggedErrorClass<RunError>()('RunError', {
   message: Schema.String,
+}) {}
+
+export class ModelError extends Schema.TaggedErrorClass<ModelError>()(
+  'ModelError',
+  {
+    message: Schema.String,
+  }
+) {}
+
+export class ModelOption extends Schema.Class<ModelOption>('ModelOption')({
+  id: Schema.String,
+  name: Schema.String,
+  provider: Schema.String,
+}) {}
+
+export class ModelsResponse extends Schema.Class<ModelsResponse>(
+  'ModelsResponse'
+)({
+  models: Schema.Array(ModelOption),
+  defaultModel: Schema.optional(Schema.String),
 }) {}
 
 export class DirectoryEntry extends Schema.Class<DirectoryEntry>(
@@ -97,10 +118,14 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
     HttpApiEndpoint.post('create', '/', {
       payload: Schema.Struct({
         directory: Schema.String,
+        model: Schema.String,
         title: Schema.optional(Schema.String),
       }),
       success: SessionResponse,
-      error: StorageError.pipe(HttpApiSchema.status(500)),
+      error: [
+        StorageError.pipe(HttpApiSchema.status(500)),
+        ModelError.pipe(HttpApiSchema.status(500)),
+      ],
     })
   )
   .add(
@@ -129,6 +154,17 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
       params: { id: SessionId },
       success: Schema.Array(MessageNodeResponse),
       error: StorageError.pipe(HttpApiSchema.status(500)),
+    })
+  )
+  .add(
+    HttpApiEndpoint.post('setModel', '/:id/model', {
+      params: { id: SessionId },
+      payload: Schema.Struct({ model: Schema.String }),
+      success: SessionResponse,
+      error: [
+        StorageError.pipe(HttpApiSchema.status(500)),
+        ModelError.pipe(HttpApiSchema.status(500)),
+      ],
     })
   )
   .add(
@@ -171,9 +207,24 @@ export class HandshakeGroup extends HttpApiGroup.make('handshake')
   .add(HttpApiEndpoint.get('check', '/', { success: HandshakeResponse }))
   .prefix('/handshake') {}
 
+// ── Models Group ────────────────────────────────────────────────────
+
+export class ModelsGroup extends HttpApiGroup.make('models')
+  .add(
+    HttpApiEndpoint.get('list', '/', {
+      query: {
+        directory: Schema.String,
+      },
+      success: ModelsResponse,
+      error: ModelError.pipe(HttpApiSchema.status(500)),
+    })
+  )
+  .prefix('/models') {}
+
 // ── Root API ────────────────────────────────────────────────────────
 
 export class Api extends HttpApi.make('agents')
   .add(SessionsGroup)
   .add(DirectoriesGroup)
+  .add(ModelsGroup)
   .add(HandshakeGroup) {}

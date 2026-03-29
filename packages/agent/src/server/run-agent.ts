@@ -20,6 +20,7 @@ import {
 import { AllTools, SYSTEM_PROMPT } from './agent-config.ts'
 import { createBusHook, publish } from './event-bus.ts'
 import { endEventReplay, startEventReplay } from './event-replay.ts'
+import { modelLayer } from './model-catalog.ts'
 import { createPersistenceHook } from './run-persistence.ts'
 
 export const runAgent = (sessionId: SessionId, input: string) => {
@@ -30,8 +31,15 @@ export const runAgent = (sessionId: SessionId, input: string) => {
     const sandbox = yield* Sandbox
 
     const session = yield* storage.get(sessionId)
+    const layer = modelLayer(session.model)
     const existingConversation = yield* storage.conversation(sessionId)
     const isFirstMessage = existingConversation.content.length === 0
+
+    if (!layer) {
+      return yield* Effect.die(
+        new Error(`Model is not supported by this server: ${session.model}`)
+      )
+    }
 
     const preamble: Array<Prompt.MessageEncoded> = isFirstMessage
       ? [
@@ -62,7 +70,8 @@ export const runAgent = (sessionId: SessionId, input: string) => {
           Effect.provide(
             Layer.mergeAll(
               Layer.succeed(CurrentShell, shell),
-              Layer.succeed(CurrentFiles, files)
+              Layer.succeed(CurrentFiles, files),
+              layer
             )
           )
         )

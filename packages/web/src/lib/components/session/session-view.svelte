@@ -1,9 +1,11 @@
 <script lang="ts">
   import { untrack } from 'svelte'
   import { messagesStore } from '$lib/stores/messages.svelte.js'
+  import { modelsStore } from '$lib/stores/models.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
   import MessageBubble from './message-bubble.svelte'
+  import ModelSelector from './model-selector.svelte'
   import QueuedMessageBubble from './queued-message-bubble.svelte'
   import StreamingIndicator from './streaming-indicator.svelte'
   import Composer from './composer.svelte'
@@ -12,6 +14,11 @@
     $props()
 
   let messagesContainer: HTMLDivElement | undefined = $state()
+  let updatingModel = $state(false)
+
+  const session = $derived(
+    sessionStore.sessions.find((item) => item.id === sessionId) ?? null
+  )
 
   // Running state is derived from the session store — the single source
   // of truth. The messages store only tracks streaming *content*.
@@ -43,6 +50,15 @@
     return () => {
       messagesStore.clear()
     }
+  })
+
+  $effect(() => {
+    if (!session?.directory) {
+      modelsStore.clear()
+      return
+    }
+
+    modelsStore.load(session.directory)
   })
 
   // Auto-scroll to bottom when new messages arrive or streaming parts change
@@ -103,34 +119,59 @@
     )
     sessionStore.runAgent(sessionId, 'Continue where you left off.')
   }
+
+  async function handleModel(value: string) {
+    updatingModel = true
+    try {
+      const ok = await sessionStore.setModel(sessionId, value)
+      if (ok) modelsStore.remember(value)
+    } finally {
+      updatingModel = false
+    }
+  }
 </script>
 
 <div class="flex h-full flex-col">
   <!-- Header -->
   <div class="flex items-center gap-3 border-b border-border px-6 py-3">
-    <h1 class="text-sm font-semibold text-foreground">
-      {title ?? 'Untitled'}
-    </h1>
-    <span class="text-xs text-muted-foreground">{sessionId.slice(0, 8)}</span>
-    {#if isStopping}
-      <span
-        class="flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-0.5"
-      >
+    <div class="min-w-0 flex-1">
+      <h1 class="text-sm font-semibold text-foreground">
+        {title ?? 'Untitled'}
+      </h1>
+      <span class="text-xs text-muted-foreground">{sessionId.slice(0, 8)}</span>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <div class="w-72 max-w-full">
+        <ModelSelector
+          models={modelsStore.models}
+          value={session?.model ?? null}
+          loading={modelsStore.loading}
+          disabled={updatingModel}
+          onChange={handleModel}
+        />
+      </div>
+
+      {#if isStopping}
         <span
-          class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400"
-        ></span>
-        <span class="text-[10px] font-medium text-amber-400">stopping</span>
-      </span>
-    {:else if isRunning}
-      <span
-        class="flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2 py-0.5"
-      >
+          class="flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-0.5"
+        >
+          <span
+            class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400"
+          ></span>
+          <span class="text-[10px] font-medium text-amber-400">stopping</span>
+        </span>
+      {:else if isRunning}
         <span
-          class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400"
-        ></span>
-        <span class="text-[10px] font-medium text-blue-400">live</span>
-      </span>
-    {/if}
+          class="flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2 py-0.5"
+        >
+          <span
+            class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400"
+          ></span>
+          <span class="text-[10px] font-medium text-blue-400">live</span>
+        </span>
+      {/if}
+    </div>
   </div>
 
   <!-- Messages -->

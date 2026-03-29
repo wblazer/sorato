@@ -80,3 +80,7 @@ export function getJson<T>(key: string, defaultValue: T): T {
 export function setJson<T>(key: string, value: T): void {
   storage.set(key, JSON.stringify(value))
 }
+
+export function storageKey(...parts: ReadonlyArray<string | null | undefined>) {
+  return parts.filter((part): part is string => !!part).join(':')
+}
