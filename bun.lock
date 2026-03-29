@@ -16,6 +16,7 @@
       "name": "@agents/agent",
       "dependencies": {
         "@effect/ai-anthropic": "4.0.0-beta.42",
+        "@effect/ai-openai": "4.0.0-beta.42",
         "@effect/platform-bun": "4.0.0-beta.42",
         "effect": "4.0.0-beta.42",
       },
@@ -70,6 +71,8 @@
     "@agents/web": ["@agents/web@workspace:packages/web"],
 
     "@effect/ai-anthropic": ["@effect/ai-anthropic@4.0.0-beta.42", "", { "peerDependencies": { "effect": "^4.0.0-beta.42" } }, "sha512-ILRbjR+JkjbvVYtmR7UtXdJx6oljjkduC6k+ItrbfRYMKAETfKMEfEv5ou1CL5ed6xwz3DMrOzj4nbnUcw68aw=="],
+
+    "@effect/ai-openai": ["@effect/ai-openai@4.0.0-beta.42", "", { "peerDependencies": { "effect": "^4.0.0-beta.42" } }, "sha512-lns5Hz/rXn3lLJD/d2hrGotJ5zVquQXUycYV35bNW+ba1kuW/uBzTA2MhQttsXXsLGW5eUzWQC24p60ocG54qw=="],
 
     "@effect/language-service": ["@effect/language-service@0.72.1", "", { "bin": { "effect-language-service": "cli.js" } }, "sha512-krZv8ms6q5cKOe96zP3B5xSiJm3gGcS5D/6ynFlSqRUDqB0lGNkcq7wlgmmu98Gp23kmRi8OOQsJ5PwYgjvGww=="],
 

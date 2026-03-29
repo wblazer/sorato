@@ -1,26 +1,29 @@
-import { AnthropicClient, AnthropicLanguageModel } from '@effect/ai-anthropic'
-import { Config, Layer } from 'effect'
-import { FetchHttpClient } from 'effect/unstable/http'
 import { Effect } from 'effect'
-import { ANTHROPIC_MODELS } from './models.generated.ts'
 import { ModelError, ModelOption, ModelsResponse } from './api.ts'
+import { MODEL_PROVIDERS } from './models.generated.ts'
+import { PROVIDER_ADAPTERS } from './provider-adapters.ts'
 import { loadRuntimeConfig } from './runtime-config.ts'
 
 type Entry = {
   readonly id: string
   readonly name: string
   readonly provider: string
-  readonly model: AnthropicLanguageModel.Model
 }
 
-const provider = 'Anthropic'
+const entries = () =>
+  MODEL_PROVIDERS.flatMap((provider) => {
+    const adapter = PROVIDER_ADAPTERS[provider.id]
+    if (!adapter || !adapter.available(provider.env)) return []
 
-const entries: ReadonlyArray<Entry> = ANTHROPIC_MODELS.map((item) => ({
-  id: `anthropic/${item.id}`,
-  name: item.name,
-  provider,
-  model: item.id as AnthropicLanguageModel.Model,
-}))
+    return provider.models.map(
+      (model) =>
+        ({
+          id: `${provider.id}/${model.id}`,
+          name: model.name,
+          provider: provider.name,
+        }) satisfies Entry
+    )
+  })
 
 export const listModels = Effect.fn('ModelCatalog.list')(function* (
   dir: string
@@ -29,9 +32,7 @@ export const listModels = Effect.fn('ModelCatalog.list')(function* (
     Effect.mapError((error) => new ModelError({ message: error.message }))
   )
 
-  const models = process.env.ANTHROPIC_API_KEY?.trim() ? entries : []
-
-  const items = models.map(
+  const items = entries().map(
     (item) =>
       new ModelOption({
         id: item.id,
@@ -66,15 +67,12 @@ export const ensureModel = Effect.fn('ModelCatalog.ensure')(function* (
 })
 
 export const modelLayer = (id: string) => {
-  const model = entries.find((item) => item.id === id)?.model
-  if (!model) return
-
-  return AnthropicLanguageModel.layer({ model }).pipe(
-    Layer.provide(
-      AnthropicClient.layerConfig({
-        apiKey: Config.redacted('ANTHROPIC_API_KEY'),
-      })
-    ),
-    Layer.provide(FetchHttpClient.layer)
-  )
+  const [provider, ...rest] = id.split('/') as [
+    keyof typeof PROVIDER_ADAPTERS,
+    ...Array<string>,
+  ]
+  const model = rest.join('/')
+  const adapter = PROVIDER_ADAPTERS[provider]
+  if (!adapter || !model) return
+  return adapter.layer(model)
 }
