@@ -1,6 +1,7 @@
 import { Effect } from 'effect'
 import { ModelError, ModelOption, ModelsResponse } from './api.ts'
 import { MODEL_PROVIDERS } from './models.generated.ts'
+import type { ProviderId } from './provider-definitions.ts'
 import { PROVIDER_ADAPTERS } from './provider-adapters.ts'
 import { loadRuntimeConfig } from './runtime-config.ts'
 
@@ -15,14 +16,17 @@ const entries = () =>
     const adapter = PROVIDER_ADAPTERS[provider.id]
     if (!adapter || !adapter.available(provider.env)) return []
 
-    return provider.models.map(
-      (model) =>
-        ({
-          id: `${provider.id}/${model.id}`,
-          name: model.name,
-          provider: provider.name,
-        }) satisfies Entry
-    )
+    return provider.models
+      .map((model) =>
+        adapter.supportsModel(model.id)
+          ? ({
+              id: `${provider.id}/${model.id}`,
+              name: model.name,
+              provider: provider.name,
+            } satisfies Entry)
+          : undefined
+      )
+      .filter((entry) => entry !== undefined)
   })
 
 export const listModels = Effect.fn('ModelCatalog.list')(function* (
@@ -67,10 +71,7 @@ export const ensureModel = Effect.fn('ModelCatalog.ensure')(function* (
 })
 
 export const modelLayer = (id: string) => {
-  const [provider, ...rest] = id.split('/') as [
-    keyof typeof PROVIDER_ADAPTERS,
-    ...Array<string>,
-  ]
+  const [provider, ...rest] = id.split('/') as [ProviderId, ...Array<string>]
   const model = rest.join('/')
   const adapter = PROVIDER_ADAPTERS[provider]
   if (!adapter || !model) return

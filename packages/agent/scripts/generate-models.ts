@@ -1,11 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Generated, type AnthropicLanguageModel } from '@effect/ai-anthropic'
-import {
-  Generated as OpenAiGenerated,
-  type OpenAiLanguageModel,
-} from '@effect/ai-openai'
+import { SUPPORTED_PROVIDERS } from '../src/server/provider-definitions.ts'
 
 type ModelsDevModel = {
   readonly id: string
@@ -26,42 +22,6 @@ type ModelsDevResponse = Record<string, ModelsDevProvider>
 const here = dirname(fileURLToPath(import.meta.url))
 const out = join(here, '..', 'src', 'server', 'models.generated.ts')
 
-const strings = (ast: unknown): Array<string> => {
-  if (typeof ast !== 'object' || ast === null) return []
-  if ('_tag' in ast && ast._tag === 'Literal') {
-    return 'literal' in ast && typeof ast.literal === 'string'
-      ? [ast.literal]
-      : []
-  }
-  if (
-    '_tag' in ast &&
-    ast._tag === 'Union' &&
-    'types' in ast &&
-    Array.isArray(ast.types)
-  ) {
-    return ast.types.flatMap(strings)
-  }
-  return []
-}
-
-const providers = [
-  {
-    id: 'anthropic',
-    supported: new Set<AnthropicLanguageModel.Model>(
-      strings(
-        Generated.Model.ast
-      ) as ReadonlyArray<AnthropicLanguageModel.Model>
-    ),
-  },
-  {
-    id: 'openai',
-    supported: new Set<OpenAiLanguageModel.Model>([
-      ...strings(OpenAiGenerated.ModelIdsResponses.ast),
-      ...strings(OpenAiGenerated.ModelIdsShared.ast),
-    ] as ReadonlyArray<OpenAiLanguageModel.Model>),
-  },
-] as const
-
 const response = await fetch('https://models.dev/api.json')
 if (!response.ok) {
   throw new Error(`Failed to fetch models.dev catalog: ${response.status}`)
@@ -69,7 +29,7 @@ if (!response.ok) {
 
 const data = (await response.json()) as ModelsDevResponse
 
-const catalog = providers.map((provider) => {
+const catalog = SUPPORTED_PROVIDERS.map((provider) => {
   const source = data[provider.id]
   if (!source) {
     throw new Error(`Provider missing from models.dev catalog: ${provider.id}`)
@@ -87,7 +47,7 @@ const catalog = providers.map((provider) => {
           `Model id mismatch for ${provider.id}/${id}: ${model.id}`
         )
       }
-      return provider.supported.has(id as never)
+      return provider.supportedModels.has(id as never)
     })
     .map(([id, model]) => ({
       id,
