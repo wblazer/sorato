@@ -18,9 +18,18 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 **HTTP Server** (`src/server/`) — Bun HTTP server exposing:
 
 - `GET /handshake` — Connection validation (returns `{ version, status: 'ok' }`)
-- Sessions API — create, list, get, delete, run agent, stop, message history
+- `GET /models` — list usable models for a directory, filtered by runtime adapter support and local credentials
+- Sessions API — create, list, get, delete, update session model, run agent, stop, message history
 - Directories API — browse filesystem with `~` expansion
 - SSE `/events` — streaming for session updates and run lifecycle
+
+**Runtime config** — the server resolves optional defaults from `~/.config/agents/config.json(c)` and `<cwd>/.agents/config.json(c)`. Today this is intentionally tiny: it seeds `default_model` for new-session model selection without mutating existing sessions.
+
+**Model/provider architecture** — model metadata is generated from `models.dev`, but runtime support is owned locally:
+
+- `src/server/provider-definitions.ts` is the source of truth for which providers we support and which model ids our runtime adapters recognize
+- `src/server/provider-adapters.ts` maps supported providers to Effect `LanguageModel` layers and availability checks
+- `src/server/model-catalog.ts` joins generated catalog data with adapter support and environment availability to decide what the UI can actually use
 
 **Execution model**: Three distinct contexts — orchestrator, agent runtime (harness), and sandbox. The harness runs outside the sandbox so a broken environment doesn't kill the agent loop. See `VISION.md` and `src/sandbox/DOCS.md`.
 
@@ -41,6 +50,10 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 - `src/harness/` — Harness config, hooks, and run function (multi-turn agent loop)
 - `src/session/` — Session storage: `SessionStorage` tag, `SqliteSession` layer, tree-structured messages
 - `src/server/` — HTTP API: sessions, directories, handshake, SSE streaming
+- `src/server/provider-definitions.ts` — shared supported-provider roster for generation and runtime
+- `src/server/provider-adapters.ts` — runtime adapter registry for supported providers
+- `src/server/model-catalog.ts` — available model filtering from generated catalog + adapter support
+- `src/server/runtime-config.ts` — server-owned runtime config loading and merging
 - `packages/evals/bench/` — eval primitives (`test`, `run`, Reporter)
 - `packages/web/` — Svelte web UI with connection management
 - `VISION.md` — strategic rationale, execution model, industry context

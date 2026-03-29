@@ -18,11 +18,12 @@ Static SPA mode (`adapter-static`) with no SSR. The browser owns UI state and tr
 
 - `connections.svelte.ts` owns which server the browser is talking to.
 - `sessions.svelte.ts` owns the session list, selected directory/session, and the app-wide view of run state.
+- `models.svelte.ts` owns available-model fetching plus remembered per-connection model preference used to seed new-session selection.
 - `messages.svelte.ts` owns the active session's message history and streaming turn content.
 - `sse.svelte.ts` owns the app-lifetime global SSE connection for lightweight control-plane events.
 - `actions.svelte.ts` owns the app's action ids, registration, availability, and hotkey-triggered execution.
 
-That split matters: app-wide state lives in `sessions`, active-session streaming lives in `messages`. Keep those responsibilities separate so every store does not need to understand full chat streaming.
+That split matters: app-wide state lives in `sessions`, model discovery and recent-model memory live in `models`, and active-session streaming lives in `messages`. Keep those responsibilities separate so every store does not need to understand full chat streaming.
 
 Action definitions are centralized, but UI ownership stays local. Register actions from the mounted component that owns the behavior or dialog they open; do not move that UI state into the action store just to make the command palette work.
 
@@ -35,6 +36,8 @@ Action definitions are centralized, but UI ownership stays local. Register actio
 ## Future Desktop Wrapper
 
 The package is intentionally browser-first but desktop-friendly. Keep browser persistence and server discovery abstract enough that an Electron wrapper can swap storage and optionally launch a bundled server process without rewriting feature code.
+
+Today that especially applies to remembered model selection: it is client-owned persisted state, currently browser storage-backed and scoped per connection, but it should stay abstract enough for a future desktop wrapper to swap the backing store.
 
 ## Related Context
 
