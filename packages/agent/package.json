@@ -10,6 +10,7 @@
     "./session": "./src/session/session.ts"
   },
   "scripts": {
+    "generate-models": "bun run scripts/generate-models.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun --bun vitest run",
     "dev": "bun --env-file=../../.env --watch run src/server/main.ts",
