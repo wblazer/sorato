@@ -1,9 +1,11 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui/button/index.js'
   import { untrack } from 'svelte'
   import { messagesStore } from '$lib/stores/messages.svelte.js'
   import { modelsStore } from '$lib/stores/models.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
+  import PlayIcon from 'phosphor-svelte/lib/PlayIcon'
   import MessageBubble from './message-bubble.svelte'
   import QueuedMessageBubble from './queued-message-bubble.svelte'
   import StreamingIndicator from './streaming-indicator.svelte'
@@ -208,25 +210,15 @@
   {#if wasInterrupted}
     <div class="px-4 py-2">
       <div class="mx-auto flex w-full max-w-6xl justify-center">
-        <button
+        <Button
           onclick={handleResume}
-          class="flex items-center gap-2 rounded-md border border-input bg-background px-4 py-1.5 text-sm text-foreground transition-colors hover:bg-accent"
+          variant="outline"
+          size="lg"
+          class="gap-2 px-4 py-1.5 text-sm"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <polygon points="6 3 20 12 6 21 6 3" />
-          </svg>
+          <PlayIcon />
           Resume
-        </button>
+        </Button>
       </div>
     </div>
   {/if}

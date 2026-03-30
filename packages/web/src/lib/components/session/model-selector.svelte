@@ -1,16 +1,17 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { useId } from 'bits-ui'
+  import { Button } from '$lib/components/ui/button/index.js'
   import * as Command from '$lib/components/ui/command/index.js'
   import * as Popover from '$lib/components/ui/popover/index.js'
   import type { AvailableModel } from '$lib/types.js'
+  import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon'
 
   interface Props {
     models: ReadonlyArray<AvailableModel>
     value: string | null
     loading?: boolean
     disabled?: boolean
-    compact?: boolean
     onChange?: (value: string) => void
   }
 
@@ -19,7 +20,6 @@
     value,
     loading = false,
     disabled = false,
-    compact = false,
     onChange,
   }: Props = $props()
 
@@ -35,6 +35,27 @@
     models.find((item) => item.id === value) ?? null
   )
 
+  const modelsByProvider = $derived.by(() => {
+    const groups = new Map<string, Array<AvailableModel>>()
+
+    for (const model of models) {
+      const provider = model.provider.trim() || 'Unknown'
+      const providerModels = groups.get(provider)
+
+      if (providerModels) {
+        providerModels.push(model)
+        continue
+      }
+
+      groups.set(provider, [model])
+    }
+
+    return Array.from(groups.entries(), ([provider, items]) => ({
+      provider,
+      items,
+    }))
+  })
+
   function closeAndFocusTrigger() {
     open = false
     tick().then(() => triggerRef?.focus())
@@ -43,6 +64,21 @@
   function selectModel(id: string) {
     onChange?.(id)
     closeAndFocusTrigger()
+  }
+
+  function filterModel(
+    itemValue: string,
+    search: string,
+    keywords: Array<string> = []
+  ) {
+    const query = search.trim().toLowerCase()
+
+    if (!query) return 1
+
+    const haystack = [itemValue, ...keywords].join(' ').toLowerCase()
+    const terms = query.split(/\s+/)
+
+    return terms.every((term) => haystack.includes(term)) ? 1 : 0
   }
 
   const triggerLabel = $derived.by(() => {
@@ -56,41 +92,28 @@
 
 <Popover.Root bind:open>
   <Popover.Trigger bind:ref={triggerRef}>
-    <button
+    <Button
       type="button"
-      class={compact
-        ? 'flex min-w-0 items-center gap-1 rounded-md px-2 py-1 text-sm text-foreground transition-colors hover:bg-background/70 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60'
-        : 'flex min-w-0 items-center justify-between gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors hover:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60'}
+      variant="ghost"
+      size="sm"
+      class="min-w-0 dark:hover:bg-muted justify-between gap-2 h-7 text-sm text-foreground"
       role="combobox"
       aria-controls={listboxId}
       aria-expanded={open}
       {disabled}
     >
       <span class="truncate">{triggerLabel}</span>
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        class="shrink-0 text-muted-foreground"
-      >
-        <path d="m6 9 6 6 6-6" />
-      </svg>
-    </button>
+      <CaretDownIcon class="shrink-0 text-muted-foreground" />
+    </Button>
   </Popover.Trigger>
 
   <Popover.Content
     class="w-[min(24rem,calc(100vw-2rem))] gap-0 overflow-hidden p-1.5"
-    align={compact ? 'start' : 'center'}
+    align="start"
   >
-    <Command.Root class="rounded-lg border border-border/60 bg-popover p-0">
+    <Command.Root class="rounded-lg bg-popover p-0" filter={filterModel}>
       <Command.Input placeholder="Search models..." />
-      <Command.List id={listboxId} class="max-h-72 px-1 pb-1">
+      <Command.List id={listboxId} class="h-60 px-1 pb-1">
         {#if loading}
           <div class="px-3 py-6 text-center text-sm text-muted-foreground">
             Loading models...
@@ -109,16 +132,19 @@
             </Command.Group>
           {/if}
 
-          <Command.Group heading="Models">
-            {#each models as item (item.id)}
-              <Command.Item
-                value={`${item.name} ${item.id} ${item.provider}`}
-                onSelect={() => selectModel(item.id)}
-              >
-                <span class="truncate">{item.name}</span>
-              </Command.Item>
-            {/each}
-          </Command.Group>
+          {#each modelsByProvider as group (group.provider)}
+            <Command.Group heading={group.provider}>
+              {#each group.items as item (item.id)}
+                <Command.Item
+                  value={`${item.name} ${item.id} ${item.provider}`}
+                  keywords={[item.provider, item.id]}
+                  onSelect={() => selectModel(item.id)}
+                >
+                  <span class="truncate">{item.name}</span>
+                </Command.Item>
+              {/each}
+            </Command.Group>
+          {/each}
         {/if}
       </Command.List>
     </Command.Root>

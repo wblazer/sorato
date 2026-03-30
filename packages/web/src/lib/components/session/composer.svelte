@@ -1,5 +1,10 @@
 <script lang="ts">
+  import { Button } from '$lib/components/ui/button/index.js'
+  import { Textarea } from '$lib/components/ui/textarea/index.js'
   import type { AvailableModel } from '$lib/types.js'
+  import ArrowUpIcon from 'phosphor-svelte/lib/ArrowUpIcon'
+  import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
+  import StopIcon from 'phosphor-svelte/lib/StopIcon'
   import ModelSelector from './model-selector.svelte'
 
   let {
@@ -31,7 +36,7 @@
   } = $props()
 
   let input = $state('')
-  let textarea: HTMLTextAreaElement | undefined = $state()
+  let textarea: HTMLTextAreaElement | null = $state(null)
 
   function handleSubmit() {
     const trimmed = input.trim()
@@ -64,48 +69,35 @@
   <div class="mx-auto w-full max-w-6xl">
     <div class="relative">
       <div
-        class="relative z-10 rounded-2xl border-2 border-border/90 bg-card shadow-md"
+        class="relative z-10 rounded-lg border-2 bg-card border-border shadow-sm"
       >
-        <div class="rounded-2xl bg-background/95 px-4 py-3 sm:px-5 sm:py-4">
-          <textarea
-            bind:this={textarea}
-            bind:value={input}
-            onkeydown={handleKeydown}
-            oninput={handleInput}
-            {placeholder}
-            {disabled}
-            rows={1}
-            class="max-h-[220px] min-h-[32px] w-full resize-none bg-transparent text-[15px] leading-7 text-foreground outline-none placeholder:text-muted-foreground/85 disabled:cursor-not-allowed disabled:opacity-50"
-          ></textarea>
-        </div>
+        <Textarea
+          bind:ref={textarea}
+          bind:value={input}
+          onkeydown={handleKeydown}
+          oninput={handleInput}
+          {placeholder}
+          {disabled}
+          rows={1}
+          class="max-h-[220px] min-h-[32px] w-full border-0 rounded-lg bg-background/90 px-4 py-4 ring-0 md:text-sm outline-none focus-visible:ring-0 dark:bg-background/90"
+        />
       </div>
 
       <div
-        class="relative -mt-2 flex w-full flex-wrap items-center gap-2 rounded-b-[1.15rem] border border-border/60 bg-secondary/72 px-2.5 pb-2 pt-3 text-secondary-foreground shadow-[0_12px_24px_-26px_rgba(15,23,42,0.3)] sm:flex-nowrap sm:px-3"
+        class="relative -mt-2 flex w-full flex-wrap items-center gap-2 rounded-b-lg border border-border/60 bg-muted/60 px-1.5 pb-1 pt-3 text-muted-foreground shadow-sm sm:flex-nowrap"
       >
-        <div class="flex min-w-0 flex-1 items-center gap-1.5">
-          <button
+        <div class="flex min-w-0 flex-1 items-center gap-1">
+          <Button
             onclick={onAttach}
             type="button"
-            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            variant="ghost"
+            size="icon"
+            class="shrink-0 text-muted-foreground"
             title="Attach file"
             {disabled}
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M12 5v14" />
-              <path d="M5 12h14" />
-            </svg>
-          </button>
+            <PlusIcon />
+          </Button>
 
           <div class="min-w-0 max-w-[min(20rem,60vw)]">
             <ModelSelector
@@ -113,7 +105,6 @@
               value={model}
               loading={modelLoading}
               disabled={disabled || modelDisabled}
-              compact={true}
               onChange={onModelChange}
             />
           </div>
@@ -121,45 +112,26 @@
 
         <div class="flex shrink-0 items-center gap-2">
           {#if isRunning}
-            <button
+            <Button
               onclick={onStop}
               disabled={isStopping}
-              class="flex h-8 min-w-8 items-center justify-center rounded-full bg-destructive px-2.5 text-sm font-medium text-destructive-foreground transition-colors hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-50"
+              variant="destructive"
+              size="icon-lg"
+              class="rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
               title={isStopping ? 'Stopping...' : 'Stop (Esc)'}
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                stroke="none"
-              >
-                <rect x="4" y="4" width="16" height="16" rx="2" />
-              </svg>
-            </button>
+              <StopIcon weight="fill" />
+            </Button>
           {:else}
-            <button
+            <Button
               onclick={handleSubmit}
               disabled={disabled || !input.trim()}
-              class="flex h-8 min-w-8 items-center justify-center rounded-md bg-primary px-2.5 text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              size="icon-lg"
+              class="bg-primary text-primary-foreground hover:bg-primary/90"
               title="Send message"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="m5 12 7-7 7 7" />
-                <path d="M12 19V5" />
-              </svg>
-            </button>
+              <ArrowUpIcon />
+            </Button>
           {/if}
         </div>
       </div>

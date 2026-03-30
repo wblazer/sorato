@@ -2,7 +2,7 @@
 	import { Command as CommandPrimitive } from "bits-ui";
 	import { cn } from "$lib/utils.js";
 	import * as InputGroup from "$lib/components/ui/input-group/index.js";
-	import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlass';
+	import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon';
 
 	let {
 		ref = $bindable(null),
@@ -17,7 +17,7 @@
 		<CommandPrimitive.Input
 			data-slot="command-input"
 			class={cn(
-				"w-full text-xs/relaxed outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
+				"w-full text-sm/relaxed outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
 				className
 			)}
 			bind:ref
