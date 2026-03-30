@@ -3,7 +3,6 @@
   import { messagesStore } from '$lib/stores/messages.svelte.js'
   import { modelsStore } from '$lib/stores/models.svelte.js'
   import Composer from './composer.svelte'
-  import ModelSelector from './model-selector.svelte'
 
   let sending = $state(false)
   let model = $state<string>('')
@@ -29,6 +28,8 @@
     model = value
     modelsStore.remember(value)
   }
+
+  function handleAttach() {}
 
   async function handleSend(input: string) {
     if (sending || !model) return
@@ -61,29 +62,24 @@
 
 <div class="flex h-full flex-col">
   <!-- Header -->
-  <div class="flex items-center gap-3 border-b border-border px-6 py-3">
-    <div class="min-w-0 flex-1">
-      <h1 class="text-sm font-semibold text-foreground">New Session</h1>
-      {#if sessionStore.selectedDirectory}
-        <span class="text-xs text-muted-foreground">
-          {sessionStore.selectedDirectory}
-        </span>
-      {/if}
-    </div>
-    <div class="w-72 max-w-full">
-      <ModelSelector
-        models={modelsStore.models}
-        value={model || null}
-        loading={modelsStore.loading}
-        disabled={!sessionStore.selectedDirectory || sending}
-        onChange={handleModel}
-      />
+  <div class="py-4">
+    <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
+      <div class="min-w-0 flex-1">
+        <h1 class="text-sm font-semibold text-foreground">New Session</h1>
+        {#if sessionStore.selectedDirectory}
+          <span class="text-xs text-muted-foreground">
+            {sessionStore.selectedDirectory}
+          </span>
+        {/if}
+      </div>
     </div>
   </div>
 
   <!-- Empty state / prompt -->
-  <div class="flex flex-1 flex-col items-center justify-center gap-4 p-8">
-    <div class="text-center">
+  <div
+    class="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center gap-4 px-6 py-8 text-center"
+  >
+    <div>
       <p class="text-sm text-muted-foreground">
         Start a conversation with the agent.
       </p>
@@ -102,6 +98,12 @@
   <!-- Composer -->
   <Composer
     onSend={handleSend}
+    onAttach={handleAttach}
+    onModelChange={handleModel}
+    models={modelsStore.models}
+    model={model || null}
+    modelLoading={modelsStore.loading}
+    modelDisabled={!sessionStore.selectedDirectory || sending}
     disabled={sending ||
       !sessionStore.selectedDirectory ||
       modelsStore.loading ||

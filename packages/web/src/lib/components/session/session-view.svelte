@@ -5,7 +5,6 @@
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
   import MessageBubble from './message-bubble.svelte'
-  import ModelSelector from './model-selector.svelte'
   import QueuedMessageBubble from './queued-message-bubble.svelte'
   import StreamingIndicator from './streaming-indicator.svelte'
   import Composer from './composer.svelte'
@@ -129,27 +128,21 @@
       updatingModel = false
     }
   }
+
+  function handleAttach() {}
 </script>
 
 <div class="flex h-full flex-col">
   <!-- Header -->
-  <div class="flex items-center gap-3 border-b border-border px-6 py-3">
-    <div class="min-w-0 flex-1">
-      <h1 class="text-sm font-semibold text-foreground">
-        {title ?? 'Untitled'}
-      </h1>
-      <span class="text-xs text-muted-foreground">{sessionId.slice(0, 8)}</span>
-    </div>
-
-    <div class="flex items-center gap-3">
-      <div class="w-72 max-w-full">
-        <ModelSelector
-          models={modelsStore.models}
-          value={session?.model ?? null}
-          loading={modelsStore.loading}
-          disabled={updatingModel}
-          onChange={handleModel}
-        />
+  <div class="py-4">
+    <div class="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
+      <div class="min-w-0 flex-1">
+        <h1 class="text-sm font-semibold text-foreground">
+          {title ?? 'Untitled'}
+        </h1>
+        <span class="text-xs text-muted-foreground"
+          >{sessionId.slice(0, 8)}</span
+        >
       </div>
 
       {#if isStopping}
@@ -177,19 +170,27 @@
   <!-- Messages -->
   <div bind:this={messagesContainer} class="flex-1 overflow-y-auto">
     {#if messagesStore.loading}
-      <div class="flex items-center justify-center p-8">
+      <div
+        class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
+      >
         <span class="text-sm text-muted-foreground">Loading messages...</span>
       </div>
     {:else if messagesStore.error}
-      <div class="flex items-center justify-center p-8">
+      <div
+        class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
+      >
         <span class="text-sm text-destructive">{messagesStore.error}</span>
       </div>
     {:else if messagesStore.loaded && messagesStore.messages.length === 0 && !isRunning}
-      <div class="flex items-center justify-center p-8">
+      <div
+        class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
+      >
         <span class="text-sm text-muted-foreground">No messages yet</span>
       </div>
     {:else if messagesStore.loaded || isRunning}
-      <div class="flex flex-col gap-1 p-4">
+      <div
+        class="mx-auto flex w-full max-w-6xl flex-col gap-1 px-4 py-5 sm:px-6"
+      >
         {#each messagesStore.messages as message (message.id)}
           <MessageBubble {message} />
         {/each}
@@ -205,28 +206,28 @@
 
   <!-- Resume button — shown after interruption -->
   {#if wasInterrupted}
-    <div
-      class="flex justify-center border-t border-border bg-background px-4 py-2"
-    >
-      <button
-        onclick={handleResume}
-        class="flex items-center gap-2 rounded-md border border-input bg-background px-4 py-1.5 text-sm text-foreground transition-colors hover:bg-accent"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+    <div class="px-4 py-2">
+      <div class="mx-auto flex w-full max-w-6xl justify-center">
+        <button
+          onclick={handleResume}
+          class="flex items-center gap-2 rounded-md border border-input bg-background px-4 py-1.5 text-sm text-foreground transition-colors hover:bg-accent"
         >
-          <polygon points="6 3 20 12 6 21 6 3" />
-        </svg>
-        Resume
-      </button>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <polygon points="6 3 20 12 6 21 6 3" />
+          </svg>
+          Resume
+        </button>
+      </div>
     </div>
   {/if}
 
@@ -234,6 +235,12 @@
   <Composer
     onSend={handleSend}
     onStop={handleStop}
+    onAttach={handleAttach}
+    onModelChange={handleModel}
+    models={modelsStore.models}
+    model={session?.model ?? null}
+    modelLoading={modelsStore.loading}
+    modelDisabled={updatingModel}
     {isRunning}
     {isStopping}
     disabled={isStopping}
