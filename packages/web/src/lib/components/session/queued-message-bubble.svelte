@@ -9,27 +9,20 @@
 </script>
 
 <div
-  class="flex flex-col gap-2 border-l-2 border-l-emerald-500/20 py-2 pl-4 opacity-80"
+  class="ml-auto flex w-fit max-w-[min(42rem,85%)] flex-col gap-2 rounded-lg border border-primary/30 bg-primary px-3 py-3 text-primary-foreground opacity-80 shadow-sm"
 >
   <div class="flex items-center gap-2">
     <span
-      class="text-[10px] font-bold uppercase tracking-widest text-emerald-400"
-    >
-      user
-    </span>
-    <span
-      class="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300"
+      class="rounded-full bg-background/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.18em] text-muted-foreground"
     >
       queued
     </span>
-    <span class="text-[10px] text-muted-foreground/50">
+    <span class="text-[10px] text-muted-foreground">
       {new Date(message.createdAt).toLocaleTimeString()}
     </span>
   </div>
 
-  <div
-    class="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-foreground/80"
-  >
+  <div class="whitespace-pre-wrap break-words text-sm leading-relaxed">
     {message.content}
   </div>
 </div>

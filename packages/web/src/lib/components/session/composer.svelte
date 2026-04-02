@@ -65,8 +65,8 @@
   }
 </script>
 
-<div class="bg-background px-4 py-5 sm:px-6">
-  <div class="mx-auto w-full max-w-6xl">
+<div class="bg-background py-5">
+  <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
     <div class="relative">
       <div
         class="relative z-10 rounded-lg border-2 bg-card border-border shadow-sm"
@@ -140,7 +140,7 @@
     {#if isRunning}
       <div class="mt-2 flex items-center justify-end px-1">
         {#if isStopping}
-          <span class="text-[11px] text-amber-500">Stopping...</span>
+          <span class="text-[11px] text-muted-foreground">Stopping...</span>
         {:else}
           <span class="text-[11px] text-muted-foreground">
             Press <kbd

@@ -18,49 +18,42 @@
     return []
   })
 
-  const roleColors: Record<string, string> = {
-    system: 'text-yellow-500',
-    user: 'text-emerald-400',
-    assistant: 'text-blue-400',
-    tool: 'text-purple-400',
-  }
-
-  const roleBorders: Record<string, string> = {
-    system: 'border-l-yellow-500/30',
-    user: 'border-l-emerald-500/30',
-    assistant: 'border-l-blue-500/30',
-    tool: 'border-l-purple-500/30',
-  }
+  const isUser = $derived(role === 'user')
+  const isSystem = $derived(role === 'system')
 </script>
 
-<div
-  class="group flex flex-col gap-2 border-l-2 {roleBorders[role] ??
-    'border-l-border'} py-2 pl-4"
->
-  <!-- Role badge + metadata -->
-  <div class="flex items-center gap-2">
-    <span
-      class="text-[10px] font-bold uppercase tracking-widest {roleColors[
-        role
-      ] ?? 'text-muted-foreground'}"
-    >
-      {role}
-    </span>
-    <span class="text-[10px] text-muted-foreground/50">
-      {message.id.slice(0, 8)}
-    </span>
-    <span class="text-[10px] text-muted-foreground/50">
-      {new Date(message.createdAt).toLocaleTimeString()}
-    </span>
-  </div>
-
-  <!-- Message parts -->
+<div class="flex flex-col gap-2 py-2.5">
   {#if parts.length === 0}
     <span class="text-xs italic text-muted-foreground">(empty)</span>
+  {:else if isUser}
+    <div
+      class="ml-auto w-fit max-w-[min(42rem,85%)] rounded-lg border border-primary/30 bg-primary text-primary-foreground shadow-sm"
+    >
+      <div class="flex flex-col gap-3 px-3 py-3">
+        {#each parts as part}
+          <MessagePartComponent {part} monospace={false} />
+        {/each}
+      </div>
+    </div>
+  {:else if isSystem}
+    <div
+      class="w-full overflow-hidden rounded-lg border border-border bg-muted text-foreground shadow-sm"
+    >
+      <div
+        class="border-b border-border px-3 py-2 text-sm font-semibold text-foreground"
+      >
+        System
+      </div>
+      <div class="flex flex-col gap-3 px-3 py-3">
+        {#each parts as part}
+          <MessagePartComponent {part} monospace={true} />
+        {/each}
+      </div>
+    </div>
   {:else}
     <div class="flex flex-col gap-3">
       {#each parts as part}
-        <MessagePartComponent {part} />
+        <MessagePartComponent {part} monospace={false} />
       {/each}
     </div>
   {/if}

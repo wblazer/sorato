@@ -149,21 +149,21 @@
 
       {#if isStopping}
         <span
-          class="flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2 py-0.5"
+          class="flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-muted-foreground"
         >
           <span
-            class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400"
+            class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground"
           ></span>
-          <span class="text-[10px] font-medium text-amber-400">stopping</span>
+          <span class="text-[10px] font-medium">stopping</span>
         </span>
       {:else if isRunning}
         <span
-          class="flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2 py-0.5"
+          class="flex items-center gap-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-primary"
         >
           <span
-            class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-blue-400"
+            class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary"
           ></span>
-          <span class="text-[10px] font-medium text-blue-400">live</span>
+          <span class="text-[10px] font-medium">live</span>
         </span>
       {/if}
     </div>
@@ -191,7 +191,7 @@
       </div>
     {:else if messagesStore.loaded || isRunning}
       <div
-        class="mx-auto flex w-full max-w-6xl flex-col gap-1 px-4 py-5 sm:px-6"
+        class="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-5 sm:px-6"
       >
         {#each messagesStore.messages as message (message.id)}
           <MessageBubble {message} />
