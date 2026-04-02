@@ -6,7 +6,7 @@
 </script>
 
 <aside
-  class="flex h-screen w-70 shrink-0 flex-col border-r border-sidebar-border bg-sidebar"
+  class="flex h-screen w-70 shrink-0 flex-col border-r border-border bg-background"
   data-slot="sidebar"
 >
   <div class="p-2">
@@ -15,7 +15,7 @@
   <SessionList />
 
   <!-- Connection Manager at bottom -->
-  <div class="mt-auto border-t border-sidebar-border">
+  <div class="mt-auto border-t border-border">
     <ConnectionManager />
   </div>
 </aside>

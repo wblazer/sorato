@@ -10,7 +10,7 @@
     connectionsStore,
     type Connection,
   } from '$lib/stores/connections.svelte.js'
-  import DotsThreeVerticalIcon from 'phosphor-svelte/lib/DotsThreeVerticalIcon'
+  import DotsThreeIcon from 'phosphor-svelte/lib/DotsThreeIcon'
   import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon'
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
   import TrashIcon from 'phosphor-svelte/lib/TrashIcon'
@@ -83,14 +83,14 @@
   <Popover bind:open={popoverOpen}>
     <PopoverTrigger>
       <button
-        class="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+        class="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted hover:bg-hover hover:text-foreground transition-colors"
       >
         <span class="relative flex h-2 w-2">
           {#if connectionsStore.activeConnection}
-            <span class="relative inline-flex h-2 w-2 rounded-full bg-green-500"
+            <span class="relative inline-flex h-2 w-2 rounded-full bg-green"
             ></span>
           {:else}
-            <span class="relative inline-flex h-2 w-2 rounded-full bg-gray-400"
+            <span class="relative inline-flex h-2 w-2 rounded-full bg-muted"
             ></span>
           {/if}
         </span>
@@ -119,41 +119,42 @@
         </div>
 
         {#if connectionsStore.connections.length === 0}
-          <div class="px-3 py-4 text-center text-sm text-muted-foreground">
+          <div class="px-3 py-4 text-center text-sm text-muted">
             No connections configured.
           </div>
         {:else}
           <div class="py-1">
             {#each connectionsStore.connections as connection (connection.id)}
-              <div class="flex items-center gap-2 px-3 py-2">
+              <div class="flex items-center gap-1 px-3 py-1.5">
                 <button
                   onclick={() => handleActivate(connection.id)}
-                  class="flex flex-1 items-center gap-3 rounded-sm py-3 pl-3 hover:bg-accent"
+                  class="flex min-w-0 flex-1 items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-hover"
                 >
                   {#if isActive(connection)}
-                    <span class="h-2 w-2 rounded-full bg-green-500"></span>
+                    <span class="h-2 w-2 rounded-full bg-green"></span>
                   {:else}
                     <span class="h-2 w-2"></span>
                   {/if}
-                  <div class="flex flex-col items-start gap-0.5">
-                    <span class="text-sm font-medium leading-none">
-                      {displayName(connection)}
-                    </span>
-                    {#if connection.name}
-                      <span class="text-xs text-muted-foreground">
-                        {connection.url}
-                      </span>
-                    {/if}
-                  </div>
+                  <span class="truncate text-sm font-medium leading-none">
+                    {displayName(connection)}
+                  </span>
                 </button>
 
                 <Popover>
                   <PopoverTrigger>
-                    <Button variant="ghost" size="icon-lg">
-                      <DotsThreeVerticalIcon />
+                    <Button
+                      variant="ghost"
+                      size="icon-lg"
+                      class="text-muted hover:bg-hover hover:text-foreground"
+                    >
+                      <DotsThreeIcon />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent class="w-32 gap-0.5 p-1" align="end" side="right">
+                  <PopoverContent
+                    class="w-32 gap-0.5 p-1"
+                    align="end"
+                    side="right"
+                  >
                     <Button
                       variant="ghost"
                       size="sm"

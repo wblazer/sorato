@@ -117,13 +117,13 @@
   function getStatusColor() {
     switch (checkStatus) {
       case 'success':
-        return 'text-green-500'
+        return 'text-green'
       case 'error':
-        return 'text-red-500'
+        return 'text-red'
       case 'loading':
-        return 'text-yellow-500'
+        return 'text-yellow'
       default:
-        return 'text-muted-foreground'
+        return 'text-muted'
     }
   }
 
@@ -157,7 +157,7 @@
     <div class="grid gap-4 py-4">
       <div class="grid gap-2">
         <label for="url" class="text-sm font-medium">
-          Server URL <span class="text-red-500">*</span>
+          Server URL <span class="text-red">*</span>
         </label>
         <div class="relative">
           <input
@@ -166,7 +166,7 @@
             placeholder="http://localhost:3100"
             bind:value={url}
             onblur={handleUrlBlur}
-            class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+            class="flex h-9 w-full rounded-md border border-border bg-background px-3 py-1 text-sm transition-colors placeholder:text-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue disabled:cursor-not-allowed"
           />
           <div
             class="absolute right-3 top-1/2 -translate-y-1/2 {getStatusColor()}"
@@ -179,25 +179,25 @@
           </div>
         </div>
         {#if urlError}
-          <p class="text-xs text-red-500">{urlError}</p>
+          <p class="text-xs text-red">{urlError}</p>
         {:else if checkStatus === 'success'}
-          <p class="text-xs text-green-500">Server connected successfully</p>
+          <p class="text-xs text-green">Server connected successfully</p>
         {/if}
-        <p class="text-xs text-muted-foreground">
+        <p class="text-xs text-muted">
           The server URL will be checked when you unfocus the field.
         </p>
       </div>
 
       <div class="grid gap-2">
         <label for="name" class="text-sm font-medium">
-          Display Name <span class="text-muted-foreground">(optional)</span>
+          Display Name <span class="text-muted">(optional)</span>
         </label>
         <input
           id="name"
           type="text"
           placeholder="My Local Server"
           bind:value={name}
-          class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+          class="flex h-9 w-full rounded-md border border-border bg-background px-3 py-1 text-sm transition-colors placeholder:text-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue disabled:cursor-not-allowed"
         />
       </div>
     </div>

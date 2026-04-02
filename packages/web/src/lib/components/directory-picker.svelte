@@ -195,7 +195,7 @@
 >
   {#snippet items()}
     {#if error}
-      <div class="px-3 py-6 text-center text-sm text-muted-foreground">
+      <div class="px-3 py-6 text-center text-sm text-muted">
         {error}
       </div>
     {:else}
@@ -207,8 +207,8 @@
           class={cn(
             'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors',
             isSelected
-              ? 'bg-accent text-accent-foreground'
-              : 'text-foreground hover:bg-accent/50'
+              ? 'bg-hover text-foreground'
+              : 'text-foreground hover:bg-hover'
           )}
           onclick={() => {
             onSelect(entry.path)
@@ -216,9 +216,9 @@
           }}
           onmouseenter={() => (selectedIndex = i)}
         >
-          <FolderIcon class="size-4 shrink-0 text-muted-foreground" />
+          <FolderIcon class="size-4 shrink-0 text-muted" />
           <span class="min-w-0 truncate">
-            <span class="text-muted-foreground">{display.dim}</span><span
+            <span class="text-muted">{display.dim}</span><span
               class="font-medium">{display.bright}</span
             >
           </span>
@@ -228,7 +228,7 @@
   {/snippet}
 
   {#snippet empty()}
-    <div class="px-3 py-6 text-center text-sm text-muted-foreground">
+    <div class="px-3 py-6 text-center text-sm text-muted">
       {error ?? 'No directories found'}
     </div>
   {/snippet}

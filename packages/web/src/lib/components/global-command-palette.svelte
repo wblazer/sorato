@@ -107,8 +107,8 @@
         class={cn(
           'flex w-full items-start gap-3 rounded-md px-3 py-2 text-left transition-colors',
           index === selectedIndex
-            ? 'bg-accent text-accent-foreground'
-            : 'hover:bg-accent/50'
+            ? 'bg-hover text-foreground'
+            : 'hover:bg-hover'
         )}
         onclick={() => runAction(action)}
         onmouseenter={() => (selectedIndex = index)}
@@ -117,13 +117,13 @@
           <div class="flex items-center gap-2">
             <span class="truncate text-sm font-medium">{action.title}</span>
             <span
-              class="shrink-0 text-[10px] uppercase tracking-[0.14em] text-muted-foreground"
+              class="shrink-0 text-[10px] uppercase tracking-[0.14em] text-muted"
             >
               {action.category}
             </span>
           </div>
           {#if action.description}
-            <div class="truncate pt-0.5 text-xs text-muted-foreground">
+            <div class="truncate pt-0.5 text-xs text-muted">
               {action.description}
             </div>
           {/if}
@@ -131,7 +131,7 @@
 
         {#if action.defaultShortcut}
           <kbd
-            class="shrink-0 rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+            class="shrink-0 rounded border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted"
           >
             {action.defaultShortcut}
           </kbd>
@@ -141,7 +141,7 @@
   {/snippet}
 
   {#snippet empty()}
-    <div class="px-3 py-6 text-center text-sm text-muted-foreground">
+    <div class="px-3 py-6 text-center text-sm text-muted">
       No actions found
     </div>
   {/snippet}

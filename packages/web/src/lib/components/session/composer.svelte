@@ -68,23 +68,19 @@
 <div class="bg-background py-5">
   <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
     <div class="relative">
-      <div
-        class="relative z-10 rounded-lg border-2 bg-card border-border shadow-sm"
-      >
-        <Textarea
-          bind:ref={textarea}
-          bind:value={input}
-          onkeydown={handleKeydown}
-          oninput={handleInput}
-          {placeholder}
-          {disabled}
-          rows={1}
-          class="max-h-[220px] min-h-[32px] w-full border-0 rounded-lg bg-background/90 px-4 py-4 ring-0 md:text-sm outline-none focus-visible:ring-0 dark:bg-background/90"
-        />
-      </div>
+      <Textarea
+        bind:ref={textarea}
+        bind:value={input}
+        onkeydown={handleKeydown}
+        oninput={handleInput}
+        {placeholder}
+        {disabled}
+        rows={1}
+        class="relative z-10 min-h-[32px] w-full max-h-[220px] rounded-lg border border-border bg-raised px-4 py-4 shadow-sm outline-none focus-visible:border-blue focus-visible:ring-0 md:text-sm"
+      />
 
       <div
-        class="relative -mt-2 flex w-full flex-wrap items-center gap-2 rounded-b-lg border border-border/60 bg-muted/60 px-1.5 pb-1 pt-3 text-muted-foreground shadow-sm sm:flex-nowrap"
+        class="relative -mt-2 flex w-full flex-wrap items-center gap-2 rounded-b-lg border border-border bg-background px-1.5 pb-1 pt-3 text-muted shadow-sm sm:flex-nowrap"
       >
         <div class="flex min-w-0 flex-1 items-center gap-1">
           <Button
@@ -92,7 +88,7 @@
             type="button"
             variant="ghost"
             size="icon"
-            class="shrink-0 text-muted-foreground"
+            class="shrink-0 text-muted"
             title="Attach file"
             {disabled}
           >
@@ -117,7 +113,7 @@
               disabled={isStopping}
               variant="destructive"
               size="icon-lg"
-              class="rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              class="rounded-full bg-red text-background hover:bg-red"
               title={isStopping ? 'Stopping...' : 'Stop (Esc)'}
             >
               <StopIcon weight="fill" />
@@ -127,7 +123,7 @@
               onclick={handleSubmit}
               disabled={disabled || !input.trim()}
               size="icon-lg"
-              class="bg-primary text-primary-foreground hover:bg-primary/90"
+              class="bg-blue text-background hover:bg-blue"
               title="Send message"
             >
               <ArrowUpIcon />
@@ -136,21 +132,21 @@
         </div>
       </div>
     </div>
-
-    {#if isRunning}
-      <div class="mt-2 flex items-center justify-end px-1">
-        {#if isStopping}
-          <span class="text-[11px] text-muted-foreground">Stopping...</span>
-        {:else}
-          <span class="text-[11px] text-muted-foreground">
-            Press <kbd
-              class="rounded border bg-muted px-1 py-0.5 font-mono text-[10px]"
-              >Esc</kbd
-            >
-            to stop
-          </span>
-        {/if}
-      </div>
-    {/if}
   </div>
+
+  {#if isRunning}
+    <div class="mt-2 flex items-center justify-end px-1">
+      {#if isStopping}
+        <span class="text-[11px] text-muted">Stopping...</span>
+      {:else}
+        <span class="text-[11px] text-muted">
+          Press <kbd
+            class="rounded border bg-background px-1 py-0.5 font-mono text-[10px]"
+            >Esc</kbd
+          >
+          to stop
+        </span>
+      {/if}
+    </div>
+  {/if}
 </div>

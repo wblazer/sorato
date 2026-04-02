@@ -141,9 +141,9 @@
         onkeydown={handleKeydown}
         class={cn(
           'flex h-12 w-full bg-transparent py-3 text-sm',
-          'placeholder:text-muted-foreground',
+          'placeholder:text-muted',
           'focus:outline-none',
-          'disabled:cursor-not-allowed disabled:opacity-50'
+          'disabled:cursor-not-allowed '
         )}
         {placeholder}
         spellcheck="false"
@@ -151,7 +151,7 @@
       />
       {#if loading}
         <div
-          class="size-4 shrink-0 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent"
+          class="size-4 shrink-0 animate-spin rounded-full border-2 border-muted border-t-transparent"
         ></div>
       {/if}
     </div>
@@ -167,7 +167,7 @@
         {#if empty}
           {@render empty()}
         {:else}
-          <div class="px-3 py-6 text-center text-sm text-muted-foreground">
+          <div class="px-3 py-6 text-center text-sm text-muted">
             No results found
           </div>
         {/if}
@@ -177,12 +177,12 @@
     <!-- Footer hints -->
     {#if hints.length > 0}
       <div
-        class="flex items-center gap-4 border-t px-4 py-2 text-xs text-muted-foreground"
+        class="flex items-center gap-4 border-t px-4 py-2 text-xs text-muted"
       >
         {#each hints as hint}
           <span>
             <kbd
-              class="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px]"
+              class="rounded border bg-background px-1.5 py-0.5 font-mono text-[10px]"
               >{hint.key}</kbd
             >
             {hint.label}

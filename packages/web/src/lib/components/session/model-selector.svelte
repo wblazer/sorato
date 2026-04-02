@@ -96,14 +96,14 @@
       type="button"
       variant="ghost"
       size="sm"
-      class="min-w-0 dark:hover:bg-muted justify-between gap-2 h-7 text-sm text-foreground"
+      class="h-7 min-w-0 justify-between gap-2 text-sm text-foreground"
       role="combobox"
       aria-controls={listboxId}
       aria-expanded={open}
       {disabled}
     >
       <span class="truncate">{triggerLabel}</span>
-      <CaretDownIcon class="shrink-0 text-muted-foreground" />
+      <CaretDownIcon class="shrink-0 text-muted" />
     </Button>
   </Popover.Trigger>
 
@@ -111,11 +111,11 @@
     class="w-[min(24rem,calc(100vw-2rem))] gap-0 overflow-hidden p-1.5"
     align="start"
   >
-    <Command.Root class="rounded-lg bg-popover p-0" filter={filterModel}>
+    <Command.Root class="rounded-lg p-0" filter={filterModel}>
       <Command.Input placeholder="Search models..." />
       <Command.List id={listboxId} class="h-60 px-1 pb-1">
         {#if loading}
-          <div class="px-3 py-6 text-center text-sm text-muted-foreground">
+          <div class="px-3 py-6 text-center text-sm text-muted">
             Loading models...
           </div>
         {:else}
