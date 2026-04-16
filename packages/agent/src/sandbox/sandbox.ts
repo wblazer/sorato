@@ -20,7 +20,7 @@
  * the tags separately. This keeps lifecycle management unified (one scope,
  * one rootDir) while giving tools granular `R` types.
  */
-import { Effect, Schema, Scope, ServiceMap } from 'effect'
+import { Context, Effect, Schema, Scope } from 'effect'
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -76,7 +76,7 @@ export interface Shell {
 }
 
 /** Per-scenario shell service. Tools that execute commands require this in their `R`. */
-export class CurrentShell extends ServiceMap.Service<CurrentShell, Shell>()(
+export class CurrentShell extends Context.Service<CurrentShell, Shell>()(
   '@agents/Shell'
 ) {}
 
@@ -108,7 +108,7 @@ export interface Files {
 }
 
 /** Per-scenario files service. Tools that access files require this in their `R`. */
-export class CurrentFiles extends ServiceMap.Service<CurrentFiles, Files>()(
+export class CurrentFiles extends Context.Service<CurrentFiles, Files>()(
   '@agents/Files'
 ) {}
 
@@ -147,6 +147,6 @@ export interface SandboxFactory {
  * The sandbox factory — produces scoped sessions with Shell + Files services.
  * The runner uses this to acquire sessions per scenario.
  */
-export class Sandbox extends ServiceMap.Service<Sandbox, SandboxFactory>()(
+export class Sandbox extends Context.Service<Sandbox, SandboxFactory>()(
   '@agents/Sandbox'
 ) {}

@@ -10,7 +10,7 @@ import {
   HttpApiGroup,
   HttpApiSchema,
 } from 'effect/unstable/httpapi'
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import { SessionId, StorageError } from '../session/session.ts'
 
 // ── Schemas ─────────────────────────────────────────────────────────
@@ -193,7 +193,9 @@ export class DirectoriesGroup extends HttpApiGroup.make('directories')
   .add(
     HttpApiEndpoint.get('list', '/', {
       query: {
-        path: Schema.String.pipe(Schema.withDecodingDefault(() => '~')),
+        path: Schema.String.pipe(
+          Schema.withDecodingDefault(Effect.succeed('~'))
+        ),
       },
       success: DirectoryListResponse,
       error: DirectoryError.pipe(HttpApiSchema.status(400)),

@@ -68,7 +68,7 @@ bun run --filter @agents/evals hello-world
 
 1. Run `effect-solutions list` to see available guides
 2. Run `effect-solutions show <topic>...` for relevant patterns (supports multiple topics)
-3. Search `.reference/effect/` for real implementations (run `effect-solutions setup` first)
+3. Search `.reference/effect-v4/` for real implementations (run `effect-solutions setup` first)
 
 Topics: quick-start, project-setup, tsconfig, basics, services-and-layers, data-modeling, error-handling, config, testing, cli.
 

@@ -21,7 +21,7 @@
  * into `Prompt.Prompt` on read. Other systems (VCS, analytics) can join on
  * message IDs without coupling to this module.
  */
-import { Effect, Schema, ServiceMap } from 'effect'
+import { Context, Effect, Schema } from 'effect'
 import type { Prompt } from 'effect/unstable/ai'
 
 // ---------------------------------------------------------------------------
@@ -170,7 +170,7 @@ export interface SessionStorageApi {
  * Session storage factory — the primary tag consumers `yield*` to
  * interact with persistent conversation storage.
  */
-export class SessionStorage extends ServiceMap.Service<
+export class SessionStorage extends Context.Service<
   SessionStorage,
   SessionStorageApi
 >()('@agents/SessionStorage') {}
