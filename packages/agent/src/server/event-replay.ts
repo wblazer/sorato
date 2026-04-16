@@ -67,7 +67,7 @@ export function getReplaySnapshot(
 
 export function getReplayBufferSince(
   sessionId: string,
-  cursor: StreamCursor | null
+  cursor: StreamCursor | undefined
 ): readonly ContentEvent[] {
   const state = buffers.get(sessionId)
   if (!state) return []

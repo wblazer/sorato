@@ -1,179 +1,192 @@
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
-import { homedir } from 'node:os'
-import { Effect, Schema } from 'effect'
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import { Effect, Option, Schema } from "effect";
 
 const RuntimeConfigSchema = Schema.Struct({
   default_model: Schema.optional(Schema.String),
-})
+});
 
-export type RuntimeConfig = typeof RuntimeConfigSchema.Type
+export type RuntimeConfig = typeof RuntimeConfigSchema.Type;
 
 export class RuntimeConfigError extends Schema.TaggedErrorClass<RuntimeConfigError>()(
-  'RuntimeConfigError',
+  "RuntimeConfigError",
   {
     message: Schema.String,
-  }
+  },
 ) {}
 
 const configRoot = () =>
-  join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'agents')
+  join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "agents");
 
 const configFiles = (dir: string) => [
-  join(configRoot(), 'config.json'),
-  join(configRoot(), 'config.jsonc'),
-  join(dir, '.agents', 'config.json'),
-  join(dir, '.agents', 'config.jsonc'),
-]
+  join(configRoot(), "config.json"),
+  join(configRoot(), "config.jsonc"),
+  join(dir, ".agents", "config.json"),
+  join(dir, ".agents", "config.jsonc"),
+];
+
+const charAt = (text: string, index: number) => text[index] ?? "";
 
 const stripComments = (text: string) => {
-  let out = ''
-  let mode: 'code' | 'string' | 'line' | 'block' = 'code'
+  let out = "";
+  let mode: "code" | "string" | "line" | "block" = "code";
 
   for (let i = 0; i < text.length; i++) {
-    const cur = text[i]!
-    const next = text[i + 1]
+    const cur = charAt(text, i);
+    const next = charAt(text, i + 1);
 
-    if (mode === 'string') {
-      out += cur
-      if (cur === '\\' && next) {
-        out += next
-        i += 1
-        continue
+    switch (mode) {
+      case "string": {
+        out += cur;
+        const escaped = Number(cur === "\\" && next !== "");
+        out += next.repeat(escaped);
+        i += escaped;
+        if (escaped === 1) continue;
+        mode = ["string", "code"][Number(cur === '"')] as
+          | "string"
+          | "code";
+        continue;
       }
-      if (cur === '"') mode = 'code'
-      continue
-    }
-
-    if (mode === 'line') {
-      if (cur === '\n') {
-        out += cur
-        mode = 'code'
+      case "line": {
+        const isNewline = Number(cur === "\n");
+        out += cur.repeat(isNewline);
+        mode = ["line", "code"][isNewline] as "line" | "code";
+        continue;
       }
-      continue
-    }
-
-    if (mode === 'block') {
-      if (cur === '*' && next === '/') {
-        i += 1
-        mode = 'code'
+      case "block": {
+        const isBlockEnd = Number(cur === "*" && next === "/");
+        i += isBlockEnd;
+        mode = ["block", "code"][isBlockEnd] as "block" | "code";
+        continue;
       }
-      continue
-    }
+      case "code": {
+        const isQuote = Number(cur === '"');
+        out += cur.repeat(isQuote);
+        mode = ["code", "string"][isQuote] as "code" | "string";
+        if (isQuote === 1) continue;
 
-    if (cur === '"') {
-      out += cur
-      mode = 'string'
-      continue
-    }
+        const lineCommentStart = Number(cur === "/" && next === "/");
+        i += lineCommentStart;
+        mode = ["code", "line"][lineCommentStart] as "code" | "line";
+        if (lineCommentStart === 1) continue;
 
-    if (cur === '/' && next === '/') {
-      i += 1
-      mode = 'line'
-      continue
-    }
+        const blockCommentStart = Number(cur === "/" && next === "*");
+        i += blockCommentStart;
+        mode = ["code", "block"][blockCommentStart] as "code" | "block";
+        if (blockCommentStart === 1) continue;
 
-    if (cur === '/' && next === '*') {
-      i += 1
-      mode = 'block'
-      continue
+        out += cur;
+      }
     }
-
-    out += cur
   }
 
-  return out
-}
+  return out;
+};
 
 const stripTrailing = (text: string) => {
-  let out = ''
-  let mode: 'code' | 'string' = 'code'
+  let out = "";
+  let mode: "code" | "string" = "code";
 
   for (let i = 0; i < text.length; i++) {
-    const cur = text[i]!
+    const cur = charAt(text, i);
 
-    if (mode === 'string') {
-      out += cur
-      if (cur === '\\' && text[i + 1]) {
-        out += text[i + 1]!
-        i += 1
-        continue
+    switch (mode) {
+      case "string": {
+        out += cur;
+        const escaped = Number(cur === "\\" && i + 1 < text.length);
+        out += charAt(text, i + 1).repeat(escaped);
+        i += escaped;
+        if (escaped === 1) continue;
+        mode = ["string", "code"][Number(cur === '"')] as "string" | "code";
+        continue;
       }
-      if (cur === '"') mode = 'code'
-      continue
-    }
+      case "code": {
+        const isQuote = Number(cur === '"');
+        out += cur.repeat(isQuote);
+        mode = ["code", "string"][isQuote] as "code" | "string";
+        if (isQuote === 1) continue;
 
-    if (cur === '"') {
-      out += cur
-      mode = 'string'
-      continue
-    }
+        const isComma = Number(cur === ",");
+        let j = i + isComma;
+        while (j < text.length && isComma === 1 && /\s/.test(charAt(text, j))) {
+          j += 1;
+        }
+        const next = charAt(text, j);
+        const shouldSkipTrailingComma = Number(
+          isComma === 1 && (next === "}" || next === "]"),
+        );
 
-    if (cur === ',') {
-      let j = i + 1
-      while (j < text.length && /\s/.test(text[j]!)) j += 1
-      const next = text[j]
-      if (next === '}' || next === ']') continue
+        out += cur.repeat(1 - shouldSkipTrailingComma);
+      }
     }
-
-    out += cur
   }
 
-  return out
-}
+  return out;
+};
 
-const parse = Effect.fn('RuntimeConfig.parse')(function* (
+const parse = Effect.fn("RuntimeConfig.parse")(function* (
   text: string,
-  file: string
+  file: string,
 ) {
   return yield* Effect.try({
     try: () =>
       Schema.decodeUnknownSync(RuntimeConfigSchema)(
-        JSON.parse(stripTrailing(stripComments(text)))
+        JSON.parse(stripTrailing(stripComments(text))),
       ),
     catch: () =>
       new RuntimeConfigError({
         message: `Failed to parse config: ${file}`,
       }),
-  })
-})
+  });
+});
 
-const loadFile = Effect.fn('RuntimeConfig.loadFile')(function* (file: string) {
+const isFileNotFoundError = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  error.code === "ENOENT";
+
+const readFailure = (file: string) =>
+  new RuntimeConfigError({
+    message: `Failed to read config: ${file}`,
+  });
+
+const missingConfigError = new RuntimeConfigError({ message: "" });
+
+const handleLoadFileError = (file: string, error: unknown) =>
+  [readFailure(file), missingConfigError][Number(isFileNotFoundError(error))] ??
+  readFailure(file);
+
+const recoverLoadFileError = (error: RuntimeConfigError) =>
+  [Effect.fail(error), Effect.succeed(Option.none<string>())][
+    Number(error.message === "")
+  ] ??
+  Effect.fail(error);
+
+const loadFile = Effect.fn("RuntimeConfig.loadFile")(function* (file: string) {
   const text = yield* Effect.tryPromise({
-    try: () => readFile(file, 'utf8'),
-    catch: (error) => {
-      if (
-        typeof error === 'object' &&
-        error !== null &&
-        'code' in error &&
-        error.code === 'ENOENT'
-      ) {
-        return new RuntimeConfigError({ message: '' })
-      }
-
-      return new RuntimeConfigError({
-        message: `Failed to read config: ${file}`,
-      })
-    },
+    try: () => readFile(file, "utf8"),
+    catch: (error): RuntimeConfigError => handleLoadFileError(file, error),
   }).pipe(
-    Effect.catchTag('RuntimeConfigError', (error) => {
-      if (error.message === '') return Effect.void
-      return Effect.fail(error)
-    })
-  )
+    Effect.map(Option.some),
+    Effect.catchTag("RuntimeConfigError", recoverLoadFileError),
+  );
 
-  if (text === undefined) return {} satisfies RuntimeConfig
-  return yield* parse(text, file)
-})
+  return yield* Option.match(text, {
+    onNone: () => Effect.succeed({} satisfies RuntimeConfig),
+    onSome: (contents) => parse(contents, file),
+  });
+});
 
-export const loadRuntimeConfig = Effect.fn('RuntimeConfig.load')(function* (
-  dir: string
+export const loadRuntimeConfig = Effect.fn("RuntimeConfig.load")(function* (
+  dir: string,
 ) {
-  let cfg: RuntimeConfig = {}
+  let cfg: RuntimeConfig = {};
 
   for (const file of configFiles(dir)) {
-    cfg = { ...cfg, ...(yield* loadFile(file)) }
+    cfg = { ...cfg, ...(yield* loadFile(file)) };
   }
 
-  return cfg
-})
+  return cfg;
+});
