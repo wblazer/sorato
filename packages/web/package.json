@@ -10,7 +10,7 @@
     "prepare": "svelte-kit sync || echo ''",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "format": "prettier --write ."
+    "format": "biome format . --write"
   },
   "devDependencies": {
     "@fontsource-variable/nunito-sans": "^5.2.7",
@@ -23,8 +23,6 @@
     "bits-ui": "^2.16.3",
     "clsx": "^2.1.1",
     "phosphor-svelte": "^3.1.0",
-    "prettier": "^3.8.1",
-    "prettier-plugin-svelte": "^3.5.1",
     "svelte": "^5.51.0",
     "svelte-check": "^4.3.6",
     "tailwind-merge": "^3.4.0",

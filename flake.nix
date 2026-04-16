@@ -17,6 +17,7 @@
     devShells = forEachSupportedSystem ({pkgs}: {
       default = pkgs.mkShell {
         packages = with pkgs; [
+          biome
           bun
           typescript
           nodePackages.typescript-language-server

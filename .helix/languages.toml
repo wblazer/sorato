@@ -1,24 +1,24 @@
 [[language]]
 name = "typescript"
-formatter = { command = "./node_modules/.bin/prettier", args = ["--stdin-filepath", "{buffer_name}"] }
+formatter = { command = "biome", args = ["format", "--stdin-file-path", "%{buffer_name}"] }
 
 [[language]]
 name = "tsx"
-formatter = { command = "./node_modules/.bin/prettier", args = ["--stdin-filepath", "{buffer_name}"] }
+formatter = { command = "biome", args = ["format", "--stdin-file-path", "%{buffer_name}"] }
 
 [[language]]
 name = "javascript"
-formatter = { command = "./node_modules/.bin/prettier", args = ["--stdin-filepath", "{buffer_name}"] }
+formatter = { command = "biome", args = ["format", "--stdin-file-path", "%{buffer_name}"] }
 
 [[language]]
 name = "jsx"
-formatter = { command = "./node_modules/.bin/prettier", args = ["--stdin-filepath", "{buffer_name}"] }
+formatter = { command = "biome", args = ["format", "--stdin-file-path", "%{buffer_name}"] }
 
 [[language]]
 name = "json"
-formatter = { command = "./node_modules/.bin/prettier", args = ["--stdin-filepath", "{buffer_name}"] }
+formatter = { command = "biome", args = ["format", "--stdin-file-path", "%{buffer_name}"] }
 
 [[language]]
 name = "svelte"
 language-servers = ["svelteserver"]
-formatter = { command = "./node_modules/.bin/prettier", args = ["--plugin", "prettier-plugin-svelte", "--stdin-filepath", "{buffer_name}"] }
+formatter = { command = "biome", args = ["format", "--stdin-file-path", "%{buffer_name}"] }

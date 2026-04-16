@@ -8,16 +8,17 @@
     "prepare": "effect-language-service patch",
     "eval": "bun run --filter @agents/evals start --",
     "typecheck": "bun --filter '*' typecheck && bun run --filter @agents/web check",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "format": "biome format . --write",
+    "format:check": "biome check . --formatter-enabled=true --linter-enabled=false",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint . --write",
     "web": "bun run --filter @agents/web dev",
     "server": "bun run --filter @agents/agent dev"
   },
   "devDependencies": {
+    "@catenarycloud/linteffect": "0.0.4-0",
     "@effect/language-service": "^0.72.0",
     "@types/bun": "latest",
-    "prettier": "^3.8.1",
-    "prettier-plugin-svelte": "^3.5.1",
     "typescript": "^5"
   }
 }
