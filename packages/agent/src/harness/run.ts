@@ -23,10 +23,12 @@
  * assistant message for any un-flushed content on interrupt.
  */
 import type { AiError, Response, Tool } from 'effect/unstable/ai'
+import type { Effect as EffectType } from 'effect/Effect'
+import type { LanguageModel } from 'effect/unstable/ai'
 import type { HarnessConfig, HarnessEvent, HarnessResult } from './harness.ts'
 
 import { Cause, Effect, Exit, Ref, Stream } from 'effect'
-import { Chat, LanguageModel, Prompt } from 'effect/unstable/ai'
+import { Chat, Prompt } from 'effect/unstable/ai'
 
 /** Maximum agent loop iterations to prevent runaway tool-call cycles. */
 const MAX_TURNS = 25
@@ -47,7 +49,7 @@ export const run = <
 >(
   conversation: Prompt.Prompt,
   config: HarnessConfig<Tools, HookE, HookR>
-): Effect.Effect<
+): EffectType<
   HarnessResult,
   AiError.AiError | HookE,
   LanguageModel.LanguageModel | HookR
@@ -55,14 +57,16 @@ export const run = <
   Effect.gen(function* () {
     const chat = yield* Chat.fromPrompt(conversation)
 
-    const fireHooks = (event: HarnessEvent) =>
-      Effect.gen(function* () {
-        if (config.hooks) {
-          for (const hook of config.hooks) {
-            yield* hook.handle(event)
-          }
+    const fireHooks = Effect.fn('Harness.fireHooks')(function* (
+      event: HarnessEvent
+    ) {
+      // biome-ignore lint/plugin/no-if-statement: optional hook iteration is the clearest shape here
+      if (config.hooks) {
+        for (const hook of config.hooks) {
+          yield* hook.handle(event)
         }
-      })
+      }
+    })
 
     // Accumulate text and usage across all turns
     let outputText = ''
@@ -85,9 +89,11 @@ export const run = <
     // for the inner loop, while everything after Effect.exit runs in
     // the uninterruptible outer region.
     return yield* Effect.uninterruptibleMask((restore) =>
+      // biome-ignore lint/plugin/no-nested-effect-gen: cleanup and recovery need one outer uninterruptible generator around the interruptible loop
       Effect.gen(function* () {
         const exit = yield* Effect.exit(
           restore(
+            // biome-ignore lint/plugin/no-nested-effect-gen: @effect/ai stream typing stays stable with the loop kept in one generator
             Effect.gen(function* () {
               // First turn: empty prompt — the conversation already
               // ends with the user's message, so Chat.streamText sends
@@ -99,14 +105,19 @@ export const run = <
                 let hadToolCalls = false
                 currentTurnText = ''
 
-                const stream =
-                  config.toolkit === undefined
-                    ? chat.streamText({ prompt })
-                    : chat.streamText({ prompt, toolkit: config.toolkit })
+                let stream = chat.streamText({ prompt }) as Stream.Stream<
+                  Response.StreamPart<Tools>,
+                  AiError.AiError,
+                  LanguageModel.LanguageModel | HookR
+                >
+                if (config.toolkit !== undefined) {
+                  stream = chat.streamText({ prompt, toolkit: config.toolkit })
+                }
 
                 yield* Stream.runForEach(
                   stream,
                   (part: Response.StreamPart<Tools>) =>
+                    // biome-ignore lint/plugin/no-nested-effect-gen: keeping the streamed part handling in one generator preserves precise narrowing
                     Effect.gen(function* () {
                       switch (part.type) {
                         case 'text-delta': {
@@ -155,7 +166,6 @@ export const run = <
                     })
                 )
 
-                // If no tool calls this turn, the model is done
                 if (!hadToolCalls) break
 
                 // Turn completed — reset for next turn

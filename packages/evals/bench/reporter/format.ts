@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, Match } from 'effect'
 import type { SuiteResult, TestResult } from '../test.ts'
 import { ReporterError } from './reporter.ts'
 
@@ -7,8 +7,14 @@ import { ReporterError } from './reporter.ts'
 // ---------------------------------------------------------------------------
 
 const formatTestLine = (r: TestResult): string => {
-  const icon = r.passed ? '✓' : '✗'
-  const reason = r.reason ? ` — ${r.reason}` : ''
+  const icon = Match.value(r.passed).pipe(
+    Match.when(true, () => '✓'),
+    Match.orElse(() => '✗')
+  )
+  const reason = Match.value(r.reason).pipe(
+    Match.when(undefined, () => ''),
+    Match.orElse((reasonText) => ` — ${reasonText}`)
+  )
   return `  ${icon} ${r.name}${reason}`
 }
 
@@ -47,14 +53,21 @@ export const suiteToJson = (result: SuiteResult): string =>
   JSON.stringify(
     {
       summary: result.summary,
-      results: result.results.map((r) => ({
-        name: r.name,
-        passed: r.passed,
-        response: r.response,
-        score: r.passed ? 1 : 0,
-        reason: r.reason,
-        usage: r.usage,
-      })),
+      results: result.results.map((r) => {
+        const score = Match.value(r.passed).pipe(
+          Match.when(true, () => 1),
+          Match.orElse(() => 0)
+        )
+
+        return {
+          name: r.name,
+          passed: r.passed,
+          response: r.response,
+          score,
+          reason: r.reason,
+          usage: r.usage,
+        }
+      }),
       timestamp: new Date().toISOString(),
     },
     null,
@@ -64,23 +77,23 @@ export const suiteToJson = (result: SuiteResult): string =>
 /**
  * Write a `SuiteResult` as JSON to the given file path.
  */
-export const saveSuiteResult = (
-  result: SuiteResult,
-  path: string
-): Effect.Effect<string, ReporterError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const json = suiteToJson(result)
-      await Bun.write(path, json)
-      return path
-    },
-    catch: (error) =>
-      new ReporterError({
-        operation: 'saveSuiteResult',
-        message: `Failed to save result to ${path}`,
-        error,
-      }),
-  })
+export const saveSuiteResult = Effect.fn('BenchReporter.saveSuiteResult')(
+  function* (result: SuiteResult, path: string) {
+    return yield* Effect.tryPromise({
+      try: async () => {
+        const json = suiteToJson(result)
+        await Bun.write(path, json)
+        return path
+      },
+      catch: (error) =>
+        new ReporterError({
+          operation: 'saveSuiteResult',
+          message: `Failed to save result to ${path}`,
+          error,
+        }),
+    })
+  }
+)
 
 /**
  * Generate a default file path for a suite result.

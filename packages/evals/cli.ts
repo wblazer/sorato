@@ -7,26 +7,28 @@
  */
 import { Argument, Command } from 'effect/unstable/cli'
 import { BunRuntime, BunServices } from '@effect/platform-bun'
-import { Console, Effect } from 'effect'
+import { Console, Effect, Match } from 'effect'
 import { suites, findSuite } from './registry.ts'
 
 // ---------------------------------------------------------------------------
 // `list` — show available eval suites
 // ---------------------------------------------------------------------------
 
-const list = Command.make('list', {}, () =>
-  Effect.gen(function* () {
-    if (suites.length === 0) {
-      yield* Console.log('No eval suites registered.')
-      return
-    }
+const noSuitesRegistered = Console.log('No eval suites registered.')
 
-    yield* Console.log('Available eval suites:\n')
-    for (const suite of suites) {
-      yield* Console.log(`  ${suite.name}`)
-      yield* Console.log(`    ${suite.description}\n`)
-    }
-  })
+const listSuites = Effect.gen(function* () {
+  yield* Console.log('Available eval suites:\n')
+  for (const suite of suites) {
+    yield* Console.log(`  ${suite.name}`)
+    yield* Console.log(`    ${suite.description}\n`)
+  }
+})
+
+const list = Command.make('list', {}, () =>
+  Match.value(suites.length).pipe(
+    Match.when(0, () => noSuitesRegistered),
+    Match.orElse(() => listSuites)
+  )
 )
 
 // ---------------------------------------------------------------------------
@@ -38,19 +40,21 @@ const evalName = Argument.string('eval').pipe(
 )
 
 const run = Command.make('run', { evalName }, ({ evalName }) =>
-  Effect.gen(function* () {
-    const suite = findSuite(evalName)
-    if (!suite) {
+  Match.value(findSuite(evalName)).pipe(
+    Match.when(undefined, () =>
+      Effect.gen(function* () {
       yield* Console.error(`Unknown eval suite: '${evalName}'`)
       yield* Console.error(`Run 'list' to see available suites.`)
-      return
-    }
-
-    yield* Console.log(`Running eval: ${suite.name}`)
-    yield* Console.log(`${'─'.repeat(50)}`)
-
-    yield* suite.run
-  })
+      })
+    ),
+    Match.orElse((suite) =>
+      Effect.gen(function* () {
+        yield* Console.log(`Running eval: ${suite.name}`)
+        yield* Console.log(`${'─'.repeat(50)}`)
+        yield* suite.run
+      })
+    )
+  )
 )
 
 // ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@
  * The suite is responsible for wiring its own layers (model, sandbox, etc.).
  * The CLI's only job is to call `suite.run` and format the results.
  */
-import type { Effect } from 'effect'
+import type { Effect } from 'effect/Effect'
 import type { SuiteResult } from './bench/index.ts'
 
 // ---------------------------------------------------------------------------
@@ -36,5 +36,5 @@ export interface EvalSuite {
    *
    * Returns SuiteResult — the CLI formats results uniformly.
    */
-  readonly run: Effect.Effect<SuiteResult, unknown>
+  readonly run: Effect<SuiteResult, unknown>
 }

@@ -12,8 +12,10 @@
  * The `run` combinator collects tests into a SuiteResult.
  */
 import type { AiError, Tool } from 'effect/unstable/ai'
-import { LanguageModel, Prompt } from 'effect/unstable/ai'
-import { Effect } from 'effect'
+import type { LanguageModel } from 'effect/unstable/ai'
+import { Prompt } from 'effect/unstable/ai'
+import type { Effect as EffectType } from 'effect/Effect'
+import { Effect, Match } from 'effect'
 import type { HarnessConfig } from '@agents/agent'
 import { run as runHarness } from '@agents/agent'
 
@@ -42,7 +44,7 @@ export interface TestResult {
  * A test is just an Effect that produces a TestResult.
  * R declares what services the test needs — the caller provides them.
  */
-export type Test<R = never, E = never> = Effect.Effect<TestResult, E, R>
+export type Test<R = never, E = never> = EffectType<TestResult, E, R>
 
 // ---------------------------------------------------------------------------
 // Eval Options
@@ -96,27 +98,37 @@ export const test = <
   Effect.gen(function* () {
     // Build the conversation from config.systemPrompt + the test prompt.
     // run() takes a complete conversation and continues it.
-    const messages: Array<Prompt.MessageEncoded> = []
-    if (config.systemPrompt) {
-      messages.push({ role: 'system', content: config.systemPrompt })
-    }
-    messages.push({ role: 'user', content: options.prompt })
-    const conversation = Prompt.make(messages)
+    const systemMessages: Array<Prompt.MessageEncoded> = Match.value(
+      config.systemPrompt
+    ).pipe(
+      Match.when(undefined, () => []),
+      Match.orElse((systemPrompt) => [
+        { role: 'system', content: systemPrompt } satisfies Prompt.MessageEncoded,
+      ])
+    )
+    const conversation = Prompt.make([
+      ...systemMessages,
+      {
+        role: 'user',
+        content: options.prompt,
+      } satisfies Prompt.MessageEncoded,
+    ])
 
     const result = yield* runHarness(conversation, config)
     const response = result.text
+    const passed = options.check(response)
+    const checkReason = Match.value(passed).pipe(
+      Match.when(true, () => undefined),
+      Match.orElse(() => 'Response did not match criteria')
+    )
 
     return {
       _tag: 'TestResult' as const,
       name: options.name,
-      passed: options.check(response),
+      passed,
       response,
       usage: result.usage,
-      reason:
-        options.reason ??
-        (options.check(response)
-          ? undefined
-          : 'Response did not match criteria'),
+      reason: options.reason ?? checkReason,
     }
   })
 
@@ -148,7 +160,7 @@ export interface RunOptions {
 export const run = <R, E>(
   tests: ReadonlyArray<Test<R, E>>,
   options?: RunOptions
-): Effect.Effect<SuiteResult, E, R> =>
+): EffectType<SuiteResult, E, R> =>
   Effect.gen(function* () {
     const concurrency = options?.concurrency ?? 1
 

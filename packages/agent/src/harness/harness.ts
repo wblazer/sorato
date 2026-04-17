@@ -15,7 +15,7 @@
  *   - **Model**: provided via Effect's `LanguageModel` service in R.
  */
 import type { LanguageModel, Prompt, Tool } from 'effect/unstable/ai'
-import type { Effect } from 'effect'
+import type { Effect } from 'effect/Effect'
 
 // ---------------------------------------------------------------------------
 // Hooks
@@ -61,7 +61,7 @@ export type HarnessEvent =
  */
 export interface HarnessHook<E = never, R = never> {
   readonly name: string
-  readonly handle: (event: HarnessEvent) => Effect.Effect<void, E, R>
+  readonly handle: (event: HarnessEvent) => Effect<void, E, R>
 }
 
 // ---------------------------------------------------------------------------

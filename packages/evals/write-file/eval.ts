@@ -8,7 +8,7 @@
  */
 import { AnthropicClient, AnthropicLanguageModel } from '@effect/ai-anthropic'
 import { FetchHttpClient } from 'effect/unstable/http'
-import { Config, Effect, Layer } from 'effect'
+import { Config, Effect, Layer, Match, Result } from 'effect'
 import {
   test,
   run,
@@ -79,14 +79,19 @@ const scenarios: ReadonlyArray<WriteScenario> = [
     prompt:
       'Create a file called config.json containing a JSON object with two fields: "name" set to "my-app" and "version" set to "1.0.0". Output valid JSON only.',
     filePath: 'config.json',
-    check: (c) => {
-      try {
-        const parsed = JSON.parse(c)
-        return parsed.name === 'my-app' && parsed.version === '1.0.0'
-      } catch {
-        return false
-      }
-    },
+    check: (c) =>
+      Result.try(() => JSON.parse(c)).pipe(
+        Result.match({
+          onFailure: () => false,
+          onSuccess: (parsed) =>
+            typeof parsed === 'object' &&
+            parsed !== null &&
+            'name' in parsed &&
+            'version' in parsed &&
+            parsed.name === 'my-app' &&
+            parsed.version === '1.0.0',
+        })
+      ),
   },
   {
     name: 'create-multiline',
@@ -121,47 +126,49 @@ fourth`,
 
 const normalize = (s: string): string => s.trimEnd()
 
-const tests = scenarios.map((scenario) =>
-  Effect.gen(function* () {
+const tests = scenarios.map((scenario) => {
+  const runScenario = Effect.gen(function* () {
     const sandboxFactory = yield* Sandbox
-    return yield* Effect.scoped(
-      Effect.gen(function* () {
-        const dir = yield* makeTempDir
-        const { shell, files } = yield* sandboxFactory.acquire(dir)
+    const dir = yield* makeTempDir
+    const { shell, files } = yield* sandboxFactory.acquire(dir)
 
-        const result = yield* test(
-          { systemPrompt, toolkit: WriteTools },
-          {
-            name: scenario.name,
-            prompt: scenario.prompt,
-            check: () => true, // placeholder — we check file content below
-          }
-        ).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              Layer.succeed(CurrentShell, shell),
-              Layer.succeed(CurrentFiles, files)
-            )
-          )
+    const result = yield* test(
+      { systemPrompt, toolkit: WriteTools },
+      {
+        name: scenario.name,
+        prompt: scenario.prompt,
+        check: () => true, // placeholder — we check file content below
+      }
+    ).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.succeed(CurrentShell, shell),
+          Layer.succeed(CurrentFiles, files)
         )
-
-        // The real check: did the file get written correctly?
-        const content = yield* files
-          .readFile(scenario.filePath)
-          .pipe(Effect.catch(() => Effect.succeed('')))
-        const passed = scenario.check(normalize(content))
-
-        return {
-          ...result,
-          passed,
-          reason: passed
-            ? undefined
-            : `File content check failed.\n--- Got ---\n${content || '(file not found)'}`,
-        }
-      })
+      )
     )
+
+    // The real check: did the file get written correctly?
+    const content = yield* files
+      .readFile(scenario.filePath)
+      .pipe(Effect.catch(() => Effect.succeed('')))
+    const passed = scenario.check(normalize(content))
+    const reason = Match.value(passed).pipe(
+      Match.when(true, () => undefined),
+      Match.orElse(
+        () => `File content check failed.\n--- Got ---\n${content || '(file not found)'}`
+      )
+    )
+
+    return {
+      ...result,
+      passed,
+      reason,
+    }
   })
-)
+
+  return Effect.scoped(runScenario)
+})
 
 // ---------------------------------------------------------------------------
 // Layers

@@ -55,7 +55,9 @@ function createLocalStorage(): Storage {
             keys.push(key)
           }
         }
-        keys.forEach((key) => localStorage.removeItem(key))
+        keys.forEach((key) => {
+          localStorage.removeItem(key)
+        })
       } catch {
         // Ignore
       }

@@ -12,7 +12,7 @@
  */
 import { AnthropicClient, AnthropicLanguageModel } from '@effect/ai-anthropic'
 import { FetchHttpClient } from 'effect/unstable/http'
-import { Config, Effect, Layer } from 'effect'
+import { Config, Effect, Layer, Match } from 'effect'
 import {
   test,
   run,
@@ -182,48 +182,51 @@ const normalize = (s: string): string =>
     .join('\n')
     .trim()
 
-const tests = scenarios.map((scenario) =>
-  Effect.gen(function* () {
+const tests = scenarios.map((scenario) => {
+  const runScenario = Effect.gen(function* () {
     const sandboxFactory = yield* Sandbox
-    return yield* Effect.scoped(
-      Effect.gen(function* () {
-        const dir = yield* makeTempDir
-        const { shell, files } = yield* sandboxFactory.acquire(dir)
+    const dir = yield* makeTempDir
+    const { shell, files } = yield* sandboxFactory.acquire(dir)
 
-        // Seed the mutated file
-        yield* files.writeFile(scenario.filePath, scenario.mutated)
+    // Seed the mutated file
+    yield* files.writeFile(scenario.filePath, scenario.mutated)
 
-        const result = yield* test(
-          { systemPrompt, toolkit: FileTools },
-          {
-            name: scenario.name,
-            prompt: scenario.prompt,
-            check: () => true, // placeholder — we check file content below
-          }
-        ).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              Layer.succeed(CurrentShell, shell),
-              Layer.succeed(CurrentFiles, files)
-            )
-          )
+    const result = yield* test(
+      { systemPrompt, toolkit: FileTools },
+      {
+        name: scenario.name,
+        prompt: scenario.prompt,
+        check: () => true, // placeholder — we check file content below
+      }
+    ).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.succeed(CurrentShell, shell),
+          Layer.succeed(CurrentFiles, files)
         )
-
-        // The real check: did the file get fixed?
-        const finalContent = yield* files.readFile(scenario.filePath)
-        const passed = normalize(finalContent) === normalize(scenario.original)
-
-        return {
-          ...result,
-          passed,
-          reason: passed
-            ? undefined
-            : `File content after edit did not match expected.\n--- Expected ---\n${scenario.original}\n--- Got ---\n${finalContent}`,
-        }
-      })
+      )
     )
+
+    // The real check: did the file get fixed?
+    const finalContent = yield* files.readFile(scenario.filePath)
+    const passed = normalize(finalContent) === normalize(scenario.original)
+    const reason = Match.value(passed).pipe(
+      Match.when(true, () => undefined),
+      Match.orElse(
+        () =>
+          `File content after edit did not match expected.\n--- Expected ---\n${scenario.original}\n--- Got ---\n${finalContent}`
+      )
+    )
+
+    return {
+      ...result,
+      passed,
+      reason,
+    }
   })
-)
+
+  return Effect.scoped(runScenario)
+})
 
 // ---------------------------------------------------------------------------
 // Layers

@@ -7,14 +7,13 @@
  * directories — lifecycle management is the caller's responsibility.
  * `LocalSandboxLive` is a convenience layer with Bun services already wired in.
  */
-import { Effect, Fiber, Layer, Match, Stream } from 'effect'
+import { Effect, Fiber, Layer, Match, Option, Ref, Stream } from 'effect'
 import { FileSystem, Path } from 'effect'
 import { ChildProcess, ChildProcessSpawner } from 'effect/unstable/process'
 import { BunServices } from '@effect/platform-bun'
 import {
   Sandbox,
   SandboxError,
-  type ExecCommand,
   type ExecResult,
   type Shell,
   type Files,
@@ -109,124 +108,137 @@ export const LocalSandbox = Layer.effect(Sandbox)(
 
         // -- Shell service --------------------------------------------------
 
-        const exec = Effect.fn('Shell.exec')(function* (input: ExecCommand) {
-          const cwd = yield* Match.value(input.cwd).pipe(
-            Match.when(undefined, () => Effect.succeed(rootDir)),
-            Match.orElse((workingDirectory) =>
-              resolvePath(workingDirectory, 'exec')
-            )
-          )
-
-          // Merge non-interactive defaults under user env (user wins)
-          const mergedEnv: Record<string, string | undefined> = {
-            ...NON_INTERACTIVE_ENV,
-            ...input.env,
-          }
-          const stdin = Match.value(input.stdin).pipe(
-            Match.when(undefined, () => undefined),
-            Match.orElse((content) =>
-              Stream.succeed(new TextEncoder().encode(content))
-            )
-          )
-
-          const command = ChildProcess.make('/bin/sh', ['-c', input.command], {
-            cwd,
-            env: mergedEnv,
-            extendEnv: true,
-            stdin,
-          })
-
-          const runExec = Effect.gen(function* () {
-            const process = yield* childProcessSpawner.spawn(command).pipe(
-              Effect.mapError(
-                (error) =>
-                  new SandboxError({
-                    operation: 'exec',
-                    message: `Failed to start command: ${input.command}`,
-                    error,
-                  })
-              )
-            )
-
-            /**
-             * Kill the process gracefully: SIGTERM → grace period → SIGKILL.
-             * Ignores errors from kill() since the process may already be dead.
-             */
-            const killGracefully = process
-              .kill({
-                killSignal: 'SIGTERM',
-                forceKillAfter: `${KILL_GRACE_MS} millis`,
-              })
-              .pipe(Effect.catch(() => Effect.void))
-
-            /**
-             * Collect output and wait for exit. If a timeout is set, fork a
-             * background killer that fires after the deadline. The killer runs
-             * concurrently — it doesn't interfere with stream collection.
-             *
-             * Previous approach raced `process.exitCode` against the timeout
-             * *before* collecting streams. This consumed process state and
-             * caused stdout/stderr to be empty when a timeout was specified
-             * (even if the process finished well before the deadline).
-             */
-            let timedOut = false
-
-            const timeoutAction = process.isRunning.pipe(
-              Effect.flatMap((running) => {
-                const timeoutEffects = [Effect.void]
-
-                timedOut ||= running
-                running && timeoutEffects.splice(0, 1, killGracefully)
-
-                const [timeoutEffect = Effect.void] = timeoutEffects
-
-                return timeoutEffect
-              })
-            )
-            const timeoutFiber = yield* Match.value(input.timeout).pipe(
-              Match.when(undefined, () => Effect.succeed(undefined)),
-              Match.orElse((timeout) => {
-                const timeoutSleep = Effect.sleep(timeout)
-                const timeoutProgram = Effect.andThen(timeoutSleep, timeoutAction)
-                const recoveredTimeoutProgram = Effect.catch(
-                  timeoutProgram,
-                  () => Effect.void
+        const shell: Shell = {
+          exec: Effect.fn('Shell.exec')(
+            function* (input) {
+              const cwd = yield* Match.value(input.cwd).pipe(
+                Match.when(undefined, () => Effect.succeed(rootDir)),
+                Match.orElse((workingDirectory) =>
+                  resolvePath(workingDirectory, 'exec')
                 )
-
-                return Effect.forkChild(recoveredTimeoutProgram)
-              })
-            )
-
-            const [stdout, stderr, code] = yield* Effect.all([
-              streamToString(process.stdout),
-              streamToString(process.stderr),
-              process.exitCode,
-            ] as const).pipe(
-              Effect.mapError(
-                (error) =>
-                  new SandboxError({
-                    operation: 'exec',
-                    message: `Failed to execute command: ${input.command}`,
-                    error,
-                  })
               )
-            )
 
-            // Cancel the timeout killer if it hasn't fired
-            timeoutFiber && (yield* Fiber.interrupt(timeoutFiber))
+              // Merge non-interactive defaults under user env (user wins)
+              const mergedEnv: Record<string, string | undefined> = {
+                ...NON_INTERACTIVE_ENV,
+                ...input.env,
+              }
+              const stdin = Match.value(input.stdin).pipe(
+                Match.when(undefined, () => undefined),
+                Match.orElse((content) =>
+                  Stream.succeed(new TextEncoder().encode(content))
+                )
+              )
 
-            return {
-              stdout: stdout ?? '',
-              stderr: stderr ?? '',
-              exitCode: Number(code),
-              ...(timedOut ? { timedOut: true } : {}),
-            } satisfies ExecResult
-          })
+              const command = ChildProcess.make(
+                '/bin/sh',
+                ['-c', input.command],
+                {
+                  cwd,
+                  env: mergedEnv,
+                  extendEnv: true,
+                  stdin,
+                }
+              )
+              const process = yield* childProcessSpawner.spawn(command).pipe(
+                Effect.mapError(
+                  (error) =>
+                    new SandboxError({
+                      operation: 'exec',
+                      message: `Failed to start command: ${input.command}`,
+                      error,
+                    })
+                )
+              )
 
-          return yield* Effect.scoped(runExec).pipe(Effect.withSpan('Shell.exec'))
-        })
+              /**
+               * Kill the process gracefully: SIGTERM → grace period → SIGKILL.
+               * Ignores errors from kill() since the process may already be dead.
+               */
+              const killGracefully = Effect.catch(
+                process.kill({
+                  killSignal: 'SIGTERM',
+                  forceKillAfter: `${KILL_GRACE_MS} millis`,
+                }),
+                () => Effect.void
+              )
 
-        const shell: Shell = { exec }
+              /**
+               * Collect output and wait for exit. If a timeout is set, fork a
+               * background killer that fires after the deadline. The killer runs
+               * concurrently — it doesn't interfere with stream collection.
+               *
+               * Previous approach raced `process.exitCode` against the timeout
+               * *before* collecting streams. This consumed process state and
+               * caused stdout/stderr to be empty when a timeout was specified
+               * (even if the process finished well before the deadline).
+               */
+              const timedOutRef = yield* Ref.make(false)
+              const markTimedOutAndKill = Effect.andThen(
+                Ref.set(timedOutRef, true),
+                killGracefully
+              )
+              const timeoutFiber = yield* Option.match(
+                Option.fromNullishOr(input.timeout),
+                {
+                  onNone: () => Effect.succeed(Option.none()),
+                  onSome: (timeout) => {
+                    const timeoutAction = Effect.when(
+                      markTimedOutAndKill,
+                      process.isRunning
+                    ).pipe(Effect.asVoid)
+                    const timeoutProgram = Effect.sleep(timeout).pipe(
+                      Effect.andThen(timeoutAction)
+                    )
+                    const recoveredTimeoutProgram = Effect.catch(
+                      timeoutProgram,
+                      () => Effect.void
+                    )
+
+                    return Effect.forkChild(recoveredTimeoutProgram).pipe(
+                      Effect.map(Option.some)
+                    )
+                  },
+                }
+              )
+
+              const [stdout, stderr, code] = yield* Effect.all([
+                streamToString(process.stdout),
+                streamToString(process.stderr),
+                process.exitCode,
+              ] as const).pipe(
+                Effect.mapError(
+                  (error) =>
+                    new SandboxError({
+                      operation: 'exec',
+                      message: `Failed to execute command: ${input.command}`,
+                      error,
+                    })
+                )
+              )
+
+              yield* Option.match(timeoutFiber, {
+                onNone: () => Effect.void,
+                onSome: Fiber.interrupt,
+              })
+
+              const timedOut = yield* Ref.get(timedOutRef)
+              const result = {
+                stdout: stdout ?? '',
+                stderr: stderr ?? '',
+                exitCode: Number(code),
+              }
+
+              return Match.value(timedOut).pipe(
+                Match.when(true, () =>
+                  ({ ...result, timedOut: true }) satisfies ExecResult
+                ),
+                Match.orElse(() => result satisfies ExecResult)
+              )
+            },
+            Effect.scoped
+          ),
+        }
 
         // -- Files service --------------------------------------------------
 

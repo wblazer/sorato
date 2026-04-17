@@ -183,7 +183,7 @@
 
 <CommandPalette
   bind:open
-  scope="directory-picker"
+  hotkeyScope="directory-picker"
   bind:query
   bind:selectedIndex
   placeholder="Type a path... (~ for home, / for root)"

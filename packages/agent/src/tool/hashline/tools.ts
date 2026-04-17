@@ -12,7 +12,7 @@
  * would pair with a different read format. That's why they live together.
  */
 import { Tool } from 'effect/unstable/ai'
-import { Effect, Option, Schema } from 'effect'
+import { Effect, Match, Option, Schema } from 'effect'
 import { CurrentFiles, SandboxError } from '../../sandbox/sandbox.ts'
 import {
   encode,
@@ -383,10 +383,6 @@ type ResolvedEdit =
 
 type ResolveResult = ResolvedEdit | { readonly error: string }
 
-const hasResolveError = (
-  result: ResolveResult
-): result is { readonly error: string } => 'error' in result
-
 /**
  * Resolve a raw edit op against the original lines. Returns a ResolvedEdit
  * with validated 0-based indices, or an error message.
@@ -560,18 +556,19 @@ export const EditFileHandler = {
       const resolved: Array<ResolvedEdit> = []
       for (const op of edits) {
         const result = resolveOp(op, originalLines)
-        switch (hasResolveError(result)) {
-          case true: {
-            const errorResult = result as { readonly error: string }
-            return yield* new SandboxError({
+        yield* Match.value(result).pipe(
+          Match.when({ error: Match.string }, ({ error }) =>
+            new SandboxError({
               operation: 'EditFile',
-              message: errorResult.error,
+              message: error,
             })
-          }
-          case false:
-            resolved.push(result as ResolvedEdit)
-            break
-        }
+          ),
+          Match.orElse((resolvedEdit) =>
+            Effect.sync(() => {
+              resolved.push(resolvedEdit)
+            })
+          )
+        )
       }
 
       // Phase 2: Sort by position (ascending), with tie-breaker:

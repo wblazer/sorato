@@ -22,7 +22,9 @@
     ]
 
     return () => {
-      unregister.forEach((cleanup) => cleanup())
+      unregister.forEach((cleanup) => {
+        cleanup()
+      })
     }
   })
 </script>

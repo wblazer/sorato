@@ -128,40 +128,36 @@ const scenarios: ReadonlyArray<GlobScenario> = [
 // Tests
 // ---------------------------------------------------------------------------
 
-const tests = scenarios.map((scenario) =>
-  Effect.gen(function* () {
+const tests = scenarios.map((scenario) => {
+  const runScenario = Effect.gen(function* () {
     const sandboxFactory = yield* Sandbox
-    return yield* Effect.scoped(
-      Effect.gen(function* () {
-        const dir = yield* makeTempDir
-        const { shell, files } = yield* sandboxFactory.acquire(dir)
+    const dir = yield* makeTempDir
+    const { shell, files } = yield* sandboxFactory.acquire(dir)
 
-        // Seed the filesystem
-        for (const file of scenario.files) {
-          yield* files.writeFile(file.path, file.content)
-        }
+    // Seed the filesystem
+    for (const file of scenario.files) {
+      yield* files.writeFile(file.path, file.content)
+    }
 
-        const result = yield* test(
-          { systemPrompt, toolkit: GlobTools },
-          {
-            name: scenario.name,
-            prompt: scenario.prompt,
-            check: scenario.check,
-          }
-        ).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              Layer.succeed(CurrentShell, shell),
-              Layer.succeed(CurrentFiles, files)
-            )
-          )
+    return yield* test(
+      { systemPrompt, toolkit: GlobTools },
+      {
+        name: scenario.name,
+        prompt: scenario.prompt,
+        check: scenario.check,
+      }
+    ).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.succeed(CurrentShell, shell),
+          Layer.succeed(CurrentFiles, files)
         )
-
-        return result
-      })
+      )
     )
   })
-)
+
+  return Effect.scoped(runScenario)
+})
 
 // ---------------------------------------------------------------------------
 // Layers

@@ -42,7 +42,7 @@
     /** Keyboard shortcut hints shown in the footer */
     hints?: KeyHint[]
     /** Overlay scope name used to suppress app-level hotkeys while open */
-    scope?: string
+    hotkeyScope?: string
     /** The list content. Use the bound selectedIndex prop for highlighting. */
     items: Snippet
     /** Shown when itemCount is 0 and not loading */
@@ -60,7 +60,7 @@
     onKeydown,
     selectOnOpen = false,
     hints = [],
-    scope = 'command-palette',
+    hotkeyScope = 'command-palette',
     items,
     empty,
   }: Props = $props()
@@ -70,8 +70,8 @@
 
   $effect(() => {
     if (!open) return
-    untrack(() => hotkeyStore.pushScope(scope))
-    return () => untrack(() => hotkeyStore.popScope(scope))
+    untrack(() => hotkeyStore.pushScope(hotkeyScope))
+    return () => untrack(() => hotkeyStore.popScope(hotkeyScope))
   })
 
   // Focus + select input when dialog opens
