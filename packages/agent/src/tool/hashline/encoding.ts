@@ -100,10 +100,10 @@ export const encode = (
 
   for (let i = startIdx; i < endIdx; i++) {
     const lineNum = i + 1
-    const raw = allLines[i]!
+    const raw = allLines[i] ?? ''
     const displayLine =
       maxLineLen !== undefined && raw.length > maxLineLen
-        ? raw.slice(0, maxLineLen) + '...'
+        ? `${raw.slice(0, maxLineLen)}...`
         : raw
     const hash = hashLine(raw)
     const formatted = `${lineNum}:${hash}|${displayLine}`
@@ -147,7 +147,7 @@ export const parseAnchor = (anchor: string): Anchor | null => {
   const line = parseInt(anchor.slice(0, colonIdx), 10)
   const hash = anchor.slice(colonIdx + 1)
 
-  if (isNaN(line) || line < 1 || hash.length === 0) return null
+  if (Number.isNaN(line) || line < 1 || hash.length === 0) return null
   return { line, hash }
 }
 
@@ -176,7 +176,7 @@ export const resolveAnchor = (
     // Show the model what the correct anchor is so it can self-correct
     // or decide to re-read.
     return {
-      error: `Hash mismatch at line ${anchor.line}: you provided "${anchor.line}:${anchor.hash}" but the current content has hash "${expectedHash}". Current line content: "${line.length > 120 ? line.slice(0, 120) + '...' : line}". Re-read the file to get fresh anchors.`,
+      error: `Hash mismatch at line ${anchor.line}: you provided "${anchor.line}:${anchor.hash}" but the current content has hash "${expectedHash}". Current line content: "${line.length > 120 ? `${line.slice(0, 120)}...` : line}". Re-read the file to get fresh anchors.`,
     }
   }
 

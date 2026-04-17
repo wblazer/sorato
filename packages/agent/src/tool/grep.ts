@@ -10,7 +10,7 @@
  * explicitly if it's missing — no silent downloads, no fallbacks.
  */
 import { Tool } from 'effect/unstable/ai'
-import { Effect, Schema } from 'effect'
+import { Effect, Match, Schema } from 'effect'
 import { CurrentShell, SandboxError } from '../sandbox/sandbox.ts'
 
 // ---------------------------------------------------------------------------
@@ -35,7 +35,7 @@ const TIMEOUT_MS = 30_000
  * Wraps in single quotes unless the value is trivially safe.
  */
 const shellEscape = (arg: string): string => {
-  if (/^[a-zA-Z0-9._\-\/=:@]+$/.test(arg)) return arg
+  if (/^[a-zA-Z0-9._\-/=:@]+$/.test(arg)) return arg
   return `'${arg.replace(/'/g, "'\\''")}'`
 }
 
@@ -43,7 +43,7 @@ const shellEscape = (arg: string): string => {
 // Output parsing
 // ---------------------------------------------------------------------------
 
-interface Match {
+interface GrepMatch {
   readonly filePath: string
   readonly lineNum: number
   readonly lineText: string
@@ -58,9 +58,9 @@ interface Match {
  * We rejoin on `|` past the second separator in case the text itself
  * contains pipes.
  */
-const parseMatches = (output: string): Array<Match> => {
+const parseMatches = (output: string): Array<GrepMatch> => {
   const lines = output.trim().split(/\r?\n/)
-  const matches: Array<Match> = []
+  const matches: Array<GrepMatch> = []
 
   for (const line of lines) {
     if (line.length === 0) continue
@@ -103,7 +103,7 @@ const parseMatches = (output: string): Array<Match> => {
  * ```
  */
 const formatOutput = (
-  matches: ReadonlyArray<Match>,
+  matches: ReadonlyArray<GrepMatch>,
   totalCount: number,
   exitCode: number
 ): string => {
@@ -112,31 +112,32 @@ const formatOutput = (
   // Group by file, preserving order (already mtime-sorted by rg)
   let currentFile = ''
   for (const match of matches) {
-    if (match.filePath !== currentFile) {
-      if (currentFile !== '') parts.push('') // blank line between files
-      parts.push(`${match.filePath}:`)
-      currentFile = match.filePath
-    }
+    match.filePath !== currentFile && currentFile !== '' && parts.push('')
+    match.filePath !== currentFile && parts.push(`${match.filePath}:`)
+    currentFile = match.filePath
     parts.push(`  ${match.lineNum}: ${match.lineText}`)
   }
 
-  const header = `Found ${totalCount} match${totalCount === 1 ? '' : 'es'}`
+  const matchWord = Match.value(totalCount === 1).pipe(
+    Match.when(true, () => 'match'),
+    Match.orElse(() => 'matches')
+  )
+  const header = `Found ${totalCount} ${matchWord}`
 
   const body = parts.join('\n')
 
   const notices: string[] = []
 
-  if (matches.length < totalCount) {
+  matches.length < totalCount &&
     notices.push(
       `(Showing ${matches.length} of ${totalCount} matches. Use a more specific pattern or path to narrow results.)`
     )
-  }
 
-  if (exitCode === 2) {
-    notices.push('(Some paths were inaccessible and skipped.)')
-  }
+  exitCode === 2 && notices.push('(Some paths were inaccessible and skipped.)')
 
-  const suffix = notices.length > 0 ? '\n\n' + notices.join('\n') : ''
+  const suffixes = ['']
+  notices.length > 0 && suffixes.splice(0, 1, `\n\n${notices.join('\n')}`)
+  const [suffix] = suffixes
 
   return `${header}\n\n${body}${suffix}`
 }
@@ -184,12 +185,15 @@ export const GrepHandler = {
     Effect.gen(function* () {
       const shell = yield* CurrentShell
 
-      if (pattern.trim().length === 0) {
-        return yield* new SandboxError({
-          operation: 'Grep',
-          message: 'Pattern must not be empty.',
-        })
-      }
+      const trimmedPattern = yield* Effect.filterOrFail(
+        Effect.succeed(pattern.trim()),
+        (value) => value.length > 0,
+        () =>
+          new SandboxError({
+            operation: 'Grep',
+            message: 'Pattern must not be empty.',
+          })
+      )
 
       // Build the rg invocation
       const args = [
@@ -202,12 +206,10 @@ export const GrepHandler = {
         '--max-columns-preview', // truncate long lines instead of omitting
         '--sortr=modified', // most recently modified files first
         '--regexp',
-        pattern,
+        trimmedPattern,
       ]
 
-      if (include) {
-        args.push('--glob', include)
-      }
+      include && args.push('--glob', include)
 
       args.push(path ?? '.')
 
@@ -216,41 +218,47 @@ export const GrepHandler = {
         timeout: TIMEOUT_MS,
       })
 
-      // Exit code 1 = no matches (normal)
-      if (result.exitCode === 1) {
-        return 'No matches found.'
+      const summarizeOutput = (exitCode: number) => {
+        const allMatches = parseMatches(result.stdout)
+        const totalCount = allMatches.length
+        const shown = allMatches.slice(0, MAX_MATCHES)
+        const outputs = ['No matches found.']
+
+        result.stdout.trim().length > 0 &&
+          outputs.splice(0, 1, formatOutput(shown, totalCount, exitCode))
+
+        const [output = 'No matches found.'] = outputs
+
+        return output
       }
 
-      // Non-zero, non-2 exit codes are real failures
-      if (result.exitCode !== 0 && result.exitCode !== 2) {
-        const isNotInstalled =
-          result.stderr.includes('not found') ||
-          result.stderr.includes('No such file or directory')
+      const failureMessages = [
+        `ripgrep failed (exit ${result.exitCode}): ${result.stderr}`,
+      ]
+      const isNotInstalled =
+        result.stderr.includes('not found') ||
+        result.stderr.includes('No such file or directory')
 
-        if (isNotInstalled) {
-          return yield* new SandboxError({
-            operation: 'Grep',
-            message:
-              'ripgrep (rg) is not available in the sandbox environment. Install it to use the Grep tool.',
-          })
-        }
+      isNotInstalled &&
+        failureMessages.splice(
+          0,
+          1,
+          'ripgrep (rg) is not available in the sandbox environment. Install it to use the Grep tool.'
+        )
+      const [failureMessage = 'ripgrep failed.'] = failureMessages
 
-        return yield* new SandboxError({
-          operation: 'Grep',
-          message: `ripgrep failed (exit ${result.exitCode}): ${result.stderr}`,
-        })
-      }
-
-      // Exit code 2 = partial errors but may still have output. Tolerate.
-      if (result.stdout.trim().length === 0) {
-        return 'No matches found.'
-      }
-
-      const allMatches = parseMatches(result.stdout)
-      const totalCount = allMatches.length
-      const shown =
-        totalCount > MAX_MATCHES ? allMatches.slice(0, MAX_MATCHES) : allMatches
-
-      return formatOutput(shown, totalCount, result.exitCode)
+      return yield* Match.value(result.exitCode).pipe(
+        Match.when(1, () => Effect.succeed('No matches found.')),
+        Match.when(0, () => Effect.succeed(summarizeOutput(0))),
+        Match.when(2, () => Effect.succeed(summarizeOutput(2))),
+        Match.orElse(() =>
+          Effect.fail(
+            new SandboxError({
+              operation: 'Grep',
+              message: failureMessage,
+            })
+          )
+        )
+      )
     }),
-} as const
+}

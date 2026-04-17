@@ -9,7 +9,7 @@
  * calls `session.exec()` and formats the result.
  */
 import { Tool } from 'effect/unstable/ai'
-import { Effect, Schema } from 'effect'
+import { Effect, Match, Schema } from 'effect'
 import { CurrentShell, CurrentFiles, SandboxError } from '../sandbox/sandbox.ts'
 
 // ---------------------------------------------------------------------------
@@ -52,28 +52,33 @@ const truncateOutput = (output: string): TruncationResult => {
   const lines = output.split('\n')
   const totalLines = lines.length
 
-  if (totalLines <= MAX_LINES && totalBytes <= MAX_BYTES) {
-    return { text: output, totalLines, totalBytes, truncated: false }
-  }
+  return Match.value(totalLines <= MAX_LINES && totalBytes <= MAX_BYTES).pipe(
+    Match.when(true, () => ({
+      text: output,
+      totalLines,
+      totalBytes,
+      truncated: false,
+    })),
+    Match.orElse(() => {
+      // Take from the tail, respecting both limits
+      const kept: string[] = []
+      let bytes = 0
 
-  // Take from the tail, respecting both limits
-  const kept: string[] = []
-  let bytes = 0
+      for (const line of [...lines].reverse()) {
+        const lineBytes = Buffer.byteLength(line, 'utf8') + 1 // +1 for newline
+        if (kept.length >= MAX_LINES || bytes + lineBytes > MAX_BYTES) break
+        kept.unshift(line)
+        bytes += lineBytes
+      }
 
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i]!
-    const lineBytes = Buffer.byteLength(line, 'utf8') + 1 // +1 for newline
-    if (kept.length >= MAX_LINES || bytes + lineBytes > MAX_BYTES) break
-    kept.unshift(line)
-    bytes += lineBytes
-  }
-
-  return {
-    text: kept.join('\n'),
-    totalLines,
-    totalBytes,
-    truncated: true,
-  }
+      return {
+        text: kept.join('\n'),
+        totalLines,
+        totalBytes,
+        truncated: true,
+      }
+    })
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -125,13 +130,15 @@ export const BashHandler = {
       const shell = yield* CurrentShell
       const files = yield* CurrentFiles
 
-      const timeoutMs = timeout ?? DEFAULT_TIMEOUT_MS
-      if (timeoutMs <= 0) {
-        return yield* new SandboxError({
-          operation: 'Bash',
-          message: 'timeout must be a positive number of milliseconds.',
-        })
-      }
+      const timeoutMs = yield* Effect.filterOrFail(
+        Effect.succeed(timeout ?? DEFAULT_TIMEOUT_MS),
+        (milliseconds) => milliseconds > 0,
+        () =>
+          new SandboxError({
+            operation: 'Bash',
+            message: 'timeout must be a positive number of milliseconds.',
+          })
+      )
 
       const result = yield* shell.exec({
         command,
@@ -148,45 +155,47 @@ export const BashHandler = {
 
       // If truncated, spill the full output to a sandbox file so the LLM
       // can access it via ReadFile
-      let spilloverPath: string | undefined
-      if (truncation.truncated) {
-        const id = Date.now().toString(36)
-        spilloverPath = `${SPILLOVER_DIR}/${id}.txt`
+      const spilloverCandidate = `${SPILLOVER_DIR}/${Date.now().toString(36)}.txt`
+      const spilloverPath = Match.value(truncation.truncated).pipe(
+        Match.when(true, () => spilloverCandidate),
+        Match.orElse(() => undefined)
+      )
+      const writeSpillover = Effect.catch(
+        files.writeFile(spilloverCandidate, combined),
+        () => Effect.void
+      )
+      const spilloverCondition = Effect.succeed(truncation.truncated)
+      const maybeWriteSpillover = writeSpillover.pipe(
+        Effect.when(spilloverCondition)
+      )
 
-        yield* files
-          .writeFile(spilloverPath, combined)
-          .pipe(Effect.catch(() => Effect.void))
-      }
+      yield* maybeWriteSpillover
 
       // Build the result message
       const parts: string[] = []
 
       // Exit code (only show if non-zero or timed out — reduce noise)
-      if (result.exitCode !== 0) {
-        parts.push(`Exit code: ${result.exitCode}`)
-      }
+      result.exitCode !== 0 && parts.push(`Exit code: ${result.exitCode}`)
 
-      if (result.timedOut) {
-        parts.push(
-          `Command timed out after ${timeoutMs / 1000}s and was killed.`
-        )
-      }
+      result.timedOut &&
+        parts.push(`Command timed out after ${timeoutMs / 1000}s and was killed.`)
 
       // Output
-      if (truncation.text.length === 0 && !result.timedOut) {
-        parts.push('(no output)')
-      } else {
-        parts.push(truncation.text)
-      }
+      const outputLines = [truncation.text]
+      truncation.text.length === 0 &&
+        !result.timedOut &&
+        outputLines.splice(0, 1, '(no output)')
+      const [outputText = ''] = outputLines
+      parts.push(outputText)
 
       // Truncation notice
-      if (truncation.truncated && spilloverPath) {
-        const keptLines = truncation.text.split('\n').length
+      const keptLines = truncation.text.split('\n').length
+      truncation.truncated &&
+        spilloverPath !== undefined &&
         parts.push(
           `\n[Output truncated — showing last ${keptLines} of ${truncation.totalLines} lines (${truncation.totalBytes} bytes total). Full output: ReadFile path="${spilloverPath}"]`
         )
-      }
 
       return parts.join('\n')
     }),
-} as const
+}

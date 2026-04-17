@@ -21,7 +21,8 @@
  * into `Prompt.Prompt` on read. Other systems (VCS, analytics) can join on
  * message IDs without coupling to this module.
  */
-import { Context, Effect, Schema } from 'effect'
+import { Context, Schema } from 'effect'
+import type { Effect } from 'effect/Effect'
 import type { Prompt } from 'effect/unstable/ai'
 
 // ---------------------------------------------------------------------------
@@ -90,16 +91,16 @@ export interface SessionStorageApi {
     directory: string,
     model: string,
     title?: string
-  ) => Effect.Effect<Session, StorageError>
+  ) => Effect<Session, StorageError>
 
   /** Get a session by ID. */
-  readonly get: (id: SessionId) => Effect.Effect<Session, StorageError>
+  readonly get: (id: SessionId) => Effect<Session, StorageError>
 
   /** List all sessions, most recently updated first. */
-  readonly list: () => Effect.Effect<ReadonlyArray<Session>, StorageError>
+  readonly list: () => Effect<ReadonlyArray<Session>, StorageError>
 
   /** Delete a session and all its messages. */
-  readonly delete: (id: SessionId) => Effect.Effect<void, StorageError>
+  readonly delete: (id: SessionId) => Effect<void, StorageError>
 
   /**
    * Reconstruct the current branch as a `Prompt.Prompt`.
@@ -109,7 +110,7 @@ export interface SessionStorageApi {
    */
   readonly conversation: (
     sessionId: SessionId
-  ) => Effect.Effect<Prompt.Prompt, StorageError>
+  ) => Effect<Prompt.Prompt, StorageError>
 
   /**
    * Return the message nodes for the current branch in chronological order.
@@ -120,7 +121,7 @@ export interface SessionStorageApi {
    */
   readonly messages: (
     sessionId: SessionId
-  ) => Effect.Effect<ReadonlyArray<MessageNode>, StorageError>
+  ) => Effect<ReadonlyArray<MessageNode>, StorageError>
 
   /**
    * Append messages after the current head and advance it.
@@ -132,7 +133,7 @@ export interface SessionStorageApi {
   readonly append: (
     sessionId: SessionId,
     messages: ReadonlyArray<Prompt.MessageEncoded>
-  ) => Effect.Effect<void, StorageError>
+  ) => Effect<void, StorageError>
 
   /**
    * Move the head to any message in the tree.
@@ -143,13 +144,13 @@ export interface SessionStorageApi {
   readonly setHead: (
     sessionId: SessionId,
     messageId: MessageId
-  ) => Effect.Effect<void, StorageError>
+  ) => Effect<void, StorageError>
 
   /** Update the model used for future runs in this session. */
   readonly setModel: (
     sessionId: SessionId,
     model: string
-  ) => Effect.Effect<void, StorageError>
+  ) => Effect<void, StorageError>
 
   /**
    * List all leaf messages in the session — the tips of every branch.
@@ -159,7 +160,7 @@ export interface SessionStorageApi {
    */
   readonly leaves: (
     sessionId: SessionId
-  ) => Effect.Effect<ReadonlyArray<MessageNode>, StorageError>
+  ) => Effect<ReadonlyArray<MessageNode>, StorageError>
 }
 
 // ---------------------------------------------------------------------------

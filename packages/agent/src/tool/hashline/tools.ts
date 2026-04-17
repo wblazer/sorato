@@ -12,7 +12,7 @@
  * would pair with a different read format. That's why they live together.
  */
 import { Tool } from 'effect/unstable/ai'
-import { Effect, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import { CurrentFiles, SandboxError } from '../../sandbox/sandbox.ts'
 import {
   encode,
@@ -97,9 +97,7 @@ const isBinaryContent = (raw: string): boolean => {
     const code = sample.charCodeAt(i)
     if (code === 0) return true // null byte → definitely binary
     // Printable: tab(9), newline(10), carriage return(13), space(32)+
-    if (code < 32 && code !== 9 && code !== 10 && code !== 13) {
-      nonPrintable++
-    }
+    nonPrintable += Number(code < 32 && code !== 9 && code !== 10 && code !== 13)
   }
   return sample.length > 0 && nonPrintable / sample.length > 0.3
 }
@@ -107,7 +105,10 @@ const isBinaryContent = (raw: string): boolean => {
 /** Extract the file extension (lowercase, with dot) from a path. */
 const extOf = (path: string): string => {
   const dot = path.lastIndexOf('.')
-  return dot === -1 ? '' : path.slice(dot).toLowerCase()
+  const extensions = ['']
+  dot !== -1 && extensions.splice(0, 1, path.slice(dot).toLowerCase())
+  const [extension = ''] = extensions
+  return extension
 }
 
 // ---------------------------------------------------------------------------
@@ -149,30 +150,38 @@ export const ReadFileHandler = {
       const files = yield* CurrentFiles
 
       // Binary extension check — fast reject before reading content
-      if (BINARY_EXTENSIONS.has(extOf(path))) {
-        return yield* new SandboxError({
-          operation: 'ReadFile',
-          message: `Cannot read binary file: ${path}`,
-        })
-      }
+      yield* Effect.filterOrFail(
+        Effect.succeed(path),
+        (currentPath) => !BINARY_EXTENSIONS.has(extOf(currentPath)),
+        (currentPath) =>
+          new SandboxError({
+            operation: 'ReadFile',
+            message: `Cannot read binary file: ${currentPath}`,
+          })
+      )
 
       const content = yield* files.readFile(path)
 
       // Binary content check — catch files without known extensions
-      if (isBinaryContent(content)) {
-        return yield* new SandboxError({
-          operation: 'ReadFile',
-          message: `Cannot read binary file: ${path}`,
-        })
-      }
+      yield* Effect.filterOrFail(
+        Effect.succeed(content),
+        (rawContent) => !isBinaryContent(rawContent),
+        () =>
+          new SandboxError({
+            operation: 'ReadFile',
+            message: `Cannot read binary file: ${path}`,
+          })
+      )
 
-      const effectiveOffset = offset ?? 1
-      if (effectiveOffset < 1) {
-        return yield* new SandboxError({
-          operation: 'ReadFile',
-          message: 'offset must be greater than or equal to 1',
-        })
-      }
+      const effectiveOffset = yield* Effect.filterOrFail(
+        Effect.succeed(offset ?? 1),
+        (value) => value >= 1,
+        () =>
+          new SandboxError({
+            operation: 'ReadFile',
+            message: 'offset must be greater than or equal to 1',
+          })
+      )
 
       const result = encode(content, {
         offset: effectiveOffset,
@@ -181,12 +190,15 @@ export const ReadFileHandler = {
         maxBytes: MAX_BYTES,
       })
 
-      if (effectiveOffset > result.totalLines) {
-        return yield* new SandboxError({
-          operation: 'ReadFile',
-          message: `Offset ${effectiveOffset} is out of range (file has ${result.totalLines} lines)`,
-        })
-      }
+      yield* Effect.filterOrFail(
+        Effect.succeed(result.totalLines),
+        (totalLines) => effectiveOffset <= totalLines,
+        (totalLines) =>
+          new SandboxError({
+            operation: 'ReadFile',
+            message: `Offset ${effectiveOffset} is out of range (file has ${totalLines} lines)`,
+          })
+      )
 
       // Append a footer so the model knows if there's more to read
       let footer: string
@@ -200,7 +212,7 @@ export const ReadFileHandler = {
 
       return result.text + footer
     }),
-} as const
+}
 
 // ---------------------------------------------------------------------------
 // EditFile — schema types
@@ -289,12 +301,15 @@ const parseAndResolve = (
   lines: ReadonlyArray<string>
 ): { readonly index: number } | { readonly error: string } => {
   const anchor = parseAnchor(anchorStr)
-  if (!anchor) {
-    return {
-      error: `Invalid anchor format: "${anchorStr}". Expected "<line>:<hash>", e.g. "3:0e"`,
-    }
-  }
-  return resolveAnchor(anchor, lines)
+
+  return Option.fromNullishOr(anchor).pipe(
+    Option.match({
+      onNone: () => ({
+        error: `Invalid anchor format: "${anchorStr}". Expected "<line>:<hash>", e.g. "3:0e"`,
+      }),
+      onSome: (parsedAnchor) => resolveAnchor(parsedAnchor, lines),
+    })
+  )
 }
 
 /**
@@ -318,19 +333,21 @@ const stripAnchorEchoes = (
       const match = ANCHOR_ECHO_RE.exec(line)
       if (!match) return line
 
-      const lineNum = parseInt(match[1]!, 10)
-      const hash = match[2]!
+      const [, lineNumText = '', hash = ''] = match
+      const lineNum = parseInt(lineNumText, 10)
       const idx = lineNum - 1
+      const originalLine = originalLines[idx] ?? ''
+      const strippedLines = [line]
 
       // Only strip if the anchor references a real line with a matching hash
-      if (
-        idx >= 0 &&
+      idx >= 0 &&
         idx < originalLines.length &&
-        hashLine(originalLines[idx]!) === hash
-      ) {
-        return line.slice(match[0].length)
-      }
-      return line
+        hashLine(originalLine) === hash &&
+        strippedLines.splice(0, 1, line.slice(match[0].length))
+
+      const [strippedLine] = strippedLines
+
+      return strippedLine
     })
     .join('\n')
 
@@ -364,6 +381,12 @@ type ResolvedEdit =
       readonly sortKey: number
     }
 
+type ResolveResult = ResolvedEdit | { readonly error: string }
+
+const hasResolveError = (
+  result: ResolveResult
+): result is { readonly error: string } => 'error' in result
+
 /**
  * Resolve a raw edit op against the original lines. Returns a ResolvedEdit
  * with validated 0-based indices, or an error message.
@@ -375,42 +398,51 @@ type ResolvedEdit =
 const resolveOp = (
   op: EditOpType,
   originalLines: ReadonlyArray<string>
-): ResolvedEdit | { readonly error: string } => {
+): ResolveResult => {
   switch (op.type) {
     case 'replace': {
       const start = parseAndResolve(op.startAnchor, originalLines)
       if ('error' in start) return start
       const end = parseAndResolve(op.endAnchor, originalLines)
       if ('error' in end) return end
-      if (start.index > end.index) {
-        return {
+      const results: [ResolveResult] = [
+        {
+          type: 'replace',
+          startIdx: start.index,
+          endIdx: end.index,
+          content: stripAnchorEchoes(op.content, originalLines),
+          sortKey: start.index,
+        },
+      ]
+
+      start.index > end.index &&
+        results.splice(0, 1, {
           error: `startAnchor "${op.startAnchor}" is after endAnchor "${op.endAnchor}"`,
-        }
-      }
-      return {
-        type: 'replace',
-        startIdx: start.index,
-        endIdx: end.index,
-        content: stripAnchorEchoes(op.content, originalLines),
-        sortKey: start.index,
-      }
+        })
+
+      const [result] = results
+
+      return result
     }
     case 'insert': {
-      if (op.afterAnchor === '0') {
-        return {
-          type: 'insert',
-          afterIdx: -1,
-          content: stripAnchorEchoes(op.content, originalLines),
-          sortKey: -1,
+      switch (op.afterAnchor) {
+        case '0':
+          return {
+            type: 'insert',
+            afterIdx: -1,
+            content: stripAnchorEchoes(op.content, originalLines),
+            sortKey: -1,
+          }
+        default: {
+          const after = parseAndResolve(op.afterAnchor, originalLines)
+          if ('error' in after) return after
+          return {
+            type: 'insert',
+            afterIdx: after.index,
+            content: stripAnchorEchoes(op.content, originalLines),
+            sortKey: after.index,
+          }
         }
-      }
-      const after = parseAndResolve(op.afterAnchor, originalLines)
-      if ('error' in after) return after
-      return {
-        type: 'insert',
-        afterIdx: after.index,
-        content: stripAnchorEchoes(op.content, originalLines),
-        sortKey: after.index,
       }
     }
     case 'delete': {
@@ -418,17 +450,23 @@ const resolveOp = (
       if ('error' in start) return start
       const end = parseAndResolve(op.endAnchor, originalLines)
       if ('error' in end) return end
-      if (start.index > end.index) {
-        return {
+      const results: [ResolveResult] = [
+        {
+          type: 'delete',
+          startIdx: start.index,
+          endIdx: end.index,
+          sortKey: start.index,
+        },
+      ]
+
+      start.index > end.index &&
+        results.splice(0, 1, {
           error: `startAnchor "${op.startAnchor}" is after endAnchor "${op.endAnchor}"`,
-        }
-      }
-      return {
-        type: 'delete',
-        startIdx: start.index,
-        endIdx: end.index,
-        sortKey: start.index,
-      }
+        })
+
+      const [result] = results
+
+      return result
     }
   }
 }
@@ -440,7 +478,7 @@ const resolveOp = (
  * after the replaced/deleted content in the final output).
  */
 const sortPrecedence = (edit: ResolvedEdit): number =>
-  edit.type === 'insert' ? 1 : 0
+  Number(edit.type === 'insert')
 
 /**
  * Validate that sorted edits don't overlap.
@@ -454,20 +492,31 @@ const sortPrecedence = (edit: ResolvedEdit): number =>
  */
 const validateNoOverlap = (
   edits: ReadonlyArray<ResolvedEdit>
-): string | null => {
+): Option.Option<string> => {
   // Collect all replaced/deleted ranges for insert validation
   const mutatedRanges: Array<[number, number]> = []
   let lastEnd = -1
 
   for (const edit of edits) {
-    if (edit.type === 'replace' || edit.type === 'delete') {
-      const start = edit.startIdx
-      const end = edit.endIdx
-      if (start <= lastEnd) {
-        return `Edits overlap: an edit touches line ${start + 1}, which was already modified by a previous edit.`
+    switch (edit.type) {
+      case 'replace':
+      case 'delete': {
+        const start = edit.startIdx
+        const end = edit.endIdx
+        switch (start <= lastEnd) {
+          case true:
+            return Option.some(
+              `Edits overlap: an edit touches line ${start + 1}, which was already modified by a previous edit.`
+            )
+          case false:
+            break
+        }
+        lastEnd = end
+        mutatedRanges.push([start, end])
+        break
       }
-      lastEnd = end
-      mutatedRanges.push([start, end])
+      case 'insert':
+        break
     }
   }
 
@@ -476,13 +525,18 @@ const validateNoOverlap = (
     if (edit.type !== 'insert') continue
     const afterIdx = edit.afterIdx // -1 for BOF is safe — no range starts at -1
     for (const [start, end] of mutatedRanges) {
-      if (afterIdx >= start && afterIdx < end) {
-        return `Insert after line ${afterIdx + 1} conflicts with a replace/delete spanning lines ${start + 1}–${end + 1}. The inserted content would be lost.`
+      switch (afterIdx >= start && afterIdx < end) {
+        case true:
+          return Option.some(
+            `Insert after line ${afterIdx + 1} conflicts with a replace/delete spanning lines ${start + 1}–${end + 1}. The inserted content would be lost.`
+          )
+        case false:
+          break
       }
     }
   }
 
-  return null
+  return Option.none()
 }
 
 // ---------------------------------------------------------------------------
@@ -506,13 +560,18 @@ export const EditFileHandler = {
       const resolved: Array<ResolvedEdit> = []
       for (const op of edits) {
         const result = resolveOp(op, originalLines)
-        if ('error' in result) {
-          return yield* new SandboxError({
-            operation: 'EditFile',
-            message: result.error,
-          })
+        switch (hasResolveError(result)) {
+          case true: {
+            const errorResult = result as { readonly error: string }
+            return yield* new SandboxError({
+              operation: 'EditFile',
+              message: errorResult.error,
+            })
+          }
+          case false:
+            resolved.push(result as ResolvedEdit)
+            break
         }
-        resolved.push(result)
       }
 
       // Phase 2: Sort by position (ascending), with tie-breaker:
@@ -523,17 +582,22 @@ export const EditFileHandler = {
 
       // Phase 3: Validate non-overlap (after sorting)
       const overlapError = validateNoOverlap(resolved)
-      if (overlapError) {
-        return yield* new SandboxError({
-          operation: 'EditFile',
-          message: overlapError,
+      yield* overlapError.pipe(
+        Option.match({
+          onNone: () => Effect.void,
+          onSome: (message) =>
+            Effect.fail(
+              new SandboxError({
+                operation: 'EditFile',
+                message,
+              })
+            ),
         })
-      }
+      )
 
       // Phase 4: Apply edits bottom-to-top so earlier indices stay valid.
       const lines = [...originalLines]
-      for (let i = resolved.length - 1; i >= 0; i--) {
-        const edit = resolved[i]!
+      for (const edit of [...resolved].reverse()) {
         switch (edit.type) {
           case 'replace': {
             const newLines = edit.content.split('\n')
@@ -562,4 +626,4 @@ export const EditFileHandler = {
 
       return `Successfully applied ${edits.length} edit(s) to ${path}`
     }),
-} as const
+}

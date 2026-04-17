@@ -56,4 +56,4 @@ export const WriteFileHandler = {
       const lines = content.split('\n').length
       return `Wrote ${path} (${lines} lines, ${bytes} bytes)`
     }),
-} as const
+}

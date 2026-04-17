@@ -17,12 +17,12 @@ import { Database } from 'bun:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { Prompt } from 'effect/unstable/ai'
-import { Effect, Layer, Schema } from 'effect'
+import { Effect, Layer, Match, Option, Schema } from 'effect'
 import {
   SessionStorage,
   StorageError,
-  SessionId,
-  MessageId,
+  type SessionId,
+  type MessageId,
   type Session,
   type MessageNode,
   type SessionStorageApi,
@@ -197,13 +197,32 @@ const migrate = (db: Database) => {
     .prepare<{ name: string }, []>('PRAGMA table_info(sessions)')
     .all()
 
-  if (!cols.some((col) => col.name === 'model')) {
-    db.run('ALTER TABLE sessions ADD COLUMN model TEXT')
-  }
+  cols.some((col) => col.name === 'model') ||
+    Boolean(db.run('ALTER TABLE sessions ADD COLUMN model TEXT'))
 
   db.prepare('UPDATE sessions SET model = ? WHERE model IS NULL').run(
     LEGACY_MODEL
   )
+}
+
+const ensureDatabaseDirectory = (path: string) =>
+  Match.value(path).pipe(
+    Match.when(':memory:', () => undefined),
+    Match.orElse((databasePath) =>
+      mkdirSync(dirname(databasePath), { recursive: true })
+    )
+  )
+
+const openDatabase = (path: string) => {
+  ensureDatabaseDirectory(path)
+
+  const database = new Database(path)
+  database.run('PRAGMA journal_mode = WAL')
+  database.run('PRAGMA foreign_keys = ON')
+  database.run(SCHEMA)
+  migrate(database)
+
+  return database
 }
 
 // ---------------------------------------------------------------------------
@@ -218,21 +237,11 @@ const migrate = (db: Database) => {
  */
 export const SqliteSession = (options: {
   readonly path: string
-}): Layer.Layer<SessionStorage, StorageError> =>
+}) =>
   Layer.effect(SessionStorage)(
     Effect.gen(function* () {
       const db = yield* Effect.try({
-        try: () => {
-          if (options.path !== ':memory:') {
-            mkdirSync(dirname(options.path), { recursive: true })
-          }
-          const database = new Database(options.path)
-          database.run('PRAGMA journal_mode = WAL')
-          database.run('PRAGMA foreign_keys = ON')
-          database.run(SCHEMA)
-          migrate(database)
-          return database
-        },
+        try: () => openDatabase(options.path),
         catch: (error) =>
           new StorageError({
             operation: 'open',
@@ -241,9 +250,39 @@ export const SqliteSession = (options: {
           }),
       })
 
-      yield* Effect.addFinalizer(() => Effect.sync(() => db.close()))
+      yield* Effect.addFinalizer(() =>
+        Effect.try({
+          try: () => db.close(),
+          catch: (error) =>
+            new StorageError({
+              operation: 'close',
+              message: `Failed to close database: ${options.path}`,
+              error,
+            }),
+        }).pipe(Effect.catch(() => Effect.void))
+      )
 
       const stmts = prepareStatements(db)
+
+      function decodeConversation(
+        rows: ReadonlyArray<MessageRow>,
+        sessionId: SessionId
+      ) {
+        // Rows come back leaf-to-root; reverse for chronological order
+        const encoded = [...rows]
+          .reverse()
+          .map((row: MessageRow) => JSON.parse(row.encoded) as Prompt.MessageEncoded)
+
+        return Effect.try({
+          try: () => Schema.decodeUnknownSync(Prompt.Prompt)({ content: encoded }),
+          catch: (error) =>
+            new StorageError({
+              operation: 'conversation',
+              message: `Failed to decode conversation: ${sessionId}`,
+              error,
+            }),
+        })
+      }
 
       // -- Service methods --------------------------------------------------
 
@@ -295,14 +334,16 @@ export const SqliteSession = (options: {
             }),
         })
 
-        if (!row) {
-          return yield* new StorageError({
-            operation: 'get',
-            message: `Session not found: ${id}`,
-          })
-        }
-
-        return toSession(row)
+        return yield* Effect.fromNullishOr(row).pipe(
+          Effect.mapError(
+            () =>
+              new StorageError({
+                operation: 'get',
+                message: `Session not found: ${id}`,
+              })
+          ),
+          Effect.map(toSession)
+        )
       })
 
       const list = Effect.fn('SessionStorage.list')(function* () {
@@ -336,37 +377,28 @@ export const SqliteSession = (options: {
       ) {
         const session = yield* get(sessionId)
 
-        if (!session.headId) {
-          return Prompt.empty
-        }
+        return yield* Option.fromNullishOr(session.headId).pipe(
+          Option.match({
+            onNone: () => Effect.succeed(Prompt.empty),
+            onSome: (headId) => {
+              const rows = Effect.try({
+                try: () => stmts.walkToRoot.all(headId),
+                catch: (error) =>
+                  new StorageError({
+                    operation: 'conversation',
+                    message: `Failed to walk conversation: ${sessionId}`,
+                    error,
+                  }),
+              })
 
-        const rows = yield* Effect.try({
-          try: () => stmts.walkToRoot.all(session.headId!),
-          catch: (error) =>
-            new StorageError({
-              operation: 'conversation',
-              message: `Failed to walk conversation: ${sessionId}`,
-              error,
-            }),
-        })
+              const prompt = Effect.flatMap(rows, (walkedRows) =>
+                decodeConversation(walkedRows, sessionId)
+              )
 
-        // Rows come back leaf-to-root; reverse for chronological order
-        const encoded = rows
-          .reverse()
-          .map((row) => JSON.parse(row.encoded) as Prompt.MessageEncoded)
-
-        const prompt = yield* Effect.try({
-          try: () =>
-            Schema.decodeUnknownSync(Prompt.Prompt)({ content: encoded }),
-          catch: (error) =>
-            new StorageError({
-              operation: 'conversation',
-              message: `Failed to decode conversation: ${sessionId}`,
-              error,
-            }),
-        })
-
-        return prompt
+              return prompt
+            },
+          })
+        )
       })
 
       const messages = Effect.fn('SessionStorage.messages')(function* (
@@ -374,22 +406,30 @@ export const SqliteSession = (options: {
       ) {
         const session = yield* get(sessionId)
 
-        if (!session.headId) {
-          return [] as ReadonlyArray<MessageNode>
-        }
+        return yield* Option.fromNullishOr(session.headId).pipe(
+          Option.match({
+            onNone: () => Effect.succeed([] as ReadonlyArray<MessageNode>),
+            onSome: (headId) => {
+              const rows = Effect.try({
+                try: () => stmts.walkToRoot.all(headId),
+                catch: (error) =>
+                  new StorageError({
+                    operation: 'messages',
+                    message: `Failed to walk messages: ${sessionId}`,
+                    error,
+                  }),
+              })
 
-        const rows = yield* Effect.try({
-          try: () => stmts.walkToRoot.all(session.headId!),
-          catch: (error) =>
-            new StorageError({
-              operation: 'messages',
-              message: `Failed to walk messages: ${sessionId}`,
-              error,
-            }),
-        })
+              const messages = Effect.map(
+                rows,
+                // Rows come back leaf-to-root; reverse for chronological order
+                (walkedRows) => walkedRows.reverse().map(toMessageNode)
+              )
 
-        // Rows come back leaf-to-root; reverse for chronological order
-        return rows.reverse().map(toMessageNode)
+              return messages
+            },
+          })
+        )
       })
 
       const append = Effect.fn('SessionStorage.append')(function* (
@@ -419,9 +459,7 @@ export const SqliteSession = (options: {
                 lastId = id
               }
 
-              if (lastId) {
-                stmts.updateHead.run(lastId, now, sessionId)
-              }
+              lastId !== null && stmts.updateHead.run(lastId, now, sessionId)
             })
             tx()
           },
@@ -449,22 +487,26 @@ export const SqliteSession = (options: {
             }),
         })
 
-        if (!exists) {
-          return yield* new StorageError({
-            operation: 'setHead',
-            message: `Message ${messageId} not found in session ${sessionId}`,
-          })
-        }
-
-        yield* Effect.try({
-          try: () => stmts.updateHead.run(messageId, Date.now(), sessionId),
-          catch: (error) =>
-            new StorageError({
-              operation: 'setHead',
-              message: `Failed to update head: ${sessionId}`,
-              error,
-            }),
-        })
+        yield* Effect.fromNullishOr(exists).pipe(
+          Effect.mapError(
+            () =>
+              new StorageError({
+                operation: 'setHead',
+                message: `Message ${messageId} not found in session ${sessionId}`,
+              })
+          ),
+          Effect.flatMap(() =>
+            Effect.try({
+              try: () => stmts.updateHead.run(messageId, Date.now(), sessionId),
+              catch: (error) =>
+                new StorageError({
+                  operation: 'setHead',
+                  message: `Failed to update head: ${sessionId}`,
+                  error,
+                }),
+            })
+          )
+        )
       })
 
       const setModel = Effect.fn('SessionStorage.setModel')(function* (

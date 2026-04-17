@@ -20,7 +20,9 @@
  * the tags separately. This keeps lifecycle management unified (one scope,
  * one rootDir) while giving tools granular `R` types.
  */
-import { Context, Effect, Schema, Scope } from 'effect'
+import { Context, Schema } from 'effect'
+import type { Effect } from 'effect/Effect'
+import type { Scope } from 'effect/Scope'
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -72,7 +74,7 @@ export interface ExecCommand {
 export interface Shell {
   readonly exec: (
     command: ExecCommand
-  ) => Effect.Effect<ExecResult, SandboxError>
+  ) => Effect<ExecResult, SandboxError>
 }
 
 /** Per-scenario shell service. Tools that execute commands require this in their `R`. */
@@ -87,7 +89,7 @@ export class CurrentShell extends Context.Service<CurrentShell, Shell>()(
 /** Files service — read and write files in the sandbox. */
 export interface Files {
   /** Read a file from the sandbox filesystem (path is sandbox-relative). */
-  readonly readFile: (path: string) => Effect.Effect<string, SandboxError>
+  readonly readFile: (path: string) => Effect<string, SandboxError>
 
   /**
    * Write a file to the sandbox filesystem (path is sandbox-relative).
@@ -96,7 +98,7 @@ export interface Files {
   readonly writeFile: (
     path: string,
     content: string
-  ) => Effect.Effect<void, SandboxError>
+  ) => Effect<void, SandboxError>
 
   /**
    * Find files matching a glob pattern (evaluated from sandbox root).
@@ -104,7 +106,7 @@ export interface Files {
    */
   readonly glob: (
     pattern: string
-  ) => Effect.Effect<ReadonlyArray<string>, SandboxError>
+  ) => Effect<ReadonlyArray<string>, SandboxError>
 }
 
 /** Per-scenario files service. Tools that access files require this in their `R`. */
@@ -136,7 +138,7 @@ export interface SandboxFactory {
    */
   readonly acquire: (
     directory: string
-  ) => Effect.Effect<SandboxSession, SandboxError, Scope.Scope>
+  ) => Effect<SandboxSession, SandboxError, Scope>
 }
 
 // ---------------------------------------------------------------------------

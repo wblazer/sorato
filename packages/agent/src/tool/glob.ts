@@ -9,7 +9,7 @@
  * patterns. When truncated, the LLM gets a hint to narrow the pattern.
  */
 import { Tool } from 'effect/unstable/ai'
-import { Effect, Schema } from 'effect'
+import { Effect, Match, Option, Schema } from 'effect'
 import { CurrentFiles, SandboxError } from '../sandbox/sandbox.ts'
 
 // ---------------------------------------------------------------------------
@@ -58,24 +58,32 @@ export const GlobHandler = {
       const files = yield* CurrentFiles
 
       // If a base path is provided, scope the pattern under it
-      const effectivePattern = path
-        ? `${path.replace(/\/+$/, '')}/${pattern}`
-        : pattern
+      const effectivePattern = Option.fromUndefinedOr(path).pipe(
+        Option.match({
+          onNone: () => pattern,
+          onSome: (basePath) => `${basePath.replace(/\/+$/, '')}/${pattern}`,
+        })
+      )
 
       const matches = yield* files.glob(effectivePattern)
 
-      if (matches.length === 0) {
-        return `No files matched the pattern: ${effectivePattern}`
-      }
+      return Match.value(matches.length === 0).pipe(
+        Match.when(true, () => `No files matched the pattern: ${effectivePattern}`),
+        Match.orElse(() => {
+          const truncated = matches.length > MAX_RESULTS
+          const shown = matches.slice(0, MAX_RESULTS)
+          const result = shown.join('\n')
+          const summaries = [`(${matches.length} files)`]
+          truncated &&
+            summaries.splice(
+              0,
+              1,
+              `(Showing ${MAX_RESULTS} of ${matches.length} matches. Narrow your pattern for complete results.)`
+            )
+          const [summary] = summaries
 
-      const truncated = matches.length > MAX_RESULTS
-      const shown = truncated ? matches.slice(0, MAX_RESULTS) : matches
-      const result = shown.join('\n')
-
-      if (truncated) {
-        return `${result}\n\n(Showing ${MAX_RESULTS} of ${matches.length} matches. Narrow your pattern for complete results.)`
-      }
-
-      return `${result}\n\n(${matches.length} files)`
+          return `${result}\n\n${summary}`
+        })
+      )
     }),
-} as const
+}
