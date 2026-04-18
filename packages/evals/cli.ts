@@ -43,8 +43,8 @@ const run = Command.make('run', { evalName }, ({ evalName }) =>
   Match.value(findSuite(evalName)).pipe(
     Match.when(undefined, () =>
       Effect.gen(function* () {
-      yield* Console.error(`Unknown eval suite: '${evalName}'`)
-      yield* Console.error(`Run 'list' to see available suites.`)
+        yield* Console.error(`Unknown eval suite: '${evalName}'`)
+        yield* Console.error(`Run 'list' to see available suites.`)
       })
     ),
     Match.orElse((suite) =>

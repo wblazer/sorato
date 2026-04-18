@@ -68,7 +68,10 @@ export const GlobHandler = {
       const matches = yield* files.glob(effectivePattern)
 
       return Match.value(matches.length === 0).pipe(
-        Match.when(true, () => `No files matched the pattern: ${effectivePattern}`),
+        Match.when(
+          true,
+          () => `No files matched the pattern: ${effectivePattern}`
+        ),
         Match.orElse(() => {
           const truncated = matches.length > MAX_RESULTS
           const shown = matches.slice(0, MAX_RESULTS)

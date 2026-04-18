@@ -2,9 +2,7 @@ import { AnthropicClient, AnthropicLanguageModel } from '@effect/ai-anthropic'
 import { OpenAiClient, OpenAiLanguageModel } from '@effect/ai-openai'
 import { Config, Layer } from 'effect'
 import { FetchHttpClient } from 'effect/unstable/http'
-import {
-  type ProviderId,
-} from './provider-definitions.ts'
+import { type ProviderId } from './provider-definitions.ts'
 
 const present = (key: string) => !!process.env[key]?.trim()
 

@@ -14,38 +14,38 @@ import {
   HttpMiddleware,
   HttpServerRequest,
   HttpServerResponse,
-} from "effect/unstable/http";
-import { Effect, Match } from "effect";
+} from 'effect/unstable/http'
+import { Effect, Match } from 'effect'
 import {
   isContentEvent,
   subscribe,
   type ContentEvent,
   type ServerEvent,
-} from "./event-bus.ts";
+} from './event-bus.ts'
 import {
   getReplayBufferSince,
   getReplaySnapshot,
   type StreamCursor,
-} from "./event-replay.ts";
+} from './event-replay.ts'
 
 function formatCursor(cursor: StreamCursor): string {
-  return `${cursor.runId}:${cursor.eventId}`;
+  return `${cursor.runId}:${cursor.eventId}`
 }
 
 function parseCursor(raw: string | null): StreamCursor | undefined {
-  if (!raw) return undefined;
+  if (!raw) return undefined
 
-  const separator = raw.lastIndexOf(":");
-  if (separator <= 0) return undefined;
+  const separator = raw.lastIndexOf(':')
+  if (separator <= 0) return undefined
 
-  const runId = raw.slice(0, separator);
-  const eventId = Number(raw.slice(separator + 1));
-  if (!runId || !Number.isFinite(eventId)) return undefined;
+  const runId = raw.slice(0, separator)
+  const eventId = Number(raw.slice(separator + 1))
+  if (!runId || !Number.isFinite(eventId)) return undefined
 
   return {
     runId,
     eventId: Math.max(0, Math.floor(eventId)),
-  };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -54,29 +54,29 @@ function parseCursor(raw: string | null): StreamCursor | undefined {
 
 function createSSEResponse(
   sessionId: string | undefined,
-  cursor: StreamCursor | undefined,
+  cursor: StreamCursor | undefined
 ): globalThis.Response {
-  const encoder = new TextEncoder();
-  let unsubscribe: (() => void) | undefined;
-  let heartbeatInterval: ReturnType<typeof setInterval> | undefined;
+  const encoder = new TextEncoder()
+  let unsubscribe: (() => void) | undefined
+  let heartbeatInterval: ReturnType<typeof setInterval> | undefined
 
   const cleanup = () => {
-    unsubscribe?.();
-    unsubscribe = undefined;
-    heartbeatInterval && clearInterval(heartbeatInterval);
-    heartbeatInterval = undefined;
-  };
+    unsubscribe?.()
+    unsubscribe = undefined
+    heartbeatInterval && clearInterval(heartbeatInterval)
+    heartbeatInterval = undefined
+  }
 
   const stream = new ReadableStream({
     start(controller) {
-      let closed = false;
+      let closed = false
       const closeStream = () => {
-        closed = true;
-        cleanup();
-      };
+        closed = true
+        cleanup()
+      }
 
       const write = (payload: string) => {
-        if (closed) return;
+        if (closed) return
         Effect.runSync(
           Effect.try({
             try: () => controller.enqueue(encoder.encode(payload)),
@@ -85,18 +85,18 @@ function createSSEResponse(
             Effect.match({
               onFailure: closeStream,
               onSuccess: () => undefined,
-            }),
-          ),
-        );
-      };
+            })
+          )
+        )
+      }
 
       const writeContentEvent = (event: ContentEvent) =>
         write(
-          `id: ${formatCursor({ runId: event.runId, eventId: event.eventId })}\nevent: ${event._tag}\ndata: ${JSON.stringify(event)}\n\n`,
-        );
+          `id: ${formatCursor({ runId: event.runId, eventId: event.eventId })}\nevent: ${event._tag}\ndata: ${JSON.stringify(event)}\n\n`
+        )
 
       const writeLifecycleEvent = (event: Exclude<ServerEvent, ContentEvent>) =>
-        write(`event: ${event._tag}\ndata: ${JSON.stringify(event)}\n\n`);
+        write(`event: ${event._tag}\ndata: ${JSON.stringify(event)}\n\n`)
 
       const writeEvent = Match.type<ServerEvent>().pipe(
         Match.tagsExhaustive({
@@ -107,48 +107,46 @@ function createSSEResponse(
           TextDelta: writeContentEvent,
           ToolCall: writeContentEvent,
           ToolResult: writeContentEvent,
-        }),
-      );
+        })
+      )
 
       // Initial connection event
-      write(
-        `event: connected\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`,
-      );
+      write(`event: connected\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`)
 
       if (!sessionId) {
         // Global stream: control-plane events only.
         unsubscribe = subscribe((event: ServerEvent) => {
-          isContentEvent(event) || writeEvent(event);
-        });
+          isContentEvent(event) || writeEvent(event)
+        })
       } else {
         // Session stream: replay content since cursor, then continue live.
-        let lastCursor = cursor;
-        let replaying = true;
-        const pending: ServerEvent[] = [];
+        let lastCursor = cursor
+        let replaying = true
+        const pending: ServerEvent[] = []
 
         const writeSessionContentEvent = (
           event: Extract<
             ServerEvent,
-            { _tag: "TextDelta" | "ToolCall" | "ToolResult" }
-          >,
+            { _tag: 'TextDelta' | 'ToolCall' | 'ToolResult' }
+          >
         ) => {
           const alreadyStreamed =
             lastCursor?.runId === event.runId &&
-            event.eventId <= lastCursor.eventId;
+            event.eventId <= lastCursor.eventId
 
-          if (alreadyStreamed) return;
+          if (alreadyStreamed) return
 
-          lastCursor = { runId: event.runId, eventId: event.eventId };
-          writeEvent(event);
-        };
+          lastCursor = { runId: event.runId, eventId: event.eventId }
+          writeEvent(event)
+        }
 
         const isSessionEvent = (event: ServerEvent): boolean =>
-          "sessionId" in event && event.sessionId === sessionId;
+          'sessionId' in event && event.sessionId === sessionId
 
         const isSessionStreamEvent = (event: ServerEvent): boolean =>
-          event._tag === "RunStart" ||
-          event._tag === "RunEnd" ||
-          isContentEvent(event);
+          event._tag === 'RunStart' ||
+          event._tag === 'RunEnd' ||
+          isContentEvent(event)
 
         const writeSessionEvent = Match.type<ServerEvent>().pipe(
           Match.tagsExhaustive({
@@ -159,72 +157,72 @@ function createSSEResponse(
             TextDelta: writeSessionContentEvent,
             ToolCall: writeSessionContentEvent,
             ToolResult: writeSessionContentEvent,
-          }),
-        );
+          })
+        )
 
         unsubscribe = subscribe((event: ServerEvent) => {
           const isLiveSessionEvent =
-            isSessionEvent(event) && isSessionStreamEvent(event);
+            isSessionEvent(event) && isSessionStreamEvent(event)
 
           isLiveSessionEvent &&
             Match.value(replaying).pipe(
               Match.when(true, () => pending.push(event)),
-              Match.orElse(() => writeSessionEvent(event)),
-            );
-        });
+              Match.orElse(() => writeSessionEvent(event))
+            )
+        })
 
         const pendingRunStartIds = new Set(
           pending
             .filter(
-              (event): event is Extract<ServerEvent, { _tag: "RunStart" }> =>
-                event._tag === "RunStart",
+              (event): event is Extract<ServerEvent, { _tag: 'RunStart' }> =>
+                event._tag === 'RunStart'
             )
-            .map((event) => event.runId),
-        );
-        const replaySnapshot = getReplaySnapshot(sessionId);
-        const replayRunId = replaySnapshot?.runId;
+            .map((event) => event.runId)
+        )
+        const replaySnapshot = getReplaySnapshot(sessionId)
+        const replayRunId = replaySnapshot?.runId
         const replayStartEvent = [
           undefined,
           {
-            _tag: "RunStart" as const,
+            _tag: 'RunStart' as const,
             sessionId,
-            runId: replayRunId ?? "",
+            runId: replayRunId ?? '',
           },
         ][
           Number(
             replayRunId !== undefined &&
               cursor?.runId !== replayRunId &&
-              !pendingRunStartIds.has(replayRunId),
+              !pendingRunStartIds.has(replayRunId)
           )
-        ];
-        const replay = getReplayBufferSince(sessionId, cursor);
+        ]
+        const replay = getReplayBufferSince(sessionId, cursor)
 
-        replayStartEvent && writeEvent(replayStartEvent);
+        replayStartEvent && writeEvent(replayStartEvent)
 
-        replaying = false;
+        replaying = false
         for (const event of [...replay, ...pending]) {
-          writeSessionEvent(event);
+          writeSessionEvent(event)
         }
       }
 
       // Heartbeat every 15s to keep the connection alive
       heartbeatInterval = setInterval(() => {
-        write(":heartbeat\n\n");
-      }, 15_000);
+        write(':heartbeat\n\n')
+      }, 15_000)
     },
     cancel() {
-      cleanup();
+      cleanup()
     },
-  });
+  })
 
   return new globalThis.Response(stream, {
     headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "Access-Control-Allow-Origin": "*",
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
     },
-  });
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -245,12 +243,12 @@ export const withSse = (
       HttpServerResponse.HttpServerResponse,
       E,
       HttpServerRequest.HttpServerRequest | R
-    >,
+    >
   ) => Effect.Effect<
     HttpServerResponse.HttpServerResponse,
     E,
     HttpServerRequest.HttpServerRequest | R
-  >,
+  >
 ) =>
   HttpMiddleware.make(
     <E, R>(
@@ -259,22 +257,22 @@ export const withSse = (
         HttpServerResponse.HttpServerResponse,
         E,
         HttpServerRequest.HttpServerRequest | R
-      >,
+      >
     ) =>
       Effect.gen(function* () {
-        const req = yield* HttpServerRequest.HttpServerRequest;
-        const url = new URL(req.url, "http://localhost");
+        const req = yield* HttpServerRequest.HttpServerRequest
+        const url = new URL(req.url, 'http://localhost')
 
         const sseResponse = HttpServerResponse.fromWeb(
           createSSEResponse(
-            url.searchParams.get("sessionId") ?? undefined,
-            parseCursor(url.searchParams.get("since")),
-          ),
-        );
+            url.searchParams.get('sessionId') ?? undefined,
+            parseCursor(url.searchParams.get('since'))
+          )
+        )
 
         return yield* Match.value(url.pathname).pipe(
-          Match.when("/events", () => Effect.succeed(sseResponse)),
-          Match.orElse(() => inner(app)),
-        );
-      }),
-  );
+          Match.when('/events', () => Effect.succeed(sseResponse)),
+          Match.orElse(() => inner(app))
+        )
+      })
+  )

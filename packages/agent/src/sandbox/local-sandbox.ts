@@ -25,9 +25,8 @@ import {
 // ---------------------------------------------------------------------------
 
 /** Collect a Uint8Array stream into a single string. */
-const streamToString = <E>(
-  stream: Stream.Stream<Uint8Array, E>
-) => stream.pipe(Stream.decodeText(), Stream.mkString)
+const streamToString = <E>(stream: Stream.Stream<Uint8Array, E>) =>
+  stream.pipe(Stream.decodeText(), Stream.mkString)
 
 /**
  * Non-interactive environment defaults. Prevents spawned processes from
@@ -78,262 +77,256 @@ export const LocalSandbox = Layer.effect(Sandbox)(
     const path = yield* Path.Path
 
     const acquire = Effect.fn('Sandbox.acquire')(function* (directory: string) {
-        const rootDir = directory
+      const rootDir = directory
 
-        const resolvePath = (target: string, operation: string) => {
-          const relative = Match.value(path.isAbsolute(target)).pipe(
-            Match.when(true, () => target.replace(/^\/+/, '')),
-            Match.orElse(() => target)
-          )
-          const resolved = path.resolve(rootDir, relative)
-          const rootPrefix = Match.value(rootDir.endsWith(path.sep)).pipe(
-            Match.when(true, () => rootDir),
-            Match.orElse(() => `${rootDir}${path.sep}`)
-          )
+      const resolvePath = (target: string, operation: string) => {
+        const relative = Match.value(path.isAbsolute(target)).pipe(
+          Match.when(true, () => target.replace(/^\/+/, '')),
+          Match.orElse(() => target)
+        )
+        const resolved = path.resolve(rootDir, relative)
+        const rootPrefix = Match.value(rootDir.endsWith(path.sep)).pipe(
+          Match.when(true, () => rootDir),
+          Match.orElse(() => `${rootDir}${path.sep}`)
+        )
 
-          return Match.value(
-            resolved === rootDir || resolved.startsWith(rootPrefix)
-          ).pipe(
-            Match.when(true, () => Effect.succeed(resolved)),
-            Match.orElse(() =>
-              Effect.fail(
-                new SandboxError({
-                  operation,
-                  message: `Path escapes sandbox root: ${target}`,
-                })
-              )
+        return Match.value(
+          resolved === rootDir || resolved.startsWith(rootPrefix)
+        ).pipe(
+          Match.when(true, () => Effect.succeed(resolved)),
+          Match.orElse(() =>
+            Effect.fail(
+              new SandboxError({
+                operation,
+                message: `Path escapes sandbox root: ${target}`,
+              })
             )
           )
-        }
+        )
+      }
 
-        // -- Shell service --------------------------------------------------
+      // -- Shell service --------------------------------------------------
 
-        const shell: Shell = {
-          exec: Effect.fn('Shell.exec')(
-            function* (input) {
-              const cwd = yield* Match.value(input.cwd).pipe(
-                Match.when(undefined, () => Effect.succeed(rootDir)),
-                Match.orElse((workingDirectory) =>
-                  resolvePath(workingDirectory, 'exec')
-                )
-              )
+      const shell: Shell = {
+        exec: Effect.fn('Shell.exec')(function* (input) {
+          const cwd = yield* Match.value(input.cwd).pipe(
+            Match.when(undefined, () => Effect.succeed(rootDir)),
+            Match.orElse((workingDirectory) =>
+              resolvePath(workingDirectory, 'exec')
+            )
+          )
 
-              // Merge non-interactive defaults under user env (user wins)
-              const mergedEnv: Record<string, string | undefined> = {
-                ...NON_INTERACTIVE_ENV,
-                ...input.env,
-              }
-              const stdin = Match.value(input.stdin).pipe(
-                Match.when(undefined, () => undefined),
-                Match.orElse((content) =>
-                  Stream.succeed(new TextEncoder().encode(content))
-                )
-              )
+          // Merge non-interactive defaults under user env (user wins)
+          const mergedEnv: Record<string, string | undefined> = {
+            ...NON_INTERACTIVE_ENV,
+            ...input.env,
+          }
+          const stdin = Match.value(input.stdin).pipe(
+            Match.when(undefined, () => undefined),
+            Match.orElse((content) =>
+              Stream.succeed(new TextEncoder().encode(content))
+            )
+          )
 
-              const command = ChildProcess.make(
-                '/bin/sh',
-                ['-c', input.command],
-                {
-                  cwd,
-                  env: mergedEnv,
-                  extendEnv: true,
-                  stdin,
-                }
-              )
-              const process = yield* childProcessSpawner.spawn(command).pipe(
-                Effect.mapError(
-                  (error) =>
-                    new SandboxError({
-                      operation: 'exec',
-                      message: `Failed to start command: ${input.command}`,
-                      error,
-                    })
-                )
-              )
-
-              /**
-               * Kill the process gracefully: SIGTERM → grace period → SIGKILL.
-               * Ignores errors from kill() since the process may already be dead.
-               */
-              const killGracefully = Effect.catch(
-                process.kill({
-                  killSignal: 'SIGTERM',
-                  forceKillAfter: `${KILL_GRACE_MS} millis`,
-                }),
-                () => Effect.void
-              )
-
-              /**
-               * Collect output and wait for exit. If a timeout is set, fork a
-               * background killer that fires after the deadline. The killer runs
-               * concurrently — it doesn't interfere with stream collection.
-               *
-               * Previous approach raced `process.exitCode` against the timeout
-               * *before* collecting streams. This consumed process state and
-               * caused stdout/stderr to be empty when a timeout was specified
-               * (even if the process finished well before the deadline).
-               */
-              const timedOutRef = yield* Ref.make(false)
-              const markTimedOutAndKill = Effect.andThen(
-                Ref.set(timedOutRef, true),
-                killGracefully
-              )
-              const timeoutFiber = yield* Option.match(
-                Option.fromNullishOr(input.timeout),
-                {
-                  onNone: () => Effect.succeed(Option.none()),
-                  onSome: (timeout) => {
-                    const timeoutAction = Effect.when(
-                      markTimedOutAndKill,
-                      process.isRunning
-                    ).pipe(Effect.asVoid)
-                    const timeoutProgram = Effect.sleep(timeout).pipe(
-                      Effect.andThen(timeoutAction)
-                    )
-                    const recoveredTimeoutProgram = Effect.catch(
-                      timeoutProgram,
-                      () => Effect.void
-                    )
-
-                    return Effect.forkChild(recoveredTimeoutProgram).pipe(
-                      Effect.map(Option.some)
-                    )
-                  },
-                }
-              )
-
-              const [stdout, stderr, code] = yield* Effect.all([
-                streamToString(process.stdout),
-                streamToString(process.stderr),
-                process.exitCode,
-              ] as const).pipe(
-                Effect.mapError(
-                  (error) =>
-                    new SandboxError({
-                      operation: 'exec',
-                      message: `Failed to execute command: ${input.command}`,
-                      error,
-                    })
-                )
-              )
-
-              yield* Option.match(timeoutFiber, {
-                onNone: () => Effect.void,
-                onSome: Fiber.interrupt,
-              })
-
-              const timedOut = yield* Ref.get(timedOutRef)
-              const result = {
-                stdout: stdout ?? '',
-                stderr: stderr ?? '',
-                exitCode: Number(code),
-              }
-
-              return Match.value(timedOut).pipe(
-                Match.when(true, () =>
-                  ({ ...result, timedOut: true }) satisfies ExecResult
-                ),
-                Match.orElse(() => result satisfies ExecResult)
-              )
-            },
-            Effect.scoped
-          ),
-        }
-
-        // -- Files service --------------------------------------------------
-
-        const readFile = Effect.fn('Files.readFile')(function* (
-          filePath: string
-        ) {
-          const resolved = yield* resolvePath(filePath, 'readFile')
-          const exists = yield* fs.exists(resolved).pipe(
+          const command = ChildProcess.make('/bin/sh', ['-c', input.command], {
+            cwd,
+            env: mergedEnv,
+            extendEnv: true,
+            stdin,
+          })
+          const process = yield* childProcessSpawner.spawn(command).pipe(
             Effect.mapError(
               (error) =>
                 new SandboxError({
-                  operation: 'readFile',
-                  message: `Failed to access file: ${filePath}`,
+                  operation: 'exec',
+                  message: `Failed to start command: ${input.command}`,
                   error,
                 })
             )
           )
 
-          yield* Effect.filterOrFail(
-            Effect.succeed(exists),
-            (value) => value,
-            () =>
+          /**
+           * Kill the process gracefully: SIGTERM → grace period → SIGKILL.
+           * Ignores errors from kill() since the process may already be dead.
+           */
+          const killGracefully = Effect.catch(
+            process.kill({
+              killSignal: 'SIGTERM',
+              forceKillAfter: `${KILL_GRACE_MS} millis`,
+            }),
+            () => Effect.void
+          )
+
+          /**
+           * Collect output and wait for exit. If a timeout is set, fork a
+           * background killer that fires after the deadline. The killer runs
+           * concurrently — it doesn't interfere with stream collection.
+           *
+           * Previous approach raced `process.exitCode` against the timeout
+           * *before* collecting streams. This consumed process state and
+           * caused stdout/stderr to be empty when a timeout was specified
+           * (even if the process finished well before the deadline).
+           */
+          const timedOutRef = yield* Ref.make(false)
+          const markTimedOutAndKill = Effect.andThen(
+            Ref.set(timedOutRef, true),
+            killGracefully
+          )
+          const timeoutFiber = yield* Option.match(
+            Option.fromNullishOr(input.timeout),
+            {
+              onNone: () => Effect.succeed(Option.none()),
+              onSome: (timeout) => {
+                const timeoutAction = Effect.when(
+                  markTimedOutAndKill,
+                  process.isRunning
+                ).pipe(Effect.asVoid)
+                const timeoutProgram = Effect.sleep(timeout).pipe(
+                  Effect.andThen(timeoutAction)
+                )
+                const recoveredTimeoutProgram = Effect.catch(
+                  timeoutProgram,
+                  () => Effect.void
+                )
+
+                return Effect.forkChild(recoveredTimeoutProgram).pipe(
+                  Effect.map(Option.some)
+                )
+              },
+            }
+          )
+
+          const [stdout, stderr, code] = yield* Effect.all([
+            streamToString(process.stdout),
+            streamToString(process.stderr),
+            process.exitCode,
+          ] as const).pipe(
+            Effect.mapError(
+              (error) =>
+                new SandboxError({
+                  operation: 'exec',
+                  message: `Failed to execute command: ${input.command}`,
+                  error,
+                })
+            )
+          )
+
+          yield* Option.match(timeoutFiber, {
+            onNone: () => Effect.void,
+            onSome: Fiber.interrupt,
+          })
+
+          const timedOut = yield* Ref.get(timedOutRef)
+          const result = {
+            stdout: stdout ?? '',
+            stderr: stderr ?? '',
+            exitCode: Number(code),
+          }
+
+          return Match.value(timedOut).pipe(
+            Match.when(
+              true,
+              () => ({ ...result, timedOut: true }) satisfies ExecResult
+            ),
+            Match.orElse(() => result satisfies ExecResult)
+          )
+        }, Effect.scoped),
+      }
+
+      // -- Files service --------------------------------------------------
+
+      const readFile = Effect.fn('Files.readFile')(function* (
+        filePath: string
+      ) {
+        const resolved = yield* resolvePath(filePath, 'readFile')
+        const exists = yield* fs.exists(resolved).pipe(
+          Effect.mapError(
+            (error) =>
               new SandboxError({
                 operation: 'readFile',
-                message: `File not found: ${filePath}`,
+                message: `Failed to access file: ${filePath}`,
+                error,
               })
           )
+        )
 
-          return yield* fs.readFileString(resolved).pipe(
-            Effect.mapError(
-              (error) =>
-                new SandboxError({
-                  operation: 'readFile',
-                  message: `Failed to read file: ${filePath}`,
-                  error,
-                })
-            )
-          )
-        })
+        yield* Effect.filterOrFail(
+          Effect.succeed(exists),
+          (value) => value,
+          () =>
+            new SandboxError({
+              operation: 'readFile',
+              message: `File not found: ${filePath}`,
+            })
+        )
 
-        const writeFile = Effect.fn('Files.writeFile')(function* (
-          filePath: string,
-          content: string
-        ) {
-          const resolved = yield* resolvePath(filePath, 'writeFile')
-
-          // Create parent directories automatically
-          const dir = path.dirname(resolved)
-          yield* fs.makeDirectory(dir, { recursive: true }).pipe(
-            Effect.mapError(
-              (error) =>
-                new SandboxError({
-                  operation: 'writeFile',
-                  message: `Failed to create parent directories for: ${filePath}`,
-                  error,
-                })
-            )
-          )
-
-          yield* fs.writeFileString(resolved, content).pipe(
-            Effect.mapError(
-              (error) =>
-                new SandboxError({
-                  operation: 'writeFile',
-                  message: `Failed to write file: ${filePath}`,
-                  error,
-                })
-            )
-          )
-        })
-
-        const glob = Effect.fn('Files.glob')(function* (pattern: string) {
-          const g = new Bun.Glob(pattern)
-          const entries = yield* Effect.tryPromise({
-            try: async () => {
-              const results: string[] = []
-              for await (const file of g.scan({ cwd: rootDir, dot: false })) {
-                results.push(file)
-              }
-              return results.sort()
-            },
-            catch: (error) =>
+        return yield* fs.readFileString(resolved).pipe(
+          Effect.mapError(
+            (error) =>
               new SandboxError({
-                operation: 'glob',
-                message: `Glob failed for pattern: ${pattern}`,
+                operation: 'readFile',
+                message: `Failed to read file: ${filePath}`,
                 error,
-              }),
-          })
-          return entries
-        })
-
-        const files: Files = { readFile, writeFile, glob }
-
-        return { shell, files } satisfies SandboxSession
+              })
+          )
+        )
       })
+
+      const writeFile = Effect.fn('Files.writeFile')(function* (
+        filePath: string,
+        content: string
+      ) {
+        const resolved = yield* resolvePath(filePath, 'writeFile')
+
+        // Create parent directories automatically
+        const dir = path.dirname(resolved)
+        yield* fs.makeDirectory(dir, { recursive: true }).pipe(
+          Effect.mapError(
+            (error) =>
+              new SandboxError({
+                operation: 'writeFile',
+                message: `Failed to create parent directories for: ${filePath}`,
+                error,
+              })
+          )
+        )
+
+        yield* fs.writeFileString(resolved, content).pipe(
+          Effect.mapError(
+            (error) =>
+              new SandboxError({
+                operation: 'writeFile',
+                message: `Failed to write file: ${filePath}`,
+                error,
+              })
+          )
+        )
+      })
+
+      const glob = Effect.fn('Files.glob')(function* (pattern: string) {
+        const g = new Bun.Glob(pattern)
+        const entries = yield* Effect.tryPromise({
+          try: async () => {
+            const results: string[] = []
+            for await (const file of g.scan({ cwd: rootDir, dot: false })) {
+              results.push(file)
+            }
+            return results.sort()
+          },
+          catch: (error) =>
+            new SandboxError({
+              operation: 'glob',
+              message: `Glob failed for pattern: ${pattern}`,
+              error,
+            }),
+        })
+        return entries
+      })
+
+      const files: Files = { readFile, writeFile, glob }
+
+      return { shell, files } satisfies SandboxSession
+    })
 
     return { acquire }
   })

@@ -156,7 +156,8 @@ const tests = scenarios.map((scenario) => {
     const reason = Match.value(passed).pipe(
       Match.when(true, () => undefined),
       Match.orElse(
-        () => `File content check failed.\n--- Got ---\n${content || '(file not found)'}`
+        () =>
+          `File content check failed.\n--- Got ---\n${content || '(file not found)'}`
       )
     )
 

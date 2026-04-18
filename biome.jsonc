@@ -4,36 +4,36 @@
   "vcs": {
     "enabled": true,
     "clientKind": "git",
-    "useIgnoreFile": true,
+    "useIgnoreFile": true
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!.reference", "!.reference/**"],
+    "includes": ["**", "!.reference", "!.reference/**"]
   },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
     "indentWidth": 2,
-    "lineWidth": 80,
+    "lineWidth": 80
   },
   "javascript": {
     "formatter": {
       "quoteStyle": "single",
       "semicolons": "asNeeded",
-      "trailingCommas": "es5",
-    },
+      "trailingCommas": "es5"
+    }
   },
   "css": {
     "parser": {
-      "tailwindDirectives": true,
-    },
+      "tailwindDirectives": true
+    }
   },
   "json": {
     "formatter": {
-      "trailingCommas": "none",
-    },
+      "trailingCommas": "none"
+    }
   },
   "html": {
-    "experimentalFullSupportEnabled": true,
-  },
+    "experimentalFullSupportEnabled": true
+  }
 }

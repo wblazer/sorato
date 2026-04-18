@@ -72,9 +72,7 @@ export interface ExecCommand {
 
 /** Shell service — execute commands in the sandbox. */
 export interface Shell {
-  readonly exec: (
-    command: ExecCommand
-  ) => Effect<ExecResult, SandboxError>
+  readonly exec: (command: ExecCommand) => Effect<ExecResult, SandboxError>
 }
 
 /** Per-scenario shell service. Tools that execute commands require this in their `R`. */

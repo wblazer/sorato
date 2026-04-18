@@ -35,7 +35,10 @@ if (!response.ok) {
 
 const data = (await response.json()) as ModelsDevResponse
 
-const toCatalogModel = ([id, model]: [string, ModelsDevModel]): CatalogModel => {
+const toCatalogModel = ([id, model]: [
+  string,
+  ModelsDevModel,
+]): CatalogModel => {
   if (model.id !== id) {
     throw new Error(`Model id mismatch: ${id}: ${model.id}`)
   }

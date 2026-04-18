@@ -97,7 +97,9 @@ const isBinaryContent = (raw: string): boolean => {
     const code = sample.charCodeAt(i)
     if (code === 0) return true // null byte → definitely binary
     // Printable: tab(9), newline(10), carriage return(13), space(32)+
-    nonPrintable += Number(code < 32 && code !== 9 && code !== 10 && code !== 13)
+    nonPrintable += Number(
+      code < 32 && code !== 9 && code !== 10 && code !== 13
+    )
   }
   return sample.length > 0 && nonPrintable / sample.length > 0.3
 }
@@ -557,11 +559,13 @@ export const EditFileHandler = {
       for (const op of edits) {
         const result = resolveOp(op, originalLines)
         yield* Match.value(result).pipe(
-          Match.when({ error: Match.string }, ({ error }) =>
-            new SandboxError({
-              operation: 'EditFile',
-              message: error,
-            })
+          Match.when(
+            { error: Match.string },
+            ({ error }) =>
+              new SandboxError({
+                operation: 'EditFile',
+                message: error,
+              })
           ),
           Match.orElse((resolvedEdit) =>
             Effect.sync(() => {

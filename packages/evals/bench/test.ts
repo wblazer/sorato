@@ -103,7 +103,10 @@ export const test = <
     ).pipe(
       Match.when(undefined, () => []),
       Match.orElse((systemPrompt) => [
-        { role: 'system', content: systemPrompt } satisfies Prompt.MessageEncoded,
+        {
+          role: 'system',
+          content: systemPrompt,
+        } satisfies Prompt.MessageEncoded,
       ])
     )
     const conversation = Prompt.make([

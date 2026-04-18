@@ -178,7 +178,9 @@ export const BashHandler = {
       result.exitCode !== 0 && parts.push(`Exit code: ${result.exitCode}`)
 
       result.timedOut &&
-        parts.push(`Command timed out after ${timeoutMs / 1000}s and was killed.`)
+        parts.push(
+          `Command timed out after ${timeoutMs / 1000}s and was killed.`
+        )
 
       // Output
       const outputLines = [truncation.text]

@@ -235,9 +235,7 @@ const openDatabase = (path: string) => {
  * Pass `":memory:"` for an ephemeral in-memory database (useful for tests).
  * The database connection is scoped — it closes when the layer finalizes.
  */
-export const SqliteSession = (options: {
-  readonly path: string
-}) =>
+export const SqliteSession = (options: { readonly path: string }) =>
   Layer.effect(SessionStorage)(
     Effect.gen(function* () {
       const db = yield* Effect.try({
@@ -271,10 +269,14 @@ export const SqliteSession = (options: {
         // Rows come back leaf-to-root; reverse for chronological order
         const encoded = [...rows]
           .reverse()
-          .map((row: MessageRow) => JSON.parse(row.encoded) as Prompt.MessageEncoded)
+          .map(
+            (row: MessageRow) =>
+              JSON.parse(row.encoded) as Prompt.MessageEncoded
+          )
 
         return Effect.try({
-          try: () => Schema.decodeUnknownSync(Prompt.Prompt)({ content: encoded }),
+          try: () =>
+            Schema.decodeUnknownSync(Prompt.Prompt)({ content: encoded }),
           catch: (error) =>
             new StorageError({
               operation: 'conversation',
