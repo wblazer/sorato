@@ -10,80 +10,76 @@ export const MODEL_PROVIDERS = [
     ],
     "models": [
       {
+        "id": "claude-haiku-4-5",
+        "name": "Claude Haiku 4.5 (latest)"
+      },
+      {
         "id": "claude-opus-4-5-20251101",
         "name": "Claude Opus 4.5"
-      },
-      {
-        "id": "claude-opus-4-20250514",
-        "name": "Claude Opus 4"
-      },
-      {
-        "id": "claude-opus-4-5",
-        "name": "Claude Opus 4.5 (latest)"
-      },
-      {
-        "id": "claude-3-7-sonnet-20250219",
-        "name": "Claude Sonnet 3.7"
-      },
-      {
-        "id": "claude-opus-4-6",
-        "name": "Claude Opus 4.6"
-      },
-      {
-        "id": "claude-sonnet-4-5-20250929",
-        "name": "Claude Sonnet 4.5"
-      },
-      {
-        "id": "claude-sonnet-4-6",
-        "name": "Claude Sonnet 4.6"
-      },
-      {
-        "id": "claude-3-5-haiku-20241022",
-        "name": "Claude Haiku 3.5"
-      },
-      {
-        "id": "claude-sonnet-4-0",
-        "name": "Claude Sonnet 4 (latest)"
-      },
-      {
-        "id": "claude-3-haiku-20240307",
-        "name": "Claude Haiku 3"
-      },
-      {
-        "id": "claude-sonnet-4-20250514",
-        "name": "Claude Sonnet 4"
       },
       {
         "id": "claude-3-opus-20240229",
         "name": "Claude Opus 3"
       },
       {
-        "id": "claude-3-5-haiku-latest",
-        "name": "Claude Haiku 3.5 (latest)"
+        "id": "claude-3-5-haiku-20241022",
+        "name": "Claude Haiku 3.5"
       },
       {
-        "id": "claude-opus-4-1-20250805",
-        "name": "Claude Opus 4.1"
+        "id": "claude-sonnet-4-6",
+        "name": "Claude Sonnet 4.6"
       },
       {
         "id": "claude-opus-4-0",
         "name": "Claude Opus 4 (latest)"
       },
       {
+        "id": "claude-3-haiku-20240307",
+        "name": "Claude Haiku 3"
+      },
+      {
+        "id": "claude-sonnet-4-5-20250929",
+        "name": "Claude Sonnet 4.5"
+      },
+      {
+        "id": "claude-3-5-haiku-latest",
+        "name": "Claude Haiku 3.5 (latest)"
+      },
+      {
+        "id": "claude-sonnet-4-0",
+        "name": "Claude Sonnet 4 (latest)"
+      },
+      {
+        "id": "claude-opus-4-5",
+        "name": "Claude Opus 4.5 (latest)"
+      },
+      {
+        "id": "claude-opus-4-1-20250805",
+        "name": "Claude Opus 4.1"
+      },
+      {
         "id": "claude-haiku-4-5-20251001",
         "name": "Claude Haiku 4.5"
+      },
+      {
+        "id": "claude-sonnet-4-20250514",
+        "name": "Claude Sonnet 4"
+      },
+      {
+        "id": "claude-opus-4-6",
+        "name": "Claude Opus 4.6"
+      },
+      {
+        "id": "claude-3-7-sonnet-20250219",
+        "name": "Claude Sonnet 3.7"
       },
       {
         "id": "claude-sonnet-4-5",
         "name": "Claude Sonnet 4.5 (latest)"
       },
       {
-        "id": "claude-3-7-sonnet-latest",
-        "name": "Claude Sonnet 3.7 (latest)"
-      },
-      {
-        "id": "claude-haiku-4-5",
-        "name": "Claude Haiku 4.5 (latest)"
+        "id": "claude-opus-4-20250514",
+        "name": "Claude Opus 4"
       }
     ]
   },
@@ -95,128 +91,124 @@ export const MODEL_PROVIDERS = [
     ],
     "models": [
       {
-        "id": "o1-pro",
-        "name": "o1-pro"
-      },
-      {
-        "id": "o3-mini",
-        "name": "o3-mini"
-      },
-      {
-        "id": "gpt-5-pro",
-        "name": "GPT-5 Pro"
-      },
-      {
-        "id": "gpt-5.2-chat-latest",
-        "name": "GPT-5.2 Chat"
-      },
-      {
-        "id": "gpt-5",
-        "name": "GPT-5"
-      },
-      {
-        "id": "gpt-4-turbo",
-        "name": "GPT-4 Turbo"
-      },
-      {
-        "id": "gpt-4o",
-        "name": "GPT-4o"
-      },
-      {
-        "id": "gpt-5-mini",
-        "name": "GPT-5 Mini"
-      },
-      {
-        "id": "gpt-4o-mini",
-        "name": "GPT-4o mini"
-      },
-      {
         "id": "gpt-5.1-codex-max",
         "name": "GPT-5.1 Codex Max"
-      },
-      {
-        "id": "gpt-4.1",
-        "name": "GPT-4.1"
-      },
-      {
-        "id": "gpt-5.1-chat-latest",
-        "name": "GPT-5.1 Chat"
-      },
-      {
-        "id": "o1",
-        "name": "o1"
-      },
-      {
-        "id": "codex-mini-latest",
-        "name": "Codex Mini"
-      },
-      {
-        "id": "o3",
-        "name": "o3"
       },
       {
         "id": "gpt-4o-2024-05-13",
         "name": "GPT-4o (2024-05-13)"
       },
       {
-        "id": "gpt-4",
-        "name": "GPT-4"
+        "id": "gpt-5.2-pro",
+        "name": "GPT-5.2 Pro"
       },
       {
-        "id": "gpt-4o-2024-11-20",
-        "name": "GPT-4o (2024-11-20)"
-      },
-      {
-        "id": "gpt-5.2",
-        "name": "GPT-5.2"
-      },
-      {
-        "id": "o4-mini-deep-research",
-        "name": "o4-mini-deep-research"
-      },
-      {
-        "id": "gpt-5.1",
-        "name": "GPT-5.1"
-      },
-      {
-        "id": "gpt-4.1-mini",
-        "name": "GPT-4.1 mini"
+        "id": "gpt-5-mini",
+        "name": "GPT-5 Mini"
       },
       {
         "id": "gpt-5-nano",
         "name": "GPT-5 Nano"
       },
       {
+        "id": "gpt-4-turbo",
+        "name": "GPT-4 Turbo"
+      },
+      {
+        "id": "gpt-5.2",
+        "name": "GPT-5.2"
+      },
+      {
         "id": "o3-pro",
         "name": "o3-pro"
       },
       {
-        "id": "gpt-4o-2024-08-06",
-        "name": "GPT-4o (2024-08-06)"
+        "id": "gpt-4o-mini",
+        "name": "GPT-4o mini"
       },
       {
-        "id": "gpt-4.1-nano",
-        "name": "GPT-4.1 nano"
-      },
-      {
-        "id": "gpt-5-codex",
-        "name": "GPT-5-Codex"
+        "id": "o4-mini-deep-research",
+        "name": "o4-mini-deep-research"
       },
       {
         "id": "o4-mini",
         "name": "o4-mini"
       },
       {
+        "id": "gpt-5.2-chat-latest",
+        "name": "GPT-5.2 Chat"
+      },
+      {
+        "id": "gpt-4o-2024-08-06",
+        "name": "GPT-4o (2024-08-06)"
+      },
+      {
+        "id": "gpt-5.1",
+        "name": "GPT-5.1"
+      },
+      {
+        "id": "o1",
+        "name": "o1"
+      },
+      {
         "id": "o3-deep-research",
         "name": "o3-deep-research"
+      },
+      {
+        "id": "o3-mini",
+        "name": "o3-mini"
+      },
+      {
+        "id": "o1-pro",
+        "name": "o1-pro"
+      },
+      {
+        "id": "gpt-4",
+        "name": "GPT-4"
+      },
+      {
+        "id": "gpt-5-codex",
+        "name": "GPT-5-Codex"
+      },
+      {
+        "id": "gpt-5.1-chat-latest",
+        "name": "GPT-5.1 Chat"
+      },
+      {
+        "id": "gpt-4.1-nano",
+        "name": "GPT-4.1 nano"
+      },
+      {
+        "id": "o3",
+        "name": "o3"
+      },
+      {
+        "id": "gpt-5-pro",
+        "name": "GPT-5 Pro"
+      },
+      {
+        "id": "gpt-4o",
+        "name": "GPT-4o"
+      },
+      {
+        "id": "gpt-5",
+        "name": "GPT-5"
+      },
+      {
+        "id": "gpt-4.1",
+        "name": "GPT-4.1"
+      },
+      {
+        "id": "gpt-4.1-mini",
+        "name": "GPT-4.1 mini"
       },
       {
         "id": "gpt-5.1-codex",
         "name": "GPT-5.1 Codex"
       },
       {
-        "id": "gpt-5.2-pro",
-        "name": "GPT-5.2 Pro"
+        "id": "gpt-4o-2024-11-20",
+        "name": "GPT-4o (2024-11-20)"
       }
     ]
   }
