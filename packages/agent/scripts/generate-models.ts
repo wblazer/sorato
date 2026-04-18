@@ -1,6 +1,7 @@
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { MODEL_CATALOG_OVERRIDES } from '../src/server/model-catalog-overrides.ts'
 import { SUPPORTED_PROVIDERS } from '../src/server/provider-definitions.ts'
 
 type ModelsDevModel = {
@@ -19,6 +20,11 @@ type ModelsDevProvider = {
 
 type ModelsDevResponse = Record<string, ModelsDevProvider>
 
+type CatalogModel = {
+  readonly id: string
+  readonly name: string
+}
+
 const here = dirname(fileURLToPath(import.meta.url))
 const out = join(here, '..', 'src', 'server', 'models.generated.ts')
 
@@ -28,6 +34,17 @@ if (!response.ok) {
 }
 
 const data = (await response.json()) as ModelsDevResponse
+
+const toCatalogModel = ([id, model]: [string, ModelsDevModel]): CatalogModel => {
+  if (model.id !== id) {
+    throw new Error(`Model id mismatch: ${id}: ${model.id}`)
+  }
+
+  return {
+    id,
+    name: model.name,
+  }
+}
 
 const catalog = SUPPORTED_PROVIDERS.map((provider) => {
   const source = data[provider.id]
@@ -41,24 +58,19 @@ const catalog = SUPPORTED_PROVIDERS.map((provider) => {
   const models = Object.entries(source.models)
     .filter(([, model]) => model.tool_call === true)
     .filter(([, model]) => model.status !== 'deprecated')
-    .filter(([id, model]) => {
-      if (model.id !== id) {
-        throw new Error(
-          `Model id mismatch for ${provider.id}/${id}: ${model.id}`
-        )
-      }
-      return provider.supportedModels.has(id as never)
-    })
-    .map(([id, model]) => ({
-      id,
-      name: model.name,
-    }))
+    .map(toCatalogModel)
+
+  const existing = new Set(models.map((model) => model.id))
+  const overrides = MODEL_CATALOG_OVERRIDES[provider.id]?.add ?? []
 
   return {
     id: source.id,
     name: source.name,
     env: source.env,
-    models,
+    models: [
+      ...models,
+      ...overrides.filter((model) => !existing.has(model.id)),
+    ],
   }
 })
 

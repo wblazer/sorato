@@ -18,7 +18,6 @@ const toEntry = (
   const adapter = PROVIDER_ADAPTERS[provider.id];
 
   if (!adapter?.available(provider.env)) return [];
-  if (!adapter.supportsModel(model.id)) return [];
 
   return [
     {

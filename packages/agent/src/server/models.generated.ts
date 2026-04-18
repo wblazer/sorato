@@ -10,6 +10,10 @@ export const MODEL_PROVIDERS = [
     ],
     "models": [
       {
+        "id": "claude-3-sonnet-20240229",
+        "name": "Claude Sonnet 3"
+      },
+      {
         "id": "claude-haiku-4-5",
         "name": "Claude Haiku 4.5 (latest)"
       },
@@ -26,12 +30,20 @@ export const MODEL_PROVIDERS = [
         "name": "Claude Haiku 3.5"
       },
       {
+        "id": "claude-3-5-sonnet-20241022",
+        "name": "Claude Sonnet 3.5 v2"
+      },
+      {
         "id": "claude-sonnet-4-6",
         "name": "Claude Sonnet 4.6"
       },
       {
         "id": "claude-opus-4-0",
         "name": "Claude Opus 4 (latest)"
+      },
+      {
+        "id": "claude-opus-4-7",
+        "name": "Claude Opus 4.7"
       },
       {
         "id": "claude-3-haiku-20240307",
@@ -46,8 +58,16 @@ export const MODEL_PROVIDERS = [
         "name": "Claude Haiku 3.5 (latest)"
       },
       {
+        "id": "claude-opus-4-1",
+        "name": "Claude Opus 4.1 (latest)"
+      },
+      {
         "id": "claude-sonnet-4-0",
         "name": "Claude Sonnet 4 (latest)"
+      },
+      {
+        "id": "claude-3-5-sonnet-20240620",
+        "name": "Claude Sonnet 3.5"
       },
       {
         "id": "claude-opus-4-5",
@@ -103,12 +123,20 @@ export const MODEL_PROVIDERS = [
         "name": "GPT-5.2 Pro"
       },
       {
+        "id": "gpt-5.3-chat-latest",
+        "name": "GPT-5.3 Chat (latest)"
+      },
+      {
         "id": "gpt-5-mini",
         "name": "GPT-5 Mini"
       },
       {
         "id": "gpt-5-nano",
         "name": "GPT-5 Nano"
+      },
+      {
+        "id": "gpt-5.3-codex",
+        "name": "GPT-5.3 Codex"
       },
       {
         "id": "gpt-4-turbo",
@@ -131,12 +159,28 @@ export const MODEL_PROVIDERS = [
         "name": "o4-mini-deep-research"
       },
       {
+        "id": "gpt-5.4-mini",
+        "name": "GPT-5.4 mini"
+      },
+      {
         "id": "o4-mini",
         "name": "o4-mini"
       },
       {
+        "id": "gpt-5.4-nano",
+        "name": "GPT-5.4 nano"
+      },
+      {
+        "id": "gpt-5.2-codex",
+        "name": "GPT-5.2 Codex"
+      },
+      {
         "id": "gpt-5.2-chat-latest",
         "name": "GPT-5.2 Chat"
+      },
+      {
+        "id": "gpt-5.1-codex-mini",
+        "name": "GPT-5.1 Codex mini"
       },
       {
         "id": "gpt-4o-2024-08-06",
@@ -149,6 +193,10 @@ export const MODEL_PROVIDERS = [
       {
         "id": "o1",
         "name": "o1"
+      },
+      {
+        "id": "gpt-5.4-pro",
+        "name": "GPT-5.4 Pro"
       },
       {
         "id": "o3-deep-research",
@@ -171,8 +219,16 @@ export const MODEL_PROVIDERS = [
         "name": "GPT-5-Codex"
       },
       {
+        "id": "gpt-5.4",
+        "name": "GPT-5.4"
+      },
+      {
         "id": "gpt-5.1-chat-latest",
         "name": "GPT-5.1 Chat"
+      },
+      {
+        "id": "gpt-5.3-codex-spark",
+        "name": "GPT-5.3 Codex Spark"
       },
       {
         "id": "gpt-4.1-nano",
