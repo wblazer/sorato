@@ -13,7 +13,7 @@
 </script>
 
 <div data-slot="command-input-wrapper" class="p-1 pb-0">
-  <InputGroup.Root class="h-8! bg-background">
+  <InputGroup.Root class="h-8! bg-surface">
     <CommandPrimitive.Input
       data-slot="command-input"
       class={cn(
@@ -25,7 +25,7 @@
       bind:value
     />
     <InputGroup.Addon>
-      <MagnifyingGlassIcon class="size-3.5 shrink-0 text-muted" />
+      <MagnifyingGlassIcon class="size-3.5 shrink-0 text-muted-foreground" />
     </InputGroup.Addon>
   </InputGroup.Root>
 </div>

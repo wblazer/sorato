@@ -29,12 +29,12 @@
 </script>
 
 <div class="flex h-full flex-col items-center justify-center p-8">
-  <div class="flex h-16 w-16 items-center justify-center rounded-full bg-background">
-    <HardDrivesIcon class="h-8 w-8 text-muted" />
+  <div class="flex h-16 w-16 items-center justify-center rounded-full bg-surface">
+    <HardDrivesIcon class="h-8 w-8 text-muted-foreground" />
   </div>
 
   <h2 class="mt-4 text-lg font-semibold">No Server Connection</h2>
-  <p class="mt-2 max-w-sm text-center text-sm text-muted">
+  <p class="mt-2 max-w-sm text-center text-sm text-muted-foreground">
     You need to connect to an agents server to get started. Add a connection to
     your local server or a remote instance.
   </p>
@@ -43,8 +43,8 @@
     Add Connection
   </Button>
 
-  <p class="mt-4 text-xs text-muted">
-    Example: <code class="rounded bg-background px-1 py-0.5"
+  <p class="mt-4 text-xs text-muted-foreground">
+    Example: <code class="rounded bg-surface px-1 py-0.5"
       >http://localhost:3100</code
     >
   </p>

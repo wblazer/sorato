@@ -103,7 +103,7 @@
       {disabled}
     >
       <span class="truncate">{triggerLabel}</span>
-      <CaretDownIcon class="shrink-0 text-muted" />
+      <CaretDownIcon class="shrink-0 text-muted-foreground" />
     </Button>
   </Popover.Trigger>
 
@@ -115,7 +115,7 @@
       <Command.Input placeholder="Search models..." />
       <Command.List id={listboxId} class="h-60 px-1 pb-1">
         {#if loading}
-          <div class="px-3 py-6 text-center text-sm text-muted">
+          <div class="px-3 py-6 text-center text-sm text-muted-foreground">
             Loading models...
           </div>
         {:else}

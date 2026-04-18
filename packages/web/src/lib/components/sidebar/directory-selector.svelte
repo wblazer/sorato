@@ -42,7 +42,7 @@
       function directoryButtonClass(isSelected: boolean) {
         return cn(
           'flex w-full flex-col rounded-sm px-2.5 py-2 text-left transition-colors',
-          isSelected ? 'bg-hover text-foreground' : 'hover:bg-hover'
+          isSelected ? 'bg-surface-hover text-foreground' : 'hover:bg-surface-hover'
         )
       }
 
@@ -72,7 +72,7 @@
     bind:this={triggerEl}
     class={cn(
       'flex w-full items-center gap-3 rounded-md px-3 py-2.5',
-      'hover:bg-hover transition-colors',
+       'hover:bg-surface-hover transition-colors',
       'text-left'
     )}
     onclick={toggleOpen}
@@ -82,15 +82,15 @@
         <div class="truncate text-sm font-semibold text-foreground">
           {directoryName}
         </div>
-        <div class="truncate text-xs text-muted">
+        <div class="truncate text-xs text-muted-foreground">
           {sessionStore.selectedDirectory}
         </div>
       {:else}
-        <div class="text-sm text-muted">No directory selected</div>
+        <div class="text-sm text-muted-foreground">No directory selected</div>
       {/if}
     </div>
     <CaretUpDownIcon
-      class={cn('size-4 shrink-0 text-muted transition-transform')}
+      class={cn('size-4 shrink-0 text-muted-foreground transition-transform')}
     />
   </button>
 
@@ -98,7 +98,7 @@
     <div
       class={cn(
         'absolute top-full left-0 z-50 mt-1 w-full',
-        'rounded-md border bg-background p-1 shadow-md',
+        'rounded-md border bg-surface-elevated p-1 shadow-md',
         'animate-in fade-in-0 zoom-in-95'
       )}
     >
@@ -109,7 +109,7 @@
           onclick={() => selectDirectory(dir)}
         >
           <span class="truncate text-sm font-medium">{itemDirectoryName(dir)}</span>
-          <span class="truncate text-xs text-muted">{dir}</span>
+          <span class="truncate text-xs text-muted-foreground">{dir}</span>
         </button>
       {/each}
 
@@ -119,7 +119,7 @@
         type="button"
         class={cn(
           'flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm transition-colors',
-          'text-muted hover:bg-hover hover:text-foreground'
+          'text-muted-foreground hover:bg-surface-hover hover:text-foreground'
         )}
         onclick={handleOpenDirectory}
       >

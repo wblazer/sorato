@@ -144,7 +144,7 @@
     <div class="grid gap-4 py-4">
       <div class="grid gap-2">
         <label for="url" class="text-sm font-medium">
-          Server URL <span class="text-red">*</span>
+          Server URL <span class="text-danger">*</span>
         </label>
         <div class="relative">
           <input
@@ -153,16 +153,16 @@
             placeholder="http://localhost:3100"
             bind:value={url}
             onblur={handleUrlBlur}
-            class="flex h-9 w-full rounded-md border border-border bg-background px-3 py-1 text-sm transition-colors placeholder:text-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue disabled:cursor-not-allowed"
+            class="flex h-9 w-full rounded-md border border-border bg-surface px-3 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed"
           />
           <div
             class="absolute right-3 top-1/2 -translate-y-1/2 {checkStatus === 'success'
-              ? 'text-green'
+              ? 'text-accent'
               : checkStatus === 'error'
-                ? 'text-red'
+                ? 'text-danger'
                 : checkStatus === 'loading'
-                  ? 'text-yellow'
-                  : 'text-muted'}"
+                  ? 'text-warning'
+                  : 'text-muted-foreground'}"
           >
             {#if checkStatus === 'loading'}
               <span class="animate-spin">{getStatusIcon()}</span>
@@ -172,25 +172,25 @@
           </div>
         </div>
         {#if urlError}
-          <p class="text-xs text-red">{urlError}</p>
+          <p class="text-xs text-danger">{urlError}</p>
         {:else if checkStatus === 'success'}
-          <p class="text-xs text-green">Server connected successfully</p>
+          <p class="text-xs text-accent">Server connected successfully</p>
         {/if}
-        <p class="text-xs text-muted">
+        <p class="text-xs text-muted-foreground">
           The server URL will be checked when you unfocus the field.
         </p>
       </div>
 
       <div class="grid gap-2">
         <label for="name" class="text-sm font-medium">
-          Display Name <span class="text-muted">(optional)</span>
+          Display Name <span class="text-muted-foreground">(optional)</span>
         </label>
         <input
           id="name"
           type="text"
           placeholder="My Local Server"
           bind:value={name}
-          class="flex h-9 w-full rounded-md border border-border bg-background px-3 py-1 text-sm transition-colors placeholder:text-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue disabled:cursor-not-allowed"
+          class="flex h-9 w-full rounded-md border border-border bg-surface px-3 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed"
         />
       </div>
     </div>

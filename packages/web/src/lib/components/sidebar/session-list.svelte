@@ -25,7 +25,7 @@
       function sessionButtonClass(isSelected: boolean) {
         return cn(
           'flex w-full flex-col rounded-md px-3 py-2 text-left transition-colors',
-          isSelected ? 'bg-hover text-foreground' : 'hover:bg-hover'
+          isSelected ? 'bg-surface-hover text-foreground' : 'hover:bg-surface-hover'
         )
       }
 
@@ -53,13 +53,13 @@
 
   <div class="flex-1 overflow-y-auto px-2 pb-2">
     {#if sessionStore.loading && sessionStore.sessions.length === 0}
-      <p class="px-3 py-4 text-center text-xs text-muted">Loading sessions…</p>
+      <p class="px-3 py-4 text-center text-xs text-muted-foreground">Loading sessions…</p>
     {:else if sessionStore.error}
-      <p class="px-3 py-4 text-center text-xs text-red">
+      <p class="px-3 py-4 text-center text-xs text-danger">
         {sessionStore.error}
       </p>
     {:else if sessionStore.filteredSessions.length === 0}
-      <p class="px-3 py-4 text-center text-xs text-muted">No sessions yet</p>
+      <p class="px-3 py-4 text-center text-xs text-muted-foreground">No sessions yet</p>
     {:else}
       {#each sessionStore.filteredSessions as session (session.id)}
         <button
@@ -73,11 +73,11 @@
             </span>
             {#if isSessionRunning(session.status)}
               <span
-                class="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-blue"
+                class="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent"
               ></span>
             {/if}
           </div>
-          <span class="text-xs text-muted">
+          <span class="text-xs text-muted-foreground">
             {formatRelativeTime(session.updatedAt)}
           </span>
         </button>

@@ -190,7 +190,7 @@
       function entryButtonClass(isSelected: boolean) {
         return cn(
           'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors',
-          isSelected ? 'bg-hover text-foreground' : 'text-foreground hover:bg-hover'
+          isSelected ? 'bg-surface-hover text-foreground' : 'text-foreground hover:bg-surface-hover'
         )
       }
 
@@ -213,7 +213,7 @@
 >
   {#snippet items()}
     {#if error}
-      <div class="px-3 py-6 text-center text-sm text-muted">
+      <div class="px-3 py-6 text-center text-sm text-muted-foreground">
         {error}
       </div>
     {:else}
@@ -225,9 +225,9 @@
           onclick={() => handlePick(entry.path)}
           onmouseenter={() => handleEntryMouseEnter(i)}
         >
-          <FolderIcon class="size-4 shrink-0 text-muted" />
+          <FolderIcon class="size-4 shrink-0 text-muted-foreground" />
           <span class="min-w-0 truncate">
-            <span class="text-muted">{displayPath(entry).dim}</span><span
+            <span class="text-muted-foreground">{displayPath(entry).dim}</span><span
               class="font-medium">{displayPath(entry).bright}</span
             >
           </span>
@@ -237,7 +237,7 @@
   {/snippet}
 
   {#snippet empty()}
-    <div class="px-3 py-6 text-center text-sm text-muted">
+    <div class="px-3 py-6 text-center text-sm text-muted-foreground">
       {error ?? 'No directories found'}
     </div>
   {/snippet}

@@ -67,7 +67,7 @@
       <div class="min-w-0 flex-1">
         <h1 class="text-sm font-semibold text-foreground">New Session</h1>
         {#if sessionStore.selectedDirectory}
-          <span class="text-xs text-muted">
+          <span class="text-xs text-muted-foreground">
             {sessionStore.selectedDirectory}
           </span>
         {/if}
@@ -80,15 +80,15 @@
     class="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center gap-4 px-6 py-8 text-center"
   >
     <div>
-      <p class="text-sm text-muted">
+      <p class="text-sm text-muted-foreground">
         Start a conversation with the agent.
       </p>
       {#if !sessionStore.selectedDirectory}
-        <p class="mt-2 text-xs text-red">Select a directory first.</p>
+        <p class="mt-2 text-xs text-danger">Select a directory first.</p>
       {:else if modelsStore.error}
-        <p class="mt-2 text-xs text-red">{modelsStore.error}</p>
+        <p class="mt-2 text-xs text-danger">{modelsStore.error}</p>
       {:else if !modelsStore.loading && modelsStore.models.length === 0}
-        <p class="mt-2 text-xs text-red">
+        <p class="mt-2 text-xs text-danger">
           No models available on this server.
         </p>
       {/if}

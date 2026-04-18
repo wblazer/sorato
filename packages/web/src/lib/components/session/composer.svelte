@@ -76,11 +76,11 @@
         {placeholder}
         {disabled}
         rows={1}
-        class="relative z-10 min-h-[32px] w-full max-h-[220px] rounded-lg border border-border bg-raised px-4 py-4 shadow-sm outline-none focus-visible:border-blue focus-visible:ring-0 md:text-sm"
+        class="relative z-10 min-h-[32px] w-full max-h-[220px] rounded-lg border border-border bg-surface px-4 py-4 shadow-sm outline-none focus-visible:border-ring focus-visible:ring-0 md:text-sm"
       />
 
       <div
-        class="relative -mt-2 flex w-full flex-wrap items-center gap-2 rounded-b-lg border border-border bg-background px-1.5 pb-1 pt-3 text-muted shadow-sm sm:flex-nowrap"
+        class="relative -mt-2 flex w-full flex-wrap items-center gap-2 rounded-b-lg border border-border bg-surface-elevated px-1.5 pb-1 pt-3 text-muted-foreground shadow-sm sm:flex-nowrap"
       >
         <div class="flex min-w-0 flex-1 items-center gap-1">
           <Button
@@ -88,7 +88,7 @@
             type="button"
             variant="ghost"
             size="icon"
-            class="shrink-0 text-muted"
+            class="shrink-0 text-muted-foreground"
             title="Attach file"
             {disabled}
           >
@@ -113,7 +113,7 @@
               disabled={isStopping}
               variant="destructive"
               size="icon-lg"
-              class="rounded-full bg-red text-background hover:bg-red"
+              class="rounded-full"
               title={isStopping ? 'Stopping...' : 'Stop (Esc)'}
             >
               <StopIcon weight="fill" />
@@ -123,7 +123,7 @@
               onclick={handleSubmit}
               disabled={disabled || !input.trim()}
               size="icon-lg"
-              class="bg-blue text-background hover:bg-blue"
+              class="rounded-full"
               title="Send message"
             >
               <ArrowUpIcon />
@@ -137,11 +137,11 @@
   {#if isRunning}
     <div class="mt-2 flex items-center justify-end px-1">
       {#if isStopping}
-        <span class="text-[11px] text-muted">Stopping...</span>
+        <span class="text-[11px] text-muted-foreground">Stopping...</span>
       {:else}
-        <span class="text-[11px] text-muted">
+        <span class="text-[11px] text-muted-foreground">
           Press <kbd
-            class="rounded border bg-background px-1 py-0.5 font-mono text-[10px]"
+            class="rounded border bg-surface px-1 py-0.5 font-mono text-[10px]"
             >Esc</kbd
           >
           to stop

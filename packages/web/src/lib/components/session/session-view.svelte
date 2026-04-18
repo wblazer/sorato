@@ -143,24 +143,24 @@
         <h1 class="text-sm font-semibold text-foreground">
           {title ?? 'Untitled'}
         </h1>
-        <span class="text-xs text-muted">{sessionId.slice(0, 8)}</span>
+        <span class="text-xs text-muted-foreground">{sessionId.slice(0, 8)}</span>
       </div>
 
       {#if isStopping}
         <span
-          class="flex items-center gap-1.5 rounded-full bg-background px-2 py-0.5 text-muted"
+          class="flex items-center gap-1.5 rounded-full bg-surface px-2 py-0.5 text-muted-foreground"
         >
           <span
-            class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-background"
+            class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground"
           ></span>
           <span class="text-[10px] font-medium">stopping</span>
         </span>
       {:else if isRunning}
         <span
-          class="flex items-center gap-1.5 rounded-full bg-background px-2 py-0.5 text-blue"
+          class="flex items-center gap-1.5 rounded-full bg-surface px-2 py-0.5 text-accent"
         >
           <span
-            class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-blue"
+            class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent"
           ></span>
           <span class="text-[10px] font-medium">live</span>
         </span>
@@ -174,19 +174,19 @@
       <div
         class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
       >
-        <span class="text-sm text-muted">Loading messages...</span>
+        <span class="text-sm text-muted-foreground">Loading messages...</span>
       </div>
     {:else if messagesStore.error}
       <div
         class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
       >
-        <span class="text-sm text-red">{messagesStore.error}</span>
+        <span class="text-sm text-danger">{messagesStore.error}</span>
       </div>
     {:else if messagesStore.loaded && messagesStore.messages.length === 0 && !isRunning}
       <div
         class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
       >
-        <span class="text-sm text-muted">No messages yet</span>
+        <span class="text-sm text-muted-foreground">No messages yet</span>
       </div>
     {:else if messagesStore.loaded || isRunning}
       <div

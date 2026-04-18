@@ -16,21 +16,21 @@
 {:else if part.type === 'reasoning'}
   <details class="group">
     <summary
-      class="cursor-pointer select-none text-sm font-medium text-muted hover:text-foreground"
+      class="cursor-pointer select-none text-sm font-medium text-muted-foreground hover:text-foreground"
     >
       <span class="inline-flex items-center gap-1.5">
-        <span class="inline-block h-1.5 w-1.5 rounded-full bg-background"></span>
+        <span class="inline-block h-1.5 w-1.5 rounded-full bg-surface"></span>
         reasoning
       </span>
     </summary>
     <div
-      class="mt-2 whitespace-pre-wrap break-words border-l border-border pl-3 text-sm text-muted"
+      class="mt-2 whitespace-pre-wrap break-words border-l border-border pl-3 text-sm text-muted-foreground"
     >
       {part.text}
     </div>
   </details>
 {:else if part.type === 'tool-call'}
-  <div class="overflow-hidden rounded-md border border-border bg-background">
+  <div class="overflow-hidden rounded-md border border-border bg-surface">
     <div class="border-b border-border px-2.5 py-2 text-sm text-foreground">
       <span class="font-semibold">{part.name}</span>
     </div>
@@ -46,12 +46,12 @@
 {:else if part.type === 'tool-result'}
   <div
     class="overflow-hidden rounded-md border {part.isFailure
-      ? 'border-red bg-background'
-      : 'border-border bg-background'}"
+      ? 'border-danger bg-surface'
+      : 'border-border bg-surface'}"
   >
     <div
       class="border-b px-2.5 py-2 text-sm {part.isFailure
-        ? 'border-red text-red'
+        ? 'border-danger text-danger'
         : 'border-border text-foreground'}"
     >
       <span class="font-semibold">{part.name} Result</span>
@@ -66,11 +66,11 @@
   </div>
 {:else if part.type === 'file'}
   <div class="flex items-center gap-2">
-    <span class="inline-block h-1.5 w-1.5 rounded-full bg-background"></span>
-    <span class="text-sm font-medium text-muted">file</span>
+    <span class="inline-block h-1.5 w-1.5 rounded-full bg-surface"></span>
+    <span class="text-sm font-medium text-muted-foreground">file</span>
     {#if part.fileName}
-      <code class="text-sm text-muted">{part.fileName}</code>
+      <code class="text-sm text-muted-foreground">{part.fileName}</code>
     {/if}
-    <span class="text-sm text-muted">{part.mediaType}</span>
+    <span class="text-sm text-muted-foreground">{part.mediaType}</span>
   </div>
 {/if}

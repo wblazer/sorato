@@ -24,10 +24,10 @@
 
 <div class="flex flex-col gap-2 py-2.5">
   {#if parts.length === 0}
-    <span class="text-xs italic text-muted">(empty)</span>
+    <span class="text-xs italic text-muted-foreground">(empty)</span>
   {:else if isUser}
     <div
-      class="ml-auto w-fit max-w-[min(42rem,85%)] rounded-lg border border-blue bg-blue text-background shadow-sm"
+      class="ml-auto w-fit max-w-[min(42rem,85%)] rounded-lg border border-accent bg-accent text-accent-foreground shadow-sm"
     >
       <div class="flex flex-col gap-3 px-3 py-3">
         {#each parts as part}
@@ -37,7 +37,7 @@
     </div>
   {:else if isSystem}
     <div
-      class="w-full overflow-hidden rounded-lg border border-border bg-background text-foreground shadow-sm"
+      class="w-full overflow-hidden rounded-lg border border-border bg-surface text-foreground shadow-sm"
     >
       <div
         class="border-b border-border px-3 py-2 text-sm font-semibold text-foreground"

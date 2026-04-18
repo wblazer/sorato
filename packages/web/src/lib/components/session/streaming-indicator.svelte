@@ -21,7 +21,7 @@
             class="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed"
           >
             {part.text}{#if isRunning}<span
-                class="inline-block h-4 w-0.5 animate-pulse bg-blue"
+                class="inline-block h-4 w-0.5 animate-pulse bg-accent"
               ></span>{/if}
           </div>
         {:else}
@@ -31,14 +31,14 @@
     {:else if isRunning}
       <div class="flex items-center gap-1.5">
         <span
-          class="inline-block h-1 w-1 animate-pulse rounded-full bg-background"
+          class="inline-block h-1 w-1 animate-pulse rounded-full bg-muted-foreground"
         ></span>
         <span
-          class="inline-block h-1 w-1 animate-pulse rounded-full bg-background"
+          class="inline-block h-1 w-1 animate-pulse rounded-full bg-muted-foreground"
           style="animation-delay: 150ms"
         ></span>
         <span
-          class="inline-block h-1 w-1 animate-pulse rounded-full bg-background"
+          class="inline-block h-1 w-1 animate-pulse rounded-full bg-muted-foreground"
           style="animation-delay: 300ms"
         ></span>
       </div>
