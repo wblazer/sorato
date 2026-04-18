@@ -1,26 +1,41 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js'
-  import { sessionStore } from '$lib/stores/sessions.svelte.js'
-  import { cn } from '$lib/utils.js'
-  import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
+    import { sessionStore } from '$lib/stores/sessions.svelte.js'
+    import { cn } from '$lib/utils.js'
+    import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
 
-  function formatRelativeTime(timestamp: number): string {
-    const seconds = Math.floor((Date.now() - timestamp) / 1000)
+    function formatRelativeTime(timestamp: number): string {
+      const seconds = Math.floor((Date.now() - timestamp) / 1000)
 
-    if (seconds < 60) return 'just now'
+      if (seconds < 60) return 'just now'
 
-    const minutes = Math.floor(seconds / 60)
-    if (minutes < 60) return `${minutes}m ago`
+      const minutes = Math.floor(seconds / 60)
+      if (minutes < 60) return `${minutes}m ago`
 
-    const hours = Math.floor(minutes / 60)
-    if (hours < 24) return `${hours}h ago`
+      const hours = Math.floor(minutes / 60)
+      if (hours < 24) return `${hours}h ago`
 
-    const days = Math.floor(hours / 24)
-    if (days < 30) return `${days}d ago`
+      const days = Math.floor(hours / 24)
+      if (days < 30) return `${days}d ago`
 
-    const months = Math.floor(days / 30)
-    return `${months}mo ago`
-  }
+      const months = Math.floor(days / 30)
+      return `${months}mo ago`
+    }
+
+    function sessionButtonClass(isSelected: boolean) {
+      return cn(
+        'flex w-full flex-col rounded-md px-3 py-2 text-left transition-colors',
+        isSelected ? 'bg-hover text-foreground' : 'hover:bg-hover'
+      )
+    }
+
+    function isSessionSelected(sessionId: string) {
+      return sessionId === sessionStore.selectedSessionId
+    }
+
+    function isSessionRunning(status: string) {
+      return status === 'running'
+    }
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col" data-slot="session-list">
@@ -47,20 +62,16 @@
       <p class="px-3 py-4 text-center text-xs text-muted">No sessions yet</p>
     {:else}
       {#each sessionStore.filteredSessions as session (session.id)}
-        {@const isSelected = session.id === sessionStore.selectedSessionId}
-        {@const running = session.status === 'running'}
         <button
-          class={cn(
-            'flex w-full flex-col rounded-md px-3 py-2 text-left transition-colors',
-            isSelected ? 'bg-hover text-foreground' : 'hover:bg-hover'
-          )}
+          type="button"
+          class={sessionButtonClass(isSessionSelected(session.id))}
           onclick={() => sessionStore.selectSession(session.id)}
         >
           <div class="flex items-center gap-2">
             <span class="min-w-0 truncate text-sm text-foreground">
               {session.title ?? 'Untitled'}
             </span>
-            {#if running}
+            {#if isSessionRunning(session.status)}
               <span
                 class="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-blue"
               ></span>

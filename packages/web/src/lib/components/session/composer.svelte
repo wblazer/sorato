@@ -1,68 +1,68 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js'
-  import { Textarea } from '$lib/components/ui/textarea/index.js'
-  import type { AvailableModel } from '$lib/types.js'
-  import ArrowUpIcon from 'phosphor-svelte/lib/ArrowUpIcon'
-  import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
-  import StopIcon from 'phosphor-svelte/lib/StopIcon'
-  import ModelSelector from './model-selector.svelte'
+    import { Textarea } from '$lib/components/ui/textarea/index.js'
+    import type { AvailableModel } from '$lib/types.js'
+    import ArrowUpIcon from 'phosphor-svelte/lib/ArrowUpIcon'
+    import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
+    import StopIcon from 'phosphor-svelte/lib/StopIcon'
+    import ModelSelector from './model-selector.svelte'
 
-  let {
-    onSend,
-    onStop,
-    onAttach,
-    onModelChange,
-    models = [],
-    model = null,
-    modelLoading = false,
-    modelDisabled = false,
-    isRunning = false,
-    isStopping = false,
-    disabled = false,
-    placeholder = 'Type a message...',
-  }: {
-    onSend: (input: string) => void
-    onStop?: () => void
-    onAttach?: () => void
-    onModelChange?: (value: string) => void
-    models?: ReadonlyArray<AvailableModel>
-    model?: string | null
-    modelLoading?: boolean
-    modelDisabled?: boolean
-    isRunning?: boolean
-    isStopping?: boolean
-    disabled?: boolean
-    placeholder?: string
-  } = $props()
+    let {
+      onSend,
+      onStop,
+      onAttach,
+      onModelChange,
+      models = [],
+      model = null,
+      modelLoading = false,
+      modelDisabled = false,
+      isRunning = false,
+      isStopping = false,
+      disabled = false,
+      placeholder = 'Type a message...',
+    }: {
+      onSend: (input: string) => void
+      onStop?: () => void
+      onAttach?: () => void
+      onModelChange?: (value: string) => void
+      models?: ReadonlyArray<AvailableModel>
+      model?: string | null
+      modelLoading?: boolean
+      modelDisabled?: boolean
+      isRunning?: boolean
+      isStopping?: boolean
+      disabled?: boolean
+      placeholder?: string
+    } = $props()
 
-  let input = $state('')
-  let textarea: HTMLTextAreaElement | null = $state(null)
+    let input = $state('')
+    let textarea: HTMLTextAreaElement | null = $state(null)
 
-  function handleSubmit() {
-    const trimmed = input.trim()
-    if (!trimmed || disabled) return
-    onSend(trimmed)
-    input = ''
-    // Reset textarea height
-    if (textarea) {
-      textarea.style.height = 'auto'
+    function handleSubmit() {
+      const trimmed = input.trim()
+      if (!trimmed || disabled) return
+      onSend(trimmed)
+      input = ''
+      // Reset textarea height
+      if (textarea) {
+        textarea.style.height = 'auto'
+      }
     }
-  }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSubmit()
+    function handleKeydown(e: KeyboardEvent) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        handleSubmit()
+      }
     }
-  }
 
-  // Auto-resize textarea
-  function handleInput() {
-    if (textarea) {
-      textarea.style.height = 'auto'
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
+    // Auto-resize textarea
+    function handleInput() {
+      if (textarea) {
+        textarea.style.height = 'auto'
+        textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
+      }
     }
-  }
 </script>
 
 <div class="bg-background py-5">

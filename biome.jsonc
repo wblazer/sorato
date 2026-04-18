@@ -8,7 +8,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!.reference", "!.reference/**"]
+    "includes": ["**", "!.reference", "!.reference"]
   },
   "formatter": {
     "enabled": true,

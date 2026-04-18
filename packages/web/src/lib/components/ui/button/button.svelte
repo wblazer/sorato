@@ -1,64 +1,64 @@
 <script lang="ts" module>
   import { cn, type WithElementRef } from '$lib/utils.js'
-  import type {
-    HTMLAnchorAttributes,
-    HTMLButtonAttributes,
-  } from 'svelte/elements'
-  import { type VariantProps, tv } from 'tailwind-variants'
+    import type {
+      HTMLAnchorAttributes,
+      HTMLButtonAttributes,
+    } from 'svelte/elements'
+    import { type VariantProps, tv } from 'tailwind-variants'
 
-  export const buttonVariants = tv({
-    base: "group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-md border border-transparent bg-clip-padding text-xs/relaxed font-medium transition-all outline-none select-none active:translate-y-px focus-visible:border-blue focus-visible:ring-2 focus-visible:ring-blue aria-invalid:border-red aria-invalid:ring-2 aria-invalid:ring-red disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-    variants: {
-      variant: {
-        default: 'bg-blue text-background hover:bg-cyan',
-        outline:
-          'border-border bg-background hover:bg-hover hover:text-foreground aria-expanded:bg-background aria-expanded:text-foreground',
-        ghost:
-          'hover:bg-hover hover:text-foreground aria-expanded:bg-hover aria-expanded:text-foreground',
-        destructive:
-          'border-red bg-red text-background hover:bg-orange focus-visible:border-red focus-visible:ring-red',
-        'ghost-destructive': 'text-red hover:bg-red/15 aria-expanded:bg-red/15',
+    export const buttonVariants = tv({
+      base: "group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-md border border-transparent bg-clip-padding text-xs/relaxed font-medium transition-all outline-none select-none active:translate-y-px focus-visible:border-blue focus-visible:ring-2 focus-visible:ring-blue aria-invalid:border-red aria-invalid:ring-2 aria-invalid:ring-red disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+      variants: {
+        variant: {
+          default: 'bg-blue text-background hover:bg-cyan',
+          outline:
+            'border-border bg-background hover:bg-hover hover:text-foreground aria-expanded:bg-background aria-expanded:text-foreground',
+          ghost:
+            'hover:bg-hover hover:text-foreground aria-expanded:bg-hover aria-expanded:text-foreground',
+          destructive:
+            'border-red bg-red text-background hover:bg-orange focus-visible:border-red focus-visible:ring-red',
+          'ghost-destructive': 'text-red hover:bg-red/15 aria-expanded:bg-red/15',
+        },
+        size: {
+          default:
+            "h-7 gap-1 px-2 text-xs/relaxed has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
+          xs: "h-5 gap-1 rounded-sm px-2 text-[0.625rem] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-2.5",
+          sm: "h-6 gap-1 px-2 text-xs/relaxed has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
+          lg: "h-8 gap-1 px-2.5 text-xs/relaxed has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-4",
+          icon: "size-7 [&_svg:not([class*='size-'])]:size-3.5",
+          'icon-xs': "size-5 rounded-sm [&_svg:not([class*='size-'])]:size-2.5",
+          'icon-sm': "size-6 [&_svg:not([class*='size-'])]:size-3",
+          'icon-lg': "size-8 [&_svg:not([class*='size-'])]:size-4",
+        },
       },
-      size: {
-        default:
-          "h-7 gap-1 px-2 text-xs/relaxed has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
-        xs: "h-5 gap-1 rounded-sm px-2 text-[0.625rem] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-2.5",
-        sm: "h-6 gap-1 px-2 text-xs/relaxed has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
-        lg: "h-8 gap-1 px-2.5 text-xs/relaxed has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-4",
-        icon: "size-7 [&_svg:not([class*='size-'])]:size-3.5",
-        'icon-xs': "size-5 rounded-sm [&_svg:not([class*='size-'])]:size-2.5",
-        'icon-sm': "size-6 [&_svg:not([class*='size-'])]:size-3",
-        'icon-lg': "size-8 [&_svg:not([class*='size-'])]:size-4",
+      defaultVariants: {
+        variant: 'default',
+        size: 'default',
       },
-    },
-    defaultVariants: {
-      variant: 'default',
-      size: 'default',
-    },
-  })
+    })
 
-  export type ButtonVariant = VariantProps<typeof buttonVariants>['variant']
-  export type ButtonSize = VariantProps<typeof buttonVariants>['size']
+    export type ButtonVariant = VariantProps<typeof buttonVariants>['variant']
+    export type ButtonSize = VariantProps<typeof buttonVariants>['size']
 
-  export type ButtonProps = WithElementRef<HTMLButtonAttributes> &
-    WithElementRef<HTMLAnchorAttributes> & {
-      variant?: ButtonVariant
-      size?: ButtonSize
-    }
+    export type ButtonProps = WithElementRef<HTMLButtonAttributes> &
+      WithElementRef<HTMLAnchorAttributes> & {
+        variant?: ButtonVariant
+        size?: ButtonSize
+      }
 </script>
 
 <script lang="ts">
   let {
-    class: className,
-    variant = 'default',
-    size = 'default',
-    ref = $bindable(null),
-    href = undefined,
-    type = 'button',
-    disabled,
-    children,
-    ...restProps
-  }: ButtonProps = $props()
+      class: className,
+      variant = 'default',
+      size = 'default',
+      ref = $bindable(null),
+      href = undefined,
+      type = 'button',
+      disabled,
+      children,
+      ...restProps
+    }: ButtonProps = $props()
 </script>
 
 {#if href}
@@ -68,7 +68,6 @@
     class={cn(buttonVariants({ variant, size }), className)}
     href={disabled ? undefined : href}
     aria-disabled={disabled}
-    role={disabled ? 'link' : undefined}
     tabindex={disabled ? -1 : undefined}
     {...restProps}
   >

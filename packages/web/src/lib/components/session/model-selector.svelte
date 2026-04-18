@@ -1,93 +1,93 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { useId } from 'bits-ui'
-  import { Button } from '$lib/components/ui/button/index.js'
-  import * as Command from '$lib/components/ui/command/index.js'
-  import * as Popover from '$lib/components/ui/popover/index.js'
-  import type { AvailableModel } from '$lib/types.js'
-  import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon'
+    import { useId } from 'bits-ui'
+    import { Button } from '$lib/components/ui/button/index.js'
+    import * as Command from '$lib/components/ui/command/index.js'
+    import * as Popover from '$lib/components/ui/popover/index.js'
+    import type { AvailableModel } from '$lib/types.js'
+    import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon'
 
-  interface Props {
-    models: ReadonlyArray<AvailableModel>
-    value: string | null
-    loading?: boolean
-    disabled?: boolean
-    onChange?: (value: string) => void
-  }
-
-  let {
-    models,
-    value,
-    loading = false,
-    disabled = false,
-    onChange,
-  }: Props = $props()
-
-  let open = $state(false)
-  let triggerRef: HTMLButtonElement | null = $state(null)
-  const listboxId = useId()
-
-  const missing = $derived(
-    value ? !models.some((item) => item.id === value) : false
-  )
-
-  const selectedModel = $derived(
-    models.find((item) => item.id === value) ?? null
-  )
-
-  const modelsByProvider = $derived.by(() => {
-    const groups = new Map<string, Array<AvailableModel>>()
-
-    for (const model of models) {
-      const provider = model.provider.trim() || 'Unknown'
-      const providerModels = groups.get(provider)
-
-      if (providerModels) {
-        providerModels.push(model)
-        continue
-      }
-
-      groups.set(provider, [model])
+    interface Props {
+      models: ReadonlyArray<AvailableModel>
+      value: string | null
+      loading?: boolean
+      disabled?: boolean
+      onChange?: (value: string) => void
     }
 
-    return Array.from(groups.entries(), ([provider, items]) => ({
-      provider,
-      items,
-    }))
-  })
+    let {
+      models,
+      value,
+      loading = false,
+      disabled = false,
+      onChange,
+    }: Props = $props()
 
-  function closeAndFocusTrigger() {
-    open = false
-    tick().then(() => triggerRef?.focus())
-  }
+    let open = $state(false)
+    let triggerRef: HTMLButtonElement | null = $state(null)
+    const listboxId = useId()
 
-  function selectModel(id: string) {
-    onChange?.(id)
-    closeAndFocusTrigger()
-  }
+    const missing = $derived(
+      value ? !models.some((item) => item.id === value) : false
+    )
 
-  function filterModel(
-    itemValue: string,
-    search: string,
-    keywords: Array<string> = []
-  ) {
-    const query = search.trim().toLowerCase()
+    const selectedModel = $derived(
+      models.find((item) => item.id === value) ?? null
+    )
 
-    if (!query) return 1
+    const modelsByProvider = $derived.by(() => {
+      const groups = new Map<string, Array<AvailableModel>>()
 
-    const haystack = [itemValue, ...keywords].join(' ').toLowerCase()
-    const terms = query.split(/\s+/)
+      for (const model of models) {
+        const provider = model.provider.trim() || 'Unknown'
+        const providerModels = groups.get(provider)
 
-    return terms.every((term) => haystack.includes(term)) ? 1 : 0
-  }
+        if (providerModels) {
+          providerModels.push(model)
+          continue
+        }
 
-  const triggerLabel = $derived.by(() => {
-    if (loading) return 'Loading models...'
-    if (selectedModel) return selectedModel.name
-    if (missing && value) return `${value} (unavailable)`
-    if (models.length === 0) return 'No models'
-    return 'Select model'
-  })
+        groups.set(provider, [model])
+      }
+
+      return Array.from(groups.entries(), ([provider, items]) => ({
+        provider,
+        items,
+      }))
+    })
+
+    function closeAndFocusTrigger() {
+      open = false
+      tick().then(() => triggerRef?.focus())
+    }
+
+    function selectModel(id: string) {
+      onChange?.(id)
+      closeAndFocusTrigger()
+    }
+
+    function filterModel(
+      itemValue: string,
+      search: string,
+      keywords: Array<string> = []
+    ) {
+      const query = search.trim().toLowerCase()
+
+      if (!query) return 1
+
+      const haystack = [itemValue, ...keywords].join(' ').toLowerCase()
+      const terms = query.split(/\s+/)
+
+      return terms.every((term) => haystack.includes(term)) ? 1 : 0
+    }
+
+    const triggerLabel = $derived.by(() => {
+      if (loading) return 'Loading models...'
+      if (selectedModel) return selectedModel.name
+      if (missing && value) return `${value} (unavailable)`
+      if (models.length === 0) return 'No models'
+      return 'Select model'
+    })
 </script>
 
 <Popover.Root bind:open>

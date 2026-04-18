@@ -242,7 +242,7 @@ function createMessagesStore() {
     const optimistic: MessageNode = {
       id: `optimistic-${Date.now()}`,
       sessionId,
-      parentId: messages.length > 0 ? messages[messages.length - 1]!.id : null,
+      parentId: messages.at(-1)?.id ?? null,
       encoded: { role: 'user', content: input },
       createdAt: Date.now(),
     }

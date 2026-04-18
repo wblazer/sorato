@@ -1,131 +1,131 @@
 <script lang="ts">
   /**
-   * Reusable command palette shell.
-   *
-   * Provides the dialog chrome, search input, keyboard navigation,
-   * scroll-into-view, loading state, and footer hints. Consumers
-   * supply items via snippets and handle domain-specific behavior
-   * (fetching, selection, extra keybindings) through props.
-   */
-  import * as Dialog from '$lib/components/ui/dialog/index.js'
-  import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
-  import { cn } from '$lib/utils.js'
-  import type { Snippet } from 'svelte'
-  import { untrack } from 'svelte'
+     * Reusable command palette shell.
+     *
+     * Provides the dialog chrome, search input, keyboard navigation,
+     * scroll-into-view, loading state, and footer hints. Consumers
+     * supply items via snippets and handle domain-specific behavior
+     * (fetching, selection, extra keybindings) through props.
+     */
+    import * as Dialog from '$lib/components/ui/dialog/index.js'
+    import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
+    import { cn } from '$lib/utils.js'
+    import type { Snippet } from 'svelte'
+    import { untrack } from 'svelte'
 
-  export interface KeyHint {
-    key: string
-    label: string
-  }
+    export interface KeyHint {
+      key: string
+      label: string
+    }
 
-  interface Props {
-    /** Controls dialog visibility */
-    open: boolean
-    /** Two-way bound search/filter text */
-    query: string
-    /** Input placeholder */
-    placeholder?: string
-    /** Show loading spinner in the input area */
-    loading?: boolean
-    /** Total number of items (drives arrow key bounds) */
-    itemCount: number
-    /** Currently highlighted item index — bind this to track selection */
-    selectedIndex: number
-    /** Called when Enter is pressed on the current selection */
-    onConfirm?: () => void
-    /** Called for keydown events the palette doesn't handle (e.g. Tab).
-     *  Return true to indicate the event was handled. */
-    onKeydown?: (e: KeyboardEvent) => boolean | void
-    /** When true, select all input text on open. When false (default),
-     *  place the cursor at the end so the user can append to prefilled text. */
-    selectOnOpen?: boolean
-    /** Keyboard shortcut hints shown in the footer */
-    hints?: KeyHint[]
-    /** Overlay scope name used to suppress app-level hotkeys while open */
-    hotkeyScope?: string
-    /** The list content. Use the bound selectedIndex prop for highlighting. */
-    items: Snippet
-    /** Shown when itemCount is 0 and not loading */
-    empty?: Snippet
-  }
+    interface Props {
+      /** Controls dialog visibility */
+      open: boolean
+      /** Two-way bound search/filter text */
+      query: string
+      /** Input placeholder */
+      placeholder?: string
+      /** Show loading spinner in the input area */
+      loading?: boolean
+      /** Total number of items (drives arrow key bounds) */
+      itemCount: number
+      /** Currently highlighted item index — bind this to track selection */
+      selectedIndex: number
+      /** Called when Enter is pressed on the current selection */
+      onConfirm?: () => void
+      /** Called for keydown events the palette doesn't handle (e.g. Tab).
+       *  Return true to indicate the event was handled. */
+      onKeydown?: (e: KeyboardEvent) => boolean | void
+      /** When true, select all input text on open. When false (default),
+       *  place the cursor at the end so the user can append to prefilled text. */
+      selectOnOpen?: boolean
+      /** Keyboard shortcut hints shown in the footer */
+      hints?: KeyHint[]
+      /** Overlay scope name used to suppress app-level hotkeys while open */
+      hotkeyScope?: string
+      /** The list content. Use the bound selectedIndex prop for highlighting. */
+      items: Snippet
+      /** Shown when itemCount is 0 and not loading */
+      empty?: Snippet
+    }
 
-  let {
-    open = $bindable(false),
-    query = $bindable(''),
-    placeholder = 'Search...',
-    loading = false,
-    itemCount,
-    selectedIndex = $bindable(0),
-    onConfirm,
-    onKeydown,
-    selectOnOpen = false,
-    hints = [],
-    hotkeyScope = 'command-palette',
-    items,
-    empty,
-  }: Props = $props()
+    let {
+      open = $bindable(false),
+      query = $bindable(''),
+      placeholder = 'Search...',
+      loading = false,
+      itemCount,
+      selectedIndex = $bindable(0),
+      onConfirm,
+      onKeydown,
+      selectOnOpen = false,
+      hints = [],
+      hotkeyScope = 'command-palette',
+      items,
+      empty,
+    }: Props = $props()
 
-  let inputEl: HTMLInputElement | null = $state(null)
-  let listEl: HTMLDivElement | null = $state(null)
+    let inputEl: HTMLInputElement | null = $state(null)
+    let listEl: HTMLDivElement | null = $state(null)
 
-  $effect(() => {
-    if (!open) return
-    untrack(() => hotkeyStore.pushScope(hotkeyScope))
-    return () => untrack(() => hotkeyStore.popScope(hotkeyScope))
-  })
+    $effect(() => {
+      if (!open) return
+      untrack(() => hotkeyStore.pushScope(hotkeyScope))
+      return () => untrack(() => hotkeyStore.popScope(hotkeyScope))
+    })
 
-  // Focus + select input when dialog opens
-  $effect(() => {
-    if (open) {
+    // Focus + select input when dialog opens
+    $effect(() => {
+      if (open) {
+        queueMicrotask(() => {
+          if (!inputEl) return
+          inputEl.focus()
+          if (selectOnOpen) {
+            inputEl.select()
+          } else {
+            // Place cursor at end
+            const len = inputEl.value.length
+            inputEl.setSelectionRange(len, len)
+          }
+        })
+      }
+    })
+
+    function scrollSelectedIntoView() {
       queueMicrotask(() => {
-        if (!inputEl) return
-        inputEl.focus()
-        if (selectOnOpen) {
-          inputEl.select()
-        } else {
-          // Place cursor at end
-          const len = inputEl.value.length
-          inputEl.setSelectionRange(len, len)
-        }
+        const item = listEl?.querySelector("[data-selected='true']")
+        item?.scrollIntoView({ block: 'nearest' })
       })
     }
-  })
 
-  function scrollSelectedIntoView() {
-    queueMicrotask(() => {
-      const item = listEl?.querySelector("[data-selected='true']")
-      item?.scrollIntoView({ block: 'nearest' })
-    })
-  }
+    function handleKeydown(e: KeyboardEvent) {
+      // Let the consumer handle first — if they claim it, stop
+      if (onKeydown?.(e)) return
 
-  function handleKeydown(e: KeyboardEvent) {
-    // Let the consumer handle first — if they claim it, stop
-    if (onKeydown?.(e)) return
-
-    switch (e.key) {
-      case 'ArrowDown': {
-        e.preventDefault()
-        if (itemCount > 0) {
-          selectedIndex = Math.min(selectedIndex + 1, itemCount - 1)
-          scrollSelectedIntoView()
+      switch (e.key) {
+        case 'ArrowDown': {
+          e.preventDefault()
+          if (itemCount > 0) {
+            selectedIndex = Math.min(selectedIndex + 1, itemCount - 1)
+            scrollSelectedIntoView()
+          }
+          break
         }
-        break
-      }
-      case 'ArrowUp': {
-        e.preventDefault()
-        if (itemCount > 0) {
-          selectedIndex = Math.max(selectedIndex - 1, 0)
-          scrollSelectedIntoView()
+        case 'ArrowUp': {
+          e.preventDefault()
+          if (itemCount > 0) {
+            selectedIndex = Math.max(selectedIndex - 1, 0)
+            scrollSelectedIntoView()
+          }
+          break
         }
-        break
-      }
-      case 'Enter': {
-        e.preventDefault()
-        onConfirm?.()
-        break
+        case 'Enter': {
+          e.preventDefault()
+          onConfirm?.()
+          break
+        }
       }
     }
-  }
 </script>
 
 <Dialog.Dialog bind:open>

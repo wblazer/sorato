@@ -1,8 +1,8 @@
 <script lang="ts">
   import DirectorySelector from './directory-selector.svelte'
-  import SessionList from './session-list.svelte'
-  import ConnectionManager from '../connection-manager.svelte'
-  import { connectionsStore } from '$lib/stores/connections.svelte.js'
+    import SessionList from './session-list.svelte'
+    import ConnectionManager from '../connection-manager.svelte'
+    import { connectionsStore } from '$lib/stores/connections.svelte.js'
 </script>
 
 <aside
