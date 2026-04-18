@@ -186,19 +186,16 @@ export const LocalSandbox = Layer.effect(Sandbox)(
           const timeoutAction = maybeKillRunningProcess.pipe(Effect.asVoid)
           const timeoutProgram = Option.map(
             Option.fromNullishOr(input.timeout),
-            (timeout) => {
-              const delayedTimeoutAction = Effect.sleep(timeout).pipe(
-                Effect.andThen(timeoutAction)
+            (timeout) =>
+              Effect.sleep(timeout).pipe(
+                Effect.andThen(timeoutAction),
+                Effect.catch(() => Effect.void)
               )
-
-              return delayedTimeoutAction.pipe(Effect.catch(() => Effect.void))
-            }
           )
           const timeoutFiber = yield* Option.getOrElse(
-            Option.map(timeoutProgram, (program) => {
-              const childFiber = Effect.forkChild(program)
-              return childFiber.pipe(Effect.map(Option.some))
-            }),
+            Option.map(timeoutProgram, (program) =>
+              Effect.forkChild(program).pipe(Effect.map(Option.some))
+            ),
             () => Effect.succeed(Option.none())
           )
 

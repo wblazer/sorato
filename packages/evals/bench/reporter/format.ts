@@ -42,6 +42,21 @@ export const formatSuiteSummary = (result: SuiteResult): string => {
   return lines.join('\n')
 }
 
+const resultScore = (passed: boolean): number =>
+  Match.value(passed).pipe(
+    Match.when(true, () => 1),
+    Match.orElse(() => 0)
+  )
+
+const jsonResult = (r: SuiteResult['results'][number]) => ({
+  name: r.name,
+  passed: r.passed,
+  response: r.response,
+  score: resultScore(r.passed),
+  reason: r.reason,
+  usage: r.usage,
+})
+
 // ---------------------------------------------------------------------------
 // JSON persistence
 // ---------------------------------------------------------------------------
@@ -53,21 +68,7 @@ export const suiteToJson = (result: SuiteResult): string =>
   JSON.stringify(
     {
       summary: result.summary,
-      results: result.results.map((r) => {
-        const score = Match.value(r.passed).pipe(
-          Match.when(true, () => 1),
-          Match.orElse(() => 0)
-        )
-
-        return {
-          name: r.name,
-          passed: r.passed,
-          response: r.response,
-          score,
-          reason: r.reason,
-          usage: r.usage,
-        }
-      }),
+      results: result.results.map(jsonResult),
       timestamp: new Date().toISOString(),
     },
     null,

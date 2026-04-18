@@ -128,8 +128,8 @@ const scenarios: ReadonlyArray<GlobScenario> = [
 // Tests
 // ---------------------------------------------------------------------------
 
-const tests = scenarios.map((scenario) => {
-  const runScenario = Effect.gen(function* () {
+const scenarioTest = (scenario: (typeof scenarios)[number]) =>
+  Effect.gen(function* () {
     const sandboxFactory = yield* Sandbox
     const dir = yield* makeTempDir
     const { shell, files } = yield* sandboxFactory.acquire(dir)
@@ -154,10 +154,9 @@ const tests = scenarios.map((scenario) => {
         )
       )
     )
-  })
+  }).pipe(Effect.scoped)
 
-  return Effect.scoped(runScenario)
-})
+const tests = scenarios.map(scenarioTest)
 
 // ---------------------------------------------------------------------------
 // Layers
