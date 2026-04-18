@@ -1,15 +1,15 @@
 <script lang="ts">
   import { Command as CommandPrimitive } from 'bits-ui'
-    import { cn } from '$lib/utils.js'
-    import * as InputGroup from '$lib/components/ui/input-group/index.js'
-    import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon'
+      import { cn } from '$lib/utils.js'
+      import * as InputGroup from '$lib/components/ui/input-group/index.js'
+      import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon'
 
-    let {
-      ref = $bindable(null),
-      class: className,
-      value = $bindable(''),
-      ...restProps
-    }: CommandPrimitive.InputProps = $props()
+      let {
+        ref = $bindable(null),
+        class: className,
+        value = $bindable(''),
+        ...restProps
+      }: CommandPrimitive.InputProps = $props()
 </script>
 
 <div data-slot="command-input-wrapper" class="p-1 pb-0">

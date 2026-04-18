@@ -1,138 +1,138 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js'
-    import { untrack } from 'svelte'
-    import { messagesStore } from '$lib/stores/messages.svelte.js'
-    import { modelsStore } from '$lib/stores/models.svelte.js'
-    import { sessionStore } from '$lib/stores/sessions.svelte.js'
-    import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
-    import PlayIcon from 'phosphor-svelte/lib/PlayIcon'
-    import MessageBubble from './message-bubble.svelte'
-    import QueuedMessageBubble from './queued-message-bubble.svelte'
-    import StreamingIndicator from './streaming-indicator.svelte'
-    import Composer from './composer.svelte'
+      import { untrack } from 'svelte'
+      import { messagesStore } from '$lib/stores/messages.svelte.js'
+      import { modelsStore } from '$lib/stores/models.svelte.js'
+      import { sessionStore } from '$lib/stores/sessions.svelte.js'
+      import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
+      import PlayIcon from 'phosphor-svelte/lib/PlayIcon'
+      import MessageBubble from './message-bubble.svelte'
+      import QueuedMessageBubble from './queued-message-bubble.svelte'
+      import StreamingIndicator from './streaming-indicator.svelte'
+      import Composer from './composer.svelte'
 
-    let { sessionId, title }: { sessionId: string; title: string | null } =
-      $props()
+      let { sessionId, title }: { sessionId: string; title: string | null } =
+        $props()
 
-    let messagesContainer: HTMLDivElement | undefined = $state()
-    let updatingModel = $state(false)
+      let messagesContainer: HTMLDivElement | undefined = $state()
+      let updatingModel = $state(false)
 
-    const session = $derived(
-      sessionStore.sessions.find((item) => item.id === sessionId) ?? null
-    )
-
-    // Running state is derived from the session store — the single source
-    // of truth. The messages store only tracks streaming *content*.
-    const isRunning = $derived(sessionStore.isRunning(sessionId))
-    const isStopping = $derived(sessionStore.isStopping(sessionId))
-    const queuedMessages = $derived(sessionStore.queuedMessagesFor(sessionId))
-
-    // Detect if the conversation was recently interrupted — the last
-    // message will be the system interruption marker. Used to show
-    // a "Resume" button so the user can continue without typing.
-    const wasInterrupted = $derived.by(() => {
-      const msgs = messagesStore.messages
-      if (msgs.length === 0 || isRunning) return false
-      const last = msgs.at(-1)
-      if (!last) return false
-      return (
-        last.encoded.role === 'system' &&
-        typeof last.encoded.content === 'string' &&
-        last.encoded.content.includes('interrupted')
+      const session = $derived(
+        sessionStore.sessions.find((item) => item.id === sessionId) ?? null
       )
-    })
 
-    // Load messages when sessionId changes.
-    // untrack prevents the effect from subscribing to reactive state
-    // read inside loadMessages, which would cause an infinite re-trigger loop.
-    $effect(() => {
-      if (sessionId) {
-        untrack(() => messagesStore.loadMessages(sessionId))
-      }
-      return () => {
-        messagesStore.clear()
-      }
-    })
+      // Running state is derived from the session store — the single source
+      // of truth. The messages store only tracks streaming *content*.
+      const isRunning = $derived(sessionStore.isRunning(sessionId))
+      const isStopping = $derived(sessionStore.isStopping(sessionId))
+      const queuedMessages = $derived(sessionStore.queuedMessagesFor(sessionId))
 
-    $effect(() => {
-      if (!session?.directory) {
-        modelsStore.clear()
-        return
-      }
+      // Detect if the conversation was recently interrupted — the last
+      // message will be the system interruption marker. Used to show
+      // a "Resume" button so the user can continue without typing.
+      const wasInterrupted = $derived.by(() => {
+        const msgs = messagesStore.messages
+        if (msgs.length === 0 || isRunning) return false
+        const last = msgs.at(-1)
+        if (!last) return false
+        return (
+          last.encoded.role === 'system' &&
+          typeof last.encoded.content === 'string' &&
+          last.encoded.content.includes('interrupted')
+        )
+      })
 
-      modelsStore.load(session.directory)
-    })
-
-    // Auto-scroll to bottom when new messages arrive or streaming parts change
-    $effect(() => {
-      // Touch reactive dependencies
-      messagesStore.messages.length
-      messagesStore.streamingParts
-      queuedMessages.length
-
-      if (messagesContainer) {
-        const { scrollTop, scrollHeight, clientHeight } = messagesContainer
-        const isNearBottom = scrollHeight - scrollTop - clientHeight < 120
-        if (isNearBottom) {
-          requestAnimationFrame(() => {
-            messagesContainer?.scrollTo({
-              top: messagesContainer.scrollHeight,
-              behavior: 'smooth',
-            })
-          })
+      // Load messages when sessionId changes.
+      // untrack prevents the effect from subscribing to reactive state
+      // read inside loadMessages, which would cause an infinite re-trigger loop.
+      $effect(() => {
+        if (sessionId) {
+          untrack(() => messagesStore.loadMessages(sessionId))
         }
-      }
-    })
-
-    // Register Escape hotkey to stop the agent run.
-    // The hotkey store's scope system ensures this doesn't fire when
-    // an overlay (command palette) is open. The isStopping guard
-    // prevents duplicate stop requests from rapid Escape presses.
-    $effect(() => {
-      const unregister = hotkeyStore.register('Escape', () => {
-        if (
-          sessionStore.isRunning(sessionId) &&
-          !sessionStore.isStopping(sessionId)
-        ) {
-          handleStop()
+        return () => {
+          messagesStore.clear()
         }
       })
-      return unregister
-    })
 
-    function handleSend(input: string) {
-      if (!sessionStore.isRunning(sessionId)) {
-        // Show the user's message immediately — don't wait for the server
-        // round-trip. The optimistic node is replaced on the next refresh.
-        messagesStore.addOptimisticUserMessage(sessionId, input)
+      $effect(() => {
+        if (!session?.directory) {
+          modelsStore.clear()
+          return
+        }
+
+        modelsStore.load(session.directory)
+      })
+
+      // Auto-scroll to bottom when new messages arrive or streaming parts change
+      $effect(() => {
+        // Touch reactive dependencies
+        messagesStore.messages.length
+        messagesStore.streamingParts
+        queuedMessages.length
+
+        if (messagesContainer) {
+          const { scrollTop, scrollHeight, clientHeight } = messagesContainer
+          const isNearBottom = scrollHeight - scrollTop - clientHeight < 120
+          if (isNearBottom) {
+            requestAnimationFrame(() => {
+              messagesContainer?.scrollTo({
+                top: messagesContainer.scrollHeight,
+                behavior: 'smooth',
+              })
+            })
+          }
+        }
+      })
+
+      // Register Escape hotkey to stop the agent run.
+      // The hotkey store's scope system ensures this doesn't fire when
+      // an overlay (command palette) is open. The isStopping guard
+      // prevents duplicate stop requests from rapid Escape presses.
+      $effect(() => {
+        const unregister = hotkeyStore.register('Escape', () => {
+          if (
+            sessionStore.isRunning(sessionId) &&
+            !sessionStore.isStopping(sessionId)
+          ) {
+            handleStop()
+          }
+        })
+        return unregister
+      })
+
+      function handleSend(input: string) {
+        if (!sessionStore.isRunning(sessionId)) {
+          // Show the user's message immediately — don't wait for the server
+          // round-trip. The optimistic node is replaced on the next refresh.
+          messagesStore.addOptimisticUserMessage(sessionId, input)
+        }
+
+        sessionStore.runAgent(sessionId, input)
       }
 
-      sessionStore.runAgent(sessionId, input)
-    }
-
-    function handleStop() {
-      sessionStore.stopAgent(sessionId)
-    }
-
-    function handleResume() {
-      messagesStore.addOptimisticUserMessage(
-        sessionId,
-        'Continue where you left off.'
-      )
-      sessionStore.runAgent(sessionId, 'Continue where you left off.')
-    }
-
-    async function handleModel(value: string) {
-      updatingModel = true
-      try {
-        const ok = await sessionStore.setModel(sessionId, value)
-        if (ok) modelsStore.remember(value)
-      } finally {
-        updatingModel = false
+      function handleStop() {
+        sessionStore.stopAgent(sessionId)
       }
-    }
 
-    function handleAttach() {}
+      function handleResume() {
+        messagesStore.addOptimisticUserMessage(
+          sessionId,
+          'Continue where you left off.'
+        )
+        sessionStore.runAgent(sessionId, 'Continue where you left off.')
+      }
+
+      async function handleModel(value: string) {
+        updatingModel = true
+        try {
+          const ok = await sessionStore.setModel(sessionId, value)
+          if (ok) modelsStore.remember(value)
+        } finally {
+          updatingModel = false
+        }
+      }
+
+      function handleAttach() {}
 </script>
 
 <div class="flex h-full flex-col">

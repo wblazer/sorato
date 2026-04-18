@@ -1,16 +1,32 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { Effect } from 'effect'
+import { Effect, Match } from 'effect'
 import { describe, expect, it } from '@effect/vitest'
 import { MODEL_PROVIDERS } from '../src/server/models.generated.ts'
 import { listModels } from '../src/server/model-catalog.ts'
 import { PROVIDER_ADAPTERS } from '../src/server/provider-adapters.ts'
 
-const anthropic = MODEL_PROVIDERS.find(
-  (provider) => provider.id === 'anthropic'
-)!
-const openai = MODEL_PROVIDERS.find((provider) => provider.id === 'openai')!
+const expectDefined = <T>(value: T | null | undefined, message: string): T => {
+  return Match.value(value).pipe(
+    Match.when(undefined, () => {
+      throw new Error(message)
+    }),
+    Match.when(null, () => {
+      throw new Error(message)
+    }),
+    Match.orElse((defined) => defined)
+  )
+}
+
+const anthropic = expectDefined(
+  MODEL_PROVIDERS.find((provider) => provider.id === 'anthropic'),
+  'expected anthropic provider in generated models'
+)
+const openai = expectDefined(
+  MODEL_PROVIDERS.find((provider) => provider.id === 'openai'),
+  'expected openai provider in generated models'
+)
 
 const supportedCount = (provider: typeof anthropic) => {
   const adapter = PROVIDER_ADAPTERS[provider.id]

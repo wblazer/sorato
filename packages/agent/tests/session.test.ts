@@ -1,7 +1,7 @@
-import { Effect, Schema } from 'effect'
+import { Effect, Match, Schema } from 'effect'
 import { Prompt } from 'effect/unstable/ai'
 import { describe, expect, it } from '@effect/vitest'
-import { SessionStorage, SqliteSession } from '../src/index.ts'
+import { SessionId, SessionStorage, SqliteSession } from '../src/index.ts'
 
 // ---------------------------------------------------------------------------
 // Test layer — in-memory sqlite per test
@@ -77,6 +77,18 @@ const toolResultMsg = (
     })
   )
 
+const expectDefined = <T>(value: T | null | undefined, message: string): T => {
+  return Match.value(value).pipe(
+    Match.when(undefined, () => {
+      throw new Error(message)
+    }),
+    Match.when(null, () => {
+      throw new Error(message)
+    }),
+    Match.orElse((defined) => defined)
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -127,7 +139,7 @@ describe('SessionStorage', () => {
       Effect.gen(function* () {
         const storage = yield* SessionStorage
         const result = yield* storage
-          .get('nonexistent' as any)
+          .get(Schema.decodeSync(SessionId)('nonexistent'))
           .pipe(Effect.flip)
 
         expect(result._tag).toBe('StorageError')
@@ -147,8 +159,12 @@ describe('SessionStorage', () => {
         const sessions = yield* storage.list()
         expect(sessions.length).toBe(2)
         // s1 was updated most recently (via append), so it comes first
-        expect(sessions[0]!.title).toBe('first')
-        expect(sessions[1]!.title).toBe('second')
+        expect(expectDefined(sessions[0], 'expected first session').title).toBe(
+          'first'
+        )
+        expect(
+          expectDefined(sessions[1], 'expected second session').title
+        ).toBe('second')
       }).pipe(Effect.provide(testLayer))
     )
 
@@ -303,7 +319,7 @@ describe('SessionStorage', () => {
         // Actually, we need the message IDs. Let's fork from the user message.
         // The user message is assistant1's grandparent (system -> user -> assistant).
         // We can get it from the parent chain.
-        const systemMsgNode = tips1[0]!
+        const systemMsgNode = expectDefined(tips1[0], 'expected first leaf')
         // Walk: assistant -> user -> system. parentId chain.
         // But we only have the leaf. Let me think about this differently:
         // after the first append, head is at assistant1.
@@ -314,7 +330,10 @@ describe('SessionStorage', () => {
         // We want to fork after user1 (try a different response).
         // We need user1's ID. The leaves API gives us the leaf's MessageNode.
         // parent of assistant1 = user1.
-        const user1Id = systemMsgNode.parentId!
+        const user1Id = expectDefined(
+          systemMsgNode.parentId,
+          'expected user parent id'
+        )
 
         // Fork: set head to user1 (so next append branches from there)
         yield* storage.setHead(session.id, user1Id)
@@ -355,10 +374,13 @@ describe('SessionStorage', () => {
 
         // Remember branch A's leaf
         const tipsA = yield* storage.leaves(session.id)
-        const branchALeaf = tipsA[0]!.id
+        const branchALeaf = expectDefined(tipsA[0], 'expected branch A leaf').id
 
         // Fork from user message (parent of assistantA)
-        const userMsgId = tipsA[0]!.parentId!
+        const userMsgId = expectDefined(
+          expectDefined(tipsA[0], 'expected branch A leaf').parentId,
+          'expected branch A user message id'
+        )
         yield* storage.setHead(session.id, userMsgId)
 
         // Branch B: system -> user -> assistantB
@@ -366,12 +388,18 @@ describe('SessionStorage', () => {
 
         // We're on branch B now
         const branchB = yield* storage.conversation(session.id)
-        const lastMsgB = branchB.content[branchB.content.length - 1]!
+        const lastMsgB = expectDefined(
+          branchB.content[branchB.content.length - 1],
+          'expected branch B final message'
+        )
         expect(lastMsgB.role).toBe('assistant')
 
         // Remember branch B's leaf
         const tipsB = yield* storage.leaves(session.id)
-        const branchBLeaf = tipsB.find((t) => t.id !== branchALeaf)!.id
+        const branchBLeaf = expectDefined(
+          tipsB.find((t) => t.id !== branchALeaf),
+          'expected branch B leaf'
+        ).id
 
         // Switch back to branch A
         yield* storage.setHead(session.id, branchALeaf)
@@ -394,7 +422,7 @@ describe('SessionStorage', () => {
         yield* storage.append(s1.id, [userMsg('Hello from s1')])
 
         const tips = yield* storage.leaves(s1.id)
-        const s1MsgId = tips[0]!.id
+        const s1MsgId = expectDefined(tips[0], 'expected session 1 leaf').id
 
         // Try to set s2's head to s1's message
         const error = yield* storage.setHead(s2.id, s1MsgId).pipe(Effect.flip)

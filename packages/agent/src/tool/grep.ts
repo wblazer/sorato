@@ -222,14 +222,10 @@ export const GrepHandler = {
         const allMatches = parseMatches(result.stdout)
         const totalCount = allMatches.length
         const shown = allMatches.slice(0, MAX_MATCHES)
-        const outputs = ['No matches found.']
-
-        result.stdout.trim().length > 0 &&
-          outputs.splice(0, 1, formatOutput(shown, totalCount, exitCode))
-
-        const [output = 'No matches found.'] = outputs
-
-        return output
+        return Match.value(result.stdout.trim().length > 0).pipe(
+          Match.when(true, () => formatOutput(shown, totalCount, exitCode)),
+          Match.orElse(() => 'No matches found.')
+        )
       }
 
       const failureMessages = [

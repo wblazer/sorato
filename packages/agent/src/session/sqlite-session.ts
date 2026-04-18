@@ -262,30 +262,6 @@ export const SqliteSession = (options: { readonly path: string }) =>
 
       const stmts = prepareStatements(db)
 
-      function decodeConversation(
-        rows: ReadonlyArray<MessageRow>,
-        sessionId: SessionId
-      ) {
-        // Rows come back leaf-to-root; reverse for chronological order
-        const encoded = [...rows]
-          .reverse()
-          .map(
-            (row: MessageRow) =>
-              JSON.parse(row.encoded) as Prompt.MessageEncoded
-          )
-
-        return Effect.try({
-          try: () =>
-            Schema.decodeUnknownSync(Prompt.Prompt)({ content: encoded }),
-          catch: (error) =>
-            new StorageError({
-              operation: 'conversation',
-              message: `Failed to decode conversation: ${sessionId}`,
-              error,
-            }),
-        })
-      }
-
       // -- Service methods --------------------------------------------------
 
       const create = Effect.fn('SessionStorage.create')(function* (
@@ -382,23 +358,28 @@ export const SqliteSession = (options: { readonly path: string }) =>
         return yield* Option.fromNullishOr(session.headId).pipe(
           Option.match({
             onNone: () => Effect.succeed(Prompt.empty),
-            onSome: (headId) => {
-              const rows = Effect.try({
-                try: () => stmts.walkToRoot.all(headId),
+            onSome: (headId) =>
+              Effect.try({
+                try: () => {
+                  const walkedRows = stmts.walkToRoot.all(headId)
+
+                  return Schema.decodeUnknownSync(Prompt.Prompt)({
+                    // Rows come back leaf-to-root; reverse for chronological order
+                    content: [...walkedRows]
+                      .reverse()
+                      .map(
+                        (row: MessageRow) =>
+                          JSON.parse(row.encoded) as Prompt.MessageEncoded
+                      ),
+                  })
+                },
                 catch: (error) =>
                   new StorageError({
                     operation: 'conversation',
-                    message: `Failed to walk conversation: ${sessionId}`,
+                    message: `Failed to load conversation: ${sessionId}`,
                     error,
                   }),
-              })
-
-              const prompt = Effect.flatMap(rows, (walkedRows) =>
-                decodeConversation(walkedRows, sessionId)
-              )
-
-              return prompt
-            },
+              }),
           })
         )
       })
@@ -411,25 +392,17 @@ export const SqliteSession = (options: { readonly path: string }) =>
         return yield* Option.fromNullishOr(session.headId).pipe(
           Option.match({
             onNone: () => Effect.succeed([] as ReadonlyArray<MessageNode>),
-            onSome: (headId) => {
-              const rows = Effect.try({
-                try: () => stmts.walkToRoot.all(headId),
+            onSome: (headId) =>
+              Effect.try({
+                try: () =>
+                  stmts.walkToRoot.all(headId).reverse().map(toMessageNode),
                 catch: (error) =>
                   new StorageError({
                     operation: 'messages',
-                    message: `Failed to walk messages: ${sessionId}`,
+                    message: `Failed to load messages: ${sessionId}`,
                     error,
                   }),
-              })
-
-              const messages = Effect.map(
-                rows,
-                // Rows come back leaf-to-root; reverse for chronological order
-                (walkedRows) => walkedRows.reverse().map(toMessageNode)
-              )
-
-              return messages
-            },
+              }),
           })
         )
       })

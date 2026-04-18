@@ -98,7 +98,8 @@ const scenarios: ReadonlyArray<GrepScenario> = [
       {
         path: 'greet.ts',
         content:
-          'export function greet(name: string) {\n  return `Hello, ${name}`\n}',
+          'export function greet(name: string) {\n  return `Hello, ${' +
+          'name}`\n}',
       },
       {
         path: 'data.ts',

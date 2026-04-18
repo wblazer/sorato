@@ -1,25 +1,25 @@
 <script lang="ts">
   import type { MessageNode, MessagePart } from '$lib/types.js'
-    import MessagePartComponent from './message-part.svelte'
+      import MessagePartComponent from './message-part.svelte'
 
-    let { message }: { message: MessageNode } = $props()
+      let { message }: { message: MessageNode } = $props()
 
-    const role = $derived(message.encoded.role)
+      const role = $derived(message.encoded.role)
 
-    /** Normalize content to an array of parts for uniform rendering. */
-    const parts = $derived.by((): MessagePart[] => {
-      const content = message.encoded.content
-      if (typeof content === 'string') {
-        return [{ type: 'text', text: content }]
-      }
-      if (Array.isArray(content)) {
-        return content as MessagePart[]
-      }
-      return []
-    })
+      /** Normalize content to an array of parts for uniform rendering. */
+      const parts = $derived.by((): MessagePart[] => {
+        const content = message.encoded.content
+        if (typeof content === 'string') {
+          return [{ type: 'text', text: content }]
+        }
+        if (Array.isArray(content)) {
+          return content as MessagePart[]
+        }
+        return []
+      })
 
-    const isUser = $derived(role === 'user')
-    const isSystem = $derived(role === 'system')
+      const isUser = $derived(role === 'user')
+      const isSystem = $derived(role === 'system')
 </script>
 
 <div class="flex flex-col gap-2 py-2.5">

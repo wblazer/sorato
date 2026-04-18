@@ -161,11 +161,11 @@ const tests = scenarios.map((scenario) => {
       )
     )
 
-    return {
+    return yield* Effect.succeed({
       ...result,
       passed,
       reason,
-    }
+    })
   })
 
   return Effect.scoped(runScenario)

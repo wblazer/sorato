@@ -1,67 +1,67 @@
 <script lang="ts">
   import DirectoryPicker from '$lib/components/directory-picker.svelte'
-    import { sessionStore } from '$lib/stores/sessions.svelte.js'
-    import { actionStore } from '$lib/stores/actions.svelte.js'
-    import CaretUpDownIcon from 'phosphor-svelte/lib/CaretUpDownIcon'
-    import FolderOpenIcon from 'phosphor-svelte/lib/FolderOpenIcon'
-    import { cn } from '$lib/utils.js'
-    import { onMount } from 'svelte'
+      import { sessionStore } from '$lib/stores/sessions.svelte.js'
+      import { actionStore } from '$lib/stores/actions.svelte.js'
+      import CaretUpDownIcon from 'phosphor-svelte/lib/CaretUpDownIcon'
+      import FolderOpenIcon from 'phosphor-svelte/lib/FolderOpenIcon'
+      import { cn } from '$lib/utils.js'
+      import { onMount } from 'svelte'
 
-    let open = $state(false)
-    let pickerOpen = $state(false)
-    let triggerEl: HTMLButtonElement | null = $state(null)
+      let open = $state(false)
+      let pickerOpen = $state(false)
+      let triggerEl: HTMLButtonElement | null = $state(null)
 
-    const directoryName = $derived(
-      sessionStore.selectedDirectory.split('/').pop() ?? ''
-    )
+      const directoryName = $derived(
+        sessionStore.selectedDirectory.split('/').pop() ?? ''
+      )
 
-    function handleWindowClick(e: MouseEvent) {
-      if (triggerEl && !triggerEl.contains(e.target as Node)) {
+      function handleWindowClick(e: MouseEvent) {
+        if (triggerEl && !triggerEl.contains(e.target as Node)) {
+          open = false
+        }
+      }
+
+      function selectDirectory(dir: string) {
+        sessionStore.selectDirectory(dir)
         open = false
       }
-    }
 
-    function selectDirectory(dir: string) {
-      sessionStore.selectDirectory(dir)
-      open = false
-    }
+      function toggleOpen() {
+        open = !open
+      }
 
-    function toggleOpen() {
-      open = !open
-    }
+      function handleOpenDirectory() {
+        open = false
+        actionStore.trigger('directory.open')
+      }
 
-    function handleOpenDirectory() {
-      open = false
-      actionStore.trigger('directory.open')
-    }
+      function handlePickerSelect(path: string) {
+        sessionStore.openDirectory(path)
+      }
 
-    function handlePickerSelect(path: string) {
-      sessionStore.openDirectory(path)
-    }
+      function directoryButtonClass(isSelected: boolean) {
+        return cn(
+          'flex w-full flex-col rounded-sm px-2.5 py-2 text-left transition-colors',
+          isSelected ? 'bg-hover text-foreground' : 'hover:bg-hover'
+        )
+      }
 
-    function directoryButtonClass(isSelected: boolean) {
-      return cn(
-        'flex w-full flex-col rounded-sm px-2.5 py-2 text-left transition-colors',
-        isSelected ? 'bg-hover text-foreground' : 'hover:bg-hover'
-      )
-    }
+      function itemDirectoryName(dir: string) {
+        return dir.split('/').pop() ?? ''
+      }
 
-    function itemDirectoryName(dir: string) {
-      return dir.split('/').pop() ?? ''
-    }
-
-    onMount(() => {
-      return actionStore.register({
-        id: 'directory.open',
-        title: 'Open Directory...',
-        category: 'Sessions',
-        description: 'Browse for a directory and switch the sidebar to it.',
-        keywords: ['folder', 'project', 'workspace'],
-        run: () => {
-          pickerOpen = true
-        },
+      onMount(() => {
+        return actionStore.register({
+          id: 'directory.open',
+          title: 'Open Directory...',
+          category: 'Sessions',
+          description: 'Browse for a directory and switch the sidebar to it.',
+          keywords: ['folder', 'project', 'workspace'],
+          run: () => {
+            pickerOpen = true
+          },
+        })
       })
-    })
 </script>
 
 <svelte:window onclick={handleWindowClick} />

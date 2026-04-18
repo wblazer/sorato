@@ -1,63 +1,63 @@
 <script lang="ts">
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
-    import { messagesStore } from '$lib/stores/messages.svelte.js'
-    import { modelsStore } from '$lib/stores/models.svelte.js'
-    import Composer from './composer.svelte'
+      import { messagesStore } from '$lib/stores/messages.svelte.js'
+      import { modelsStore } from '$lib/stores/models.svelte.js'
+      import Composer from './composer.svelte'
 
-    let sending = $state(false)
-    let model = $state<string>('')
+      let sending = $state(false)
+      let model = $state<string>('')
 
-    $effect(() => {
-      const dir = sessionStore.selectedDirectory
-      if (!dir) {
-        modelsStore.clear()
-        model = ''
-        return
+      $effect(() => {
+        const dir = sessionStore.selectedDirectory
+        if (!dir) {
+          modelsStore.clear()
+          model = ''
+          return
+        }
+
+        modelsStore.load(dir)
+      })
+
+      $effect(() => {
+        const ids = new Set(modelsStore.models.map((item) => item.id))
+        if (model && ids.has(model)) return
+        model = modelsStore.pick() ?? ''
+      })
+
+      function handleModel(value: string) {
+        model = value
+        modelsStore.remember(value)
       }
 
-      modelsStore.load(dir)
-    })
+      function handleAttach() {}
 
-    $effect(() => {
-      const ids = new Set(modelsStore.models.map((item) => item.id))
-      if (model && ids.has(model)) return
-      model = modelsStore.pick() ?? ''
-    })
+      async function handleSend(input: string) {
+        if (sending || !model) return
+        sending = true
 
-    function handleModel(value: string) {
-      model = value
-      modelsStore.remember(value)
-    }
+        try {
+          // Create the session in the current directory
+          const session = await sessionStore.createSession(undefined, model)
+          if (!session) return
 
-    function handleAttach() {}
+          // Prepare the messages store for this session BEFORE Svelte
+          // transitions to SessionView. This sets currentSessionId and
+          // marks the store as loaded, so when SessionView mounts and
+          // calls loadMessages, it sees the session is already set up
+          // and does a background refresh — preserving the optimistic
+          // message instead of hiding it behind "Loading messages...".
+          messagesStore.prepareSession(session.id)
+          messagesStore.addOptimisticUserMessage(session.id, input)
 
-    async function handleSend(input: string) {
-      if (sending || !model) return
-      sending = true
+          // Fire-and-forget — events stream via global SSE
+          await sessionStore.runAgent(session.id, input)
 
-      try {
-        // Create the session in the current directory
-        const session = await sessionStore.createSession(undefined, model)
-        if (!session) return
-
-        // Prepare the messages store for this session BEFORE Svelte
-        // transitions to SessionView. This sets currentSessionId and
-        // marks the store as loaded, so when SessionView mounts and
-        // calls loadMessages, it sees the session is already set up
-        // and does a background refresh — preserving the optimistic
-        // message instead of hiding it behind "Loading messages...".
-        messagesStore.prepareSession(session.id)
-        messagesStore.addOptimisticUserMessage(session.id, input)
-
-        // Fire-and-forget — events stream via global SSE
-        await sessionStore.runAgent(session.id, input)
-
-        // selectSession is already called by createSession,
-        // so the page will transition to SessionView
-      } finally {
-        sending = false
+          // selectSession is already called by createSession,
+          // so the page will transition to SessionView
+        } finally {
+          sending = false
+        }
       }
-    }
 </script>
 
 <div class="flex h-full flex-col">

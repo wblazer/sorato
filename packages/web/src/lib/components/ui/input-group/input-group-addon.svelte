@@ -1,42 +1,42 @@
 <script lang="ts" module>
   import { tv, type VariantProps } from 'tailwind-variants'
-    export const inputGroupAddonVariants = tv({
-      base: "flex h-auto cursor-text select-none items-center justify-center gap-1 py-2 text-xs/relaxed font-medium text-muted group-data-[disabled=true]/input-group:text-muted **:data-[slot=kbd]:rounded-[calc(var(--radius-sm)-2px)] **:data-[slot=kbd]:bg-background **:data-[slot=kbd]:px-1 **:data-[slot=kbd]:text-[0.625rem] [&>svg:not([class*='size-'])]:size-3.5",
-      variants: {
-        align: {
-          'inline-start':
-            'pl-2 has-[>button]:ml-[-0.275rem] has-[>kbd]:ml-[-0.275rem] order-first',
-          'inline-end':
-            'pr-2 has-[>button]:mr-[-0.275rem] has-[>kbd]:mr-[-0.275rem] order-last',
-          'block-start':
-            'px-2 pt-2 group-has-[>input]/input-group:pt-2 [.border-b]:pb-2 order-first w-full justify-start',
-          'block-end':
-            'px-2 pb-2 group-has-[>input]/input-group:pb-2 [.border-t]:pt-2 order-last w-full justify-start',
+      export const inputGroupAddonVariants = tv({
+        base: "flex h-auto cursor-text select-none items-center justify-center gap-1 py-2 text-xs/relaxed font-medium text-muted group-data-[disabled=true]/input-group:text-muted **:data-[slot=kbd]:rounded-[calc(var(--radius-sm)-2px)] **:data-[slot=kbd]:bg-background **:data-[slot=kbd]:px-1 **:data-[slot=kbd]:text-[0.625rem] [&>svg:not([class*='size-'])]:size-3.5",
+        variants: {
+          align: {
+            'inline-start':
+              'pl-2 has-[>button]:ml-[-0.275rem] has-[>kbd]:ml-[-0.275rem] order-first',
+            'inline-end':
+              'pr-2 has-[>button]:mr-[-0.275rem] has-[>kbd]:mr-[-0.275rem] order-last',
+            'block-start':
+              'px-2 pt-2 group-has-[>input]/input-group:pt-2 [.border-b]:pb-2 order-first w-full justify-start',
+            'block-end':
+              'px-2 pb-2 group-has-[>input]/input-group:pb-2 [.border-t]:pt-2 order-last w-full justify-start',
+          },
         },
-      },
-      defaultVariants: {
-        align: 'inline-start',
-      },
-    })
+        defaultVariants: {
+          align: 'inline-start',
+        },
+      })
 
-    export type InputGroupAddonAlign = VariantProps<
-      typeof inputGroupAddonVariants
-    >['align']
+      export type InputGroupAddonAlign = VariantProps<
+        typeof inputGroupAddonVariants
+      >['align']
 </script>
 
 <script lang="ts">
   import { cn, type WithElementRef } from '$lib/utils.js'
-    import type { HTMLAttributes } from 'svelte/elements'
+      import type { HTMLAttributes } from 'svelte/elements'
 
-    let {
-      ref = $bindable(null),
-      class: className,
-      children,
-      align = 'inline-start',
-      ...restProps
-    }: WithElementRef<HTMLAttributes<HTMLDivElement>> & {
-      align?: InputGroupAddonAlign
-    } = $props()
+      let {
+        ref = $bindable(null),
+        class: className,
+        children,
+        align = 'inline-start',
+        ...restProps
+      }: WithElementRef<HTMLAttributes<HTMLDivElement>> & {
+        align?: InputGroupAddonAlign
+      } = $props()
 </script>
 
 <div

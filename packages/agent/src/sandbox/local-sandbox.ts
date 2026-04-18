@@ -79,19 +79,17 @@ export const LocalSandbox = Layer.effect(Sandbox)(
     const acquire = Effect.fn('Sandbox.acquire')(function* (directory: string) {
       const rootDir = directory
 
-      const resolvePath = (target: string, operation: string) => {
-        const relative = Match.value(path.isAbsolute(target)).pipe(
-          Match.when(true, () => target.replace(/^\/+/, '')),
-          Match.orElse(() => target)
-        )
-        const resolved = path.resolve(rootDir, relative)
-        const rootPrefix = Match.value(rootDir.endsWith(path.sep)).pipe(
-          Match.when(true, () => rootDir),
-          Match.orElse(() => `${rootDir}${path.sep}`)
-        )
-
+      function validateResolvedPath(
+        resolved: string,
+        target: string,
+        operation: string
+      ) {
+        const relativeToRoot = path.relative(rootDir, resolved)
         return Match.value(
-          resolved === rootDir || resolved.startsWith(rootPrefix)
+          relativeToRoot === '' ||
+            (!relativeToRoot.startsWith(`..${path.sep}`) &&
+              relativeToRoot !== '..' &&
+              !path.isAbsolute(relativeToRoot))
         ).pipe(
           Match.when(true, () => Effect.succeed(resolved)),
           Match.orElse(() =>
@@ -103,6 +101,15 @@ export const LocalSandbox = Layer.effect(Sandbox)(
             )
           )
         )
+      }
+
+      const resolvePath = (target: string, operation: string) => {
+        const relative = Match.value(path.isAbsolute(target)).pipe(
+          Match.when(true, () => target.replace(/^\/+/, '')),
+          Match.orElse(() => target)
+        )
+        const resolved = path.resolve(rootDir, relative)
+        return validateResolvedPath(resolved, target, operation)
       }
 
       // -- Shell service --------------------------------------------------
@@ -172,28 +179,27 @@ export const LocalSandbox = Layer.effect(Sandbox)(
             Ref.set(timedOutRef, true),
             killGracefully
           )
-          const timeoutFiber = yield* Option.match(
+          const maybeKillRunningProcess = Effect.when(
+            markTimedOutAndKill,
+            process.isRunning
+          )
+          const timeoutAction = maybeKillRunningProcess.pipe(Effect.asVoid)
+          const timeoutProgram = Option.map(
             Option.fromNullishOr(input.timeout),
-            {
-              onNone: () => Effect.succeed(Option.none()),
-              onSome: (timeout) => {
-                const timeoutAction = Effect.when(
-                  markTimedOutAndKill,
-                  process.isRunning
-                ).pipe(Effect.asVoid)
-                const timeoutProgram = Effect.sleep(timeout).pipe(
-                  Effect.andThen(timeoutAction)
-                )
-                const recoveredTimeoutProgram = Effect.catch(
-                  timeoutProgram,
-                  () => Effect.void
-                )
+            (timeout) => {
+              const delayedTimeoutAction = Effect.sleep(timeout).pipe(
+                Effect.andThen(timeoutAction)
+              )
 
-                return Effect.forkChild(recoveredTimeoutProgram).pipe(
-                  Effect.map(Option.some)
-                )
-              },
+              return delayedTimeoutAction.pipe(Effect.catch(() => Effect.void))
             }
+          )
+          const timeoutFiber = yield* Option.getOrElse(
+            Option.map(timeoutProgram, (program) => {
+              const childFiber = Effect.forkChild(program)
+              return childFiber.pipe(Effect.map(Option.some))
+            }),
+            () => Effect.succeed(Option.none())
           )
 
           const [stdout, stderr, code] = yield* Effect.all([
@@ -305,14 +311,15 @@ export const LocalSandbox = Layer.effect(Sandbox)(
 
       const glob = Effect.fn('Files.glob')(function* (pattern: string) {
         const g = new Bun.Glob(pattern)
+        async function collectEntries() {
+          const results: string[] = []
+          for await (const file of g.scan({ cwd: rootDir, dot: false })) {
+            results.push(file)
+          }
+          return results.sort()
+        }
         const entries = yield* Effect.tryPromise({
-          try: async () => {
-            const results: string[] = []
-            for await (const file of g.scan({ cwd: rootDir, dot: false })) {
-              results.push(file)
-            }
-            return results.sort()
-          },
+          try: collectEntries,
           catch: (error) =>
             new SandboxError({
               operation: 'glob',

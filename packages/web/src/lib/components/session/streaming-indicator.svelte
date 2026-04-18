@@ -1,15 +1,15 @@
 <script lang="ts">
   import type { MessagePart } from '$lib/types.js'
-    import MessagePartComponent from './message-part.svelte'
+      import MessagePartComponent from './message-part.svelte'
 
-    let { parts, isRunning }: { parts: MessagePart[]; isRunning: boolean } =
-      $props()
+      let { parts, isRunning }: { parts: MessagePart[]; isRunning: boolean } =
+        $props()
 
-    // Show this component when the run is active OR when there's still
-    // streaming content waiting to be replaced by persisted messages.
-    // This prevents the flash on RunEnd: the content stays visible until
-    // refreshMessages lands and clears streamingParts.
-    const visible = $derived(isRunning || parts.length > 0)
+      // Show this component when the run is active OR when there's still
+      // streaming content waiting to be replaced by persisted messages.
+      // This prevents the flash on RunEnd: the content stays visible until
+      // refreshMessages lands and clears streamingParts.
+      const visible = $derived(isRunning || parts.length > 0)
 </script>
 
 {#if visible}

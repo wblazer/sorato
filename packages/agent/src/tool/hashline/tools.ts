@@ -331,27 +331,29 @@ const stripAnchorEchoes = (
 ): string =>
   content
     .split('\n')
-    .map((line) => {
-      const match = ANCHOR_ECHO_RE.exec(line)
-      if (!match) return line
-
-      const [, lineNumText = '', hash = ''] = match
-      const lineNum = parseInt(lineNumText, 10)
-      const idx = lineNum - 1
-      const originalLine = originalLines[idx] ?? ''
-      const strippedLines = [line]
-
-      // Only strip if the anchor references a real line with a matching hash
-      idx >= 0 &&
-        idx < originalLines.length &&
-        hashLine(originalLine) === hash &&
-        strippedLines.splice(0, 1, line.slice(match[0].length))
-
-      const [strippedLine] = strippedLines
-
-      return strippedLine
-    })
+    .map((line) => stripAnchorEcho(line, originalLines))
     .join('\n')
+
+const stripAnchorEcho = (
+  line: string,
+  originalLines: ReadonlyArray<string>
+): string => {
+  const match = ANCHOR_ECHO_RE.exec(line)
+  if (!match) return line
+
+  const [, lineNumText = '', hash = ''] = match
+  const lineNum = parseInt(lineNumText, 10)
+  const idx = lineNum - 1
+  const originalLine = originalLines[idx] ?? ''
+
+  // Only strip if the anchor references a real line with a matching hash
+  return Match.value(
+    idx >= 0 && idx < originalLines.length && hashLine(originalLine) === hash
+  ).pipe(
+    Match.when(true, () => line.slice(match[0].length)),
+    Match.orElse(() => line)
+  )
+}
 
 /**
  * A resolved edit — anchors have been validated against the original

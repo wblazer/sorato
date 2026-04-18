@@ -9,8 +9,23 @@
  * patterns. When truncated, the LLM gets a hint to narrow the pattern.
  */
 import { Tool } from 'effect/unstable/ai'
-import { Effect, Match, Option, Schema } from 'effect'
+import { Effect, Option, Match, Schema } from 'effect'
 import { CurrentFiles, SandboxError } from '../sandbox/sandbox.ts'
+
+const formatMatchesOutput = (matches: ReadonlyArray<string>): string => {
+  const shown = matches.slice(0, MAX_RESULTS)
+  const result = shown.join('\n')
+  const summary = Match.value(matches.length > MAX_RESULTS).pipe(
+    Match.when(
+      true,
+      () =>
+        `(Showing ${MAX_RESULTS} of ${matches.length} matches. Narrow your pattern for complete results.)`
+    ),
+    Match.orElse(() => `(${matches.length} files)`)
+  )
+
+  return `${result}\n\n${summary}`
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -72,21 +87,7 @@ export const GlobHandler = {
           true,
           () => `No files matched the pattern: ${effectivePattern}`
         ),
-        Match.orElse(() => {
-          const truncated = matches.length > MAX_RESULTS
-          const shown = matches.slice(0, MAX_RESULTS)
-          const result = shown.join('\n')
-          const summaries = [`(${matches.length} files)`]
-          truncated &&
-            summaries.splice(
-              0,
-              1,
-              `(Showing ${MAX_RESULTS} of ${matches.length} matches. Narrow your pattern for complete results.)`
-            )
-          const [summary] = summaries
-
-          return `${result}\n\n${summary}`
-        })
+        Match.orElse(() => formatMatchesOutput(matches))
       )
     }),
 }

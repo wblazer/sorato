@@ -1,11 +1,11 @@
 <script lang="ts">
   export interface QueuedMessageDraft {
-      id: string
-      content: string
-      createdAt: number
-    }
+        id: string
+        content: string
+        createdAt: number
+      }
 
-    let { message }: { message: QueuedMessageDraft } = $props()
+      let { message }: { message: QueuedMessageDraft } = $props()
 </script>
 
 <div

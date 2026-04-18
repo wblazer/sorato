@@ -116,13 +116,13 @@ const scenarios: ReadonlyArray<EditScenario> = [
     filePath: 'greet.ts',
     original: [
       'function greet(name: string): string {',
-      '  const greeting = `Hello, ${name}!`;',
+      '  const greeting = `Hello, ${' + 'name}!`;',
       '  return greeting;',
       '}',
     ].join('\n'),
     mutated: [
       'function greet(name: string): string {',
-      '  const greeting = `Hello, ${name}!`;',
+      '  const greeting = `Hello, ${' + 'name}!`;',
       '}',
     ].join('\n'),
     prompt:
@@ -218,11 +218,11 @@ const tests = scenarios.map((scenario) => {
       )
     )
 
-    return {
+    return yield* Effect.succeed({
       ...result,
       passed,
       reason,
-    }
+    })
   })
 
   return Effect.scoped(runScenario)

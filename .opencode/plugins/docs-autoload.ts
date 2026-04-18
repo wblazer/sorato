@@ -8,13 +8,19 @@ import {
   unlinkSync,
   readdirSync,
   statSync,
-} from 'fs'
-import { join, dirname, resolve, relative, basename } from 'path'
-import { homedir } from 'os'
+} from 'node:fs'
+import { join, dirname, resolve, relative, basename } from 'node:path'
+import { homedir } from 'node:os'
 
 const DOC_FILENAME = 'DOCS.md'
 const CACHE_DIR = join(homedir(), '.cache', 'opencode', 'docs-autoload')
 const CACHE_TTL_DAYS = 14
+
+type ReadToolInput = {
+  readonly args?: {
+    readonly filePath?: string
+  }
+}
 
 function getSessionCacheFile(sessionID: string): string {
   mkdirSync(CACHE_DIR, { recursive: true })
@@ -96,7 +102,7 @@ export const DocsAutoloadPlugin: Plugin = async ({ worktree }) => {
     'tool.execute.after': async (input, output) => {
       if (input.tool !== 'read') return
 
-      const filePath = (input as any).args?.filePath
+      const filePath = (input as ReadToolInput).args?.filePath
       const sessionID = input.sessionID
       if (!filePath || !sessionID) return
 

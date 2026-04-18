@@ -1,31 +1,31 @@
 <script lang="ts">
   import Button from '$lib/components/ui/button/button.svelte'
-    import { actionStore } from '$lib/stores/actions.svelte.js'
-    import { connectionsStore } from '$lib/stores/connections.svelte.js'
-    import HardDrivesIcon from 'phosphor-svelte/lib/HardDrivesIcon'
-    import ConnectionDialog from './connection-dialog.svelte'
-    import { onMount } from 'svelte'
+      import { actionStore } from '$lib/stores/actions.svelte.js'
+      import { connectionsStore } from '$lib/stores/connections.svelte.js'
+      import HardDrivesIcon from 'phosphor-svelte/lib/HardDrivesIcon'
+      import ConnectionDialog from './connection-dialog.svelte'
+      import { onMount } from 'svelte'
 
-    let dialogOpen = $state(false)
+      let dialogOpen = $state(false)
 
-    function handleSave(data: { url: string; name?: string }) {
-      const newConnection = connectionsStore.add(data)
-      connectionsStore.activate(newConnection.id)
-      dialogOpen = false
-    }
+      function handleSave(data: { url: string; name?: string }) {
+        const newConnection = connectionsStore.add(data)
+        connectionsStore.activate(newConnection.id)
+        dialogOpen = false
+      }
 
-    onMount(() => {
-      return actionStore.register({
-        id: 'connection.add',
-        title: 'Add Connection',
-        category: 'Connections',
-        description: 'Add an agents server to the connection list.',
-        keywords: ['server', 'endpoint', 'url'],
-        run: () => {
-          dialogOpen = true
-        },
+      onMount(() => {
+        return actionStore.register({
+          id: 'connection.add',
+          title: 'Add Connection',
+          category: 'Connections',
+          description: 'Add an agents server to the connection list.',
+          keywords: ['server', 'endpoint', 'url'],
+          run: () => {
+            dialogOpen = true
+          },
+        })
       })
-    })
 </script>
 
 <div class="flex h-full flex-col items-center justify-center p-8">

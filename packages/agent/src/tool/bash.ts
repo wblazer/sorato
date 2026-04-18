@@ -43,6 +43,29 @@ interface TruncationResult {
   readonly truncated: boolean
 }
 
+const truncateTail = (
+  lines: ReadonlyArray<string>,
+  totalLines: number,
+  totalBytes: number
+): TruncationResult => {
+  const kept: string[] = []
+  let bytes = 0
+
+  for (const line of [...lines].reverse()) {
+    const lineBytes = Buffer.byteLength(line, 'utf8') + 1 // +1 for newline
+    if (kept.length >= MAX_LINES || bytes + lineBytes > MAX_BYTES) break
+    kept.unshift(line)
+    bytes += lineBytes
+  }
+
+  return {
+    text: kept.join('\n'),
+    totalLines,
+    totalBytes,
+    truncated: true,
+  }
+}
+
 /**
  * Truncate output keeping the tail (most recent output), since that's
  * where errors and results tend to be. Respects both line and byte limits.
@@ -59,25 +82,7 @@ const truncateOutput = (output: string): TruncationResult => {
       totalBytes,
       truncated: false,
     })),
-    Match.orElse(() => {
-      // Take from the tail, respecting both limits
-      const kept: string[] = []
-      let bytes = 0
-
-      for (const line of [...lines].reverse()) {
-        const lineBytes = Buffer.byteLength(line, 'utf8') + 1 // +1 for newline
-        if (kept.length >= MAX_LINES || bytes + lineBytes > MAX_BYTES) break
-        kept.unshift(line)
-        bytes += lineBytes
-      }
-
-      return {
-        text: kept.join('\n'),
-        totalLines,
-        totalBytes,
-        truncated: true,
-      }
-    })
+    Match.orElse(() => truncateTail(lines, totalLines, totalBytes))
   )
 }
 

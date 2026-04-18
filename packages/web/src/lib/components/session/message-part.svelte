@@ -1,12 +1,9 @@
 <script lang="ts">
   import type { MessagePart } from '$lib/types.js'
 
-    let { part, monospace = false }: { part: MessagePart; monospace?: boolean } =
-      $props()
+      let { part, monospace = false }: { part: MessagePart; monospace?: boolean } =
+        $props()
 
-    function formatResult(result: unknown) {
-      return typeof result === 'string' ? result : JSON.stringify(result, null, 2)
-    }
 </script>
 
 {#if part.type === 'text'}
@@ -61,9 +58,10 @@
     </div>
     {#if part.result != null}
       <pre
-        class="max-h-64 overflow-auto px-2.5 py-3 text-sm leading-relaxed">{formatResult(
-          part.result
-        )}</pre>
+        class="max-h-64 overflow-auto px-2.5 py-3 text-sm leading-relaxed">{typeof part.result ===
+        'string'
+          ? part.result
+          : JSON.stringify(part.result, null, 2)}</pre>
     {/if}
   </div>
 {:else if part.type === 'file'}

@@ -1,82 +1,82 @@
 <script lang="ts">
   import {
-      Popover,
-      PopoverContent,
-      PopoverTrigger,
-    } from '$lib/components/ui/popover/index.js'
-    import Button from '$lib/components/ui/button/button.svelte'
-    import { actionStore } from '$lib/stores/actions.svelte.js'
-    import {
-      connectionsStore,
-      type Connection,
-    } from '$lib/stores/connections.svelte.js'
-    import DotsThreeIcon from 'phosphor-svelte/lib/DotsThreeIcon'
-    import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon'
-    import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
-    import TrashIcon from 'phosphor-svelte/lib/TrashIcon'
-    import XIcon from 'phosphor-svelte/lib/XIcon'
-    import ConnectionDialog from './connection-dialog.svelte'
-    import { onMount } from 'svelte'
+        Popover,
+        PopoverContent,
+        PopoverTrigger,
+      } from '$lib/components/ui/popover/index.js'
+      import Button from '$lib/components/ui/button/button.svelte'
+      import { actionStore } from '$lib/stores/actions.svelte.js'
+      import {
+        connectionsStore,
+        type Connection,
+      } from '$lib/stores/connections.svelte.js'
+      import DotsThreeIcon from 'phosphor-svelte/lib/DotsThreeIcon'
+      import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon'
+      import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
+      import TrashIcon from 'phosphor-svelte/lib/TrashIcon'
+      import XIcon from 'phosphor-svelte/lib/XIcon'
+      import ConnectionDialog from './connection-dialog.svelte'
+      import { onMount } from 'svelte'
 
-    let popoverOpen = $state(false)
-    let dialogOpen = $state(false)
-    let editingConnection = $state<Connection | null>(null)
+      let popoverOpen = $state(false)
+      let dialogOpen = $state(false)
+      let editingConnection = $state<Connection | null>(null)
 
-    function handleAdd() {
-      popoverOpen = false
-      dialogOpen = true
-      editingConnection = null
-    }
-
-    function handleEdit(connection: Connection) {
-      editingConnection = connection
-      dialogOpen = true
-      popoverOpen = false
-    }
-
-    function handleSave(data: { url: string; name?: string }) {
-      if (!editingConnection) return
-      connectionsStore.update(editingConnection.id, data)
-      dialogOpen = false
-      editingConnection = null
-    }
-
-    function handleActivate(id: string) {
-      connectionsStore.activate(id)
-      popoverOpen = false
-    }
-
-    function handleDelete(id: string) {
-      connectionsStore.remove(id)
-    }
-
-    function displayName(connection: Connection): string {
-      return connection.name || connection.url
-    }
-
-    function isActive(connection: Connection): boolean {
-      return connectionsStore.activeConnection?.id === connection.id
-    }
-
-    onMount(() => {
-      return actionStore.register({
-        id: 'connection.add',
-        title: 'Add Connection',
-        category: 'Connections',
-        description: 'Add an agents server to the connection list.',
-        keywords: ['server', 'endpoint', 'url'],
-        run: () => {
-          editingConnection = null
-          dialogOpen = true
-        },
-      })
-    })
-
-    $effect(() => {
-      if (!dialogOpen && editingConnection) {
+      function handleAdd() {
+        popoverOpen = false
+        dialogOpen = true
         editingConnection = null
       }
-    })
+
+      function handleEdit(connection: Connection) {
+        editingConnection = connection
+        dialogOpen = true
+        popoverOpen = false
+      }
+
+      function handleSave(data: { url: string; name?: string }) {
+        if (!editingConnection) return
+        connectionsStore.update(editingConnection.id, data)
+        dialogOpen = false
+        editingConnection = null
+      }
+
+      function handleActivate(id: string) {
+        connectionsStore.activate(id)
+        popoverOpen = false
+      }
+
+      function handleDelete(id: string) {
+        connectionsStore.remove(id)
+      }
+
+      function displayName(connection: Connection): string {
+        return connection.name || connection.url
+      }
+
+      function isActive(connection: Connection): boolean {
+        return connectionsStore.activeConnection?.id === connection.id
+      }
+
+      onMount(() => {
+        return actionStore.register({
+          id: 'connection.add',
+          title: 'Add Connection',
+          category: 'Connections',
+          description: 'Add an agents server to the connection list.',
+          keywords: ['server', 'endpoint', 'url'],
+          run: () => {
+            editingConnection = null
+            dialogOpen = true
+          },
+        })
+      })
+
+      $effect(() => {
+        if (!dialogOpen && editingConnection) {
+          editingConnection = null
+        }
+      })
 </script>
 
 <div class="flex items-center gap-2 px-2 py-1.5">

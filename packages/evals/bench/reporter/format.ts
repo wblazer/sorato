@@ -74,17 +74,18 @@ export const suiteToJson = (result: SuiteResult): string =>
     2
   )
 
+async function writeSuiteResult(result: SuiteResult, path: string) {
+  await Bun.write(path, suiteToJson(result))
+  return path
+}
+
 /**
  * Write a `SuiteResult` as JSON to the given file path.
  */
 export const saveSuiteResult = Effect.fn('BenchReporter.saveSuiteResult')(
   function* (result: SuiteResult, path: string) {
     return yield* Effect.tryPromise({
-      try: async () => {
-        const json = suiteToJson(result)
-        await Bun.write(path, json)
-        return path
-      },
+      try: () => writeSuiteResult(result, path),
       catch: (error) =>
         new ReporterError({
           operation: 'saveSuiteResult',
