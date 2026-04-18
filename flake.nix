@@ -16,12 +16,13 @@
   in {
     devShells = forEachSupportedSystem ({pkgs}: {
       default = pkgs.mkShell {
+        BIOME_BINARY = "${pkgs.biome}/bin/biome";
         packages = with pkgs; [
           biome
           bun
           typescript
-          nodePackages.typescript-language-server
-          nodePackages.svelte-language-server
+          typescript-language-server
+          svelte-language-server
         ];
       };
     });
