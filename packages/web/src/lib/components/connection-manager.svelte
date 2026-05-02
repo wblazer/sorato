@@ -84,11 +84,11 @@
     <PopoverTrigger>
       <button
         type="button"
-        class="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-surface-hover hover:text-foreground transition-colors"
+        class="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-base-hover hover:text-foreground transition-colors"
       >
         <span class="relative flex h-2 w-2">
           {#if connectionsStore.activeConnection}
-            <span class="relative inline-flex h-2 w-2 rounded-full bg-accent"
+            <span class="relative inline-flex h-2 w-2 rounded-full bg-success"
             ></span>
           {:else}
               <span class="relative inline-flex h-2 w-2 rounded-full bg-muted-foreground"
@@ -130,10 +130,10 @@
                 <button
                   type="button"
                   onclick={() => handleActivate(connection.id)}
-                   class="flex min-w-0 flex-1 items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-surface-hover"
+                   class="flex min-w-0 flex-1 items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-base-hover"
                 >
                   {#if isActive(connection)}
-                    <span class="h-2 w-2 rounded-full bg-accent"></span>
+                    <span class="h-2 w-2 rounded-full bg-success"></span>
                   {:else}
                     <span class="h-2 w-2"></span>
                   {/if}
@@ -147,7 +147,7 @@
                     <Button
                       variant="ghost"
                       size="icon-lg"
-                       class="text-muted-foreground hover:bg-surface-hover hover:text-foreground"
+                       class="text-muted-foreground hover:bg-base-hover hover:text-foreground"
                     >
                       <DotsThreeIcon />
                     </Button>

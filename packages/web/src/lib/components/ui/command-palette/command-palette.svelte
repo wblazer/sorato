@@ -182,7 +182,7 @@
         {#each hints as hint}
           <span>
             <kbd
-              class="rounded border bg-surface px-1.5 py-0.5 font-mono text-[10px]"
+              class="rounded border bg-inset px-1.5 py-0.5 font-mono text-[10px]"
               >{hint.key}</kbd
             >
             {hint.label}

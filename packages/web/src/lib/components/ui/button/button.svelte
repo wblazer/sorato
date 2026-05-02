@@ -7,14 +7,14 @@
       import { type VariantProps, tv } from 'tailwind-variants'
 
       export const buttonVariants = tv({
-        base: "group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-md border border-transparent bg-clip-padding text-xs/relaxed font-medium transition-all outline-none select-none active:translate-y-px focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-danger aria-invalid:ring-2 aria-invalid:ring-danger disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        base: "group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-md border border-transparent bg-clip-padding text-xs/relaxed font-medium transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-danger aria-invalid:ring-2 aria-invalid:ring-danger disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         variants: {
           variant: {
             default: 'bg-accent text-accent-foreground hover:bg-accent-hover',
             outline:
-              'border-border bg-surface text-foreground hover:bg-surface-hover hover:border-border-hover aria-expanded:bg-surface aria-expanded:text-foreground',
+              'border-border bg-surface text-foreground hover:bg-base-hover aria-expanded:bg-selected aria-expanded:text-foreground',
             ghost:
-              'hover:bg-surface-hover hover:text-foreground aria-expanded:bg-surface-hover aria-expanded:text-foreground',
+              'hover:bg-base-hover hover:text-foreground aria-expanded:bg-selected aria-expanded:text-foreground',
             destructive:
               'border-danger bg-danger text-danger-foreground hover:bg-danger-hover focus-visible:border-danger focus-visible:ring-danger',
             'ghost-destructive': 'text-danger hover:bg-danger/15 aria-expanded:bg-danger/15',

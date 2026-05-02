@@ -9,7 +9,7 @@
 </script>
 
 <div
-  class="ml-auto flex w-fit max-w-[min(42rem,85%)] flex-col gap-2 rounded-lg border border-accent bg-accent px-3 py-3 text-accent-foreground shadow-sm"
+  class="ml-auto flex w-fit max-w-[min(42rem,85%)] flex-col gap-2 rounded-lg border border-accent bg-accent px-3 py-3 text-accent-foreground shadow-sm shadow-shadow/30"
 >
   <div class="flex items-center gap-2">
     <span

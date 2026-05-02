@@ -76,11 +76,11 @@
         {placeholder}
         {disabled}
         rows={1}
-        class="relative z-10 min-h-[32px] w-full max-h-[220px] rounded-lg border border-border bg-surface px-4 py-4 shadow-sm outline-none focus-visible:border-ring focus-visible:ring-0 md:text-sm"
+        class="relative z-10 min-h-[32px] w-full max-h-[220px] rounded-lg border border-border bg-surface px-4 py-4 shadow-sm shadow-shadow/30 outline-none focus-visible:border-ring focus-visible:ring-0 md:text-sm"
       />
 
       <div
-        class="relative -mt-2 flex w-full flex-wrap items-center gap-2 rounded-b-lg border border-border bg-surface-elevated px-1.5 pb-1 pt-3 text-muted-foreground shadow-sm sm:flex-nowrap"
+        class="relative -mt-2 flex w-full flex-wrap items-center gap-2 rounded-b-lg border border-border bg-background px-1.5 pb-1 pt-3 text-muted-foreground shadow-sm shadow-shadow/30 sm:flex-nowrap"
       >
         <div class="flex min-w-0 flex-1 items-center gap-1">
           <Button
@@ -141,7 +141,7 @@
       {:else}
         <span class="text-[11px] text-muted-foreground">
           Press <kbd
-            class="rounded border bg-surface px-1 py-0.5 font-mono text-[10px]"
+            class="rounded border bg-inset px-1 py-0.5 font-mono text-[10px]"
             >Esc</kbd
           >
           to stop

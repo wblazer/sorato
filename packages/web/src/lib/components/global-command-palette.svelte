@@ -112,8 +112,8 @@
         class={cn(
           'flex w-full items-start gap-3 rounded-md px-3 py-2 text-left transition-colors',
           index === selectedIndex
-            ? 'bg-surface-hover text-foreground'
-            : 'hover:bg-surface-hover'
+            ? 'bg-selected text-foreground'
+            : 'hover:bg-base-hover'
         )}
         onclick={() => runAction(action)}
         onmouseenter={() => handleItemMouseEnter(index)}
@@ -136,7 +136,7 @@
 
         {#if action.defaultShortcut}
           <kbd
-            class="shrink-0 rounded border bg-surface px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+            class="shrink-0 rounded border bg-inset px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
           >
             {action.defaultShortcut}
           </kbd>

@@ -27,7 +27,7 @@
     <span class="text-xs italic text-muted-foreground">(empty)</span>
   {:else if isUser}
     <div
-      class="ml-auto w-fit max-w-[min(42rem,85%)] rounded-lg border border-accent bg-accent text-accent-foreground shadow-sm"
+      class="ml-auto w-fit max-w-[min(42rem,85%)] rounded-lg border border-accent bg-accent text-accent-foreground shadow-sm shadow-shadow/30"
     >
       <div class="flex flex-col gap-3 px-3 py-3">
         {#each parts as part}
@@ -37,7 +37,7 @@
     </div>
   {:else if isSystem}
     <div
-      class="w-full overflow-hidden rounded-lg border border-border bg-surface text-foreground shadow-sm"
+      class="w-full overflow-hidden rounded-lg border border-border bg-surface text-foreground shadow-sm shadow-shadow/30"
     >
       <div
         class="border-b border-border px-3 py-2 text-sm font-semibold text-foreground"

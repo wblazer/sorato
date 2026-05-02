@@ -19,7 +19,7 @@
       class="cursor-pointer select-none text-sm font-medium text-muted-foreground hover:text-foreground"
     >
       <span class="inline-flex items-center gap-1.5">
-        <span class="inline-block h-1.5 w-1.5 rounded-full bg-surface"></span>
+        <span class="inline-block h-1.5 w-1.5 rounded-full bg-inset"></span>
         reasoning
       </span>
     </summary>
@@ -30,7 +30,7 @@
     </div>
   </details>
 {:else if part.type === 'tool-call'}
-  <div class="overflow-hidden rounded-md border border-border bg-surface">
+  <div class="overflow-hidden rounded-md border border-border bg-inset">
     <div class="border-b border-border px-2.5 py-2 text-sm text-foreground">
       <span class="font-semibold">{part.name}</span>
     </div>
@@ -46,8 +46,8 @@
 {:else if part.type === 'tool-result'}
   <div
     class="overflow-hidden rounded-md border {part.isFailure
-      ? 'border-danger bg-surface'
-      : 'border-border bg-surface'}"
+      ? 'border-danger bg-inset'
+      : 'border-border bg-inset'}"
   >
     <div
       class="border-b px-2.5 py-2 text-sm {part.isFailure
@@ -66,7 +66,7 @@
   </div>
 {:else if part.type === 'file'}
   <div class="flex items-center gap-2">
-    <span class="inline-block h-1.5 w-1.5 rounded-full bg-surface"></span>
+    <span class="inline-block h-1.5 w-1.5 rounded-full bg-inset"></span>
     <span class="text-sm font-medium text-muted-foreground">file</span>
     {#if part.fileName}
       <code class="text-sm text-muted-foreground">{part.fileName}</code>

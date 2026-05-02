@@ -157,7 +157,7 @@
           />
           <div
             class="absolute right-3 top-1/2 -translate-y-1/2 {checkStatus === 'success'
-              ? 'text-accent'
+              ? 'text-success-muted-foreground'
               : checkStatus === 'error'
                 ? 'text-danger'
                 : checkStatus === 'loading'
@@ -174,7 +174,7 @@
         {#if urlError}
           <p class="text-xs text-danger">{urlError}</p>
         {:else if checkStatus === 'success'}
-          <p class="text-xs text-accent">Server connected successfully</p>
+          <p class="text-xs text-success-muted-foreground">Server connected successfully</p>
         {/if}
         <p class="text-xs text-muted-foreground">
           The server URL will be checked when you unfocus the field.

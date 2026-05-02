@@ -44,7 +44,7 @@
   </Button>
 
   <p class="mt-4 text-xs text-muted-foreground">
-    Example: <code class="rounded bg-surface px-1 py-0.5"
+    Example: <code class="rounded bg-inset px-1 py-0.5"
       >http://localhost:3100</code
     >
   </p>

@@ -42,7 +42,7 @@
       function directoryButtonClass(isSelected: boolean) {
         return cn(
           'flex w-full flex-col rounded-sm px-2.5 py-2 text-left transition-colors',
-          isSelected ? 'bg-surface-hover text-foreground' : 'hover:bg-surface-hover'
+          isSelected ? 'bg-selected text-foreground' : 'hover:bg-base-hover'
         )
       }
 
@@ -72,7 +72,7 @@
     bind:this={triggerEl}
     class={cn(
       'flex w-full items-center gap-3 rounded-md px-3 py-2.5',
-       'hover:bg-surface-hover transition-colors',
+       'hover:bg-base-hover transition-colors',
       'text-left'
     )}
     onclick={toggleOpen}
@@ -98,7 +98,7 @@
     <div
       class={cn(
         'absolute top-full left-0 z-50 mt-1 w-full',
-        'rounded-md border bg-surface-elevated p-1 shadow-md',
+        'rounded-md border bg-popover p-1 shadow-md shadow-shadow/40',
         'animate-in fade-in-0 zoom-in-95'
       )}
     >
@@ -119,7 +119,7 @@
         type="button"
         class={cn(
           'flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm transition-colors',
-          'text-muted-foreground hover:bg-surface-hover hover:text-foreground'
+          'text-muted-foreground hover:bg-base-hover hover:text-foreground'
         )}
         onclick={handleOpenDirectory}
       >
