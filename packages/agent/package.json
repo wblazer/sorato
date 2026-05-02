@@ -11,7 +11,7 @@
   },
   "scripts": {
     "generate-models": "bun run scripts/generate-models.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "test": "bun --bun vitest run",
     "dev": "bun --env-file=../../.env --watch run src/server/main.ts",
     "start": "bun --env-file=../../.env run src/server/main.ts"

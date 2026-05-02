@@ -16,9 +16,10 @@
     "server": "bun run --filter @agents/agent dev"
   },
   "devDependencies": {
+    "@typescript/native-preview": "beta",
     "@catenarycloud/linteffect": "0.0.4-0",
     "@effect/language-service": "^0.72.0",
     "@types/bun": "latest",
-    "typescript": "^5"
+    "typescript": "^6"
   }
 }

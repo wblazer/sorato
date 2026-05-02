@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "start": "bun --env-file=../../.env run cli.ts",
     "hello-world": "bun --env-file=../../.env run cli.ts -- run hello-world",
     "file-edit": "bun --env-file=../../.env run cli.ts -- run file-edit",
