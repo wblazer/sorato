@@ -123,7 +123,6 @@
               onclick={handleSubmit}
               disabled={disabled || !input.trim()}
               size="icon-lg"
-              class="rounded-full"
               title="Send message"
             >
               <ArrowUpIcon />
