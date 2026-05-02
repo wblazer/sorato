@@ -100,7 +100,7 @@
               variant="destructive"
               size="icon-lg"
               class="rounded-full"
-              title={isStopping ? 'Stopping...' : 'Stop (Esc)'}
+              title={isStopping ? 'Stopping...' : 'Stop'}
             >
               <StopIcon weight="fill" />
             </Button>
@@ -124,13 +124,7 @@
       {#if isStopping}
         <span class="text-[11px] text-muted-foreground">Stopping...</span>
       {:else}
-        <span class="text-[11px] text-muted-foreground">
-          Press <kbd
-            class="rounded border bg-inset px-1 py-0.5 font-mono text-[10px]"
-            >Esc</kbd
-          >
-          to stop
-        </span>
+        <span class="text-[11px] text-muted-foreground">Click stop to interrupt</span>
       {/if}
     </div>
   {/if}

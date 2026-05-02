@@ -3,7 +3,6 @@
       import { messagesStore } from '$lib/stores/messages.svelte.js'
       import { modelsStore } from '$lib/stores/models.svelte.js'
       import { sessionStore } from '$lib/stores/sessions.svelte.js'
-      import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
       import MessageBubble from './message-bubble.svelte'
       import QueuedMessageBubble from './queued-message-bubble.svelte'
       import StreamingIndicator from './streaming-indicator.svelte'
@@ -65,22 +64,6 @@
             })
           }
         }
-      })
-
-      // Register Escape hotkey to stop the agent run.
-      // The hotkey store's scope system ensures this doesn't fire when
-      // an overlay (command palette) is open. The isStopping guard
-      // prevents duplicate stop requests from rapid Escape presses.
-      $effect(() => {
-        const unregister = hotkeyStore.register('Escape', () => {
-          if (
-            sessionStore.isRunning(sessionId) &&
-            !sessionStore.isStopping(sessionId)
-          ) {
-            handleStop()
-          }
-        })
-        return unregister
       })
 
       function handleSend(input: string) {
