@@ -35,7 +35,6 @@
   --warning-foreground: oklch(0.22 0.04 78);
   --ring: oklch(0.6 0.055 42);
   --shadow: oklch(0.07 0.002 0);
-
 }
 
 @theme inline {
