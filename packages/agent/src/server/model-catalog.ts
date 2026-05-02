@@ -9,6 +9,19 @@ type Entry = {
   readonly id: string
   readonly name: string
   readonly provider: string
+  readonly releaseDate?: string
+}
+
+const compareModels = (a: Entry, b: Entry) => {
+  const releaseDate = (b.releaseDate ?? '').localeCompare(a.releaseDate ?? '')
+  if (releaseDate !== 0) return releaseDate
+
+  const aLatest = a.id.includes('latest') || a.name.includes('(latest)')
+  const bLatest = b.id.includes('latest') || b.name.includes('(latest)')
+  const latest = Number(bLatest) - Number(aLatest)
+  if (latest !== 0) return latest
+
+  return b.id.localeCompare(a.id)
 }
 
 const toEntry = (
@@ -18,12 +31,14 @@ const toEntry = (
   const adapter = PROVIDER_ADAPTERS[provider.id]
 
   if (!adapter?.available(provider.env)) return []
+  if (!adapter.supportsModel(model.id)) return []
 
   return [
     {
       id: `${provider.id}/${model.id}`,
       name: model.name,
       provider: provider.name,
+      releaseDate: model.releaseDate,
     },
   ]
 }
@@ -31,7 +46,7 @@ const toEntry = (
 const entries = () =>
   MODEL_PROVIDERS.flatMap((provider) =>
     provider.models.flatMap((model) => toEntry(provider, model))
-  )
+  ).sort(compareModels)
 
 const hasProviderAdapter = (
   provider: string

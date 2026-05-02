@@ -28,7 +28,7 @@ const openai = expectDefined(
   'expected openai provider in generated models'
 )
 
-const supportedCount = (provider: typeof anthropic) => {
+const supportedCount = (provider: typeof MODEL_PROVIDERS[number]) => {
   const adapter = PROVIDER_ADAPTERS[provider.id]
   return provider.models.filter((model) => adapter.supportsModel(model.id))
     .length
@@ -37,6 +37,14 @@ const supportedCount = (provider: typeof anthropic) => {
 type MutableCatalogModel = {
   id: string
   name: string
+}
+
+const restoreEnv = (key: string, value: string | undefined) => {
+  if (value === undefined) {
+    delete process.env[key]
+  } else {
+    process.env[key] = value
+  }
 }
 
 describe('ModelCatalog', () => {
@@ -73,17 +81,14 @@ describe('ModelCatalog', () => {
         expect(models.models.length).toBe(
           supportedCount(anthropic) + supportedCount(openai)
         )
-        expect(models.models[0]?.id).toBe(
-          `anthropic/${anthropic.models[0]?.id}`
-        )
-        expect(models.models.at(-1)?.id).toBe(
-          `openai/${openai.models.at(-1)?.id}`
-        )
+        expect(models.models[0]?.id).toBe('openai/gpt-5.5-pro')
+        expect(models.models[1]?.id).toBe('openai/gpt-5.5')
+        expect(models.models[2]?.id).toBe('anthropic/claude-opus-4-7')
         expect(models.defaultModel).toBe(`openai/${openai.models[0]?.id}`)
 
-        process.env.XDG_CONFIG_HOME = prevXdg
-        process.env.ANTHROPIC_API_KEY = prevAnthropic
-        process.env.OPENAI_API_KEY = prevOpenAi
+        restoreEnv('XDG_CONFIG_HOME', prevXdg)
+        restoreEnv('ANTHROPIC_API_KEY', prevAnthropic)
+        restoreEnv('OPENAI_API_KEY', prevOpenAi)
         yield* Effect.tryPromise(() =>
           rm(root, { recursive: true, force: true })
         )
@@ -111,8 +116,8 @@ describe('ModelCatalog', () => {
         true
       )
 
-      process.env.ANTHROPIC_API_KEY = prevAnthropic
-      process.env.OPENAI_API_KEY = prevOpenAi
+      restoreEnv('ANTHROPIC_API_KEY', prevAnthropic)
+      restoreEnv('OPENAI_API_KEY', prevOpenAi)
       yield* Effect.tryPromise(() => rm(root, { recursive: true, force: true }))
     })
   )
@@ -127,6 +132,7 @@ describe('ModelCatalog', () => {
 
       yield* Effect.tryPromise(() => mkdir(dir, { recursive: true }))
 
+      delete process.env.ANTHROPIC_API_KEY
       process.env.OPENAI_API_KEY = 'test-openai'
 
       const unsupportedModel = {
@@ -145,7 +151,7 @@ describe('ModelCatalog', () => {
       ).toBe(false)
       expect(models.models.length).toBe(supportedCount(openai))
       ;(openai.models as Array<MutableCatalogModel>).pop()
-      process.env.OPENAI_API_KEY = prevOpenAi
+      restoreEnv('OPENAI_API_KEY', prevOpenAi)
       yield* Effect.tryPromise(() => rm(root, { recursive: true, force: true }))
     })
   )

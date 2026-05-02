@@ -7,6 +7,7 @@ import { SUPPORTED_PROVIDERS } from '../src/server/provider-definitions.ts'
 type ModelsDevModel = {
   readonly id: string
   readonly name: string
+  readonly release_date?: string
   readonly tool_call: boolean
   readonly status?: 'alpha' | 'beta' | 'deprecated'
 }
@@ -23,6 +24,7 @@ type ModelsDevResponse = Record<string, ModelsDevProvider>
 type CatalogModel = {
   readonly id: string
   readonly name: string
+  readonly releaseDate?: string
 }
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -46,6 +48,7 @@ const toCatalogModel = ([id, model]: [
   return {
     id,
     name: model.name,
+    releaseDate: model.release_date,
   }
 }
 
