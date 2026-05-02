@@ -36,17 +36,12 @@
       } = $props()
 
       let input = $state('')
-      let textarea: HTMLTextAreaElement | null = $state(null)
 
       function handleSubmit() {
         const trimmed = input.trim()
         if (!trimmed || disabled) return
         onSend(trimmed)
         input = ''
-        // Reset textarea height
-        if (textarea) {
-          textarea.style.height = 'auto'
-        }
       }
 
       function handleKeydown(e: KeyboardEvent) {
@@ -56,27 +51,18 @@
         }
       }
 
-      // Auto-resize textarea
-      function handleInput() {
-        if (textarea) {
-          textarea.style.height = 'auto'
-          textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`
-        }
-      }
 </script>
 
 <div class="bg-background py-5">
   <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
     <div class="relative">
       <Textarea
-        bind:ref={textarea}
         bind:value={input}
         onkeydown={handleKeydown}
-        oninput={handleInput}
         {placeholder}
         {disabled}
         rows={1}
-        class="relative z-10 min-h-[32px] w-full max-h-[220px] rounded-lg border border-border bg-surface px-4 py-4 shadow-sm shadow-shadow/30 outline-none focus-visible:border-ring focus-visible:ring-0 md:text-sm"
+        class="relative z-10 min-h-[32px] w-full max-h-[220px] scroll-pb-4 overflow-y-auto rounded-lg border border-border bg-surface px-4 py-4 shadow-sm shadow-shadow/30 outline-none focus-visible:border-ring focus-visible:ring-0 md:text-sm"
       />
 
       <div
