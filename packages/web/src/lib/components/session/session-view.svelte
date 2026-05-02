@@ -1,11 +1,9 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui/button/index.js'
       import { untrack } from 'svelte'
       import { messagesStore } from '$lib/stores/messages.svelte.js'
       import { modelsStore } from '$lib/stores/models.svelte.js'
       import { sessionStore } from '$lib/stores/sessions.svelte.js'
       import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
-      import PlayIcon from 'phosphor-svelte/lib/PlayIcon'
       import MessageBubble from './message-bubble.svelte'
       import QueuedMessageBubble from './queued-message-bubble.svelte'
       import StreamingIndicator from './streaming-indicator.svelte'
@@ -26,21 +24,6 @@
       const isRunning = $derived(sessionStore.isRunning(sessionId))
       const isStopping = $derived(sessionStore.isStopping(sessionId))
       const queuedMessages = $derived(sessionStore.queuedMessagesFor(sessionId))
-
-      // Detect if the conversation was recently interrupted — the last
-      // message will be the system interruption marker. Used to show
-      // a "Resume" button so the user can continue without typing.
-      const wasInterrupted = $derived.by(() => {
-        const msgs = messagesStore.messages
-        if (msgs.length === 0 || isRunning) return false
-        const last = msgs.at(-1)
-        if (!last) return false
-        return (
-          last.encoded.role === 'system' &&
-          typeof last.encoded.content === 'string' &&
-          last.encoded.content.includes('interrupted')
-        )
-      })
 
       // Load messages when sessionId changes.
       // untrack prevents the effect from subscribing to reactive state
@@ -112,14 +95,6 @@
 
       function handleStop() {
         sessionStore.stopAgent(sessionId)
-      }
-
-      function handleResume() {
-        messagesStore.addOptimisticUserMessage(
-          sessionId,
-          'Continue where you left off.'
-        )
-        sessionStore.runAgent(sessionId, 'Continue where you left off.')
       }
 
       async function handleModel(value: string) {
@@ -204,23 +179,6 @@
       </div>
     {/if}
   </div>
-
-  <!-- Resume button — shown after interruption -->
-  {#if wasInterrupted}
-    <div class="px-4 py-2">
-      <div class="mx-auto flex w-full max-w-6xl justify-center">
-        <Button
-          onclick={handleResume}
-          variant="outline"
-          size="lg"
-          class="gap-2 px-4 py-1.5 text-sm"
-        >
-          <PlayIcon />
-          Resume
-        </Button>
-      </div>
-    </div>
-  {/if}
 
   <!-- Composer -->
   <Composer
