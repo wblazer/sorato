@@ -21,6 +21,7 @@
         isRunning = false,
         isStopping = false,
         disabled = false,
+        placeholder,
       }: {
         onSend: (input: string) => void
         onStop?: () => void
@@ -34,6 +35,7 @@
         isRunning?: boolean
         isStopping?: boolean
         disabled?: boolean
+        placeholder?: string
       } = $props()
 
       let input = $state('')
@@ -84,6 +86,7 @@
         bind:value={input}
         onkeydown={handleKeydown}
         {disabled}
+        {placeholder}
         rows={1}
         class="relative z-10 min-h-[32px] w-full max-h-[220px] scroll-pb-4 overflow-y-auto rounded-lg border border-border bg-surface px-4 py-4 shadow-sm shadow-shadow/30 outline-none focus-visible:border-ring focus-visible:ring-0 md:text-sm"
       />
