@@ -1,8 +1,5 @@
 <script lang="ts">
-  import {
-        CommandPalette,
-        type KeyHint,
-      } from '$lib/components/ui/command-palette/index.js'
+  import { CommandPalette } from '$lib/components/ui/command-palette/index.js'
       import {
         actionStore,
         type ActionRegistration,
@@ -18,13 +15,7 @@
       let query = $state('')
       let selectedIndex = $state(0)
 
-      const hints: KeyHint[] = [
-        { key: '↑↓', label: 'to navigate' },
-        { key: 'Enter', label: 'to run' },
-        { key: 'Esc', label: 'to close' },
-      ]
-
-      function rank(action: ActionRegistration, term: string): number {
+  function rank(action: ActionRegistration, term: string): number {
         if (!term) return 0
 
         const title = action.title.toLowerCase()
@@ -102,7 +93,6 @@
   placeholder="Search actions..."
   itemCount={filteredActions.length}
   onConfirm={handleConfirm}
-  {hints}
 >
   {#snippet items()}
     {#each filteredActions as action, index (action.id)}
@@ -119,14 +109,7 @@
         onmouseenter={() => handleItemMouseEnter(index)}
       >
         <div class="min-w-0 flex-1">
-          <div class="flex items-center gap-2">
-            <span class="truncate text-sm font-medium">{action.title}</span>
-            <span
-              class="shrink-0 text-[10px] uppercase tracking-[0.14em] text-muted-foreground"
-            >
-              {action.category}
-            </span>
-          </div>
+          <div class="truncate text-sm font-medium">{action.title}</div>
           {#if action.description}
             <div class="truncate pt-0.5 text-xs text-muted-foreground">
               {action.description}

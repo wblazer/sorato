@@ -3,7 +3,7 @@
        * Reusable command palette shell.
        *
        * Provides the dialog chrome, search input, keyboard navigation,
-       * scroll-into-view, loading state, and footer hints. Consumers
+   * scroll-into-view, and loading state. Consumers
        * supply items via snippets and handle domain-specific behavior
        * (fetching, selection, extra keybindings) through props.
        */
@@ -13,12 +13,7 @@
       import type { Snippet } from 'svelte'
       import { untrack } from 'svelte'
 
-      export interface KeyHint {
-        key: string
-        label: string
-      }
-
-      interface Props {
+  interface Props {
         /** Controls dialog visibility */
         open: boolean
         /** Two-way bound search/filter text */
@@ -39,9 +34,7 @@
         /** When true, select all input text on open. When false (default),
          *  place the cursor at the end so the user can append to prefilled text. */
         selectOnOpen?: boolean
-        /** Keyboard shortcut hints shown in the footer */
-        hints?: KeyHint[]
-        /** Overlay scope name used to suppress app-level hotkeys while open */
+    /** Overlay scope name used to suppress app-level hotkeys while open */
         hotkeyScope?: string
         /** The list content. Use the bound selectedIndex prop for highlighting. */
         items: Snippet
@@ -59,8 +52,7 @@
         onConfirm,
         onKeydown,
         selectOnOpen = false,
-        hints = [],
-        hotkeyScope = 'command-palette',
+    hotkeyScope = 'command-palette',
         items,
         empty,
       }: Props = $props()
@@ -173,22 +165,5 @@
         {/if}
       {/if}
     </div>
-
-    <!-- Footer hints -->
-    {#if hints.length > 0}
-      <div
-        class="flex items-center gap-4 border-t px-4 py-2 text-xs text-muted-foreground"
-      >
-        {#each hints as hint}
-          <span>
-            <kbd
-              class="rounded border bg-inset px-1.5 py-0.5 font-mono text-[10px]"
-              >{hint.key}</kbd
-            >
-            {hint.label}
-          </span>
-        {/each}
-      </div>
-    {/if}
   </Dialog.DialogContent>
 </Dialog.Dialog>

@@ -1,8 +1,5 @@
 <script lang="ts">
-  import {
-        CommandPalette,
-        type KeyHint,
-      } from '$lib/components/ui/command-palette/index.js'
+  import { CommandPalette } from '$lib/components/ui/command-palette/index.js'
       import FolderIcon from 'phosphor-svelte/lib/FolderIcon'
       import { connectionsStore } from '$lib/stores/connections.svelte.js'
       import { cn } from '$lib/utils.js'
@@ -28,13 +25,7 @@
       let error = $state<string | null>(null)
       let selectedIndex = $state(0)
 
-      const hints: KeyHint[] = [
-        { key: 'Tab', label: 'to drill in' },
-        { key: 'Enter', label: 'to select' },
-        { key: 'Esc', label: 'to cancel' },
-      ]
-
-      // ── Query parsing ───────────────────────────────────────────────
+  // ── Query parsing ───────────────────────────────────────────────
       //
       // Split query into the parent directory to list and an incomplete
       // tail segment to filter by.
@@ -209,7 +200,6 @@
   itemCount={directories.length}
   onConfirm={handleConfirm}
   onKeydown={handleKeydown}
-  {hints}
 >
   {#snippet items()}
     {#if error}
