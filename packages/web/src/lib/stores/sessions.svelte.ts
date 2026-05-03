@@ -23,7 +23,7 @@ function createSessionStore() {
    * When true, the main area shows the new-session composer
    * instead of an existing session view.
    */
-  let composing = $state(false)
+  let composing = $state(true)
 
   // Directories the user has explicitly opened (may not have sessions yet)
   let openedDirectories = $state<string[]>([])

@@ -69,15 +69,12 @@
     class="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center gap-4 px-6 py-8 text-center"
   >
     <div>
-      <p class="text-sm text-muted-foreground">
-        Start a conversation with the agent.
-      </p>
       {#if !sessionStore.selectedDirectory}
-        <p class="mt-2 text-xs text-danger">Select a directory first.</p>
+        <p class="text-xs text-danger">Select a directory first.</p>
       {:else if modelsStore.error}
-        <p class="mt-2 text-xs text-danger">{modelsStore.error}</p>
+        <p class="text-xs text-danger">{modelsStore.error}</p>
       {:else if !modelsStore.loading && modelsStore.models.length === 0}
-        <p class="mt-2 text-xs text-danger">
+        <p class="text-xs text-danger">
           No models available on this server.
         </p>
       {/if}

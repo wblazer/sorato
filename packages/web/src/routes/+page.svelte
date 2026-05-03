@@ -12,7 +12,5 @@
 {:else if selectedSession}
   <SessionView sessionId={selectedSession.id} title={selectedSession.title} />
 {:else}
-  <div class="flex flex-1 items-center justify-center p-8">
-    <p class="text-sm text-muted-foreground">Select a session to get started</p>
-  </div>
+  <NewSession />
 {/if}
