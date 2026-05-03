@@ -102,6 +102,7 @@ function createSSEResponse(
         Match.tagsExhaustive({
           MessagesAppended: writeLifecycleEvent,
           RunEnd: writeLifecycleEvent,
+          RunFailed: writeLifecycleEvent,
           RunStart: writeLifecycleEvent,
           SessionUpdated: writeLifecycleEvent,
           TextDelta: writeContentEvent,
@@ -143,15 +144,17 @@ function createSSEResponse(
         const isSessionEvent = (event: ServerEvent): boolean =>
           'sessionId' in event && event.sessionId === sessionId
 
-        const isSessionStreamEvent = (event: ServerEvent): boolean =>
-          event._tag === 'RunStart' ||
-          event._tag === 'RunEnd' ||
-          isContentEvent(event)
+          const isSessionStreamEvent = (event: ServerEvent): boolean =>
+            event._tag === 'RunStart' ||
+            event._tag === 'RunEnd' ||
+            event._tag === 'RunFailed' ||
+            isContentEvent(event)
 
         const writeSessionEvent = Match.type<ServerEvent>().pipe(
           Match.tagsExhaustive({
             MessagesAppended: writeEvent,
             RunEnd: writeEvent,
+            RunFailed: writeEvent,
             RunStart: writeEvent,
             SessionUpdated: writeEvent,
             TextDelta: writeSessionContentEvent,

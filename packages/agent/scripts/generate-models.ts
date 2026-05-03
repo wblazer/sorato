@@ -8,7 +8,18 @@ type ModelsDevModel = {
   readonly id: string
   readonly name: string
   readonly release_date?: string
+  readonly attachment: boolean
+  readonly reasoning: boolean
+  readonly temperature: boolean
   readonly tool_call: boolean
+  readonly limit: {
+    readonly context: number
+    readonly input?: number
+    readonly output: number
+  }
+  readonly experimental?: {
+    readonly modes?: Record<string, unknown>
+  }
   readonly status?: 'alpha' | 'beta' | 'deprecated'
 }
 
@@ -25,6 +36,18 @@ type CatalogModel = {
   readonly id: string
   readonly name: string
   readonly releaseDate?: string
+  readonly capabilities: {
+    readonly attachment: boolean
+    readonly reasoning: boolean
+    readonly temperature: boolean
+    readonly toolCall: boolean
+    readonly limits: {
+      readonly context: number
+      readonly input?: number
+      readonly output: number
+    }
+    readonly modes: ReadonlyArray<string>
+  }
 }
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -49,6 +72,18 @@ const toCatalogModel = ([id, model]: [
     id,
     name: model.name,
     releaseDate: model.release_date,
+    capabilities: {
+      attachment: model.attachment,
+      reasoning: model.reasoning,
+      temperature: model.temperature,
+      toolCall: model.tool_call,
+      limits: {
+        context: model.limit.context,
+        input: model.limit.input,
+        output: model.limit.output,
+      },
+      modes: Object.keys(model.experimental?.modes ?? {}).sort(),
+    },
   }
 }
 

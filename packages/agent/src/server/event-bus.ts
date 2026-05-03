@@ -64,6 +64,12 @@ export type ServerEvent =
       readonly sessionId: string
       readonly runId: string
     }
+  | {
+      readonly _tag: 'RunFailed'
+      readonly sessionId: string
+      readonly runId: string
+      readonly message: string
+    }
 
 export type ContentEvent = Extract<
   ServerEvent,

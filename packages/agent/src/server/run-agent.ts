@@ -22,8 +22,9 @@ import { createBusHook, publish } from './event-bus.ts'
 import { endEventReplay, startEventReplay } from './event-replay.ts'
 import { modelLayer } from './model-catalog.ts'
 import { createPersistenceHook } from './run-persistence.ts'
+import type { RunRequest } from './run-registry.ts'
 
-export const runAgent = (sessionId: SessionId, input: string) => {
+export const runAgent = (sessionId: SessionId, request: RunRequest) => {
   const runId = crypto.randomUUID()
   const finalizeRun = Effect.sync(() => {
     endEventReplay(sessionId, runId)
@@ -31,18 +32,35 @@ export const runAgent = (sessionId: SessionId, input: string) => {
   })
 
   return Effect.gen(function* () {
+    yield* Effect.logInfo('Agent run starting', {
+      runId,
+      model: request.model,
+      modelOptions: request.modelOptions,
+      inputLength: request.input.length,
+    })
+
     const storage = yield* SessionStorage
     const sandbox = yield* Sandbox
 
     const session = yield* storage.get(sessionId)
-    const modelServices = yield* Match.value(modelLayer(session.model)).pipe(
+    yield* Effect.logInfo('Agent run loaded session', {
+      runId,
+      directory: session.directory,
+      headId: session.headId,
+    })
+
+    const modelServices = yield* Match.value(
+      modelLayer({ id: request.model, ...request.modelOptions })
+    ).pipe(
       Match.when(undefined, () =>
         Effect.die(
-          new Error(`Model is not supported by this server: ${session.model}`)
+          new Error(`Model is not supported by this server: ${request.model}`)
         )
       ),
       Match.orElse((layer) => Effect.succeed(layer))
     )
+    yield* Effect.logInfo('Agent run resolved model layer', { runId })
+
     const existingConversation = yield* storage.conversation(sessionId)
     const isFirstMessage = existingConversation.content.length === 0
     const preamble: Array<Prompt.MessageEncoded> = Match.value(
@@ -50,19 +68,36 @@ export const runAgent = (sessionId: SessionId, input: string) => {
     ).pipe(
       Match.when(true, () => [
         { role: 'system' as const, content: SYSTEM_PROMPT },
-        { role: 'user' as const, content: input },
+        { role: 'user' as const, content: request.input },
       ]),
-      Match.orElse(() => [{ role: 'user' as const, content: input }])
+      Match.orElse(() => [{ role: 'user' as const, content: request.input }])
     )
 
     yield* storage.append(sessionId, preamble)
+    yield* Effect.logInfo('Agent run appended user input', {
+      runId,
+      appendedMessages: preamble.length,
+      wasEmptySession: isFirstMessage,
+    })
     publish({ _tag: 'MessagesAppended', sessionId })
     startEventReplay(sessionId, runId)
     publish({ _tag: 'RunStart', sessionId, runId })
+    yield* Effect.logInfo('Agent run published lifecycle start', { runId })
 
     const conversation = yield* storage.conversation(sessionId)
     const messageCountBeforeRun = conversation.content.length
+    yield* Effect.logInfo('Agent run starting harness', {
+      runId,
+      messageCountBeforeRun,
+    })
+
     yield* sandbox.acquire(session.directory).pipe(
+      Effect.tap(() =>
+        Effect.logInfo('Agent run acquired sandbox', {
+          runId,
+          directory: session.directory,
+        })
+      ),
       Effect.flatMap(({ shell, files }) =>
         Effect.provide(
           run(conversation, {
@@ -81,14 +116,25 @@ export const runAgent = (sessionId: SessionId, input: string) => {
       ),
       Effect.scoped
     )
+
+    yield* Effect.logInfo('Agent run completed harness', { runId })
   }).pipe(
     Effect.ensuring(finalizeRun),
     Effect.catchCause((cause) =>
-      Effect.sync(() => {
+      Effect.gen(function* () {
         if (Cause.hasInterruptsOnly(cause)) {
-          console.log(`Agent run interrupted for session ${sessionId}`)
+          yield* Effect.logInfo('Agent run interrupted', { runId })
         } else {
-          console.error(`Agent run failed for session ${sessionId}:`, cause)
+          yield* Effect.logError('Agent run failed', {
+            runId,
+            cause: Cause.pretty(cause),
+          })
+          publish({
+            _tag: 'RunFailed',
+            sessionId,
+            runId,
+            message: 'Agent run failed. Check the server logs for details.',
+          })
         }
       })
     ),

@@ -57,13 +57,16 @@ export interface Session {
   readonly id: SessionId
   /** The working directory this session operates in. */
   readonly directory: string
-  /** The model used for future runs in this session. */
-  readonly model: string
   readonly title: string | null
   /** Points to the current active leaf. Null when the session is empty. */
   readonly headId: MessageId | null
   readonly createdAt: number
   readonly updatedAt: number
+}
+
+export interface ModelOptions {
+  readonly thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+  readonly mode?: string
 }
 
 /** A node in the message tree. */
@@ -89,7 +92,6 @@ export interface SessionStorageApi {
   /** Create a new empty session. */
   readonly create: (
     directory: string,
-    model: string,
     title?: string
   ) => Effect<Session, StorageError>
 
@@ -144,12 +146,6 @@ export interface SessionStorageApi {
   readonly setHead: (
     sessionId: SessionId,
     messageId: MessageId
-  ) => Effect<void, StorageError>
-
-  /** Update the model used for future runs in this session. */
-  readonly setModel: (
-    sessionId: SessionId,
-    model: string
   ) => Effect<void, StorageError>
 
   /**

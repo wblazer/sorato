@@ -20,7 +20,6 @@ export class SessionResponse extends Schema.Class<SessionResponse>(
 )({
   id: Schema.String,
   directory: Schema.String,
-  model: Schema.String,
   title: Schema.NullOr(Schema.String),
   headId: Schema.NullOr(Schema.String),
   /** Ephemeral run status — 'running' if an agent run is active. */
@@ -62,6 +61,21 @@ export class ModelOption extends Schema.Class<ModelOption>('ModelOption')({
   id: Schema.String,
   name: Schema.String,
   provider: Schema.String,
+  capabilities: Schema.Struct({
+    attachment: Schema.Boolean,
+    reasoning: Schema.Boolean,
+    temperature: Schema.Boolean,
+    toolCall: Schema.Boolean,
+    thinkingLevels: Schema.Array(
+      Schema.Literals(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'])
+    ),
+    modes: Schema.Array(Schema.String),
+    limits: Schema.Struct({
+      context: Schema.Number,
+      input: Schema.optional(Schema.Number),
+      output: Schema.Number,
+    }),
+  }),
 }) {}
 
 export class ModelsResponse extends Schema.Class<ModelsResponse>(
@@ -118,14 +132,10 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
     HttpApiEndpoint.post('create', '/', {
       payload: Schema.Struct({
         directory: Schema.String,
-        model: Schema.String,
         title: Schema.optional(Schema.String),
       }),
       success: SessionResponse,
-      error: [
-        StorageError.pipe(HttpApiSchema.status(500)),
-        ModelError.pipe(HttpApiSchema.status(500)),
-      ],
+      error: StorageError.pipe(HttpApiSchema.status(500)),
     })
   )
   .add(
@@ -157,23 +167,24 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
     })
   )
   .add(
-    HttpApiEndpoint.post('setModel', '/:id/model', {
-      params: { id: SessionId },
-      payload: Schema.Struct({ model: Schema.String }),
-      success: SessionResponse,
-      error: [
-        StorageError.pipe(HttpApiSchema.status(500)),
-        ModelError.pipe(HttpApiSchema.status(500)),
-      ],
-    })
-  )
-  .add(
     HttpApiEndpoint.post('run', '/:id/run', {
       params: { id: SessionId },
-      payload: Schema.Struct({ input: Schema.String }),
+      payload: Schema.Struct({
+        input: Schema.String,
+        model: Schema.String,
+        modelOptions: Schema.optional(
+          Schema.Struct({
+            thinkingLevel: Schema.optional(
+              Schema.Literals(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'])
+            ),
+            mode: Schema.optional(Schema.String),
+          })
+        ),
+      }),
       success: RunResponse,
       error: [
         StorageError.pipe(HttpApiSchema.status(500)),
+        ModelError.pipe(HttpApiSchema.status(500)),
         RunError.pipe(HttpApiSchema.status(500)),
       ],
     })

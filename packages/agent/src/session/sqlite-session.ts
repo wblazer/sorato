@@ -36,7 +36,6 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS sessions (
     id          TEXT PRIMARY KEY,
     directory   TEXT NOT NULL,
-    model       TEXT NOT NULL,
     title       TEXT,
     head_id     TEXT,
     created_at  INTEGER NOT NULL,
@@ -64,7 +63,6 @@ const SCHEMA = `
 interface SessionRow {
   id: string
   directory: string
-  model: string
   title: string | null
   head_id: string | null
   created_at: number
@@ -86,14 +84,11 @@ interface MessageRow {
 const toSession = (row: SessionRow): Session => ({
   id: row.id,
   directory: row.directory,
-  model: row.model,
   title: row.title,
   headId: row.head_id,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 })
-
-const LEGACY_MODEL = 'anthropic/claude-sonnet-4-20250514'
 
 const toMessageNode = (row: MessageRow): MessageNode => ({
   id: row.id,
@@ -110,9 +105,9 @@ const toMessageNode = (row: MessageRow): MessageNode => ({
 const prepareStatements = (db: Database) => {
   const insertSession = db.prepare<
     void,
-    [string, string, string, string | null, number, number]
+    [string, string, string | null, number, number]
   >(
-    'INSERT INTO sessions (id, directory, model, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+    'INSERT INTO sessions (id, directory, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
   )
 
   const getSession = db.prepare<SessionRow, [string]>(
@@ -129,10 +124,6 @@ const prepareStatements = (db: Database) => {
 
   const updateHead = db.prepare<void, [string | null, number, string]>(
     'UPDATE sessions SET head_id = ?, updated_at = ? WHERE id = ?'
-  )
-
-  const updateModel = db.prepare<void, [string, number, string]>(
-    'UPDATE sessions SET model = ?, updated_at = ? WHERE id = ?'
   )
 
   const insertMessage = db.prepare<
@@ -183,26 +174,12 @@ const prepareStatements = (db: Database) => {
     listSessions,
     deleteSession,
     updateHead,
-    updateModel,
     insertMessage,
     getMessage,
     walkToRoot,
     findLeaves,
     messageInSession,
   }
-}
-
-const migrate = (db: Database) => {
-  const cols = db
-    .prepare<{ name: string }, []>('PRAGMA table_info(sessions)')
-    .all()
-
-  cols.some((col) => col.name === 'model') ||
-    Boolean(db.run('ALTER TABLE sessions ADD COLUMN model TEXT'))
-
-  db.prepare('UPDATE sessions SET model = ? WHERE model IS NULL').run(
-    LEGACY_MODEL
-  )
 }
 
 const ensureDatabaseDirectory = (path: string) =>
@@ -220,7 +197,6 @@ const openDatabase = (path: string) => {
   database.run('PRAGMA journal_mode = WAL')
   database.run('PRAGMA foreign_keys = ON')
   database.run(SCHEMA)
-  migrate(database)
 
   return database
 }
@@ -266,7 +242,6 @@ export const SqliteSession = (options: { readonly path: string }) =>
 
       const create = Effect.fn('SessionStorage.create')(function* (
         directory: string,
-        model: string,
         title?: string
       ) {
         const id = crypto.randomUUID()
@@ -277,7 +252,6 @@ export const SqliteSession = (options: { readonly path: string }) =>
             stmts.insertSession.run(
               id,
               directory,
-              model,
               title ?? null,
               now,
               now
@@ -293,7 +267,6 @@ export const SqliteSession = (options: { readonly path: string }) =>
         return {
           id,
           directory,
-          model,
           title: title ?? null,
           headId: null,
           createdAt: now,
@@ -484,23 +457,6 @@ export const SqliteSession = (options: { readonly path: string }) =>
         )
       })
 
-      const setModel = Effect.fn('SessionStorage.setModel')(function* (
-        sessionId: SessionId,
-        model: string
-      ) {
-        yield* get(sessionId)
-
-        yield* Effect.try({
-          try: () => stmts.updateModel.run(model, Date.now(), sessionId),
-          catch: (error) =>
-            new StorageError({
-              operation: 'setModel',
-              message: `Failed to update model: ${sessionId}`,
-              error,
-            }),
-        })
-      })
-
       const leaves = Effect.fn('SessionStorage.leaves')(function* (
         sessionId: SessionId
       ) {
@@ -529,7 +485,6 @@ export const SqliteSession = (options: { readonly path: string }) =>
         messages,
         append,
         setHead,
-        setModel,
         leaves,
       } satisfies SessionStorageApi
     })

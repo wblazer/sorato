@@ -153,11 +153,11 @@ export const Grep = Tool.make('Grep', {
     pattern: Schema.String.annotate({
       description: 'The regex pattern to search for in file contents.',
     }),
-    path: Schema.optional(Schema.String).annotate({
+    path: Schema.optionalKey(Schema.String).annotate({
       description:
         'Directory to search in (sandbox-relative). Defaults to the sandbox root.',
     }),
-    include: Schema.optional(Schema.String).annotate({
+    include: Schema.optionalKey(Schema.String).annotate({
       description:
         'Glob pattern to filter files (e.g. "*.ts", "*.{js,jsx}"). Only files matching this pattern will be searched.',
     }),

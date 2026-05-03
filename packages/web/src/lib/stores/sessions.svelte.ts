@@ -1,6 +1,8 @@
-import type { Session } from '$lib/types.js'
+import type { ModelOptions, Session } from '$lib/types.js'
 import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
+import { messagesStore } from './messages.svelte.js'
+import { modelsStore } from './models.svelte.js'
 
 export interface QueuedMessageDraft {
   id: string
@@ -52,6 +54,7 @@ function createSessionStore() {
   let stoppingSessions = $state(new Set<string>())
   let queuedMessages = $state(new Map<string, QueuedMessageDraft[]>())
   let pendingRunStarts = $state(new Map<string, number>())
+  let sessionErrors = $state(new Map<string, string>())
 
   sseStore.onEvent((event) => {
     if (event._tag === 'RunStart') {
@@ -80,6 +83,16 @@ function createSessionStore() {
       sessions = sessions.map((s) =>
         s.id === event.sessionId ? { ...s, status: 'running' as const } : s
       )
+
+      if (sessionErrors.has(event.sessionId)) {
+        const next = new Map(sessionErrors)
+        next.delete(event.sessionId)
+        sessionErrors = next
+      }
+    } else if (event._tag === 'RunFailed') {
+      const next = new Map(sessionErrors)
+      next.set(event.sessionId, event.message)
+      sessionErrors = next
     } else if (event._tag === 'RunEnd') {
       // Clear stopping state — the run is definitively done.
       if (stoppingSessions.has(event.sessionId)) {
@@ -131,6 +144,7 @@ function createSessionStore() {
       if (!selectedDirectory && directories.length > 0) {
         selectedDirectory = directories[0] ?? ''
       }
+      if (selectedDirectory) void modelsStore.load(selectedDirectory)
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to fetch sessions'
     } finally {
@@ -142,18 +156,15 @@ function createSessionStore() {
    * Create a new session in the currently selected directory.
    * Returns the new session, or null on error.
    */
-  async function createSession(
-    directory?: string,
-    model?: string
-  ): Promise<Session | null> {
+  async function createSession(directory?: string): Promise<Session | null> {
     const dir = directory ?? selectedDirectory
-    if (!dir || !model) return null
+    if (!dir) return null
 
     try {
       const res = await fetch(`${connectionsStore.getApiBase()}/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ directory: dir, model }),
+        body: JSON.stringify({ directory: dir }),
       })
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
 
@@ -168,47 +179,23 @@ function createSessionStore() {
     }
   }
 
-  async function setModel(sessionId: string, model: string): Promise<boolean> {
-    const prev = sessions
-    sessions = sessions.map((session) =>
-      session.id === sessionId ? { ...session, model } : session
-    )
-
-    try {
-      const res = await fetch(
-        `${connectionsStore.getApiBase()}/sessions/${sessionId}/model`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model }),
-        }
-      )
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-
-      const session: Session = await res.json()
-      sessions = sessions.map((item) =>
-        item.id === sessionId ? session : item
-      )
-      return true
-    } catch (e) {
-      sessions = prev
-      error = e instanceof Error ? e.message : 'Failed to update model'
-      return false
-    }
-  }
-
   /**
    * Start an agent run on a session.
    * Fire-and-forget — events stream via SSE.
    */
-  async function runAgent(sessionId: string, input: string): Promise<boolean> {
+  async function runAgent(
+    sessionId: string,
+    input: string,
+    model: string,
+    modelOptions: ModelOptions = {}
+  ): Promise<boolean> {
     try {
       const res = await fetch(
         `${connectionsStore.getApiBase()}/sessions/${sessionId}/run`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ input }),
+          body: JSON.stringify({ input, model, modelOptions }),
         }
       )
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
@@ -291,6 +278,7 @@ function createSessionStore() {
   function startComposing() {
     selectedSessionId = null
     composing = true
+    messagesStore.clear()
   }
 
   /** Check if a session currently has an active run. */
@@ -306,6 +294,17 @@ function createSessionStore() {
 
   function queuedMessagesFor(sessionId: string): QueuedMessageDraft[] {
     return queuedMessages.get(sessionId) ?? []
+  }
+
+  function sessionError(sessionId: string): string | null {
+    return sessionErrors.get(sessionId) ?? null
+  }
+
+  function clearSessionError(sessionId: string) {
+    if (!sessionErrors.has(sessionId)) return
+    const next = new Map(sessionErrors)
+    next.delete(sessionId)
+    sessionErrors = next
   }
 
   return {
@@ -337,6 +336,8 @@ function createSessionStore() {
       selectedDirectory = dir
       selectedSessionId = null
       composing = false
+      messagesStore.clear()
+      void modelsStore.load(dir)
     },
     /** Open a directory — adds it to the known list and selects it */
     openDirectory(dir: string) {
@@ -346,17 +347,21 @@ function createSessionStore() {
       selectedDirectory = dir
       selectedSessionId = null
       composing = false
+      messagesStore.clear()
+      void modelsStore.load(dir)
     },
     selectSession(id: string) {
       selectedSessionId = id
       composing = false
+      void messagesStore.loadMessages(id)
     },
     isRunning,
     isStopping,
+    sessionError,
+    clearSessionError,
     queuedMessagesFor,
     startComposing,
     createSession,
-    setModel,
     runAgent,
     stopAgent,
     fetchSessions,

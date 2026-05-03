@@ -1,10 +1,17 @@
 import { Match } from 'effect'
 import type { Fiber } from 'effect'
+import type { ModelOptions } from '../session/session.ts'
+
+export interface RunRequest {
+  readonly input: string
+  readonly model: string
+  readonly modelOptions: ModelOptions
+}
 
 interface SessionRunState {
   workerFiber: Fiber.Fiber<void, never> | null
   activeRunFiber: Fiber.Fiber<void, never> | null
-  queuedInputs: Array<string>
+  queuedRuns: Array<RunRequest>
   stopRequested: boolean
 }
 
@@ -14,30 +21,30 @@ const missingSessionState = (kind: string, sessionId: string): never => {
   throw new Error(`Cannot register ${kind} for unknown session ${sessionId}`)
 }
 
-const startRunState = (sessionId: string, input: string) => {
+const startRunState = (sessionId: string, request: RunRequest) => {
   running.set(sessionId, {
     workerFiber: null,
     activeRunFiber: null,
-    queuedInputs: [input],
+    queuedRuns: [request],
     stopRequested: false,
   })
 
   return 'started' as const
 }
 
-const queueRunState = (state: SessionRunState, input: string) => {
-  state.queuedInputs.push(input)
+const queueRunState = (state: SessionRunState, request: RunRequest) => {
+  state.queuedRuns.push(request)
   return 'queued' as const
 }
 
 export function enqueueRun(
   sessionId: string,
-  input: string
+  request: RunRequest
 ): 'started' | 'queued' {
   const state = running.get(sessionId)
   return Match.value(state).pipe(
-    Match.when(undefined, () => startRunState(sessionId, input)),
-    Match.orElse((state) => queueRunState(state, input))
+    Match.when(undefined, () => startRunState(sessionId, request)),
+    Match.orElse((state) => queueRunState(state, request))
   )
 }
 
@@ -65,8 +72,8 @@ export function clearActiveFiber(sessionId: string): void {
   state.activeRunFiber = null
 }
 
-export function shiftQueuedRun(sessionId: string): string | undefined {
-  return running.get(sessionId)?.queuedInputs.shift()
+export function shiftQueuedRun(sessionId: string): RunRequest | undefined {
+  return running.get(sessionId)?.queuedRuns.shift()
 }
 
 export function requestStop(sessionId: string): void {
@@ -79,12 +86,12 @@ export function shouldStop(sessionId: string): boolean {
   return running.get(sessionId)?.stopRequested ?? false
 }
 
-export function drainQueuedRuns(sessionId: string): Array<string> {
+export function drainQueuedRuns(sessionId: string): Array<RunRequest> {
   const state = running.get(sessionId)
   if (!state) return []
 
-  const queued = [...state.queuedInputs]
-  state.queuedInputs = []
+  const queued = [...state.queuedRuns]
+  state.queuedRuns = []
   return queued
 }
 
@@ -103,7 +110,7 @@ export function isRunning(sessionId: string): boolean {
 }
 
 export function getQueuedRunCount(sessionId: string): number {
-  return running.get(sessionId)?.queuedInputs.length ?? 0
+  return running.get(sessionId)?.queuedRuns.length ?? 0
 }
 
 export function getRunningSessionIds(): ReadonlySet<string> {

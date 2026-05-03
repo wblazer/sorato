@@ -1,9 +1,14 @@
-import type { AvailableModelsResponse } from '$lib/types.js'
+import type { AvailableModelsResponse, ModelOptions } from '$lib/types.js'
 import { connectionsStore } from './connections.svelte.js'
 import { getJson, setJson, storageKey } from '$lib/storage.js'
 
-const recentKey = (id: string | undefined) =>
-  storageKey('connection', id, 'recent-model')
+type StoredModelSelection = {
+  readonly model: string
+  readonly options: ModelOptions
+}
+
+const selectionKey = (id: string | undefined) =>
+  storageKey('connection', id, 'model-selection')
 
 function createModelsStore() {
   let models = $state<AvailableModelsResponse['models']>([])
@@ -11,6 +16,8 @@ function createModelsStore() {
   let loading = $state(false)
   let error = $state<string | null>(null)
   let directory = $state<string | null>(null)
+  let selectedModel = $state<string | null>(null)
+  let selectedOptions = $state<ModelOptions>({})
   let req = 0
 
   function clear() {
@@ -20,26 +27,34 @@ function createModelsStore() {
     loading = false
     error = null
     directory = null
+    selectedModel = null
+    selectedOptions = {}
   }
 
   function recent() {
-    return getJson<string | null>(
-      recentKey(connectionsStore.activeConnection?.id),
+    return getJson<StoredModelSelection | null>(
+      selectionKey(connectionsStore.activeConnection?.id),
       null
     )
   }
 
-  function remember(model: string) {
+  function remember(model: string, options: ModelOptions = {}) {
     const id = connectionsStore.activeConnection?.id
     if (!id) return
-    setJson(recentKey(id), model)
+    setJson(selectionKey(id), { model, options })
+  }
+
+  function select(model: string, options: ModelOptions = {}) {
+    selectedModel = model
+    selectedOptions = options
+    remember(model, options)
   }
 
   function pick() {
     const ids = new Set(models.map((item) => item.id))
     const last = recent()
 
-    if (last && ids.has(last)) return last
+    if (last && ids.has(last.model)) return last.model
     if (defaultModel && ids.has(defaultModel)) return defaultModel
     return models[0]?.id ?? null
   }
@@ -66,6 +81,17 @@ function createModelsStore() {
 
       models = data.models
       defaultModel = data.defaultModel ?? null
+      const ids = new Set(models.map((item) => item.id))
+      if (!selectedModel || !ids.has(selectedModel)) {
+        const stored = recent()
+        if (stored && ids.has(stored.model)) {
+          selectedModel = stored.model
+          selectedOptions = stored.options
+        } else {
+          selectedModel = pick()
+          selectedOptions = {}
+        }
+      }
     } catch (err) {
       if (id !== req) return
       models = []
@@ -92,9 +118,16 @@ function createModelsStore() {
     get directory() {
       return directory
     },
+    get selectedModel() {
+      return selectedModel
+    },
+    get selectedOptions() {
+      return selectedOptions
+    },
     clear,
     load,
     pick,
+    select,
     recent,
     remember,
   }

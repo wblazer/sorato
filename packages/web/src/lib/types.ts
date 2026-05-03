@@ -1,7 +1,6 @@
 export interface Session {
   id: string
   directory: string
-  model: string
   title: string | null
   headId: string | null
   /** Ephemeral run status — 'running' if an agent run is active. */
@@ -10,10 +9,28 @@ export interface Session {
   updatedAt: number
 }
 
+export interface ModelOptions {
+  thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+  mode?: string
+}
+
 export interface AvailableModel {
   id: string
   name: string
   provider: string
+  capabilities: {
+    attachment: boolean
+    reasoning: boolean
+    temperature: boolean
+    toolCall: boolean
+    thinkingLevels: Array<'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'>
+    modes: string[]
+    limits: {
+      context: number
+      input?: number
+      output: number
+    }
+  }
 }
 
 export interface AvailableModelsResponse {
@@ -153,3 +170,4 @@ export type ServerEvent =
     }
   | { _tag: 'RunStart'; sessionId: string; runId: string }
   | { _tag: 'RunEnd'; sessionId: string; runId: string }
+  | { _tag: 'RunFailed'; sessionId: string; runId: string; message: string }

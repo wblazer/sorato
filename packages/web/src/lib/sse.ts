@@ -15,6 +15,7 @@ const EVENT_TAGS = [
   'ToolResult',
   'RunStart',
   'RunEnd',
+  'RunFailed',
 ] as const
 
 export interface SseConnection {

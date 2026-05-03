@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { Effect, Match } from 'effect'
 import { describe, expect, it } from '@effect/vitest'
 import { MODEL_PROVIDERS } from '../src/server/models.generated.ts'
-import { listModels } from '../src/server/model-catalog.ts'
+import { ensureModel, listModels } from '../src/server/model-catalog.ts'
 import { PROVIDER_ADAPTERS } from '../src/server/provider-adapters.ts'
 
 const expectDefined = <T>(value: T | null | undefined, message: string): T => {
@@ -151,6 +151,41 @@ describe('ModelCatalog', () => {
       ).toBe(false)
       expect(models.models.length).toBe(supportedCount(openai))
       ;(openai.models as Array<MutableCatalogModel>).pop()
+      restoreEnv('OPENAI_API_KEY', prevOpenAi)
+      yield* Effect.tryPromise(() => rm(root, { recursive: true, force: true }))
+    })
+  )
+
+  it.effect('accepts model selections with supported runtime variants', () =>
+    Effect.gen(function* () {
+      const root = yield* Effect.tryPromise(() =>
+        mkdtemp(join(tmpdir(), 'agents-'))
+      )
+      const dir = join(root, 'project')
+      const prevAnthropic = process.env.ANTHROPIC_API_KEY
+      const prevOpenAi = process.env.OPENAI_API_KEY
+
+      yield* Effect.tryPromise(() => mkdir(dir, { recursive: true }))
+
+      delete process.env.ANTHROPIC_API_KEY
+      process.env.OPENAI_API_KEY = 'test-openai'
+
+      const models = yield* listModels(dir)
+      const reasoning = expectDefined(
+        models.models.find((item) =>
+          item.capabilities.thinkingLevels.includes('low')
+        ),
+        'expected at least one OpenAI reasoning model'
+      )
+      const fast = expectDefined(
+        models.models.find((item) => item.capabilities.modes.includes('fast')),
+        'expected at least one OpenAI fast mode model'
+      )
+
+      yield* ensureModel(dir, reasoning.id, { thinkingLevel: 'low' })
+      yield* ensureModel(dir, fast.id, { mode: 'fast' })
+
+      restoreEnv('ANTHROPIC_API_KEY', prevAnthropic)
       restoreEnv('OPENAI_API_KEY', prevOpenAi)
       yield* Effect.tryPromise(() => rm(root, { recursive: true, force: true }))
     })

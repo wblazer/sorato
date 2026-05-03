@@ -124,11 +124,11 @@ export const ReadFile = Tool.make('ReadFile', {
     path: Schema.String.annotate({
       description: 'Absolute or relative path to the file',
     }),
-    offset: Schema.optional(Schema.Number).annotate({
+    offset: Schema.optionalKey(Schema.Number).annotate({
       description:
         '1-indexed line number to start reading from. Defaults to 1.',
     }),
-    limit: Schema.optional(Schema.Number).annotate({
+    limit: Schema.optionalKey(Schema.Number).annotate({
       description: `Maximum number of lines to return. Defaults to ${DEFAULT_LIMIT}.`,
     }),
   }),

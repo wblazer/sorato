@@ -1,5 +1,4 @@
 <script lang="ts">
-      import { untrack } from 'svelte'
       import { messagesStore } from '$lib/stores/messages.svelte.js'
       import { modelsStore } from '$lib/stores/models.svelte.js'
       import { sessionStore } from '$lib/stores/sessions.svelte.js'
@@ -7,43 +6,21 @@
       import QueuedMessageBubble from './queued-message-bubble.svelte'
       import StreamingIndicator from './streaming-indicator.svelte'
       import Composer from './composer.svelte'
+      import * as Item from '$lib/components/ui/item/index.js'
+      import { Button } from '$lib/components/ui/button/index.js'
+      import XIcon from 'phosphor-svelte/lib/XIcon'
 
       let { sessionId, title }: { sessionId: string; title: string | null } =
         $props()
 
       let messagesContainer: HTMLDivElement | undefined = $state()
-      let updatingModel = $state(false)
-
-      const session = $derived(
-        sessionStore.sessions.find((item) => item.id === sessionId) ?? null
-      )
 
       // Running state is derived from the session store — the single source
       // of truth. The messages store only tracks streaming *content*.
       const isRunning = $derived(sessionStore.isRunning(sessionId))
       const isStopping = $derived(sessionStore.isStopping(sessionId))
       const queuedMessages = $derived(sessionStore.queuedMessagesFor(sessionId))
-
-      // Load messages when sessionId changes.
-      // untrack prevents the effect from subscribing to reactive state
-      // read inside loadMessages, which would cause an infinite re-trigger loop.
-      $effect(() => {
-        if (sessionId) {
-          untrack(() => messagesStore.loadMessages(sessionId))
-        }
-        return () => {
-          messagesStore.clear()
-        }
-      })
-
-      $effect(() => {
-        if (!session?.directory) {
-          modelsStore.clear()
-          return
-        }
-
-        modelsStore.load(session.directory)
-      })
+      const sessionError = $derived(sessionStore.sessionError(sessionId))
 
       // Auto-scroll to bottom when new messages arrive or streaming parts change
       $effect(() => {
@@ -67,30 +44,36 @@
       })
 
       function handleSend(input: string) {
+        const model = modelsStore.selectedModel
+        if (!model) return
+
         if (!sessionStore.isRunning(sessionId)) {
           // Show the user's message immediately — don't wait for the server
           // round-trip. The optimistic node is replaced on the next refresh.
           messagesStore.addOptimisticUserMessage(sessionId, input)
         }
 
-        sessionStore.runAgent(sessionId, input)
+        sessionStore.runAgent(
+          sessionId,
+          input,
+          model,
+          modelsStore.selectedOptions
+        )
       }
 
       function handleStop() {
         sessionStore.stopAgent(sessionId)
       }
 
-      async function handleModel(value: string) {
-        updatingModel = true
-        try {
-          const ok = await sessionStore.setModel(sessionId, value)
-          if (ok) modelsStore.remember(value)
-        } finally {
-          updatingModel = false
-        }
+      function handleModel(value: string, modelOptions = {}) {
+        modelsStore.select(value, modelOptions)
       }
 
       function handleAttach() {}
+
+      function handleDismissError() {
+        sessionStore.clearSessionError(sessionId)
+      }
 </script>
 
 <div class="flex h-full flex-col">
@@ -164,15 +147,41 @@
   </div>
 
   <!-- Composer -->
+  {#if sessionError}
+    <div class="relative z-20 bg-background">
+      <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
+        <Item.Root variant="danger" class="-mb-3 shadow-sm shadow-shadow/30">
+          <Item.Content>
+            <Item.Title>Run failed</Item.Title>
+            <Item.Description>
+              {sessionError}
+            </Item.Description>
+          </Item.Content>
+          <Item.Actions class="ml-auto self-start">
+            <Button
+              variant="ghost-destructive"
+              size="icon-sm"
+              onclick={handleDismissError}
+              title="Dismiss error"
+              aria-label="Dismiss error"
+            >
+              <XIcon />
+            </Button>
+          </Item.Actions>
+        </Item.Root>
+      </div>
+    </div>
+  {/if}
+
   <Composer
     onSend={handleSend}
     onStop={handleStop}
     onAttach={handleAttach}
     onModelChange={handleModel}
     models={modelsStore.models}
-    model={session?.model ?? null}
+    model={modelsStore.selectedModel}
+    modelOptions={modelsStore.selectedOptions}
     modelLoading={modelsStore.loading}
-    modelDisabled={updatingModel}
     {isRunning}
     {isStopping}
     disabled={isStopping}

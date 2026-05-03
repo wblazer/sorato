@@ -46,7 +46,7 @@ export const Glob = Tool.make('Glob', {
       description:
         'Glob pattern to match against. Evaluated from the sandbox root (or from `path` if provided). Examples: "**/*.ts", "src/**/*.json", "*.md".',
     }),
-    path: Schema.optional(Schema.String).annotate({
+    path: Schema.optionalKey(Schema.String).annotate({
       description:
         'Optional base directory to search within (sandbox-relative). The pattern is evaluated relative to this directory. Defaults to the sandbox root.',
     }),

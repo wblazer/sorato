@@ -97,14 +97,14 @@ export const Bash = Tool.make('Bash', {
     command: Schema.String.annotate({
       description: 'The shell command to execute (passed to /bin/sh -c).',
     }),
-    cwd: Schema.optional(Schema.String).annotate({
+    cwd: Schema.optionalKey(Schema.String).annotate({
       description:
         'Working directory (sandbox-relative). Defaults to the sandbox root.',
     }),
-    timeout: Schema.optional(Schema.Number).annotate({
+    timeout: Schema.optionalKey(Schema.Number).annotate({
       description: `Timeout in milliseconds. Defaults to ${DEFAULT_TIMEOUT_MS}ms (${DEFAULT_TIMEOUT_MS / 1000}s). Use a longer timeout for builds/tests.`,
     }),
-    description: Schema.optional(Schema.String).annotate({
+    description: Schema.optionalKey(Schema.String).annotate({
       description:
         'Brief (5-10 word) description of what this command does, for logging.',
     }),

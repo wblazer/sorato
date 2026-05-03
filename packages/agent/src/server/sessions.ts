@@ -5,8 +5,12 @@
  * SessionStorage in its environment — the caller provides it (e.g. SqliteSession).
  */
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
-import { Effect, Fiber, Match } from 'effect'
-import { SessionStorage, type SessionStorageApi } from '../session/session.ts'
+import { Cause, Effect, Fiber, Match } from 'effect'
+import {
+  SessionStorage,
+  type ModelOptions,
+  type SessionStorageApi,
+} from '../session/session.ts'
 import {
   Api,
   MessageNodeResponse,
@@ -21,6 +25,7 @@ import {
   drainQueuedRuns as drainQueuedInputs,
   enqueueRun,
   getFiber,
+  getQueuedRunCount,
   isRunning,
   requestStop,
   registerActiveFiber,
@@ -34,7 +39,6 @@ import { publish } from './event-bus.ts'
 const toSessionResponse = (s: {
   readonly id: string
   readonly directory: string
-  readonly model: string
   readonly title: string | null
   readonly headId: string | null
   readonly createdAt: number
@@ -48,7 +52,6 @@ const toSessionResponse = (s: {
   return new SessionResponse({
     id: s.id,
     directory: s.directory,
-    model: s.model,
     title: s.title,
     headId: s.headId,
     status,
@@ -71,6 +74,14 @@ const toMessageNodeResponse = (m: {
     encoded: m.encoded,
     createdAt: m.createdAt,
   })
+
+const modelOptions = (options?: {
+  readonly thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | undefined
+  readonly mode?: string | undefined
+}): ModelOptions => ({
+  ...(options?.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
+  ...(options?.mode ? { mode: options.mode } : {}),
+})
 
 const registerActiveRun = Effect.fn('Sessions.registerActiveRun')(
   (sessionId: string, fiber: Fiber.Fiber<void, never>) =>
@@ -145,29 +156,68 @@ function createRunWorker(sessionId: string) {
   const releaseRunNow = releaseQueuedRun(sessionId)
 
   return Effect.gen(function* () {
+    yield* Effect.logInfo('Session run worker starting')
+
     while (true) {
       const stopRequested = shouldStop(sessionId)
-      if (stopRequested) break
+      if (stopRequested) {
+        yield* Effect.logInfo('Session run worker stopping before next run')
+        break
+      }
 
       const input = shiftQueuedRun(sessionId)
-      if (!input) break
+      if (!input) {
+        yield* Effect.logInfo('Session run worker queue drained')
+        break
+      }
+
+      yield* Effect.logInfo('Session run worker starting queued run', {
+        model: input.model,
+        modelOptions: input.modelOptions,
+        inputLength: input.input.length,
+        queuedRunCount: getQueuedRunCount(sessionId),
+      })
 
       const fiber = yield* Effect.forkDetach(runAgent(sessionId, input))
       yield* registerActiveRun(sessionId, fiber)
+      yield* Effect.logInfo('Session run worker registered active run')
 
       const joinedFiber = Fiber.join(fiber)
-      yield* joinedFiber.pipe(Effect.ensuring(clearActive))
+      yield* joinedFiber.pipe(
+        Effect.tap(() => Effect.logInfo('Session run worker joined active run')),
+        Effect.tapCause((cause) =>
+          Effect.logError('Session run worker observed active run failure', {
+            cause: Cause.pretty(cause),
+          })
+        ),
+        Effect.ensuring(clearActive)
+      )
     }
-  }).pipe(Effect.ensuring(releaseRunNow))
+  }).pipe(
+    Effect.ensuring(
+      Effect.logInfo('Session run worker releasing session').pipe(
+        Effect.andThen(releaseRunNow)
+      )
+    ),
+    Effect.annotateLogs('sessionId', sessionId)
+  )
 }
 
 function startRunWorker(sessionId: string) {
   const onWorkerError = releaseQueuedRun(sessionId)
 
   return Effect.forkDetach(createRunWorker(sessionId)).pipe(
+    Effect.tap(() =>
+      Effect.logInfo('Session run worker forked', { sessionId })
+    ),
     Effect.tap((fiber) => registerRunWorker(sessionId, fiber)),
     Effect.map(() => new RunResponse({ status: 'started' as const })),
-    Effect.onError(() => onWorkerError)
+    Effect.onError((cause) =>
+      Effect.logError('Session run worker failed to start', {
+        sessionId,
+        cause: Cause.pretty(cause),
+      }).pipe(Effect.andThen(onWorkerError))
+    )
   )
 }
 
@@ -187,9 +237,9 @@ function stopWithoutActiveFiber(storage: SessionStorageApi, sessionId: string) {
     const appendedQueuedInputs = storage
       .append(
         sessionId,
-        queuedInputs.map((input) => ({
+        queuedInputs.map((request) => ({
           role: 'user' as const,
-          content: input,
+          content: request.input,
         }))
       )
       .pipe(Effect.tap(() => publishMessagesAppended(sessionId)))
@@ -229,9 +279,9 @@ const stopWithActiveFiber = Effect.fn('Sessions.stopWithActiveFiber')(
         content:
           '[The user interrupted the previous response. The assistant message above may be incomplete.]',
       },
-      ...queuedInputs.map((input) => ({
+      ...queuedInputs.map((request) => ({
         role: 'user' as const,
-        content: input,
+        content: request.input,
       })),
     ])
     yield* publishMessagesAppended(sessionId)
@@ -269,10 +319,12 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
           .pipe(Effect.map((sessions) => sessions.map(toSessionResponse)))
       )
       .handle('create', ({ payload }) =>
-        ensureModel(payload.directory, payload.model).pipe(
-          Effect.andThen(
-            storage.create(payload.directory, payload.model, payload.title)
-          ),
+        storage
+          .create(
+            payload.directory,
+            payload.title
+          )
+          .pipe(
           Effect.map(toSessionResponse)
         )
       )
@@ -290,24 +342,44 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
           .messages(params.id)
           .pipe(Effect.map((nodes) => nodes.map(toMessageNodeResponse)))
       )
-      .handle('setModel', ({ params, payload }) =>
-        storage.get(params.id).pipe(
-          Effect.flatMap((session) =>
-            ensureModel(session.directory, payload.model)
-          ),
-          Effect.andThen(storage.setModel(params.id, payload.model)),
-          Effect.andThen(storage.get(params.id)),
-          Effect.map(toSessionResponse)
-        )
-      )
       .handle('run', ({ params, payload }) =>
-        storage
-          .get(params.id)
-          .pipe(
-            Effect.flatMap(() =>
-              selectRunResponse(params.id, enqueueRun(params.id, payload.input))
+        storage.get(params.id).pipe(
+          Effect.tap(() =>
+            Effect.logInfo('Session run request received', {
+              sessionId: params.id,
+              model: payload.model,
+              modelOptions: modelOptions(payload.modelOptions),
+              inputLength: payload.input.length,
+            })
+          ),
+          Effect.flatMap((session) =>
+            ensureModel(
+              session.directory,
+              payload.model,
+              modelOptions(payload.modelOptions)
             )
+          ),
+          Effect.tap(() =>
+            Effect.logInfo('Session run request model available', {
+              sessionId: params.id,
+              model: payload.model,
+            })
+          ),
+          Effect.flatMap(() =>
+            Effect.suspend(() => {
+              const status = enqueueRun(params.id, {
+                input: payload.input,
+                model: payload.model,
+                modelOptions: modelOptions(payload.modelOptions),
+              })
+              return Effect.logInfo('Session run request enqueued', {
+                sessionId: params.id,
+                status,
+                queuedRunCount: getQueuedRunCount(params.id),
+              }).pipe(Effect.andThen(selectRunResponse(params.id, status)))
+            })
           )
+        )
       )
       .handle('stop', ({ params }) => stopSession(storage, params.id))
   })

@@ -1,7 +1,8 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js'
       import { Textarea } from '$lib/components/ui/textarea/index.js'
-      import type { AvailableModel } from '$lib/types.js'
+      import * as Select from '$lib/components/ui/select/index.js'
+      import type { AvailableModel, ModelOptions } from '$lib/types.js'
       import ArrowUpIcon from 'phosphor-svelte/lib/ArrowUpIcon'
       import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
       import StopIcon from 'phosphor-svelte/lib/StopIcon'
@@ -14,6 +15,7 @@
         onModelChange,
         models = [],
         model = null,
+        modelOptions = {},
         modelLoading = false,
         modelDisabled = false,
         isRunning = false,
@@ -24,9 +26,10 @@
         onSend: (input: string) => void
         onStop?: () => void
         onAttach?: () => void
-        onModelChange?: (value: string) => void
+        onModelChange?: (value: string, options?: ModelOptions) => void
         models?: ReadonlyArray<AvailableModel>
         model?: string | null
+        modelOptions?: ModelOptions
         modelLoading?: boolean
         modelDisabled?: boolean
         isRunning?: boolean
@@ -36,6 +39,29 @@
       } = $props()
 
       let input = $state('')
+
+      const selectedModel = $derived(
+        models.find((item) => item.id === model) ?? null
+      )
+      const thinkingLevel = $derived(
+        modelOptions.thinkingLevel ?? selectedModel?.capabilities.thinkingLevels[0]
+      )
+      const selectedMode = $derived(modelOptions.mode)
+
+      function selectThinking(level: NonNullable<ModelOptions['thinkingLevel']>) {
+        if (!model) return
+        onModelChange?.(model, {
+          ...modelOptions,
+          thinkingLevel: level,
+        })
+      }
+
+      function selectMode(mode: string | undefined) {
+        if (!model) return
+        const next = { ...modelOptions, mode }
+        if (!mode) delete next.mode
+        onModelChange?.(model, next)
+      }
 
       function handleSubmit() {
         const trimmed = input.trim()
@@ -90,6 +116,52 @@
               onChange={onModelChange}
             />
           </div>
+
+          {#if selectedModel?.capabilities.reasoning}
+            <Select.Root
+              type="single"
+              value={thinkingLevel}
+              onValueChange={(value) =>
+                selectThinking(value as NonNullable<ModelOptions['thinkingLevel']>)}
+            >
+              <Select.Trigger
+                class="shrink-0 border-transparent bg-transparent shadow-none hover:bg-base-hover"
+                disabled={disabled || modelDisabled}
+                title="Select thinking level"
+              >
+                Think: {thinkingLevel}
+              </Select.Trigger>
+              <Select.Content class="w-48" align="start">
+                <Select.Label>Thinking</Select.Label>
+                {#each selectedModel.capabilities.thinkingLevels as level}
+                  <Select.Item value={level} label={level} class="capitalize" />
+                {/each}
+              </Select.Content>
+            </Select.Root>
+          {/if}
+
+          {#if selectedModel && selectedModel.capabilities.modes.length > 0}
+            <Select.Root
+              type="single"
+              value={selectedMode ?? 'default'}
+              onValueChange={(value) => selectMode(value === 'default' ? undefined : value)}
+            >
+              <Select.Trigger
+                class="shrink-0 border-transparent bg-transparent shadow-none hover:bg-base-hover"
+                disabled={disabled || modelDisabled}
+                title="Select model mode"
+              >
+                Mode: {selectedMode ?? 'default'}
+              </Select.Trigger>
+              <Select.Content class="w-48" align="start">
+                <Select.Label>Mode</Select.Label>
+                <Select.Item value="default" label="Default" />
+                {#each selectedModel.capabilities.modes as mode}
+                  <Select.Item value={mode} label={mode} class="capitalize" />
+                {/each}
+              </Select.Content>
+            </Select.Root>
+          {/if}
         </div>
 
         <div class="flex shrink-0 items-center gap-2">
@@ -99,7 +171,6 @@
               disabled={isStopping}
               variant="destructive"
               size="icon-lg"
-              class="rounded-full"
               title={isStopping ? 'Stopping...' : 'Stop'}
             >
               <StopIcon weight="fill" />
@@ -120,7 +191,7 @@
   </div>
 
   {#if isRunning}
-    <div class="mt-2 flex items-center justify-end px-1">
+    <div class="mx-auto mt-2 flex w-full max-w-6xl items-center justify-end px-4 sm:px-6">
       {#if isStopping}
         <span class="text-[11px] text-muted-foreground">Stopping...</span>
       {:else}

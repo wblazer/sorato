@@ -5,39 +5,23 @@
       import Composer from './composer.svelte'
 
       let sending = $state(false)
-      let model = $state<string>('')
 
-      $effect(() => {
-        const dir = sessionStore.selectedDirectory
-        if (!dir) {
-          modelsStore.clear()
-          model = ''
-          return
-        }
-
-        modelsStore.load(dir)
-      })
-
-      $effect(() => {
-        const ids = new Set(modelsStore.models.map((item) => item.id))
-        if (model && ids.has(model)) return
-        model = modelsStore.pick() ?? ''
-      })
-
-      function handleModel(value: string) {
-        model = value
-        modelsStore.remember(value)
+      function handleModel(value: string, options = {}) {
+        modelsStore.select(value, options)
       }
 
       function handleAttach() {}
 
       async function handleSend(input: string) {
+        const model = modelsStore.selectedModel
+        if (!model) return
+
         if (sending || !model) return
         sending = true
 
         try {
           // Create the session in the current directory
-          const session = await sessionStore.createSession(undefined, model)
+          const session = await sessionStore.createSession()
           if (!session) return
 
           // Prepare the messages store for this session BEFORE Svelte
@@ -50,7 +34,12 @@
           messagesStore.addOptimisticUserMessage(session.id, input)
 
           // Fire-and-forget — events stream via global SSE
-          await sessionStore.runAgent(session.id, input)
+          await sessionStore.runAgent(
+            session.id,
+            input,
+            model,
+            modelsStore.selectedOptions
+          )
 
           // selectSession is already called by createSession,
           // so the page will transition to SessionView
@@ -101,13 +90,14 @@
     onAttach={handleAttach}
     onModelChange={handleModel}
     models={modelsStore.models}
-    model={model || null}
+    model={modelsStore.selectedModel}
+    modelOptions={modelsStore.selectedOptions}
     modelLoading={modelsStore.loading}
     modelDisabled={!sessionStore.selectedDirectory || sending}
     disabled={sending ||
       !sessionStore.selectedDirectory ||
       modelsStore.loading ||
-      !model}
+      !modelsStore.selectedModel}
     placeholder={sending ? 'Creating session...' : 'What would you like to do?'}
   />
 </div>
