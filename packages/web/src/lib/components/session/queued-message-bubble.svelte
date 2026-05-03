@@ -22,7 +22,7 @@
     </span>
   </div>
 
-  <div class="whitespace-pre-wrap break-words text-sm leading-relaxed">
+  <div class="whitespace-pre-wrap break-words leading-relaxed">
     {message.content}
   </div>
 </div>

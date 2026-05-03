@@ -8,7 +8,8 @@
 
 {#if part.type === 'text'}
   <div
-    class="whitespace-pre-wrap break-words text-sm leading-relaxed"
+    class="whitespace-pre-wrap break-words leading-relaxed"
+    class:text-sm={monospace}
     class:font-mono={monospace}
   >
     {part.text}

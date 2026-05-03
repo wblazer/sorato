@@ -16,17 +16,7 @@
   <div class="flex flex-col gap-3 py-1">
     {#if parts.length > 0}
       {#each parts as part}
-        {#if part.type === 'text'}
-          <div
-            class="whitespace-pre-wrap break-words font-mono text-sm leading-relaxed"
-          >
-            {part.text}{#if isRunning}<span
-                class="inline-block h-4 w-0.5 animate-pulse bg-accent"
-              ></span>{/if}
-          </div>
-        {:else}
-          <MessagePartComponent {part} monospace={false} />
-        {/if}
+        <MessagePartComponent {part} monospace={false} />
       {/each}
     {:else if isRunning}
       <div class="flex items-center gap-1.5">
