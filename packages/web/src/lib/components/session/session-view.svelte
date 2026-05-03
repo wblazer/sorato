@@ -184,6 +184,8 @@
     modelLoading={modelsStore.loading}
     {isRunning}
     {isStopping}
+    autoFocus
+    focusKey={sessionId}
     disabled={isStopping}
   />
 </div>

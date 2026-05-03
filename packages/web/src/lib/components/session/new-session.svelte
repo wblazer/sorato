@@ -91,6 +91,7 @@
     modelOptions={modelsStore.selectedOptions}
     modelLoading={modelsStore.loading}
     modelDisabled={!sessionStore.selectedDirectory || sending}
+    autoFocus
     disabled={sending ||
       !sessionStore.selectedDirectory ||
       modelsStore.loading ||

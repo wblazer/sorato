@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js'
+      import { tick } from 'svelte'
       import { Textarea } from '$lib/components/ui/textarea/index.js'
       import * as Select from '$lib/components/ui/select/index.js'
       import type { AvailableModel, ModelOptions } from '$lib/types.js'
@@ -21,6 +22,8 @@
         isRunning = false,
         isStopping = false,
         disabled = false,
+        autoFocus = false,
+        focusKey,
         placeholder,
       }: {
         onSend: (input: string) => void
@@ -35,10 +38,13 @@
         isRunning?: boolean
         isStopping?: boolean
         disabled?: boolean
+        autoFocus?: boolean
+        focusKey?: string | number | null
         placeholder?: string
       } = $props()
 
       let input = $state('')
+      let textarea: HTMLTextAreaElement | null = $state(null)
 
       const selectedModel = $derived(
         models.find((item) => item.id === model) ?? null
@@ -77,12 +83,22 @@
         }
       }
 
+      $effect(() => {
+        focusKey
+        if (!autoFocus || disabled) return
+
+        tick().then(() => {
+          if (!disabled) textarea?.focus()
+        })
+      })
+
 </script>
 
 <div class="bg-background py-5">
   <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
     <div class="relative">
       <Textarea
+        bind:ref={textarea}
         bind:value={input}
         onkeydown={handleKeydown}
         {disabled}
