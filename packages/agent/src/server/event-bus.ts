@@ -9,7 +9,7 @@
  *   - SSE connections (via `subscribe`)
  *   - Run registry + replay buffer (via `subscribe`) — materialized views for run control and SSE replay
  *
- * Content events (TextDelta, ToolCall, ToolResult) carry a monotonic
+ * Content events (TextDelta, ReasoningDelta, ToolCall, ToolResult) carry a monotonic
  * `eventId` within a single `runId`. Session SSE streams use the pair as a
  * run-scoped replay cursor.
  *
@@ -30,6 +30,13 @@ export type ServerEvent =
   | { readonly _tag: 'MessagesAppended'; readonly sessionId: string }
   | {
       readonly _tag: 'TextDelta'
+      readonly sessionId: string
+      readonly runId: string
+      readonly delta: string
+      readonly eventId: number
+    }
+  | {
+      readonly _tag: 'ReasoningDelta'
       readonly sessionId: string
       readonly runId: string
       readonly delta: string
@@ -73,12 +80,15 @@ export type ServerEvent =
 
 export type ContentEvent = Extract<
   ServerEvent,
-  { readonly _tag: 'TextDelta' | 'ToolCall' | 'ToolResult' }
+  {
+    readonly _tag: 'TextDelta' | 'ReasoningDelta' | 'ToolCall' | 'ToolResult'
+  }
 >
 
 export function isContentEvent(event: ServerEvent): event is ContentEvent {
   return (
     event._tag === 'TextDelta' ||
+    event._tag === 'ReasoningDelta' ||
     event._tag === 'ToolCall' ||
     event._tag === 'ToolResult'
   )
@@ -129,6 +139,16 @@ export const createBusHook = (
           publish(
             appendReplayEvent(sessionId, runId, {
               _tag: 'TextDelta',
+              sessionId,
+              runId,
+              delta: event.delta,
+            })
+          )
+          break
+        case 'ReasoningDelta':
+          publish(
+            appendReplayEvent(sessionId, runId, {
+              _tag: 'ReasoningDelta',
               sessionId,
               runId,
               delta: event.delta,

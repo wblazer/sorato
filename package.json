@@ -18,7 +18,7 @@
   "devDependencies": {
     "@typescript/native-preview": "beta",
     "@catenarycloud/linteffect": "0.0.4-0",
-    "@effect/language-service": "^0.72.0",
+    "@effect/language-service": "^0.85.1",
     "@types/bun": "latest",
     "typescript": "^6"
   }

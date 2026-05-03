@@ -28,6 +28,7 @@ import type { Effect } from 'effect/Effect'
 export type HarnessEvent =
   | { readonly _tag: 'RunStart' }
   | { readonly _tag: 'TextDelta'; readonly delta: string }
+  | { readonly _tag: 'ReasoningDelta'; readonly delta: string }
   | {
       readonly _tag: 'ToolCall'
       readonly id: string

@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@agents/agent": "workspace:*",
-    "@effect/ai-anthropic": "4.0.0-beta.50",
-    "@effect/platform-bun": "4.0.0-beta.50",
-    "effect": "4.0.0-beta.50"
+    "@effect/ai-anthropic": "4.0.0-beta.60",
+    "@effect/platform-bun": "4.0.0-beta.60",
+    "effect": "4.0.0-beta.60"
   }
 }

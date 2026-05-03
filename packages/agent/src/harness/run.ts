@@ -9,7 +9,8 @@
  * `@effect/ai`'s `Chat` maintains conversation history across calls, so
  * tool results from one turn are visible to the model in the next.
  *
- * Hooks fire on every stream part — text deltas, tool calls, tool results.
+ * Hooks fire on every stream part — text deltas, reasoning deltas, tool calls,
+ * tool results.
  *
  * On interruption (e.g. user hitting stop), the agent loop runs inside
  * `Effect.uninterruptibleMask` with the loop itself restored to
@@ -125,6 +126,13 @@ export const run = <
                           currentTurnText += part.delta
                           yield* fireHooks({
                             _tag: 'TextDelta',
+                            delta: part.delta,
+                          })
+                          break
+                        }
+                        case 'reasoning-delta': {
+                          yield* fireHooks({
+                            _tag: 'ReasoningDelta',
                             delta: part.delta,
                           })
                           break

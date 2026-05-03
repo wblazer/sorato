@@ -6,7 +6,7 @@
       "name": "agents",
       "devDependencies": {
         "@catenarycloud/linteffect": "0.0.4-0",
-        "@effect/language-service": "^0.72.0",
+        "@effect/language-service": "^0.85.1",
         "@types/bun": "latest",
         "@typescript/native-preview": "beta",
         "typescript": "^6",
@@ -15,13 +15,13 @@
     "packages/agent": {
       "name": "@agents/agent",
       "dependencies": {
-        "@effect/ai-anthropic": "4.0.0-beta.50",
-        "@effect/ai-openai": "4.0.0-beta.50",
-        "@effect/platform-bun": "4.0.0-beta.50",
-        "effect": "4.0.0-beta.50",
+        "@effect/ai-anthropic": "4.0.0-beta.60",
+        "@effect/ai-openai": "4.0.0-beta.60",
+        "@effect/platform-bun": "4.0.0-beta.60",
+        "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
-        "@effect/vitest": "4.0.0-beta.50",
+        "@effect/vitest": "4.0.0-beta.60",
         "vitest": "^4.0.18",
       },
     },
@@ -29,9 +29,9 @@
       "name": "@agents/evals",
       "dependencies": {
         "@agents/agent": "workspace:*",
-        "@effect/ai-anthropic": "4.0.0-beta.50",
-        "@effect/platform-bun": "4.0.0-beta.50",
-        "effect": "4.0.0-beta.50",
+        "@effect/ai-anthropic": "4.0.0-beta.60",
+        "@effect/platform-bun": "4.0.0-beta.60",
+        "effect": "4.0.0-beta.60",
       },
     },
     "packages/web": {
@@ -89,17 +89,17 @@
 
     "@catenarycloud/linteffect": ["@catenarycloud/linteffect@0.0.4-0", "", { "dependencies": { "@biomejs/biome": "^2.2.4" }, "bin": { "linteffect": "bin/linteffect.mjs" } }, "sha512-UPB4IWhUCwIMbD/fqKRbpsYTB1BgZd8d5eBXaWh1qk1o/7WxhMTQnlTsYyHjKm3uGDUaS9SIaXkh0FXeREdkNQ=="],
 
-    "@effect/ai-anthropic": ["@effect/ai-anthropic@4.0.0-beta.50", "", { "peerDependencies": { "effect": "^4.0.0-beta.50" } }, "sha512-jXGIGItlgu5BuSFcFGXDdCb01CSgx3W87xx3cOki8umYJ3jnHGORzONG8GaLgyelATZUtcCVKeEcHL7Q1W1K6Q=="],
+    "@effect/ai-anthropic": ["@effect/ai-anthropic@4.0.0-beta.60", "", { "peerDependencies": { "effect": "^4.0.0-beta.60" } }, "sha512-4gwCvqK3JOPoDaya8zar8QIZ9A8+t7yxne4vfoIELLXPZ8YNPhS4LUoYmRNrhBzATmwUNK0dd28hDAYSyqLTKQ=="],
 
-    "@effect/ai-openai": ["@effect/ai-openai@4.0.0-beta.50", "", { "peerDependencies": { "effect": "^4.0.0-beta.50" } }, "sha512-39TL+Lv9mI9p5iMisficG47jKjg/e3Og+JHgMQP6yUOOjPSAgOR/RjscB8EIz5RgHQ9DcGdha93U0DZys5NWsA=="],
+    "@effect/ai-openai": ["@effect/ai-openai@4.0.0-beta.60", "", { "peerDependencies": { "effect": "^4.0.0-beta.60" } }, "sha512-P5Vjieq/6fLPCymE6toFtsgrR3siJQifFU1WtWy3kKM5noGNIz00vlSgn+sDq1DTlB11N8XZXiokvawTKPlS5Q=="],
 
-    "@effect/language-service": ["@effect/language-service@0.72.1", "", { "bin": { "effect-language-service": "cli.js" } }, "sha512-krZv8ms6q5cKOe96zP3B5xSiJm3gGcS5D/6ynFlSqRUDqB0lGNkcq7wlgmmu98Gp23kmRi8OOQsJ5PwYgjvGww=="],
+    "@effect/language-service": ["@effect/language-service@0.85.1", "", { "bin": { "effect-language-service": "cli.js" } }, "sha512-EXnJjIy6zQ3nUO/MZ+ynWUb8B895KZPotd1++oTs9JjDkplwM7cb6zo8Zq2zU6piwq+KflO7amXbEfj1UMpHkw=="],
 
-    "@effect/platform-bun": ["@effect/platform-bun@4.0.0-beta.50", "", { "dependencies": { "@effect/platform-node-shared": "^4.0.0-beta.50" }, "peerDependencies": { "effect": "^4.0.0-beta.50" } }, "sha512-KnDleO9PMr++HoLl/VmzR3hNcOG3Hz5+xAtO5ec5SzN7QwedPbPWBZYR88tv5GTeKLgBvPTAjoTt2kbbNh5Jzw=="],
+    "@effect/platform-bun": ["@effect/platform-bun@4.0.0-beta.60", "", { "dependencies": { "@effect/platform-node-shared": "^4.0.0-beta.60" }, "peerDependencies": { "effect": "^4.0.0-beta.60" } }, "sha512-UHm4RyigOie5Rk3KvNqJZwNJ/mG/OlDt3Uz7hwAxD3KjgHZL4CouInwI0/VXDD31BMFwUSLgUECDFGk0nojwag=="],
 
-    "@effect/platform-node-shared": ["@effect/platform-node-shared@4.0.0-beta.50", "", { "dependencies": { "@types/ws": "^8.18.1", "ws": "^8.20.0" }, "peerDependencies": { "effect": "^4.0.0-beta.50" } }, "sha512-aFHifdtDae0ih4d2m6j7cdEWLZcn/g8nmxn1XU2PwLezb5oAyu5ljibayYRIvJNTbmJXRk9sKjbl2NC0xQMTYg=="],
+    "@effect/platform-node-shared": ["@effect/platform-node-shared@4.0.0-beta.60", "", { "dependencies": { "@types/ws": "^8.18.1", "ws": "^8.20.0" }, "peerDependencies": { "effect": "^4.0.0-beta.60" } }, "sha512-I/4g1B9Nb2qeUAJmRiEnd3bFOx2LU3FaBGi3O6iUGlRe+MAReqYP+1JBntLoCBkH8kVUM2viQRZONzopb/8Bzw=="],
 
-    "@effect/vitest": ["@effect/vitest@4.0.0-beta.50", "", { "peerDependencies": { "effect": "^4.0.0-beta.50", "vitest": "^3.0.0 || ^4.0.0" } }, "sha512-bju/iCLZB8oHsVia1i6olo9ZntkZ5TrqmsINudFsRkZfHhu5UuTR3vjic29wykZpPXXONX1wKO0KZZCk+stcKg=="],
+    "@effect/vitest": ["@effect/vitest@4.0.0-beta.60", "", { "peerDependencies": { "effect": "^4.0.0-beta.60", "vitest": "^3.0.0 || ^4.0.0" } }, "sha512-taPLD3X5IQnrWsCGOg/VAu3e2o1Ou8YQKAosR00y6vwcXadiqeDrQTyyGPdDByXggODEqB5ygx0gHuptW+hHVA=="],
 
     "@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.27.3", "", { "os": "aix", "cpu": "ppc64" }, "sha512-9fJMTNFTWZMh5qwrBItuziu834eOCUcEqymSH7pY+zoMVEZg3gcPuBNxH1EvfVYe9h0x/Ptw8KBzv7qxb7l8dg=="],
 
@@ -361,7 +361,7 @@
 
     "devalue": ["devalue@5.6.3", "", {}, "sha512-nc7XjUU/2Lb+SvEFVGcWLiKkzfw8+qHI7zn8WYXKkLMgfGSHbgCEaR6bJpev8Cm6Rmrb19Gfd/tZvGqx9is3wg=="],
 
-    "effect": ["effect@4.0.0-beta.50", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.6.0", "find-my-way-ts": "^0.1.6", "ini": "^6.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^1.11.9", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^13.0.0", "yaml": "^2.8.3" } }, "sha512-UsENighZms6LWDSnF/05F9JinDAewV3sGXHAt9M7+dL3VnoFZIwduFxXvmFc7QJm7iV1s7rB98hv1SD3ALA9qg=="],
+    "effect": ["effect@4.0.0-beta.60", "", { "dependencies": { "@standard-schema/spec": "^1.1.0", "fast-check": "^4.6.0", "find-my-way-ts": "^0.1.6", "ini": "^6.0.0", "kubernetes-types": "^1.30.0", "msgpackr": "^1.11.9", "multipasta": "^0.2.7", "toml": "^4.1.1", "uuid": "^13.0.0", "yaml": "^2.8.3" } }, "sha512-OkrCKT+aBFIti4ryuxKfIozNx2SMxmFZ8uWB53gGzdjQzaJ7RVf0s6nJQ4JubJM//R24DtSYNOdmPRSK+qoRww=="],
 
     "enhanced-resolve": ["enhanced-resolve@5.20.0", "", { "dependencies": { "graceful-fs": "^4.2.4", "tapable": "^2.3.0" } }, "sha512-/ce7+jQ1PQ6rVXwe+jKEg5hW5ciicHwIQUagZkp6IufBoY3YDgdTTY1azVs0qoRgVmvsNB+rbjLJxDAeHHtwsQ=="],
 

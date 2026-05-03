@@ -3,8 +3,8 @@
  * active session.
  *
  * Uses a session-scoped SSE stream for heavy content events
- * (TextDelta/ToolCall/ToolResult). The stream is opened when a session is
- * viewed and closed when leaving/switching.
+ * (TextDelta/ReasoningDelta/ToolCall/ToolResult). The stream is opened when a
+ * session is viewed and closed when leaving/switching.
  *
  * Running state lives in the session store (single source of truth for
  * all sessions). This store tracks streaming *content* — the parts
@@ -95,6 +95,11 @@ function createMessagesStore() {
             appendTextDelta(event.delta)
             break
 
+          case 'ReasoningDelta':
+            setContentCursor(sessionId, event.runId, event.eventId)
+            appendReasoningDelta(event.delta)
+            break
+
           case 'ToolCall':
             setContentCursor(sessionId, event.runId, event.eventId)
             streamingParts = [
@@ -152,6 +157,18 @@ function createMessagesStore() {
       ]
     } else {
       streamingParts = [...streamingParts, { type: 'text', text: delta }]
+    }
+  }
+
+  function appendReasoningDelta(delta: string) {
+    const last = streamingParts[streamingParts.length - 1]
+    if (last && last.type === 'reasoning') {
+      streamingParts = [
+        ...streamingParts.slice(0, -1),
+        { type: 'reasoning', text: last.text + delta },
+      ]
+    } else {
+      streamingParts = [...streamingParts, { type: 'reasoning', text: delta }]
     }
   }
 

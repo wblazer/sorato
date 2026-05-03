@@ -18,7 +18,7 @@
   --inset: oklch(0.21 0.002 0);
   --border: oklch(0.3 0.002 0);
   --muted: oklch(0.62 0.006 80);
-  --muted-foreground: oklch(0.72 0.006 80);
+  --muted-foreground: oklch(0.66 0.006 80);
   --accent: oklch(0.47 0.08 42);
   --accent-hover: oklch(0.53 0.09 42);
   --accent-foreground: var(--foreground);

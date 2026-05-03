@@ -105,6 +105,7 @@ function createSSEResponse(
           RunFailed: writeLifecycleEvent,
           RunStart: writeLifecycleEvent,
           SessionUpdated: writeLifecycleEvent,
+          ReasoningDelta: writeContentEvent,
           TextDelta: writeContentEvent,
           ToolCall: writeContentEvent,
           ToolResult: writeContentEvent,
@@ -128,7 +129,7 @@ function createSSEResponse(
         const writeSessionContentEvent = (
           event: Extract<
             ServerEvent,
-            { _tag: 'TextDelta' | 'ToolCall' | 'ToolResult' }
+            { _tag: 'TextDelta' | 'ReasoningDelta' | 'ToolCall' | 'ToolResult' }
           >
         ) => {
           const alreadyStreamed =
@@ -157,6 +158,7 @@ function createSSEResponse(
             RunFailed: writeEvent,
             RunStart: writeEvent,
             SessionUpdated: writeEvent,
+            ReasoningDelta: writeSessionContentEvent,
             TextDelta: writeSessionContentEvent,
             ToolCall: writeSessionContentEvent,
             ToolResult: writeSessionContentEvent,

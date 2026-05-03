@@ -26,11 +26,52 @@ const modelIds = (provider: ProviderId): ReadonlySet<string> =>
 const anthropicModels = modelIds('anthropic')
 const openAiModels = modelIds('openai')
 
-const anthropicThinkingLevel = (selection: ModelSelection) => {
-  if (selection.thinkingLevel === 'low') return 'low'
-  if (selection.thinkingLevel === 'medium') return 'medium'
-  if (selection.thinkingLevel === 'high') return 'high'
+const supportsAnthropicAdaptiveThinking = (modelId: string) =>
+  modelId.includes('claude-sonnet-4-6') ||
+  modelId.includes('claude-opus-4-6') ||
+  modelId.includes('claude-opus-4-7')
+
+const anthropicAdaptiveEffort = (selection: ModelSelection) => {
+  if (selection.thinkingLevel === 'low') return 'low' as const
+  if (selection.thinkingLevel === 'medium') return 'medium' as const
+  if (selection.thinkingLevel === 'high') return 'high' as const
   return undefined
+}
+
+const anthropicOutputLimit = (modelId: string) =>
+  MODEL_PROVIDERS.find((item) => item.id === 'anthropic')?.models.find(
+    (model) => model.id === modelId
+  )?.capabilities.limits.output ?? 4096
+
+const anthropicThinkingBudget = (selection: ModelSelection) => {
+  if (selection.thinkingLevel === 'minimal') return 1024
+  if (selection.thinkingLevel === 'low') return 2048
+  if (selection.thinkingLevel === 'medium') return 8192
+  if (selection.thinkingLevel === 'high') return 16384
+  if (selection.thinkingLevel === 'xhigh') return 31999
+  return undefined
+}
+
+const anthropicThinkingConfig = (selection: ModelSelection) => {
+  const effort = anthropicAdaptiveEffort(selection)
+  if (effort && supportsAnthropicAdaptiveThinking(selection.id)) {
+    return {
+      thinking: { type: 'adaptive' as const },
+      output_config: { effort },
+    }
+  }
+
+  const targetBudget = anthropicThinkingBudget(selection)
+  if (!targetBudget) return {}
+
+  const outputLimit = anthropicOutputLimit(selection.id)
+  const budgetTokens = Math.min(targetBudget, outputLimit - 1024)
+  if (budgetTokens < 1024) return {}
+
+  return {
+    max_tokens: Math.min(outputLimit, budgetTokens + 4096),
+    thinking: { type: 'enabled' as const, budget_tokens: budgetTokens },
+  }
 }
 
 export const PROVIDER_ADAPTERS = {
@@ -38,11 +79,9 @@ export const PROVIDER_ADAPTERS = {
     available: any,
     supportsModel: (model: string) => anthropicModels.has(model),
     layer: (selection: ModelSelection) => {
-      const effort = anthropicThinkingLevel(selection)
-
       return AnthropicLanguageModel.layer({
         model: selection.id as AnthropicLanguageModel.Model,
-        config: effort ? { output_config: { effort } } : {},
+        config: anthropicThinkingConfig(selection),
       }).pipe(
         Layer.provide(
           AnthropicClient.layerConfig({

@@ -150,6 +150,13 @@ export type ServerEvent =
       eventId: number
     }
   | {
+      _tag: 'ReasoningDelta'
+      sessionId: string
+      runId: string
+      delta: string
+      eventId: number
+    }
+  | {
       _tag: 'ToolCall'
       sessionId: string
       runId: string

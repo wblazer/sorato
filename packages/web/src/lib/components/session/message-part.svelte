@@ -15,21 +15,13 @@
     {part.text}
   </div>
 {:else if part.type === 'reasoning'}
-  <details class="group">
-    <summary
-      class="cursor-pointer select-none text-sm font-medium text-muted-foreground hover:text-foreground"
-    >
-      <span class="inline-flex items-center gap-1.5">
-        <span class="inline-block h-1.5 w-1.5 rounded-full bg-inset"></span>
-        reasoning
-      </span>
-    </summary>
+  <div class="text-muted-foreground">
     <div
-      class="mt-2 whitespace-pre-wrap break-words border-l border-border pl-3 text-sm text-muted-foreground"
+      class="whitespace-pre-wrap break-words border-l-2 border-muted pl-3 leading-relaxed"
     >
       {part.text}
     </div>
-  </details>
+  </div>
 {:else if part.type === 'tool-call'}
   <div class="overflow-hidden rounded-md border border-border bg-inset">
     <div class="border-b border-border px-2.5 py-2 text-sm text-foreground">
