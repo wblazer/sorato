@@ -36,6 +36,7 @@
       function isSessionRunning(status: string) {
         return status === 'running'
       }
+
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col" data-slot="session-list">
@@ -69,7 +70,7 @@
         >
           <div class="flex items-center gap-2">
             <span class="min-w-0 truncate text-sm text-foreground">
-              {session.title ?? 'Untitled'}
+              {sessionStore.displayTitle(session)}
             </span>
             {#if isSessionRunning(session.status)}
               <span

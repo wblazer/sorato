@@ -23,6 +23,7 @@ import { endEventReplay, startEventReplay } from './event-replay.ts'
 import { modelLayer } from './model-catalog.ts'
 import { createPersistenceHook } from './run-persistence.ts'
 import type { RunRequest } from './run-registry.ts'
+import { generateSessionTitle } from './session-title.ts'
 
 export const runAgent = (sessionId: SessionId, request: RunRequest) => {
   const runId = crypto.randomUUID()
@@ -63,6 +64,17 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
 
     const existingConversation = yield* storage.conversation(sessionId)
     const isFirstMessage = existingConversation.content.length === 0
+    if (isFirstMessage && session.title === null) {
+      const title = yield* generateSessionTitle(
+        session.directory,
+        request.input
+      )
+      if (title) {
+        yield* storage.setTitle(sessionId, title)
+        publish({ _tag: 'SessionUpdated', sessionId })
+      }
+    }
+
     const preamble: Array<Prompt.MessageEncoded> = Match.value(
       isFirstMessage
     ).pipe(

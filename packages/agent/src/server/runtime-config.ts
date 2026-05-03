@@ -1,13 +1,28 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import { Effect, Option, Schema } from 'effect'
+import { Context, Effect, Layer, Option, Schema } from 'effect'
 
-const RuntimeConfigSchema = Schema.Struct({
+const RuntimeConfigFileSchema = Schema.Struct({
   default_model: Schema.optional(Schema.String),
+  title_model: Schema.optional(Schema.String),
 })
 
-export type RuntimeConfig = typeof RuntimeConfigSchema.Type
+type RuntimeConfigFile = typeof RuntimeConfigFileSchema.Type
+
+export interface RuntimeConfig {
+  readonly default_model: string | null
+  readonly title_model: string | null
+}
+
+export interface RuntimeConfigApi {
+  readonly get: (dir: string) => Effect.Effect<RuntimeConfig>
+}
+
+export class RuntimeConfigService extends Context.Service<
+  RuntimeConfigService,
+  RuntimeConfigApi
+>()('@agents/RuntimeConfig') {}
 
 export class RuntimeConfigError extends Schema.TaggedErrorClass<RuntimeConfigError>()(
   'RuntimeConfigError',
@@ -19,12 +34,28 @@ export class RuntimeConfigError extends Schema.TaggedErrorClass<RuntimeConfigErr
 const configRoot = () =>
   join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'agents')
 
-const configFiles = (dir: string) => [
+const globalConfigFiles = () => [
   join(configRoot(), 'config.json'),
   join(configRoot(), 'config.jsonc'),
+]
+
+const projectConfigFiles = (dir: string) => [
   join(dir, '.agents', 'config.json'),
   join(dir, '.agents', 'config.jsonc'),
 ]
+
+const normalizeConfig = (cfg: RuntimeConfigFile): RuntimeConfig => ({
+  default_model: cfg.default_model ?? null,
+  title_model: cfg.title_model ?? null,
+})
+
+const mergeConfig = (
+  base: RuntimeConfig,
+  override: RuntimeConfigFile
+): RuntimeConfig => ({
+  default_model: override.default_model ?? base.default_model,
+  title_model: override.title_model ?? base.title_model,
+})
 
 const charAt = (text: string, index: number) => text[index] ?? ''
 
@@ -129,7 +160,7 @@ const parse = Effect.fn('RuntimeConfig.parse')(function* (
 ) {
   return yield* Effect.try({
     try: () =>
-      Schema.decodeUnknownSync(RuntimeConfigSchema)(
+      Schema.decodeUnknownSync(RuntimeConfigFileSchema)(
         JSON.parse(stripTrailing(stripComments(text)))
       ),
     catch: () =>
@@ -171,19 +202,50 @@ const loadFile = Effect.fn('RuntimeConfig.loadFile')(function* (file: string) {
   )
 
   return yield* Option.match(text, {
-    onNone: () => Effect.succeed({} satisfies RuntimeConfig),
+    onNone: () => Effect.succeed({} satisfies RuntimeConfigFile),
     onSome: (contents) => parse(contents, file),
   })
 })
 
-export const loadRuntimeConfig = Effect.fn('RuntimeConfig.load')(function* (
-  dir: string
+const loadFiles = Effect.fn('RuntimeConfig.loadFiles')(function* (
+  files: ReadonlyArray<string>
 ) {
-  let cfg: RuntimeConfig = {}
+  let cfg: RuntimeConfigFile = {}
 
-  for (const file of configFiles(dir)) {
+  for (const file of files) {
     cfg = { ...cfg, ...(yield* loadFile(file)) }
   }
 
   return cfg
 })
+
+export const RuntimeConfigLive = Layer.effect(
+  RuntimeConfigService,
+  Effect.gen(function* () {
+    const globalConfig = normalizeConfig(yield* loadFiles(globalConfigFiles()))
+    const projectConfigs = new Map<string, RuntimeConfig>()
+
+    const loadProjectConfig = Effect.fn('RuntimeConfig.loadProject')(
+      function* (dir: string) {
+        const cached = projectConfigs.get(dir)
+        if (cached) return cached
+
+        const config = yield* loadFiles(projectConfigFiles(dir)).pipe(
+          Effect.map((projectConfig) => mergeConfig(globalConfig, projectConfig)),
+          Effect.catchCause((cause) =>
+            Effect.logError('Failed to load project runtime config', {
+              dir,
+              cause,
+            }).pipe(Effect.as(globalConfig))
+          )
+        )
+        projectConfigs.set(dir, config)
+        return config
+      }
+    )
+
+    return {
+      get: loadProjectConfig,
+    } satisfies RuntimeConfigApi
+  })
+)

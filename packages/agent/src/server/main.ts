@@ -17,6 +17,7 @@ import { Api } from './api.ts'
 import { AgentLive } from './agent-config.ts'
 import { DirectoriesLive } from './directories.ts'
 import { ModelsLive } from './models.ts'
+import { RuntimeConfigLive } from './runtime-config.ts'
 import { SessionsLive } from './sessions.ts'
 import { withSse } from './sse.ts'
 
@@ -61,6 +62,7 @@ const HttpLive = HttpRouter.toHttpEffect(ApiLive).pipe(
   ),
   Layer.unwrap,
   HttpServer.withLogAddress,
+  Layer.provide(RuntimeConfigLive),
   Layer.provide(StorageLive),
   Layer.provide(AgentLive),
   Layer.provide(HttpRouter.layer),

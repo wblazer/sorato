@@ -1,4 +1,7 @@
-import type { ModelOptions, Session } from '$lib/types.js'
+import type {
+  ModelOptions,
+  Session,
+} from '$lib/types.js'
 import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
 import { messagesStore } from './messages.svelte.js'
@@ -300,6 +303,11 @@ function createSessionStore() {
     return sessionErrors.get(sessionId) ?? null
   }
 
+  function displayTitle(session: Session): string {
+    if (session.title) return session.title
+    return `New Session - ${session.id}`
+  }
+
   function clearSessionError(sessionId: string) {
     if (!sessionErrors.has(sessionId)) return
     const next = new Map(sessionErrors)
@@ -358,6 +366,7 @@ function createSessionStore() {
     isRunning,
     isStopping,
     sessionError,
+    displayTitle,
     clearSessionError,
     queuedMessagesFor,
     startComposing,

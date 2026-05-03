@@ -1,9 +1,8 @@
 import { Effect } from 'effect'
-import type { RuntimeConfigError } from './runtime-config.ts'
 import { ModelError, ModelOption, ModelsResponse } from './api.ts'
 import { MODEL_PROVIDERS } from './models.generated.ts'
 import { PROVIDER_ADAPTERS } from './provider-adapters.ts'
-import { loadRuntimeConfig } from './runtime-config.ts'
+import { RuntimeConfigService } from './runtime-config.ts'
 
 type Entry = {
   readonly id: string
@@ -106,11 +105,8 @@ const hasProviderAdapter = (
 export const listModels = Effect.fn('ModelCatalog.list')(function* (
   dir: string
 ) {
-  const cfg = yield* loadRuntimeConfig(dir).pipe(
-    Effect.mapError(
-      (error: RuntimeConfigError) => new ModelError({ message: error.message })
-    )
-  )
+  const runtimeConfig = yield* RuntimeConfigService
+  const cfg = yield* runtimeConfig.get(dir)
 
   const items = entries().map(
     (item) =>

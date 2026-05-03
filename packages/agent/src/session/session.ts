@@ -101,6 +101,12 @@ export interface SessionStorageApi {
   /** List all sessions, most recently updated first. */
   readonly list: () => Effect<ReadonlyArray<Session>, StorageError>
 
+  /** Set or clear the session title. */
+  readonly setTitle: (
+    id: SessionId,
+    title: string | null
+  ) => Effect<void, StorageError>
+
   /** Delete a session and all its messages. */
   readonly delete: (id: SessionId) => Effect<void, StorageError>
 

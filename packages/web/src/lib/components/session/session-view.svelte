@@ -82,7 +82,7 @@
     <div class="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
       <div class="min-w-0 flex-1">
         <h1 class="text-sm font-semibold text-foreground">
-          {title ?? 'Untitled'}
+          {title ?? 'New Session'}
         </h1>
         <span class="text-xs text-muted-foreground">{sessionId.slice(0, 8)}</span>
       </div>

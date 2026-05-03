@@ -130,6 +130,18 @@ describe('SessionStorage', () => {
       }).pipe(Effect.provide(testLayer))
     )
 
+    it.effect('updates a session title', () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionStorage
+        const created = yield* storage.create(TEST_DIR)
+
+        yield* storage.setTitle(created.id, 'generated title')
+        const fetched = yield* storage.get(created.id)
+
+        expect(fetched.title).toBe('generated title')
+      }).pipe(Effect.provide(testLayer))
+    )
+
     it.effect('fails to get a nonexistent session', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage

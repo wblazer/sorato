@@ -23,7 +23,7 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 - Directories API — browse filesystem with `~` expansion
 - SSE `/events` — streaming for session updates and run lifecycle
 
-**Runtime config** — the server resolves optional defaults from `~/.config/agents/config.json(c)` and `<cwd>/.agents/config.json(c)`. Today this is intentionally tiny: it seeds `default_model` for new-session model selection without mutating existing sessions.
+**Runtime config** — the server resolves optional defaults from `~/.config/agents/config.json(c)` and `<cwd>/.agents/config.json(c)`. It seeds `default_model` for new-session model selection and `title_model` for automatic first-message session titles without mutating existing sessions.
 
 **Model/provider architecture** — model metadata is generated from `models.dev`, but runtime support is owned locally:
 
@@ -54,6 +54,7 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 - `src/server/provider-adapters.ts` — runtime adapter registry for supported providers
 - `src/server/model-catalog.ts` — available model filtering from generated catalog + adapter support
 - `src/server/runtime-config.ts` — server-owned runtime config loading and merging
+- `src/server/session-title.ts` — first-message session title generation with configured or cheap authenticated models
 - `packages/evals/bench/` — eval primitives (`test`, `run`, Reporter)
 - `packages/web/` — Svelte web UI with connection management
 - `VISION.md` — strategic rationale, execution model, industry context

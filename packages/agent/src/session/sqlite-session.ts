@@ -122,6 +122,10 @@ const prepareStatements = (db: Database) => {
     'DELETE FROM sessions WHERE id = ?'
   )
 
+  const updateTitle = db.prepare<void, [string | null, number, string]>(
+    'UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?'
+  )
+
   const updateHead = db.prepare<void, [string | null, number, string]>(
     'UPDATE sessions SET head_id = ?, updated_at = ? WHERE id = ?'
   )
@@ -173,6 +177,7 @@ const prepareStatements = (db: Database) => {
     getSession,
     listSessions,
     deleteSession,
+    updateTitle,
     updateHead,
     insertMessage,
     getMessage,
@@ -309,6 +314,24 @@ export const SqliteSession = (options: { readonly path: string }) =>
         })
 
         return rows.map(toSession)
+      })
+
+      const setTitle: SessionStorageApi['setTitle'] = Effect.fn(
+        'SessionStorage.setTitle'
+      )(function* (
+        id: SessionId,
+        title: string | null
+      ) {
+        yield* get(id)
+        yield* Effect.try({
+          try: () => stmts.updateTitle.run(title, Date.now(), id),
+          catch: (error) =>
+            new StorageError({
+              operation: 'setTitle',
+              message: `Failed to set session title: ${id}`,
+              error,
+            }),
+        })
       })
 
       const del = Effect.fn('SessionStorage.delete')(function* (id: SessionId) {
@@ -480,6 +503,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
         create,
         get,
         list,
+        setTitle,
         delete: del,
         conversation,
         messages,
