@@ -8,10 +8,14 @@ import type { ProviderId } from './provider-definitions.ts'
 
 const present = (key: string) => !!process.env[key]?.trim()
 
-const any = (keys: ReadonlyArray<string>) => keys.some(present)
+const any = (keys: ReadonlyArray<string>, apiKey: string | undefined) =>
+  !!apiKey?.trim() || keys.some(present)
 
 type ProviderAdapter = {
-  readonly available: (keys: ReadonlyArray<string>) => boolean
+  readonly available: (
+    keys: ReadonlyArray<string>,
+    apiKey: string | undefined
+  ) => boolean
   readonly supportsModel: (model: string) => boolean
   readonly layer: (selection: ModelSelection) => unknown
 }

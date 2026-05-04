@@ -1,6 +1,7 @@
 import { Effect, Layer, Stream } from 'effect'
 import { Chat, LanguageModel, Prompt, type Response } from 'effect/unstable/ai'
 import { listModels, modelLayer } from './model-catalog.ts'
+import { dataDir } from './data-dir.ts'
 import { RuntimeConfigService } from './runtime-config.ts'
 
 const MAX_INPUT_CHARS = 2000
@@ -35,7 +36,7 @@ const selectTitleModel = Effect.fn('SessionTitle.selectModel')(function* (
 ) {
   const runtimeConfig = yield* RuntimeConfigService
   const cfg = yield* runtimeConfig.get(dir)
-  const models = yield* listModels(dir)
+  const models = yield* listModels(dataDir, dir)
   const available = new Set(models.models.map((model) => model.id))
   if (cfg.title_model && available.has(cfg.title_model)) return cfg.title_model
 

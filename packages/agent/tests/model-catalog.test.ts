@@ -76,7 +76,7 @@ describe('ModelCatalog', () => {
         process.env.ANTHROPIC_API_KEY = 'test-anthropic'
         process.env.OPENAI_API_KEY = 'test-openai'
 
-        const models = yield* listModels(dir)
+        const models = yield* listModels('', dir)
 
         expect(models.models.length).toBe(
           supportedCount(anthropic) + supportedCount(openai)
@@ -109,7 +109,7 @@ describe('ModelCatalog', () => {
       delete process.env.ANTHROPIC_API_KEY
       process.env.OPENAI_API_KEY = 'test-openai'
 
-      const models = yield* listModels(dir)
+      const models = yield* listModels('', dir)
 
       expect(models.models.length).toBe(supportedCount(openai))
       expect(models.models.every((item) => item.id.startsWith('openai/'))).toBe(
@@ -142,7 +142,7 @@ describe('ModelCatalog', () => {
 
       ;(openai.models as Array<MutableCatalogModel>).push(unsupportedModel)
 
-      const models = yield* listModels(dir)
+      const models = yield* listModels('', dir)
 
       expect(
         models.models.some(
@@ -170,7 +170,7 @@ describe('ModelCatalog', () => {
       delete process.env.ANTHROPIC_API_KEY
       process.env.OPENAI_API_KEY = 'test-openai'
 
-      const models = yield* listModels(dir)
+      const models = yield* listModels('', dir)
       const reasoning = expectDefined(
         models.models.find((item) =>
           item.capabilities.thinkingLevels.includes('low')
@@ -182,8 +182,8 @@ describe('ModelCatalog', () => {
         'expected at least one OpenAI fast mode model'
       )
 
-      yield* ensureModel(dir, reasoning.id, { thinkingLevel: 'low' })
-      yield* ensureModel(dir, fast.id, { mode: 'fast' })
+      yield* ensureModel('', dir, reasoning.id, { thinkingLevel: 'low' })
+      yield* ensureModel('', dir, fast.id, { mode: 'fast' })
 
       restoreEnv('ANTHROPIC_API_KEY', prevAnthropic)
       restoreEnv('OPENAI_API_KEY', prevOpenAi)

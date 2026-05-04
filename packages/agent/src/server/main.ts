@@ -7,7 +7,6 @@
  *   AGENTS_DATA_DIR env var > XDG_DATA_HOME/agents > ~/.local/share/agents
  */
 import { join } from 'node:path'
-import { homedir } from 'node:os'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { HttpMiddleware, HttpRouter, HttpServer } from 'effect/unstable/http'
 import { BunHttpServer, BunRuntime } from '@effect/platform-bun'
@@ -15,22 +14,17 @@ import { Effect, Layer } from 'effect'
 import { SqliteSession } from '../index.ts'
 import { Api } from './api.ts'
 import { AgentLive } from './agent-config.ts'
+import { AuthLive } from './auth.ts'
 import { DirectoriesLive } from './directories.ts'
 import { ModelsLive } from './models.ts'
 import { RuntimeConfigLive } from './runtime-config.ts'
 import { SessionsLive } from './sessions.ts'
 import { withSse } from './sse.ts'
+import { dataDir } from './data-dir.ts'
 
 import { HandshakeResponse } from './api.ts'
 
 // ── Data directory ──────────────────────────────────────────────────
-
-const dataDir =
-  process.env.AGENTS_DATA_DIR ??
-  join(
-    process.env.XDG_DATA_HOME ?? join(homedir(), '.local', 'share'),
-    'agents'
-  )
 
 // ── Compose layers ──────────────────────────────────────────────────
 
@@ -44,6 +38,7 @@ const ApiLive = HttpApiBuilder.layer(Api).pipe(
   Layer.provide(SessionsLive),
   Layer.provide(DirectoriesLive),
   Layer.provide(ModelsLive),
+  Layer.provide(AuthLive),
   Layer.provide(HandshakeLive)
 )
 

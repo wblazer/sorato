@@ -5,6 +5,7 @@ export type ActionId =
   | 'app.command-palette'
   | 'connection.add'
   | 'directory.open'
+  | 'provider.connect'
 
 export type ActionContext = 'global' | string
 export type ActionPaletteVisibility = 'auto' | 'never'

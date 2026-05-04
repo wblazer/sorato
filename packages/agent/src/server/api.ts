@@ -57,6 +57,16 @@ export class ModelError extends Schema.TaggedErrorClass<ModelError>()(
   }
 ) {}
 
+export class AuthError extends Schema.TaggedErrorClass<AuthError>()('AuthError', {
+  message: Schema.String,
+}) {}
+
+export class AuthSetResponse extends Schema.Class<AuthSetResponse>(
+  'AuthSetResponse'
+)({
+  ok: Schema.Boolean,
+}) {}
+
 export class ModelOption extends Schema.Class<ModelOption>('ModelOption')({
   id: Schema.String,
   name: Schema.String,
@@ -234,10 +244,24 @@ export class ModelsGroup extends HttpApiGroup.make('models')
   )
   .prefix('/models') {}
 
+// ── Auth Group ──────────────────────────────────────────────────────
+
+export class AuthGroup extends HttpApiGroup.make('auth')
+  .add(
+    HttpApiEndpoint.put('set', '/:provider', {
+      params: { provider: Schema.String },
+      payload: Schema.Struct({ key: Schema.String }),
+      success: AuthSetResponse,
+      error: AuthError.pipe(HttpApiSchema.status(500)),
+    })
+  )
+  .prefix('/auth') {}
+
 // ── Root API ────────────────────────────────────────────────────────
 
 export class Api extends HttpApi.make('agents')
   .add(SessionsGroup)
   .add(DirectoriesGroup)
   .add(ModelsGroup)
+  .add(AuthGroup)
   .add(HandshakeGroup) {}

@@ -3,6 +3,7 @@ import { ModelError, ModelOption, ModelsResponse } from './api.ts'
 import { MODEL_PROVIDERS } from './models.generated.ts'
 import { PROVIDER_ADAPTERS } from './provider-adapters.ts'
 import { RuntimeConfigService } from './runtime-config.ts'
+import { providerApiKey } from './provider-auth.ts'
 
 type Entry = {
   readonly id: string
@@ -70,14 +71,18 @@ const compareModels = (a: Entry, b: Entry) => {
   return b.id.localeCompare(a.id)
 }
 
-const toEntry = (
+const toEntry = Effect.fn('ModelCatalog.toEntry')(function* (
+  dataDir: string,
   provider: (typeof MODEL_PROVIDERS)[number],
   model: (typeof MODEL_PROVIDERS)[number]['models'][number]
-): Array<Entry> => {
+) {
   const adapter = PROVIDER_ADAPTERS[provider.id]
+  const apiKey = yield* providerApiKey(dataDir, provider.id, provider.env)
 
-  if (!adapter?.available(provider.env)) return []
+  if (!adapter?.available(provider.env, apiKey)) return []
   if (!adapter.supportsModel(model.id)) return []
+
+  if (apiKey && provider.env[0]) process.env[provider.env[0]] = apiKey
 
   return [
     {
@@ -91,24 +96,41 @@ const toEntry = (
       },
     },
   ]
-}
+})
 
-const entries = () =>
-  MODEL_PROVIDERS.flatMap((provider) =>
-    provider.models.flatMap((model) => toEntry(provider, model))
-  ).sort(compareModels)
+const entries = Effect.fn('ModelCatalog.entries')(function* (dataDir: string) {
+  const nested = yield* Effect.all(
+    MODEL_PROVIDERS.map((provider) =>
+      Effect.all(provider.models.map((model) => toEntry(dataDir, provider, model)))
+    )
+  )
+
+  return nested.flat(2).sort(compareModels)
+})
+
+const availableEntries = (dataDir: string) =>
+  entries(dataDir).pipe(
+    Effect.mapError(
+      (error) =>
+        new ModelError({
+          message:
+            error instanceof Error ? error.message : 'Failed to read provider credentials',
+        })
+    )
+  )
 
 const hasProviderAdapter = (
   provider: string
 ): provider is keyof typeof PROVIDER_ADAPTERS => provider in PROVIDER_ADAPTERS
 
 export const listModels = Effect.fn('ModelCatalog.list')(function* (
+  dataDir: string,
   dir: string
 ) {
   const runtimeConfig = yield* RuntimeConfigService
   const cfg = yield* runtimeConfig.get(dir)
 
-  const items = entries().map(
+  const items = (yield* availableEntries(dataDir)).map(
     (item) =>
       new ModelOption({
         id: item.id,
@@ -127,11 +149,12 @@ export const listModels = Effect.fn('ModelCatalog.list')(function* (
 })
 
 export const ensureModel = Effect.fn('ModelCatalog.ensure')(function* (
+  dataDir: string,
   dir: string,
   model: string,
   options: Omit<ModelSelection, 'id'> = {}
 ) {
-  const models = yield* listModels(dir)
+  const models = yield* listModels(dataDir, dir)
 
   const option = models.models.find((item) => item.id === model)
   if (option && validOptions(option, options)) return

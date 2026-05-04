@@ -4,8 +4,10 @@
       import { Button } from '$lib/components/ui/button/index.js'
       import * as Command from '$lib/components/ui/command/index.js'
       import * as Popover from '$lib/components/ui/popover/index.js'
+      import { actionStore } from '$lib/stores/actions.svelte.js'
       import type { AvailableModel } from '$lib/types.js'
       import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon'
+      import PlugIcon from 'phosphor-svelte/lib/PlugIcon'
 
       interface Props {
         models: ReadonlyArray<AvailableModel>
@@ -64,6 +66,11 @@
       function selectModel(id: string) {
         onChange?.(id)
         closeAndFocusTrigger()
+      }
+
+      function connectProvider() {
+        open = false
+        queueMicrotask(() => actionStore.trigger('provider.connect'))
       }
 
       function filterModel(
@@ -147,6 +154,12 @@
           {/each}
         {/if}
       </Command.List>
+      <div class="border-t px-1 pt-1">
+        <Command.Item value="connect provider api key" onSelect={connectProvider}>
+          <PlugIcon class="text-muted-foreground" />
+          <span class="truncate">Connect provider</span>
+        </Command.Item>
+      </div>
     </Command.Root>
   </Popover.Content>
 </Popover.Root>
