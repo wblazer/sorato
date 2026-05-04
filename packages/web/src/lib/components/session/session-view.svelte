@@ -15,6 +15,8 @@
       let messagesContainer: HTMLDivElement | undefined = $state()
       let messagesContent: HTMLDivElement | undefined = $state()
       let isAtBottom = $state(true)
+      let shouldAutoScroll = $state(true)
+      let autoScrollTop: number | undefined
       let canScrollUp = $state(false)
       let canScrollDown = $state(false)
       let resizeObserver: ResizeObserver | undefined
@@ -28,7 +30,7 @@
       const queuedMessages = $derived(sessionStore.queuedMessagesFor(sessionId))
       const sessionError = $derived(sessionStore.sessionError(sessionId))
 
-      function updateIsAtBottom() {
+      function updateScrollState() {
         if (!messagesContainer) return
 
         const distanceFromBottom =
@@ -41,11 +43,47 @@
         canScrollDown = distanceFromBottom > bottomThreshold
       }
 
+      function handleScroll() {
+        updateScrollState()
+
+        if (isAtBottom) {
+          shouldAutoScroll = true
+          autoScrollTop = undefined
+          return
+        }
+
+        if (
+          shouldAutoScroll &&
+          autoScrollTop !== undefined &&
+          messagesContainer &&
+          Math.abs(messagesContainer.scrollTop - autoScrollTop) < 2
+        ) {
+          return
+        }
+
+        shouldAutoScroll = isAtBottom
+      }
+
+      function handleWheel(event: WheelEvent) {
+        if (event.deltaY >= 0) return
+        shouldAutoScroll = false
+        autoScrollTop = undefined
+      }
+
       function scrollToBottom() {
         if (!messagesContainer) return
+        autoScrollTop = Math.max(
+          0,
+          messagesContainer.scrollHeight - messagesContainer.clientHeight
+        )
         messagesContainer.scrollTo({ top: messagesContainer.scrollHeight })
         isAtBottom = true
-        updateIsAtBottom()
+        updateScrollState()
+      }
+
+      function jumpToLatest() {
+        shouldAutoScroll = true
+        scrollToBottom()
       }
 
       $effect(() => {
@@ -54,8 +92,8 @@
         resizeObserver?.disconnect()
         resizeObserver = new ResizeObserver(() => {
           requestAnimationFrame(() => {
-            if (isAtBottom) scrollToBottom()
-            updateIsAtBottom()
+            if (shouldAutoScroll) scrollToBottom()
+            updateScrollState()
           })
         })
         resizeObserver.observe(messagesContent)
@@ -73,8 +111,8 @@
 
         tick().then(() =>
           requestAnimationFrame(() => {
-            if (isAtBottom) scrollToBottom()
-            updateIsAtBottom()
+            if (shouldAutoScroll) scrollToBottom()
+            updateScrollState()
           })
         )
       })
@@ -150,7 +188,8 @@
     <div
       bind:this={messagesContainer}
       class="h-full overflow-y-auto"
-      onscroll={updateIsAtBottom}
+      onscroll={handleScroll}
+      onwheel={handleWheel}
     >
       {#if messagesStore.loading}
         <div
@@ -206,7 +245,7 @@
           class="pointer-events-auto shadow-md shadow-shadow/30"
           variant="outline"
           size="sm"
-          onclick={scrollToBottom}
+          onclick={jumpToLatest}
         >
           Jump to latest
         </Button>
