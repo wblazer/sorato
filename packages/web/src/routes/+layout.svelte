@@ -8,6 +8,7 @@
       import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
       import { connectionsStore } from '$lib/stores/connections.svelte.js'
       import NoConnections from '$lib/components/no-connections.svelte'
+      import * as Tooltip from '$lib/components/ui/tooltip/index.js'
 
       let { children } = $props()
 
@@ -39,13 +40,15 @@
 
 <GlobalActionHost />
 
-{#if connectionsStore.hasConnections}
-  <div class="flex h-screen overflow-hidden">
-    <Sidebar />
-    <main class="flex-1 overflow-y-auto">
-      {@render children()}
-    </main>
-  </div>
-{:else}
-  <NoConnections />
-{/if}
+<Tooltip.Provider>
+  {#if connectionsStore.hasConnections}
+    <div class="flex h-screen overflow-hidden">
+      <Sidebar />
+      <main class="flex-1 overflow-y-auto">
+        {@render children()}
+      </main>
+    </div>
+  {:else}
+    <NoConnections />
+  {/if}
+</Tooltip.Provider>

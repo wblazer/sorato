@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js'
       import * as Item from '$lib/components/ui/item/index.js'
+      import * as Tooltip from '$lib/components/ui/tooltip/index.js'
       import { tick } from 'svelte'
       import { Textarea } from '$lib/components/ui/textarea/index.js'
       import * as Select from '$lib/components/ui/select/index.js'
@@ -132,15 +133,22 @@
           </Item.Content>
           {#if status.dismissible}
             <Item.Actions class="ml-auto self-start">
-              <Button
-                variant="ghost-destructive"
-                size="icon-sm"
-                onclick={onDismissStatus}
-                title="Dismiss error"
-                aria-label="Dismiss error"
-              >
-                <XIcon />
-              </Button>
+              <Tooltip.Root>
+                <Tooltip.Trigger>
+                  {#snippet child({ props })}
+                    <Button
+                      variant="ghost-destructive"
+                      size="icon-sm"
+                      onclick={onDismissStatus}
+                      aria-label="Dismiss error"
+                      {...props}
+                    >
+                      <XIcon />
+                    </Button>
+                  {/snippet}
+                </Tooltip.Trigger>
+                <Tooltip.Content>Dismiss error</Tooltip.Content>
+              </Tooltip.Root>
             </Item.Actions>
           {/if}
         </Item.Root>
@@ -160,17 +168,25 @@
         class="relative -mt-2 flex w-full flex-wrap items-center gap-2 rounded-b-lg border border-border bg-background px-1 pb-1 pt-3 text-muted-foreground shadow-sm shadow-shadow/30 sm:flex-nowrap"
       >
         <div class="flex min-w-0 flex-1 items-center gap-1">
-          <Button
-            onclick={onAttach}
-            type="button"
-            variant="ghost"
-            size="icon"
-            class="shrink-0 text-muted-foreground"
-            title="Attach file"
-            {disabled}
-          >
-            <PlusIcon />
-          </Button>
+          <Tooltip.Root>
+            <Tooltip.Trigger>
+              {#snippet child({ props })}
+                <Button
+                  onclick={onAttach}
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  class="shrink-0 text-muted-foreground"
+                  aria-label="Attach file"
+                  {disabled}
+                  {...props}
+                >
+                  <PlusIcon />
+                </Button>
+              {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Content>Attach file</Tooltip.Content>
+          </Tooltip.Root>
 
           <div class="min-w-0 max-w-[min(20rem,60vw)]">
             <ModelSelector
@@ -189,13 +205,20 @@
               onValueChange={(value) =>
                 selectThinking(value as NonNullable<ModelOptions['thinkingLevel']>)}
             >
-              <Select.Trigger
-                class="shrink-0 border-transparent bg-transparent shadow-none hover:bg-base-hover"
-                disabled={disabled || modelDisabled}
-                title="Select thinking level"
-              >
-                Think: {thinkingLevel}
-              </Select.Trigger>
+              <Tooltip.Root>
+                <Tooltip.Trigger>
+                  {#snippet child({ props })}
+                    <Select.Trigger
+                      class="shrink-0 border-transparent bg-transparent shadow-none hover:bg-base-hover"
+                      disabled={disabled || modelDisabled}
+                      {...props}
+                    >
+                      Think: {thinkingLevel}
+                    </Select.Trigger>
+                  {/snippet}
+                </Tooltip.Trigger>
+                <Tooltip.Content>Select thinking level</Tooltip.Content>
+              </Tooltip.Root>
               <Select.Content class="w-48" align="start">
                 <Select.Label>Thinking</Select.Label>
                 {#each selectedModel.capabilities.thinkingLevels as level}
@@ -211,13 +234,20 @@
               value={selectedMode ?? 'default'}
               onValueChange={(value) => selectMode(value === 'default' ? undefined : value)}
             >
-              <Select.Trigger
-                class="shrink-0 border-transparent bg-transparent shadow-none hover:bg-base-hover"
-                disabled={disabled || modelDisabled}
-                title="Select model mode"
-              >
-                Mode: {selectedMode ?? 'default'}
-              </Select.Trigger>
+              <Tooltip.Root>
+                <Tooltip.Trigger>
+                  {#snippet child({ props })}
+                    <Select.Trigger
+                      class="shrink-0 border-transparent bg-transparent shadow-none hover:bg-base-hover"
+                      disabled={disabled || modelDisabled}
+                      {...props}
+                    >
+                      Mode: {selectedMode ?? 'default'}
+                    </Select.Trigger>
+                  {/snippet}
+                </Tooltip.Trigger>
+                <Tooltip.Content>Select model mode</Tooltip.Content>
+              </Tooltip.Root>
               <Select.Content class="w-48" align="start">
                 <Select.Label>Mode</Select.Label>
                 <Select.Item value="default" label="Default" />
@@ -231,25 +261,41 @@
 
         <div class="flex shrink-0 items-center gap-2">
           {#if isRunning}
-            <Button
-              onclick={onStop}
-              disabled={isStopping}
-              variant="destructive"
-              size="icon-lg"
-              title={isStopping ? 'Stopping...' : 'Stop'}
-              aria-busy={isStopping}
-            >
-              <StopIcon weight="fill" />
-            </Button>
+            <Tooltip.Root>
+              <Tooltip.Trigger>
+                {#snippet child({ props })}
+                  <Button
+                    onclick={onStop}
+                    disabled={isStopping}
+                    variant="destructive"
+                    size="icon-lg"
+                    aria-label={isStopping ? 'Stopping...' : 'Stop'}
+                    aria-busy={isStopping}
+                    {...props}
+                  >
+                    <StopIcon weight="fill" />
+                  </Button>
+                {/snippet}
+              </Tooltip.Trigger>
+              <Tooltip.Content>{isStopping ? 'Stopping...' : 'Stop'}</Tooltip.Content>
+            </Tooltip.Root>
           {:else}
-            <Button
-              onclick={handleSubmit}
-              disabled={disabled || !input.trim()}
-              size="icon-lg"
-              title="Send message"
-            >
-              <ArrowUpIcon />
-            </Button>
+            <Tooltip.Root>
+              <Tooltip.Trigger>
+                {#snippet child({ props })}
+                  <Button
+                    onclick={handleSubmit}
+                    disabled={disabled || !input.trim()}
+                    size="icon-lg"
+                    aria-label="Send message"
+                    {...props}
+                  >
+                    <ArrowUpIcon />
+                  </Button>
+                {/snippet}
+              </Tooltip.Trigger>
+              <Tooltip.Content>Send message</Tooltip.Content>
+            </Tooltip.Root>
           {/if}
         </div>
       </div>
