@@ -209,7 +209,7 @@
                 <Tooltip.Trigger>
                   {#snippet child({ props })}
                     <Select.Trigger
-                      class="shrink-0 border-transparent bg-transparent shadow-none hover:bg-base-hover"
+                      class="shrink-0 border-transparent bg-transparent capitalize shadow-none hover:bg-base-hover"
                       disabled={disabled || modelDisabled}
                       {...props}
                     >
@@ -238,7 +238,7 @@
                 <Tooltip.Trigger>
                   {#snippet child({ props })}
                     <Select.Trigger
-                      class="shrink-0 border-transparent bg-transparent shadow-none hover:bg-base-hover"
+                      class="shrink-0 border-transparent bg-transparent capitalize shadow-none hover:bg-base-hover"
                       disabled={disabled || modelDisabled}
                       {...props}
                     >
