@@ -117,7 +117,7 @@
 
 </script>
 
-<div class="bg-background py-5">
+<div class="bg-background pb-5 pt-0">
   <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
     <div class="relative">
       {#if status}

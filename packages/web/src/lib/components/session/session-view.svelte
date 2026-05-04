@@ -15,6 +15,8 @@
       let messagesContainer: HTMLDivElement | undefined = $state()
       let messagesContent: HTMLDivElement | undefined = $state()
       let isAtBottom = $state(true)
+      let canScrollUp = $state(false)
+      let canScrollDown = $state(false)
       let resizeObserver: ResizeObserver | undefined
 
       const bottomThreshold = 8
@@ -35,12 +37,15 @@
           messagesContainer.clientHeight
 
         isAtBottom = distanceFromBottom <= bottomThreshold
+        canScrollUp = messagesContainer.scrollTop > bottomThreshold
+        canScrollDown = distanceFromBottom > bottomThreshold
       }
 
       function scrollToBottom() {
         if (!messagesContainer) return
         messagesContainer.scrollTo({ top: messagesContainer.scrollHeight })
         isAtBottom = true
+        updateIsAtBottom()
       }
 
       $effect(() => {
@@ -48,8 +53,10 @@
 
         resizeObserver?.disconnect()
         resizeObserver = new ResizeObserver(() => {
-          if (!isAtBottom) return
-          requestAnimationFrame(scrollToBottom)
+          requestAnimationFrame(() => {
+            if (isAtBottom) scrollToBottom()
+            updateIsAtBottom()
+          })
         })
         resizeObserver.observe(messagesContent)
 
@@ -64,9 +71,12 @@
         messagesStore.streamingParts
         queuedMessages.length
 
-        if (!isAtBottom) return
-
-        tick().then(() => requestAnimationFrame(scrollToBottom))
+        tick().then(() =>
+          requestAnimationFrame(() => {
+            if (isAtBottom) scrollToBottom()
+            updateIsAtBottom()
+          })
+        )
       })
 
       function handleSend(input: string) {
@@ -102,7 +112,7 @@
       }
 </script>
 
-<div class="flex h-full flex-col">
+<div class="flex h-full flex-col overflow-hidden">
   <!-- Header -->
   <div class="py-4">
     <div class="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
@@ -136,59 +146,73 @@
   </div>
 
   <!-- Messages -->
-  <div
-    bind:this={messagesContainer}
-    class="flex-1 overflow-y-auto"
-    onscroll={updateIsAtBottom}
-  >
-    {#if messagesStore.loading}
-      <div
-        class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
-      >
-        <span class="text-sm text-muted-foreground">Loading messages...</span>
-      </div>
-    {:else if messagesStore.error}
-      <div
-        class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
-      >
-        <span class="text-sm text-danger">{messagesStore.error}</span>
-      </div>
-    {:else if messagesStore.loaded && messagesStore.messages.length === 0 && !isRunning}
-      <div
-        class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
-      >
-        <span class="text-sm text-muted-foreground">No messages yet</span>
-      </div>
-    {:else if messagesStore.loaded || isRunning}
-      <div
-        bind:this={messagesContent}
-        class="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-5 sm:px-6"
-      >
-        {#each messagesStore.messages as message (message.id)}
-          <MessageBubble {message} />
-        {/each}
+  <div class="relative min-h-0 flex-1 overflow-hidden">
+    <div
+      bind:this={messagesContainer}
+      class="h-full overflow-y-auto"
+      onscroll={updateIsAtBottom}
+    >
+      {#if messagesStore.loading}
+        <div
+          class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
+        >
+          <span class="text-sm text-muted-foreground">Loading messages...</span>
+        </div>
+      {:else if messagesStore.error}
+        <div
+          class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
+        >
+          <span class="text-sm text-danger">{messagesStore.error}</span>
+        </div>
+      {:else if messagesStore.loaded && messagesStore.messages.length === 0 && !isRunning}
+        <div
+          class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
+        >
+          <span class="text-sm text-muted-foreground">No messages yet</span>
+        </div>
+      {:else if messagesStore.loaded || isRunning}
+        <div
+          bind:this={messagesContent}
+          class="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-5 sm:px-6"
+        >
+          {#each messagesStore.messages as message (message.id)}
+            <MessageBubble {message} />
+          {/each}
 
-        <StreamingIndicator parts={messagesStore.streamingParts} {isRunning} />
+          <StreamingIndicator parts={messagesStore.streamingParts} {isRunning} />
 
-        {#each queuedMessages as message (message.id)}
-          <QueuedMessageBubble {message} />
-        {/each}
+          {#each queuedMessages as message (message.id)}
+            <QueuedMessageBubble {message} />
+          {/each}
+        </div>
+      {/if}
+    </div>
+
+    {#if canScrollUp}
+      <div
+        class="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-background/35 to-transparent backdrop-blur-[0.5px]"
+      ></div>
+    {/if}
+
+    {#if canScrollDown}
+      <div
+        class="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-8 bg-gradient-to-t from-background/35 to-transparent backdrop-blur-[0.5px]"
+      ></div>
+    {/if}
+
+    {#if !isAtBottom && (isRunning || messagesStore.streamingParts.length > 0)}
+      <div class="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center">
+        <Button
+          class="pointer-events-auto shadow-md shadow-shadow/30"
+          variant="outline"
+          size="sm"
+          onclick={scrollToBottom}
+        >
+          Jump to latest
+        </Button>
       </div>
     {/if}
   </div>
-
-  {#if !isAtBottom && (isRunning || messagesStore.streamingParts.length > 0)}
-    <div class="pointer-events-none relative z-20 -mt-12 flex justify-center">
-      <Button
-        class="pointer-events-auto shadow-md shadow-shadow/30"
-        variant="outline"
-        size="sm"
-        onclick={scrollToBottom}
-      >
-        Jump to latest
-      </Button>
-    </div>
-  {/if}
 
   <!-- Composer -->
   <Composer
