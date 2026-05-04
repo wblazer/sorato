@@ -1,9 +1,11 @@
 import { AnthropicClient, AnthropicLanguageModel } from '@effect/ai-anthropic'
 import { OpenAiClient, OpenAiLanguageModel } from '@effect/ai-openai'
-import { Config, Layer } from 'effect'
-import { FetchHttpClient } from 'effect/unstable/http'
+import { Config, Effect, Layer, Redacted } from 'effect'
+import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect/unstable/http'
 import { MODEL_PROVIDERS } from './models.generated.ts'
 import type { ModelSelection } from './model-catalog.ts'
+import { ORIGINATOR, refreshOpenAiOauth, soratoUserAgent } from './openai-chatgpt-auth.ts'
+import type { ProviderAuth } from './provider-auth.ts'
 import type { ProviderId } from './provider-definitions.ts'
 
 const present = (key: string) => !!process.env[key]?.trim()
@@ -17,7 +19,12 @@ type ProviderAdapter = {
     apiKey: string | undefined
   ) => boolean
   readonly supportsModel: (model: string) => boolean
-  readonly layer: (selection: ModelSelection) => unknown
+  readonly layer: (
+    dataDir: string,
+    selection: ModelSelection,
+    auth: ProviderAuth | undefined,
+    apiKey: string | undefined
+  ) => unknown
 }
 
 const modelIds = (provider: ProviderId): ReadonlySet<string> =>
@@ -78,11 +85,41 @@ const anthropicThinkingConfig = (selection: ModelSelection) => {
   }
 }
 
+const withCodexInstructions = (request: HttpClientRequest.HttpClientRequest) => {
+  if (request.body._tag !== 'Uint8Array') return request
+
+  const body = JSON.parse(new TextDecoder().decode(request.body.body)) as {
+    instructions?: string
+    input?: Array<{ role?: string; content?: unknown }>
+  }
+  const input = body.input ?? []
+  const instructionIndex = input.findIndex(
+    (item) =>
+      (item.role === 'system' || item.role === 'developer') &&
+      typeof item.content === 'string' &&
+      item.content.trim()
+  )
+  const instructions =
+    body.instructions ??
+    (instructionIndex >= 0 ? (input[instructionIndex]?.content as string) : undefined)
+
+  if (!instructions) return request
+
+  return request.pipe(
+    HttpClientRequest.bodyJsonUnsafe({
+      ...body,
+      instructions,
+      store: false,
+      input: input.filter((_, index) => index !== instructionIndex),
+    })
+  )
+}
+
 export const PROVIDER_ADAPTERS = {
   anthropic: {
     available: any,
     supportsModel: (model: string) => anthropicModels.has(model),
-    layer: (selection: ModelSelection) => {
+    layer: (_dataDir: string, selection: ModelSelection) => {
       return AnthropicLanguageModel.layer({
         model: selection.id as AnthropicLanguageModel.Model,
         config: anthropicThinkingConfig(selection),
@@ -99,7 +136,7 @@ export const PROVIDER_ADAPTERS = {
   openai: {
     available: any,
     supportsModel: (model: string) => openAiModels.has(model),
-    layer: (selection: ModelSelection) => {
+    layer: (dataDir: string, selection: ModelSelection, auth: ProviderAuth | undefined, apiKey: string | undefined) => {
       const reasoning =
         selection.thinkingLevel && selection.thinkingLevel !== 'off'
           ? {
@@ -112,15 +149,57 @@ export const PROVIDER_ADAPTERS = {
       const serviceTier =
         selection.mode === 'fast' ? { service_tier: 'flex' as const } : {}
 
+      const clientLayer = auth?.type === 'oauth'
+        ? OpenAiClient.layerConfig({
+            apiKey: Config.succeed(Redacted.make('sorato-chatgpt-oauth')),
+            transformClient: (client) =>
+              client.pipe(
+                HttpClient.mapRequestEffect((request) =>
+                  Effect.gen(function* () {
+                    if (auth.type !== 'oauth') return request
+                    const current = auth.expires <= Date.now()
+                      ? yield* refreshOpenAiOauth(dataDir, auth).pipe(
+                          Effect.mapError(
+                            (error) =>
+                              new Error(`Failed to refresh OpenAI ChatGPT credentials: ${error.message}`)
+                          ),
+                          Effect.orDie
+                        )
+                      : auth
+
+                    const url = new URL(request.url)
+                    const target = url.pathname.endsWith('/responses')
+                      ? 'https://chatgpt.com/backend-api/codex/responses'
+                      : request.url
+
+                    return withCodexInstructions(request).pipe(
+                      HttpClientRequest.setUrl(target),
+                      HttpClientRequest.setHeader('authorization', `Bearer ${current.access}`),
+                      HttpClientRequest.setHeader('originator', ORIGINATOR),
+                      HttpClientRequest.setHeader('User-Agent', soratoUserAgent()),
+                      selection.sessionId
+                        ? HttpClientRequest.setHeader('session_id', selection.sessionId)
+                        : (item) => item,
+                      current.accountId
+                        ? HttpClientRequest.setHeader('ChatGPT-Account-Id', current.accountId)
+                        : (item) => item
+                    )
+                  })
+                )
+              ),
+          })
+        : OpenAiClient.layerConfig({
+            apiKey: Config.succeed(Redacted.make(apiKey ?? '')),
+          })
+
       return OpenAiLanguageModel.layer({
         model: selection.id as OpenAiLanguageModel.Model,
-        config: { ...reasoning, ...serviceTier },
+        config: {
+          ...reasoning,
+          ...serviceTier,
+        },
       }).pipe(
-        Layer.provide(
-          OpenAiClient.layerConfig({
-            apiKey: Config.redacted('OPENAI_API_KEY'),
-          })
-        ),
+        Layer.provide(clientLayer),
         Layer.provide(FetchHttpClient.layer)
       )
     },

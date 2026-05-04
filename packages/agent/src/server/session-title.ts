@@ -45,7 +45,7 @@ const selectTitleModel = Effect.fn('SessionTitle.selectModel')(function* (
 
 const generateWithModel = Effect.fn('SessionTitle.generateWithModel')(
   function* (model: string, input: string) {
-    const services = modelLayer({ id: model, thinkingLevel: 'off' })
+    const services = yield* modelLayer(dataDir, { id: model, thinkingLevel: 'off' })
     if (!services) return null
 
     const truncatedInput =

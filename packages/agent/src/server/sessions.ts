@@ -289,6 +289,7 @@ const stopSession = Effect.fn('Sessions.stopSession')(function* (
   storage: SessionStorageApi,
   sessionId: string
 ) {
+  yield* Effect.logInfo('Session stop request received', { sessionId })
   yield* requestRunStop(sessionId)
   const fiber = getFiber(sessionId)
   const stopEffect = Match.value(fiber).pipe(

@@ -21,6 +21,7 @@ import { AllTools, SYSTEM_PROMPT } from './agent-config.ts'
 import { createBusHook, publish } from './event-bus.ts'
 import { endEventReplay, startEventReplay } from './event-replay.ts'
 import { modelLayer } from './model-catalog.ts'
+import { dataDir } from './data-dir.ts'
 import { createPersistenceHook } from './run-persistence.ts'
 import type { RunRequest } from './run-registry.ts'
 import { generateSessionTitle } from './session-title.ts'
@@ -50,15 +51,22 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       headId: session.headId,
     })
 
-    const modelServices = yield* Match.value(
-      modelLayer({ id: request.model, ...request.modelOptions })
-    ).pipe(
-      Match.when(undefined, () =>
-        Effect.die(
-          new Error(`Model is not supported by this server: ${request.model}`)
+    const modelServices = yield* modelLayer(dataDir, {
+      id: request.model,
+      sessionId,
+      ...request.modelOptions,
+    }).pipe(
+      Effect.map((layer) =>
+        Match.value(layer).pipe(
+          Match.when(undefined, () =>
+            Effect.die(
+              new Error(`Model is not supported by this server: ${request.model}`)
+            )
+          ),
+          Match.orElse((layer) => Effect.succeed(layer))
         )
       ),
-      Match.orElse((layer) => Effect.succeed(layer))
+      Effect.flatten
     )
     yield* Effect.logInfo('Agent run resolved model layer', { runId })
 

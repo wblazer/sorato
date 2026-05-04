@@ -14,12 +14,23 @@ export class ProviderAuthInfo extends Schema.Class<ProviderAuthInfo>(
   key: Schema.String,
 }) {}
 
+export class ProviderOauthInfo extends Schema.Class<ProviderOauthInfo>(
+  'ProviderOauthInfo'
+)({
+  type: Schema.Literal('oauth'),
+  refresh: Schema.String,
+  access: Schema.String,
+  expires: Schema.Number,
+  accountId: Schema.optional(Schema.String),
+}) {}
+
 export const ProviderAuthDatabase = Schema.Record(
   Schema.String,
-  ProviderAuthInfo
+  Schema.Union([ProviderAuthInfo, ProviderOauthInfo])
 )
 
 export type ProviderAuthDatabase = typeof ProviderAuthDatabase.Type
+export type ProviderAuth = ProviderAuthDatabase[string]
 
 const decodeDatabase = Schema.decodeUnknownSync(ProviderAuthDatabase)
 
@@ -74,6 +85,26 @@ export const setApiKey = Effect.fn('ProviderAuth.setApiKey')(function* (
   })
 })
 
+export const setOauth = Effect.fn('ProviderAuth.setOauth')(function* (
+  dataDir: string,
+  provider: string,
+  info: Omit<ProviderOauthInfo, 'type'>
+) {
+  const file = authPath(dataDir)
+  const data = yield* readAuth(dataDir)
+  yield* Effect.tryPromise({
+    try: async () => {
+      await mkdir(dirname(file), { recursive: true })
+      await Bun.write(
+        file,
+        JSON.stringify({ ...data, [provider]: { type: 'oauth', ...info } }, null, 2)
+      )
+      await Bun.$`chmod 600 ${file}`.quiet()
+    },
+    catch: authFailure('Failed to write provider credentials'),
+  })
+})
+
 export const providerApiKey = Effect.fn('ProviderAuth.providerApiKey')(function* (
   dataDir: string,
   provider: string,
@@ -83,4 +114,15 @@ export const providerApiKey = Effect.fn('ProviderAuth.providerApiKey')(function*
   if (stored?.type === 'api' && stored.key.trim()) return stored.key
 
   return envKeys.map((key) => process.env[key]?.trim()).find(Boolean)
+})
+
+export const hasProviderAuth = Effect.fn('ProviderAuth.hasProviderAuth')(function* (
+  dataDir: string,
+  provider: string,
+  envKeys: ReadonlyArray<string>
+) {
+  const stored = yield* getAuth(dataDir, provider)
+  if (stored?.type === 'api' && stored.key.trim()) return true
+  if (stored?.type === 'oauth' && stored.refresh.trim()) return true
+  return envKeys.some((key) => !!process.env[key]?.trim())
 })

@@ -67,6 +67,12 @@ export class AuthSetResponse extends Schema.Class<AuthSetResponse>(
   ok: Schema.Boolean,
 }) {}
 
+export class AuthOauthAuthorizeResponse extends Schema.Class<AuthOauthAuthorizeResponse>(
+  'AuthOauthAuthorizeResponse'
+)({
+  url: Schema.String,
+}) {}
+
 export class ModelOption extends Schema.Class<ModelOption>('ModelOption')({
   id: Schema.String,
   name: Schema.String,
@@ -252,6 +258,13 @@ export class AuthGroup extends HttpApiGroup.make('auth')
       params: { provider: Schema.String },
       payload: Schema.Struct({ key: Schema.String }),
       success: AuthSetResponse,
+      error: AuthError.pipe(HttpApiSchema.status(500)),
+    })
+  )
+  .add(
+    HttpApiEndpoint.post('oauthAuthorize', '/:provider/oauth/authorize', {
+      params: { provider: Schema.String },
+      success: AuthOauthAuthorizeResponse,
       error: AuthError.pipe(HttpApiSchema.status(500)),
     })
   )

@@ -28,6 +28,7 @@
   let provider = $state<(typeof providers)[number] | null>(null)
   let key = $state('')
   let saving = $state(false)
+  let oauthSaving = $state(false)
   let error = $state<string | null>(null)
   const keyInputId = useId()
 
@@ -61,6 +62,29 @@
       saving = false
     }
   }
+
+  async function signInWithChatGpt() {
+    const api = connectionsStore.getApiBase()
+    if (!api || provider?.id !== 'openai' || oauthSaving) return
+
+    oauthSaving = true
+    error = null
+    try {
+      const res = await fetch(`${api}/auth/openai/oauth/authorize`, {
+        method: 'POST',
+      })
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+      const body = (await res.json()) as { url: string }
+      window.open(body.url, '_blank', 'noopener,noreferrer')
+      window.setTimeout(() => {
+        if (modelsStore.directory) void modelsStore.load(modelsStore.directory)
+      }, 2500)
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to start ChatGPT sign-in'
+    } finally {
+      oauthSaving = false
+    }
+  }
 </script>
 
 <Dialog.Dialog bind:open>
@@ -71,7 +95,9 @@
       </Dialog.DialogTitle>
       {#if provider}
         <Dialog.DialogDescription>
-          Enter your {provider.name} API key.
+          {provider.id === 'openai'
+            ? 'Sign in with ChatGPT or enter an OpenAI API key.'
+            : `Enter your ${provider.name} API key.`}
         </Dialog.DialogDescription>
       {/if}
     </Dialog.DialogHeader>
@@ -99,6 +125,30 @@
       </Command.Root>
     {:else}
       <form class="space-y-4" onsubmit={(event) => { event.preventDefault(); void submit() }}>
+        {#if provider.id === 'openai'}
+          <div class="rounded-lg border border-border bg-surface p-3">
+            <p class="text-sm font-medium text-foreground">ChatGPT subscription</p>
+            <p class="mt-1 text-xs text-muted-foreground">
+              Use your ChatGPT Plus, Pro, Team, Edu, or Enterprise access for Sorato.
+            </p>
+            <Button
+              class="mt-3 w-full"
+              type="button"
+              variant="outline"
+              disabled={oauthSaving}
+              onclick={() => void signInWithChatGpt()}
+            >
+              {oauthSaving ? 'Opening browser...' : 'Sign in with ChatGPT'}
+            </Button>
+          </div>
+
+          <div class="flex items-center gap-3 text-xs text-muted-foreground">
+            <div class="h-px flex-1 bg-border"></div>
+            <span>or</span>
+            <div class="h-px flex-1 bg-border"></div>
+          </div>
+        {/if}
+
         <div class="space-y-2.5">
           <Label for={keyInputId}>{provider.name} API key</Label>
           <Input id={keyInputId} bind:value={key} type="password" autocomplete="off" />

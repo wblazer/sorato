@@ -3,7 +3,7 @@ import { ModelError, ModelOption, ModelsResponse } from './api.ts'
 import { MODEL_PROVIDERS } from './models.generated.ts'
 import { PROVIDER_ADAPTERS } from './provider-adapters.ts'
 import { RuntimeConfigService } from './runtime-config.ts'
-import { providerApiKey } from './provider-auth.ts'
+import { getAuth, hasProviderAuth, providerApiKey } from './provider-auth.ts'
 
 type Entry = {
   readonly id: string
@@ -39,6 +39,7 @@ export type ModelSelection = {
   readonly id: string
   readonly thinkingLevel?: ThinkingLevel
   readonly mode?: string
+  readonly sessionId?: string
 }
 
 const thinkingLevels = (
@@ -49,6 +50,20 @@ const thinkingLevels = (
   if (provider === 'openai') return ['off', 'minimal', 'low', 'medium', 'high']
   if (provider === 'anthropic') return ['off', 'low', 'medium', 'high']
   return ['off']
+}
+
+const openAiOauthModels = new Set([
+  'gpt-5.5',
+  'gpt-5.2',
+  'gpt-5.3-codex',
+  'gpt-5.4',
+  'gpt-5.4-mini',
+])
+
+const isOpenAiOauthModel = (modelId: string) => {
+  if (openAiOauthModels.has(modelId)) return true
+  const match = modelId.match(/^gpt-(\d+\.\d+)/)
+  return match?.[1] ? Number.parseFloat(match[1]) > 5.4 : false
 }
 
 const validOptions = (
@@ -78,8 +93,11 @@ const toEntry = Effect.fn('ModelCatalog.toEntry')(function* (
 ) {
   const adapter = PROVIDER_ADAPTERS[provider.id]
   const apiKey = yield* providerApiKey(dataDir, provider.id, provider.env)
+  const stored = yield* getAuth(dataDir, provider.id)
+  const hasAuth = yield* hasProviderAuth(dataDir, provider.id, provider.env)
 
-  if (!adapter?.available(provider.env, apiKey)) return []
+  if (!adapter?.available(provider.env, apiKey) && !hasAuth) return []
+  if (provider.id === 'openai' && stored?.type === 'oauth' && !isOpenAiOauthModel(model.id)) return []
   if (!adapter.supportsModel(model.id)) return []
 
   if (apiKey && provider.env[0]) process.env[provider.env[0]] = apiKey
@@ -164,10 +182,15 @@ export const ensureModel = Effect.fn('ModelCatalog.ensure')(function* (
   })
 })
 
-export const modelLayer = (selection: ModelSelection) => {
+export const modelLayer = Effect.fn('ModelCatalog.modelLayer')(function* (
+  dataDir: string,
+  selection: ModelSelection
+) {
   const [provider, ...rest] = selection.id.split('/')
   const model = rest.join('/')
   if (!provider || !hasProviderAdapter(provider) || !model) return
   const adapter = PROVIDER_ADAPTERS[provider]
-  return adapter.layer({ ...selection, id: model })
-}
+  const auth = yield* getAuth(dataDir, provider)
+  const apiKey = yield* providerApiKey(dataDir, provider, MODEL_PROVIDERS.find((item) => item.id === provider)?.env ?? [])
+  return adapter.layer(dataDir, { ...selection, id: model }, auth, apiKey)
+})

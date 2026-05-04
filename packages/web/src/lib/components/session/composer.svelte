@@ -261,41 +261,25 @@
 
         <div class="flex shrink-0 items-center gap-2">
           {#if isRunning}
-            <Tooltip.Root>
-              <Tooltip.Trigger>
-                {#snippet child({ props })}
-                  <Button
-                    onclick={onStop}
-                    disabled={isStopping}
-                    variant="destructive"
-                    size="icon-lg"
-                    aria-label={isStopping ? 'Stopping...' : 'Stop'}
-                    aria-busy={isStopping}
-                    {...props}
-                  >
-                    <StopIcon weight="fill" />
-                  </Button>
-                {/snippet}
-              </Tooltip.Trigger>
-              <Tooltip.Content>{isStopping ? 'Stopping...' : 'Stop'}</Tooltip.Content>
-            </Tooltip.Root>
+            <Button
+              onclick={onStop}
+              disabled={isStopping}
+              variant="destructive"
+              size="icon-lg"
+              aria-label={isStopping ? 'Stopping...' : 'Stop'}
+              aria-busy={isStopping}
+            >
+              <StopIcon weight="fill" />
+            </Button>
           {:else}
-            <Tooltip.Root>
-              <Tooltip.Trigger>
-                {#snippet child({ props })}
-                  <Button
-                    onclick={handleSubmit}
-                    disabled={disabled || !input.trim()}
-                    size="icon-lg"
-                    aria-label="Send message"
-                    {...props}
-                  >
-                    <ArrowUpIcon />
-                  </Button>
-                {/snippet}
-              </Tooltip.Trigger>
-              <Tooltip.Content>Send message</Tooltip.Content>
-            </Tooltip.Root>
+            <Button
+              onclick={handleSubmit}
+              disabled={disabled || !input.trim()}
+              size="icon-lg"
+              aria-label="Send message"
+            >
+              <ArrowUpIcon />
+            </Button>
           {/if}
         </div>
       </div>
