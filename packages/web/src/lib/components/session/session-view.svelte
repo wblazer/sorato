@@ -7,9 +7,7 @@
       import QueuedMessageBubble from './queued-message-bubble.svelte'
       import StreamingIndicator from './streaming-indicator.svelte'
       import Composer from './composer.svelte'
-      import * as Item from '$lib/components/ui/item/index.js'
       import { Button } from '$lib/components/ui/button/index.js'
-      import XIcon from 'phosphor-svelte/lib/XIcon'
 
       let { sessionId, title }: { sessionId: string; title: string | null } =
         $props()
@@ -193,36 +191,11 @@
   {/if}
 
   <!-- Composer -->
-  {#if sessionError}
-    <div class="relative z-20 bg-background">
-      <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
-        <Item.Root variant="danger" class="-mb-3 shadow-sm shadow-shadow/30">
-          <Item.Content>
-            <Item.Title>Run failed</Item.Title>
-            <Item.Description>
-              {sessionError}
-            </Item.Description>
-          </Item.Content>
-          <Item.Actions class="ml-auto self-start">
-            <Button
-              variant="ghost-destructive"
-              size="icon-sm"
-              onclick={handleDismissError}
-              title="Dismiss error"
-              aria-label="Dismiss error"
-            >
-              <XIcon />
-            </Button>
-          </Item.Actions>
-        </Item.Root>
-      </div>
-    </div>
-  {/if}
-
   <Composer
     onSend={handleSend}
     onStop={handleStop}
     onAttach={handleAttach}
+    onDismissStatus={handleDismissError}
     onModelChange={handleModel}
     models={modelsStore.models}
     model={modelsStore.selectedModel}
@@ -232,6 +205,7 @@
     {isStopping}
     autoFocus
     focusKey={sessionId}
+    {sessionError}
     disabled={isStopping}
   />
 </div>

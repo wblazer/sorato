@@ -271,20 +271,14 @@ const stopWithActiveFiber = Effect.fn('Sessions.stopWithActiveFiber')(
 
     const queuedInputs = yield* drainQueuedInputsNow(sessionId)
 
-    // Persist a system message so the LLM knows it was interrupted
-    // on the next turn.
-    yield* storage.append(sessionId, [
-      {
-        role: 'system' as const,
-        content:
-          '[The user interrupted the previous response. The assistant message above may be incomplete.]',
-      },
-      ...queuedInputs.map((request) => ({
+    yield* storage.append(
+      sessionId,
+      queuedInputs.map((request) => ({
         role: 'user' as const,
         content: request.input,
-      })),
-    ])
-    yield* publishMessagesAppended(sessionId)
+      }))
+    )
+    if (queuedInputs.length > 0) yield* publishMessagesAppended(sessionId)
 
     return new StopResponse({ status: 'stopped' })
   }

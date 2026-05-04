@@ -9,6 +9,12 @@ import {
 } from '../index.ts'
 import { publish } from './event-bus.ts'
 
+const stoppedSystemMessage = {
+  role: 'system' as const,
+  content:
+    '[The user stopped the previous response. The assistant message above may be incomplete.]',
+}
+
 export const createPersistenceHook = (
   sessionId: SessionId,
   messageCountBeforeRun: number
@@ -28,7 +34,9 @@ export const createPersistenceHook = (
           }),
       })
 
-      const newMessages = encoded.content.slice(messageCountBeforeRun)
+      const newMessages = event.interrupted
+        ? [...encoded.content.slice(messageCountBeforeRun), stoppedSystemMessage]
+        : encoded.content.slice(messageCountBeforeRun)
       if (newMessages.length === 0) return
 
       yield* storage.append(sessionId, newMessages)

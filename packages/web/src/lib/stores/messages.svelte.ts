@@ -284,19 +284,22 @@ function createMessagesStore() {
       const fresh: MessageNode[] = await res.json()
       if (currentSessionId === sessionId) {
         messages = fresh
-        if (opts?.clearPartsForRun && activeRunId === opts.clearPartsForRun) {
+        if (opts?.clearPartsForRun) {
           streamingParts = []
-          activeRunId = null
+          if (activeRunId === opts.clearPartsForRun) {
+            activeRunId = null
+          }
         }
       }
     } catch {
       if (
         opts?.clearPartsForRun &&
-        currentSessionId === sessionId &&
-        activeRunId === opts.clearPartsForRun
+        currentSessionId === sessionId
       ) {
         streamingParts = []
-        activeRunId = null
+        if (activeRunId === opts.clearPartsForRun) {
+          activeRunId = null
+        }
       }
     }
   }

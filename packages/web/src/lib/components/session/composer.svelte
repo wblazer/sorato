@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js'
+      import * as Item from '$lib/components/ui/item/index.js'
       import { tick } from 'svelte'
       import { Textarea } from '$lib/components/ui/textarea/index.js'
       import * as Select from '$lib/components/ui/select/index.js'
@@ -7,12 +8,14 @@
       import ArrowUpIcon from 'phosphor-svelte/lib/ArrowUpIcon'
       import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
       import StopIcon from 'phosphor-svelte/lib/StopIcon'
+      import XIcon from 'phosphor-svelte/lib/XIcon'
       import ModelSelector from './model-selector.svelte'
 
       let {
         onSend,
         onStop,
         onAttach,
+        onDismissStatus,
         onModelChange,
         models = [],
         model = null,
@@ -25,10 +28,12 @@
         autoFocus = false,
         focusKey,
         placeholder,
+        sessionError = null,
       }: {
         onSend: (input: string) => void
         onStop?: () => void
         onAttach?: () => void
+        onDismissStatus?: () => void
         onModelChange?: (value: string, options?: ModelOptions) => void
         models?: ReadonlyArray<AvailableModel>
         model?: string | null
@@ -41,6 +46,7 @@
         autoFocus?: boolean
         focusKey?: string | number | null
         placeholder?: string
+        sessionError?: string | null
       } = $props()
 
       let input = $state('')
@@ -53,6 +59,23 @@
         modelOptions.thinkingLevel ?? selectedModel?.capabilities.thinkingLevels[0]
       )
       const selectedMode = $derived(modelOptions.mode)
+      const status = $derived(
+        sessionError
+          ? {
+              variant: 'danger' as const,
+              title: 'Run failed',
+              description: sessionError,
+              dismissible: true,
+            }
+          : isStopping
+            ? {
+                variant: 'muted' as const,
+                title: 'Stopping current run',
+                description: 'Waiting for the server to confirm the stop request.',
+                dismissible: false,
+              }
+            : null
+      )
 
       function selectThinking(level: NonNullable<ModelOptions['thinkingLevel']>) {
         if (!model) return
@@ -97,6 +120,32 @@
 <div class="bg-background py-5">
   <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
     <div class="relative">
+      {#if status}
+        <Item.Root
+          variant={status.variant}
+          size="xs"
+          class="relative z-0 rounded-b-none border-border border-b-0 px-3 py-2 shadow-sm shadow-shadow/30"
+        >
+          <Item.Content>
+            <Item.Title>{status.title}</Item.Title>
+            <Item.Description>{status.description}</Item.Description>
+          </Item.Content>
+          {#if status.dismissible}
+            <Item.Actions class="ml-auto self-start">
+              <Button
+                variant="ghost-destructive"
+                size="icon-sm"
+                onclick={onDismissStatus}
+                title="Dismiss error"
+                aria-label="Dismiss error"
+              >
+                <XIcon />
+              </Button>
+            </Item.Actions>
+          {/if}
+        </Item.Root>
+      {/if}
+
       <Textarea
         bind:ref={textarea}
         bind:value={input}
@@ -104,7 +153,7 @@
         {disabled}
         {placeholder}
         rows={1}
-        class="relative z-10 min-h-[32px] w-full max-h-[220px] scroll-pb-4 overflow-y-auto rounded-lg border border-border bg-surface px-4 py-4 shadow-sm shadow-shadow/30 outline-none focus-visible:border-ring focus-visible:ring-0 md:text-sm"
+        class={`relative z-10 min-h-[32px] w-full max-h-[220px] scroll-pb-4 overflow-y-auto border border-border bg-surface px-4 py-4 shadow-sm shadow-shadow/30 outline-none focus-visible:border-ring focus-visible:ring-0 md:text-sm ${status ? 'rounded-b-lg rounded-t-none' : 'rounded-lg'}`}
       />
 
       <div
@@ -188,6 +237,7 @@
               variant="destructive"
               size="icon-lg"
               title={isStopping ? 'Stopping...' : 'Stop'}
+              aria-busy={isStopping}
             >
               <StopIcon weight="fill" />
             </Button>
@@ -205,14 +255,4 @@
       </div>
     </div>
   </div>
-
-  {#if isRunning}
-    <div class="mx-auto mt-2 flex w-full max-w-6xl items-center justify-end px-4 sm:px-6">
-      {#if isStopping}
-        <span class="text-[11px] text-muted-foreground">Stopping...</span>
-      {:else}
-        <span class="text-[11px] text-muted-foreground">Click stop to interrupt</span>
-      {/if}
-    </div>
-  {/if}
 </div>
