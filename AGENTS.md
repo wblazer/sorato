@@ -14,7 +14,6 @@ A coding agent with tree-structured conversations, tracked side effects, and dec
 Bun workspaces. Packages depend on each other via `workspace:*`.
 
 - `packages/agent/` — the coding agent: sandbox, tools, harness, session, server. See `packages/agent/DOCS.md`.
-- `packages/evals/` — benchmark eval suites (including in-package bench primitives)
 - `packages/web/` — web UI with multi-server connection management. See `packages/web/DOCS.md`.
 
 ## Agent Map
@@ -44,9 +43,6 @@ bun run typecheck
 
 # Install dependencies
 bun install
-
-# Run an eval
-bun run --filter @agents/evals hello-world
 ```
 
 ## Naming Conventions

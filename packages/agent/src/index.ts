@@ -3,8 +3,6 @@
  *
  * Re-exports the core agent primitives so consumers can do:
  *   import { Sandbox, run } from "@agents/agent"
- *
- * Evaluation primitives live in packages/evals/bench.
  */
 
 // Sandbox

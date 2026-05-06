@@ -13,8 +13,6 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 - **Harness** (`src/harness/`) — system prompt + tools + hooks = agent. Agent loop with multi-turn tool calling. Memory is a harness concern (hooks), not a separate primitive.
 - **Session** (`src/session/`) — persistent conversation storage with tree-structured history. Messages form a tree via parent pointers (like git commits). Supports forking and branch switching. Ships `SqliteSession`.
 
-**Evaluation primitives** live in `packages/evals/bench`: `test()`, `run()`, Reporter.
-
 **HTTP Server** (`src/server/`) — Bun HTTP server exposing:
 
 - `GET /handshake` — Connection validation (returns `{ version, status: 'ok' }`)
@@ -55,7 +53,6 @@ The library provides stable abstractions (traits/interfaces) and default impleme
 - `src/server/model-catalog.ts` — available model filtering from generated catalog + adapter support
 - `src/server/runtime-config.ts` — server-owned runtime config loading and merging
 - `src/server/session-title.ts` — first-message session title generation with configured or cheap authenticated models
-- `packages/evals/bench/` — eval primitives (`test`, `run`, Reporter)
 - `packages/web/` — Svelte web UI with connection management
 - `VISION.md` — strategic rationale, execution model, industry context
 - `ROADMAP.md` — phased plan from current state to production

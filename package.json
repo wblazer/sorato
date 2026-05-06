@@ -6,7 +6,6 @@
   ],
   "scripts": {
     "prepare": "effect-language-service patch",
-    "eval": "bun run --filter @agents/evals start --",
     "typecheck": "bun --filter '*' typecheck && bun run --filter @agents/web check",
     "format": "biome format . --write",
     "format:check": "biome check . --formatter-enabled=true --linter-enabled=false",

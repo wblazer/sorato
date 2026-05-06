@@ -36,4 +36,3 @@ Similarly, tools should silently fix unambiguous mechanical artifacts (like echo
 
 - `src/sandbox/` — `CurrentShell`/`CurrentFiles` tags and `Shell`/`Files` interfaces
 - `src/harness/` — consumes the resolved toolkit via `HarnessConfig`
-- `packages/evals/bench/` — eval primitives; callers provide `CurrentShell`/`CurrentFiles` explicitly

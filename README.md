@@ -13,5 +13,4 @@ What makes it different:
 ```bash
 bun install
 bun run --filter @agents/agent start    # run the agent
-bun run --filter @agents/evals bench    # run evals
 ```

@@ -19,4 +19,3 @@ Memory is NOT a separate primitive. It's a harness concern implemented through h
 ## Related Context
 
 - `src/sandbox/` — where tool calls execute
-- `packages/evals/bench/` — eval primitives that call `run()` with a `HarnessConfig`

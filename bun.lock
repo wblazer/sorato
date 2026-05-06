@@ -27,15 +27,6 @@
         "vitest": "^4.0.18",
       },
     },
-    "packages/evals": {
-      "name": "@agents/evals",
-      "dependencies": {
-        "@agents/agent": "workspace:*",
-        "@effect/ai-anthropic": "4.0.0-beta.60",
-        "@effect/platform-bun": "4.0.0-beta.60",
-        "effect": "4.0.0-beta.60",
-      },
-    },
     "packages/web": {
       "name": "@agents/web",
       "version": "0.0.1",
@@ -66,8 +57,6 @@
   },
   "packages": {
     "@agents/agent": ["@agents/agent@workspace:packages/agent"],
-
-    "@agents/evals": ["@agents/evals@workspace:packages/evals"],
 
     "@agents/web": ["@agents/web@workspace:packages/web"],
 

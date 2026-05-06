@@ -38,5 +38,4 @@ The library doesn't ship cloud sandboxes. Users write `SandboxFactory` Layers ba
 
 - `src/tool/` — tools that require `CurrentShell`/`CurrentFiles` in their handlers
 - `src/harness/` — dispatches tool calls through the sandbox services
-- `packages/evals/bench/` — eval primitives; callers acquire sandbox sessions and provide services explicitly
 - `VISION.md` — execution model, IaC relationship, industry context
