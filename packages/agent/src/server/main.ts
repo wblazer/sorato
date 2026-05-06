@@ -1,7 +1,7 @@
 /**
  * Server entry point.
  *
- * Composes the API layer with SessionStorage (SQLite) and serves via Bun.
+ * Composes the API layer with SessionStorage (SQLite) and serves via Effect Platform.
  *
  * Data path resolution:
  *   AGENTS_DATA_DIR env var > XDG_DATA_HOME/agents > ~/.local/share/agents
@@ -9,7 +9,8 @@
 import { join } from 'node:path'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { HttpMiddleware, HttpRouter, HttpServer } from 'effect/unstable/http'
-import { BunHttpServer, BunRuntime } from '@effect/platform-bun'
+import { BunHttpServer, BunRuntime, BunServices } from '@effect/platform-bun'
+import { SqliteClient } from '@effect/sql-sqlite-bun'
 import { Effect, Layer } from 'effect'
 import { SqliteSession } from '../index.ts'
 import { Api } from './api.ts'
@@ -43,10 +44,15 @@ const ApiLive = HttpApiBuilder.layer(Api).pipe(
   Layer.provide(HandshakeLive)
 )
 
-const StorageLive = SqliteSession({ path: join(dataDir, 'sessions.db') })
-const ProviderAuthLive = SqliteProviderAuthStore({
-  path: join(dataDir, 'server.db'),
-})
+const sessionsDbPath = join(dataDir, 'sessions.db')
+const providerAuthDbPath = join(dataDir, 'server.db')
+
+const StorageLive = SqliteSession({ path: sessionsDbPath }).pipe(
+  Layer.provide(SqliteClient.layer({ filename: sessionsDbPath }))
+)
+const ProviderAuthLive = SqliteProviderAuthStore({ path: providerAuthDbPath }).pipe(
+  Layer.provide(SqliteClient.layer({ filename: providerAuthDbPath }))
+)
 
 // ── Serve ───────────────────────────────────────────────────────────
 
@@ -66,6 +72,7 @@ const HttpLive = HttpRouter.toHttpEffect(ApiLive).pipe(
   Layer.provide(ProviderAuthLive),
   Layer.provide(AgentLive),
   Layer.provide(HttpRouter.layer),
+  Layer.provide(BunServices.layer),
   Layer.provide(BunHttpServer.layer({ port: 3100 }))
 )
 

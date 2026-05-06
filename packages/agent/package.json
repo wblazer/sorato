@@ -20,6 +20,7 @@
     "@effect/ai-anthropic": "4.0.0-beta.60",
     "@effect/ai-openai": "4.0.0-beta.60",
     "@effect/platform-bun": "4.0.0-beta.60",
+    "@effect/sql-sqlite-bun": "4.0.0-beta.60",
     "effect": "4.0.0-beta.60"
   },
   "devDependencies": {

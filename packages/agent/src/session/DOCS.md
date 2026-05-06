@@ -15,7 +15,7 @@ System ─── User₁ ─── Assist₁ ─┬─ User₂  ─── Assist
 ## Files
 
 - `session.ts` — trait/contract: `SessionStorageApi` interface, `SessionStorage` tag, `StorageError`, branded IDs (`SessionId`, `MessageId`), data types (`Session`, `MessageNode`). Stores `Prompt.MessageEncoded` blobs and reconstitutes `Prompt.Prompt` on read.
-- `sqlite-session.ts` — default implementation using `bun:sqlite`. Recursive CTE for conversation reconstruction. WAL mode. Scoped lifecycle (db closes on layer finalize). `SqliteSession({ path })` returns the layer — use `":memory:"` for tests.
+- `sqlite-session.ts` — default implementation using Effect SQL's `SqlClient`. Recursive CTE for conversation reconstruction. The concrete SQLite driver is provided at the application edge. `SqliteSession({ path })` returns the layer — use `":memory:"` with a matching in-memory SQL client for tests.
 
 ## Key Design Decisions
 

@@ -1,6 +1,5 @@
-import { Database } from 'bun:sqlite'
-import { mkdir } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { FileSystem, Path } from 'effect'
+import { SqlClient } from 'effect/unstable/sql/SqlClient'
 import { Context, Effect, Layer, Schema } from 'effect'
 
 export class AuthError extends Schema.TaggedErrorClass<AuthError>()('AuthError', {
@@ -102,121 +101,89 @@ const toAuth = (row: ProviderAuthRow | null): ProviderAuth | undefined => {
   })
 }
 
-const openDatabase = (path: string) => {
-  const database = new Database(path)
-  database.run('PRAGMA journal_mode = WAL')
-  database.run(SCHEMA)
-  return database
-}
-
-const prepareStatements = (db: Database) => ({
-  getAuth: db.prepare<ProviderAuthRow, [string]>(
-    'SELECT * FROM provider_auth WHERE provider = ?'
-  ),
-  setApiKey: db.prepare<void, [string, string, number]>(`
-    INSERT INTO provider_auth (provider, type, api_key, updated_at)
-    VALUES (?, 'api', ?, ?)
-    ON CONFLICT(provider) DO UPDATE SET
-      type = 'api',
-      api_key = excluded.api_key,
-      access_token = NULL,
-      refresh_token = NULL,
-      expires_at = NULL,
-      last_refresh_at = NULL,
-      account_id = NULL,
-      updated_at = excluded.updated_at
-  `),
-  setOauth: db.prepare<
-    void,
-    [string, string, string, number, number | null, string | null, number]
-  >(`
-    INSERT INTO provider_auth (
-      provider,
-      type,
-      access_token,
-      refresh_token,
-      expires_at,
-      last_refresh_at,
-      account_id,
-      updated_at
-    )
-    VALUES (?, 'oauth', ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(provider) DO UPDATE SET
-      type = 'oauth',
-      api_key = NULL,
-      access_token = excluded.access_token,
-      refresh_token = excluded.refresh_token,
-      expires_at = excluded.expires_at,
-      last_refresh_at = excluded.last_refresh_at,
-      account_id = excluded.account_id,
-      updated_at = excluded.updated_at
-  `),
-})
-
 export const SqliteProviderAuthStore = (options: {
   readonly path: string
 }) =>
   Layer.effect(
     ProviderAuthStore,
     Effect.gen(function* () {
-      yield* Effect.tryPromise({
-        try: () => mkdir(dirname(options.path), { recursive: true }),
-        catch: authFailure('Failed to create provider auth database directory'),
-      })
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const sql = yield* SqlClient
 
-      const db = yield* Effect.try({
-        try: () => openDatabase(options.path),
-        catch: authFailure(`Failed to open provider auth database: ${options.path}`),
-      })
-
-      yield* Effect.tryPromise({
-        try: () => Bun.$`chmod 600 ${options.path}`.quiet(),
-        catch: authFailure('Failed to secure provider auth database'),
-      })
-
-      yield* Effect.addFinalizer(() =>
-        Effect.try({
-          try: () => db.close(),
-          catch: authFailure('Failed to close provider auth database'),
-        }).pipe(Effect.catch(() => Effect.void))
+      yield* fs.makeDirectory(path.dirname(options.path), { recursive: true }).pipe(
+        Effect.mapError(authFailure('Failed to create provider auth database directory'))
       )
 
-      const stmts = prepareStatements(db)
+      yield* sql.unsafe(SCHEMA).pipe(
+        Effect.mapError(authFailure(`Failed to initialize provider auth database: ${options.path}`))
+      )
+
+      yield* fs.chmod(options.path, 0o600).pipe(
+        Effect.mapError(authFailure('Failed to secure provider auth database'))
+      )
 
       const getAuth = Effect.fn('ProviderAuthStore.getAuth')(function* (provider: string) {
-        return yield* Effect.try({
-          try: () => toAuth(stmts.getAuth.get(provider)),
-          catch: authFailure('Failed to read provider credentials'),
-        })
+        const rows = yield* sql<ProviderAuthRow>`
+          SELECT * FROM provider_auth WHERE provider = ${provider}
+        `.pipe(Effect.mapError(authFailure('Failed to read provider credentials')))
+        return toAuth(rows[0] ?? null)
       })
 
       const setApiKey = Effect.fn('ProviderAuthStore.setApiKey')(function* (
         provider: string,
         key: string
       ) {
-        yield* Effect.try({
-          try: () => stmts.setApiKey.run(provider, key, Date.now()),
-          catch: authFailure('Failed to write provider credentials'),
-        })
+        yield* sql`
+          INSERT INTO provider_auth (provider, type, api_key, updated_at)
+          VALUES (${provider}, 'api', ${key}, ${Date.now()})
+          ON CONFLICT(provider) DO UPDATE SET
+            type = 'api',
+            api_key = excluded.api_key,
+            access_token = NULL,
+            refresh_token = NULL,
+            expires_at = NULL,
+            last_refresh_at = NULL,
+            account_id = NULL,
+            updated_at = excluded.updated_at
+        `.pipe(Effect.mapError(authFailure('Failed to write provider credentials')))
       })
 
       const setOauth = Effect.fn('ProviderAuthStore.setOauth')(function* (
         provider: string,
         info: Omit<ProviderOauthInfo, 'type'>
       ) {
-        yield* Effect.try({
-          try: () =>
-            stmts.setOauth.run(
-              provider,
-              info.access,
-              info.refresh,
-              info.expires,
-              info.lastRefresh ?? null,
-              info.accountId ?? null,
-              Date.now()
-            ),
-          catch: authFailure('Failed to write provider credentials'),
-        })
+        yield* sql`
+          INSERT INTO provider_auth (
+            provider,
+            type,
+            access_token,
+            refresh_token,
+            expires_at,
+            last_refresh_at,
+            account_id,
+            updated_at
+          )
+          VALUES (
+            ${provider},
+            'oauth',
+            ${info.access},
+            ${info.refresh},
+            ${info.expires},
+            ${info.lastRefresh ?? null},
+            ${info.accountId ?? null},
+            ${Date.now()}
+          )
+          ON CONFLICT(provider) DO UPDATE SET
+            type = 'oauth',
+            api_key = NULL,
+            access_token = excluded.access_token,
+            refresh_token = excluded.refresh_token,
+            expires_at = excluded.expires_at,
+            last_refresh_at = excluded.last_refresh_at,
+            account_id = excluded.account_id,
+            updated_at = excluded.updated_at
+        `.pipe(Effect.mapError(authFailure('Failed to write provider credentials')))
       })
 
       const providerApiKey = Effect.fn('ProviderAuthStore.providerApiKey')(function* (

@@ -1,5 +1,5 @@
 /**
- * SqliteSession — session storage backed by bun:sqlite.
+ * SqliteSession — session storage backed by Effect SQL.
  *
  * Uses a single SQLite database with two tables:
  *
@@ -13,10 +13,9 @@
  * The database is opened on layer construction and closed when the
  * layer's scope finalizes.
  */
-import { Database } from 'bun:sqlite'
-import { mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { FileSystem, Path } from 'effect'
 import { Prompt } from 'effect/unstable/ai'
+import { SqlClient } from 'effect/unstable/sql/SqlClient'
 import { Effect, Layer, Match, Option, Schema } from 'effect'
 import {
   SessionStorage,
@@ -57,7 +56,7 @@ const SCHEMA = `
 `
 
 // ---------------------------------------------------------------------------
-// Row types (what bun:sqlite returns)
+// Row types
 // ---------------------------------------------------------------------------
 
 interface SessionRow {
@@ -98,113 +97,20 @@ const toMessageNode = (row: MessageRow): MessageNode => ({
   createdAt: row.created_at,
 })
 
-// ---------------------------------------------------------------------------
-// Prepared statement queries
-// ---------------------------------------------------------------------------
-
-const prepareStatements = (db: Database) => {
-  const insertSession = db.prepare<
-    void,
-    [string, string, string | null, number, number]
-  >(
-    'INSERT INTO sessions (id, directory, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
-  )
-
-  const getSession = db.prepare<SessionRow, [string]>(
-    'SELECT * FROM sessions WHERE id = ?'
-  )
-
-  const listSessions = db.prepare<SessionRow, []>(
-    'SELECT * FROM sessions ORDER BY updated_at DESC'
-  )
-
-  const deleteSession = db.prepare<void, [string]>(
-    'DELETE FROM sessions WHERE id = ?'
-  )
-
-  const updateTitle = db.prepare<void, [string | null, number, string]>(
-    'UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?'
-  )
-
-  const updateHead = db.prepare<void, [string | null, number, string]>(
-    'UPDATE sessions SET head_id = ?, updated_at = ? WHERE id = ?'
-  )
-
-  const insertMessage = db.prepare<
-    void,
-    [string, string, string | null, string, number]
-  >(
-    'INSERT INTO messages (id, session_id, parent_id, encoded, created_at) VALUES (?, ?, ?, ?, ?)'
-  )
-
-  const getMessage = db.prepare<MessageRow, [string]>(
-    'SELECT * FROM messages WHERE id = ?'
-  )
-
-  /**
-   * Recursive CTE: walk from a given message up to the root.
-   * Returns messages in leaf-to-root order.
-   */
-  const walkToRoot = db.prepare<MessageRow, [string]>(`
-    WITH RECURSIVE chain AS (
-      SELECT * FROM messages WHERE id = ?
-      UNION ALL
-      SELECT m.* FROM messages m JOIN chain c ON m.id = c.parent_id
-    )
-    SELECT * FROM chain
-  `)
-
-  /**
-   * Find all leaf messages — messages with no children.
-   */
-  const findLeaves = db.prepare<MessageRow, [string]>(`
-    SELECT m.* FROM messages m
-    WHERE m.session_id = ?
-    AND NOT EXISTS (
-      SELECT 1 FROM messages child WHERE child.parent_id = m.id
-    )
-  `)
-
-  /**
-   * Verify a message belongs to a session.
-   */
-  const messageInSession = db.prepare<{ id: string }, [string, string]>(
-    'SELECT id FROM messages WHERE id = ? AND session_id = ?'
-  )
-
-  return {
-    insertSession,
-    getSession,
-    listSessions,
-    deleteSession,
-    updateTitle,
-    updateHead,
-    insertMessage,
-    getMessage,
-    walkToRoot,
-    findLeaves,
-    messageInSession,
-  }
-}
-
-const ensureDatabaseDirectory = (path: string) =>
-  Match.value(path).pipe(
-    Match.when(':memory:', () => undefined),
-    Match.orElse((databasePath) =>
-      mkdirSync(dirname(databasePath), { recursive: true })
+const ensureDatabaseDirectory = (databasePath: string) =>
+  Match.value(databasePath).pipe(
+    Match.when(':memory:', () => Effect.void),
+    Match.orElse((_) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        const path = yield* Path.Path
+        yield* fs.makeDirectory(path.dirname(databasePath), { recursive: true })
+      })
     )
   )
 
-const openDatabase = (path: string) => {
-  ensureDatabaseDirectory(path)
-
-  const database = new Database(path)
-  database.run('PRAGMA journal_mode = WAL')
-  database.run('PRAGMA foreign_keys = ON')
-  database.run(SCHEMA)
-
-  return database
-}
+const sqlFailure = (operation: string, message: string) => (error: unknown) =>
+  new StorageError({ operation, message, error })
 
 // ---------------------------------------------------------------------------
 // Implementation
@@ -219,29 +125,16 @@ const openDatabase = (path: string) => {
 export const SqliteSession = (options: { readonly path: string }) =>
   Layer.effect(SessionStorage)(
     Effect.gen(function* () {
-      const db = yield* Effect.try({
-        try: () => openDatabase(options.path),
-        catch: (error) =>
-          new StorageError({
-            operation: 'open',
-            message: `Failed to open database: ${options.path}`,
-            error,
-          }),
-      })
+      const sql = yield* SqlClient
 
-      yield* Effect.addFinalizer(() =>
-        Effect.try({
-          try: () => db.close(),
-          catch: (error) =>
-            new StorageError({
-              operation: 'close',
-              message: `Failed to close database: ${options.path}`,
-              error,
-            }),
-        }).pipe(Effect.catch(() => Effect.void))
+      yield* ensureDatabaseDirectory(options.path).pipe(
+        Effect.mapError(
+          sqlFailure('open', `Failed to create database directory: ${options.path}`)
+        )
       )
-
-      const stmts = prepareStatements(db)
+      yield* sql.unsafe(SCHEMA).pipe(
+        Effect.mapError(sqlFailure('open', `Failed to initialize database: ${options.path}`))
+      )
 
       // -- Service methods --------------------------------------------------
 
@@ -252,22 +145,10 @@ export const SqliteSession = (options: { readonly path: string }) =>
         const id = crypto.randomUUID()
         const now = Date.now()
 
-        yield* Effect.try({
-          try: () =>
-            stmts.insertSession.run(
-              id,
-              directory,
-              title ?? null,
-              now,
-              now
-            ),
-          catch: (error) =>
-            new StorageError({
-              operation: 'create',
-              message: 'Failed to create session',
-              error,
-            }),
-        })
+        yield* sql`
+          INSERT INTO sessions (id, directory, title, created_at, updated_at)
+          VALUES (${id}, ${directory}, ${title ?? null}, ${now}, ${now})
+        `.pipe(Effect.mapError(sqlFailure('create', 'Failed to create session')))
 
         return {
           id,
@@ -280,15 +161,10 @@ export const SqliteSession = (options: { readonly path: string }) =>
       })
 
       const get = Effect.fn('SessionStorage.get')(function* (id: SessionId) {
-        const row = yield* Effect.try({
-          try: () => stmts.getSession.get(id),
-          catch: (error) =>
-            new StorageError({
-              operation: 'get',
-              message: `Failed to get session: ${id}`,
-              error,
-            }),
-        })
+        const rows = yield* sql<SessionRow>`
+          SELECT * FROM sessions WHERE id = ${id}
+        `.pipe(Effect.mapError(sqlFailure('get', `Failed to get session: ${id}`)))
+        const row = rows[0]
 
         return yield* Effect.fromNullishOr(row).pipe(
           Effect.mapError(
@@ -303,15 +179,9 @@ export const SqliteSession = (options: { readonly path: string }) =>
       })
 
       const list = Effect.fn('SessionStorage.list')(function* () {
-        const rows = yield* Effect.try({
-          try: () => stmts.listSessions.all(),
-          catch: (error) =>
-            new StorageError({
-              operation: 'list',
-              message: 'Failed to list sessions',
-              error,
-            }),
-        })
+        const rows = yield* sql<SessionRow>`
+          SELECT * FROM sessions ORDER BY updated_at DESC
+        `.pipe(Effect.mapError(sqlFailure('list', 'Failed to list sessions')))
 
         return rows.map(toSession)
       })
@@ -323,27 +193,17 @@ export const SqliteSession = (options: { readonly path: string }) =>
         title: string | null
       ) {
         yield* get(id)
-        yield* Effect.try({
-          try: () => stmts.updateTitle.run(title, Date.now(), id),
-          catch: (error) =>
-            new StorageError({
-              operation: 'setTitle',
-              message: `Failed to set session title: ${id}`,
-              error,
-            }),
-        })
+        yield* sql`
+          UPDATE sessions SET title = ${title}, updated_at = ${Date.now()} WHERE id = ${id}
+        `.pipe(
+          Effect.mapError(sqlFailure('setTitle', `Failed to set session title: ${id}`))
+        )
       })
 
       const del = Effect.fn('SessionStorage.delete')(function* (id: SessionId) {
-        yield* Effect.try({
-          try: () => stmts.deleteSession.run(id),
-          catch: (error) =>
-            new StorageError({
-              operation: 'delete',
-              message: `Failed to delete session: ${id}`,
-              error,
-            }),
-        })
+        yield* sql`DELETE FROM sessions WHERE id = ${id}`.pipe(
+          Effect.mapError(sqlFailure('delete', `Failed to delete session: ${id}`))
+        )
       })
 
       const conversation = Effect.fn('SessionStorage.conversation')(function* (
@@ -355,27 +215,25 @@ export const SqliteSession = (options: { readonly path: string }) =>
           Option.match({
             onNone: () => Effect.succeed(Prompt.empty),
             onSome: (headId) =>
-              Effect.try({
-                try: () => {
-                  const walkedRows = stmts.walkToRoot.all(headId)
-
-                  return Schema.decodeUnknownSync(Prompt.Prompt)({
-                    // Rows come back leaf-to-root; reverse for chronological order
+              sql<MessageRow>`
+                WITH RECURSIVE chain AS (
+                  SELECT * FROM messages WHERE id = ${headId}
+                  UNION ALL
+                  SELECT m.* FROM messages m JOIN chain c ON m.id = c.parent_id
+                )
+                SELECT * FROM chain
+              `.pipe(
+                Effect.map((walkedRows) =>
+                  Schema.decodeUnknownSync(Prompt.Prompt)({
                     content: [...walkedRows]
                       .reverse()
-                      .map(
-                        (row: MessageRow) =>
-                          JSON.parse(row.encoded) as Prompt.MessageEncoded
-                      ),
+                      .map((row) => JSON.parse(row.encoded) as Prompt.MessageEncoded),
                   })
-                },
-                catch: (error) =>
-                  new StorageError({
-                    operation: 'conversation',
-                    message: `Failed to load conversation: ${sessionId}`,
-                    error,
-                  }),
-              }),
+                ),
+                Effect.mapError(
+                  sqlFailure('conversation', `Failed to load conversation: ${sessionId}`)
+                )
+              ),
           })
         )
       })
@@ -389,16 +247,17 @@ export const SqliteSession = (options: { readonly path: string }) =>
           Option.match({
             onNone: () => Effect.succeed([] as ReadonlyArray<MessageNode>),
             onSome: (headId) =>
-              Effect.try({
-                try: () =>
-                  stmts.walkToRoot.all(headId).reverse().map(toMessageNode),
-                catch: (error) =>
-                  new StorageError({
-                    operation: 'messages',
-                    message: `Failed to load messages: ${sessionId}`,
-                    error,
-                  }),
-              }),
+              sql<MessageRow>`
+                WITH RECURSIVE chain AS (
+                  SELECT * FROM messages WHERE id = ${headId}
+                  UNION ALL
+                  SELECT m.* FROM messages m JOIN chain c ON m.id = c.parent_id
+                )
+                SELECT * FROM chain
+              `.pipe(
+                Effect.map((rows) => [...rows].reverse().map(toMessageNode)),
+                Effect.mapError(sqlFailure('messages', `Failed to load messages: ${sessionId}`))
+              ),
           })
         )
       })
@@ -414,33 +273,29 @@ export const SqliteSession = (options: { readonly path: string }) =>
         let parentId: string | null = session.headId
         let lastId: string | null = null
 
-        yield* Effect.try({
-          try: () => {
-            const tx = db.transaction(() => {
-              for (const msg of messages) {
-                const id = crypto.randomUUID()
-                stmts.insertMessage.run(
-                  id,
-                  sessionId,
-                  parentId,
-                  JSON.stringify(msg),
-                  now
-                )
-                parentId = id
-                lastId = id
-              }
+        yield* sql.withTransaction(
+          Effect.gen(function* () {
+            for (const msg of messages) {
+              const id = crypto.randomUUID()
+              yield* sql`
+                INSERT INTO messages (id, session_id, parent_id, encoded, created_at)
+                VALUES (${id}, ${sessionId}, ${parentId}, ${JSON.stringify(msg)}, ${now})
+              `
+              parentId = id
+              lastId = id
+            }
 
-              lastId !== null && stmts.updateHead.run(lastId, now, sessionId)
-            })
-            tx()
-          },
-          catch: (error) =>
-            new StorageError({
-              operation: 'append',
-              message: `Failed to append messages to session: ${sessionId}`,
-              error,
-            }),
-        })
+            if (lastId !== null) {
+              yield* sql`
+                UPDATE sessions SET head_id = ${lastId}, updated_at = ${now} WHERE id = ${sessionId}
+              `
+            }
+          })
+        ).pipe(
+          Effect.mapError(
+            sqlFailure('append', `Failed to append messages to session: ${sessionId}`)
+          )
+        )
       })
 
       const setHead = Effect.fn('SessionStorage.setHead')(function* (
@@ -448,15 +303,12 @@ export const SqliteSession = (options: { readonly path: string }) =>
         messageId: MessageId
       ) {
         // Verify the message belongs to this session
-        const exists = yield* Effect.try({
-          try: () => stmts.messageInSession.get(messageId, sessionId),
-          catch: (error) =>
-            new StorageError({
-              operation: 'setHead',
-              message: `Failed to verify message: ${messageId}`,
-              error,
-            }),
-        })
+        const rows = yield* sql<{ id: string }>`
+          SELECT id FROM messages WHERE id = ${messageId} AND session_id = ${sessionId}
+        `.pipe(
+          Effect.mapError(sqlFailure('setHead', `Failed to verify message: ${messageId}`))
+        )
+        const exists = rows[0]
 
         yield* Effect.fromNullishOr(exists).pipe(
           Effect.mapError(
@@ -467,15 +319,11 @@ export const SqliteSession = (options: { readonly path: string }) =>
               })
           ),
           Effect.flatMap(() =>
-            Effect.try({
-              try: () => stmts.updateHead.run(messageId, Date.now(), sessionId),
-              catch: (error) =>
-                new StorageError({
-                  operation: 'setHead',
-                  message: `Failed to update head: ${sessionId}`,
-                  error,
-                }),
-            })
+            sql`
+              UPDATE sessions SET head_id = ${messageId}, updated_at = ${Date.now()} WHERE id = ${sessionId}
+            `.pipe(
+              Effect.mapError(sqlFailure('setHead', `Failed to update head: ${sessionId}`))
+            )
           )
         )
       })
@@ -486,15 +334,13 @@ export const SqliteSession = (options: { readonly path: string }) =>
         // Verify session exists
         yield* get(sessionId)
 
-        const rows = yield* Effect.try({
-          try: () => stmts.findLeaves.all(sessionId),
-          catch: (error) =>
-            new StorageError({
-              operation: 'leaves',
-              message: `Failed to find leaves: ${sessionId}`,
-              error,
-            }),
-        })
+        const rows = yield* sql<MessageRow>`
+          SELECT m.* FROM messages m
+          WHERE m.session_id = ${sessionId}
+          AND NOT EXISTS (
+            SELECT 1 FROM messages child WHERE child.parent_id = m.id
+          )
+        `.pipe(Effect.mapError(sqlFailure('leaves', `Failed to find leaves: ${sessionId}`)))
 
         return rows.map(toMessageNode)
       })
