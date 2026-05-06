@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http'
 import { platform, release, arch } from 'node:os'
 import { Effect } from 'effect'
-import { setOauth, type ProviderOauthInfo } from './provider-auth.ts'
+import { ProviderAuthStore, ProviderOauthInfo, type ProviderAuthStoreApi } from './provider-auth.ts'
 
 const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const ISSUER = 'https://auth.openai.com'
@@ -18,7 +18,7 @@ type TokenResponse = {
 }
 
 type Pending = {
-  readonly dataDir: string
+  readonly store: ProviderAuthStoreApi
   readonly pkce: Pkce
   readonly port: number
 }
@@ -85,8 +85,14 @@ const htmlEscape = (value: string) =>
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;')
 
-export const refreshOpenAiOauth = Effect.fn('OpenAiChatGptAuth.refresh')(function* (
-  dataDir: string,
+const refreshOpenAiPromise: { current: Promise<ProviderOauthInfo> | undefined } = {
+  current: undefined,
+}
+
+const isExpired = (auth: ProviderOauthInfo) => auth.expires <= Date.now()
+
+const refreshOpenAiOauthWithStore = Effect.fn('OpenAiChatGptAuth.refreshWithStore')(function* (
+  store: ProviderAuthStoreApi,
   current: ProviderOauthInfo
 ) {
   const tokens = yield* Effect.tryPromise({
@@ -106,14 +112,35 @@ export const refreshOpenAiOauth = Effect.fn('OpenAiChatGptAuth.refresh')(functio
     catch: (cause) => new Error(cause instanceof Error ? cause.message : 'Token refresh failed'),
   })
 
-  const next = {
+  const next = new ProviderOauthInfo({
+    type: 'oauth',
     refresh: tokens.refresh_token,
     access: tokens.access_token,
     expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
+    lastRefresh: Date.now(),
     accountId: accountIdFromTokens(tokens) ?? current.accountId,
-  }
-  yield* setOauth(dataDir, 'openai', next)
+  })
+  yield* store.setOauth('openai', next)
   return next
+})
+
+export const currentOpenAiOauth = Effect.fn('OpenAiChatGptAuth.current')(function* (
+  store: ProviderAuthStoreApi
+) {
+  const stored = yield* store.getAuth('openai')
+  if (stored?.type !== 'oauth') {
+    return yield* Effect.fail(new Error('OpenAI ChatGPT credentials are not available'))
+  }
+  if (!isExpired(stored)) return stored
+
+  if (!refreshOpenAiPromise.current) {
+    refreshOpenAiPromise.current = Effect.runPromise(
+      refreshOpenAiOauthWithStore(store, stored)
+    ).finally(() => {
+      refreshOpenAiPromise.current = undefined
+    })
+  }
+  return yield* Effect.promise(() => refreshOpenAiPromise.current as Promise<ProviderOauthInfo>)
 })
 
 const exchangeCode = async (code: string, verifier: string, port: number): Promise<TokenResponse> => {
@@ -132,11 +159,12 @@ const exchangeCode = async (code: string, verifier: string, port: number): Promi
   return (await response.json()) as TokenResponse
 }
 
-const saveTokens = (dataDir: string, tokens: TokenResponse) =>
-  setOauth(dataDir, 'openai', {
+const saveTokens = (store: ProviderAuthStoreApi, tokens: TokenResponse) =>
+  store.setOauth('openai', {
     refresh: tokens.refresh_token,
     access: tokens.access_token,
     expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
+    lastRefresh: Date.now(),
     accountId: accountIdFromTokens(tokens),
   })
 
@@ -168,7 +196,7 @@ const listen = (candidate: number) =>
 
       try {
         const tokens = await exchangeCode(code, current.pkce.verifier, current.port)
-        await Effect.runPromise(saveTokens(current.dataDir, tokens))
+        await Effect.runPromise(saveTokens(current.store, tokens))
         response.writeHead(200, { 'Content-Type': 'text/html' })
         response.end('<h1>Signed in to ChatGPT</h1><p>You can close this window and return to Sorato.</p>')
       } catch (error) {
@@ -204,13 +232,12 @@ const ensureServer = Effect.fn('OpenAiChatGptAuth.ensureServer')(function* () {
   })
 })
 
-export const startOpenAiOauth = Effect.fn('OpenAiChatGptAuth.start')(function* (
-  dataDir: string
-) {
+export const startOpenAiOauth = Effect.fn('OpenAiChatGptAuth.start')(function* () {
+  const store = yield* ProviderAuthStore
   const port = yield* ensureServer()
   const codes = yield* Effect.promise(pkce)
   const state = randomString(43)
-  pending.set(state, { dataDir, pkce: codes, port })
+  pending.set(state, { store, pkce: codes, port })
   const url = new URL(`${ISSUER}/oauth/authorize`)
   url.search = new URLSearchParams({
     response_type: 'code',

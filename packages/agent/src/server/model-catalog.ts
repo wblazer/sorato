@@ -3,7 +3,7 @@ import { ModelError, ModelOption, ModelsResponse } from './api.ts'
 import { MODEL_PROVIDERS } from './models.generated.ts'
 import { PROVIDER_ADAPTERS } from './provider-adapters.ts'
 import { RuntimeConfigService } from './runtime-config.ts'
-import { getAuth, hasProviderAuth, providerApiKey } from './provider-auth.ts'
+import { getAuth, hasProviderAuth, ProviderAuthStore, providerApiKey } from './provider-auth.ts'
 
 type Entry = {
   readonly id: string
@@ -87,14 +87,13 @@ const compareModels = (a: Entry, b: Entry) => {
 }
 
 const toEntry = Effect.fn('ModelCatalog.toEntry')(function* (
-  dataDir: string,
   provider: (typeof MODEL_PROVIDERS)[number],
   model: (typeof MODEL_PROVIDERS)[number]['models'][number]
 ) {
   const adapter = PROVIDER_ADAPTERS[provider.id]
-  const apiKey = yield* providerApiKey(dataDir, provider.id, provider.env)
-  const stored = yield* getAuth(dataDir, provider.id)
-  const hasAuth = yield* hasProviderAuth(dataDir, provider.id, provider.env)
+  const apiKey = yield* providerApiKey(provider.id, provider.env)
+  const stored = yield* getAuth(provider.id)
+  const hasAuth = yield* hasProviderAuth(provider.id, provider.env)
 
   if (!adapter?.available(provider.env, apiKey) && !hasAuth) return []
   if (provider.id === 'openai' && stored?.type === 'oauth' && !isOpenAiOauthModel(model.id)) return []
@@ -116,18 +115,18 @@ const toEntry = Effect.fn('ModelCatalog.toEntry')(function* (
   ]
 })
 
-const entries = Effect.fn('ModelCatalog.entries')(function* (dataDir: string) {
+const entries = Effect.fn('ModelCatalog.entries')(function* () {
   const nested = yield* Effect.all(
     MODEL_PROVIDERS.map((provider) =>
-      Effect.all(provider.models.map((model) => toEntry(dataDir, provider, model)))
+      Effect.all(provider.models.map((model) => toEntry(provider, model)))
     )
   )
 
   return nested.flat(2).sort(compareModels)
 })
 
-const availableEntries = (dataDir: string) =>
-  entries(dataDir).pipe(
+const availableEntries = () =>
+  entries().pipe(
     Effect.mapError(
       (error) =>
         new ModelError({
@@ -142,13 +141,13 @@ const hasProviderAdapter = (
 ): provider is keyof typeof PROVIDER_ADAPTERS => provider in PROVIDER_ADAPTERS
 
 export const listModels = Effect.fn('ModelCatalog.list')(function* (
-  dataDir: string,
+  _dataDir: string,
   dir: string
 ) {
   const runtimeConfig = yield* RuntimeConfigService
   const cfg = yield* runtimeConfig.get(dir)
 
-  const items = (yield* availableEntries(dataDir)).map(
+  const items = (yield* availableEntries()).map(
     (item) =>
       new ModelOption({
         id: item.id,
@@ -190,7 +189,8 @@ export const modelLayer = Effect.fn('ModelCatalog.modelLayer')(function* (
   const model = rest.join('/')
   if (!provider || !hasProviderAdapter(provider) || !model) return
   const adapter = PROVIDER_ADAPTERS[provider]
-  const auth = yield* getAuth(dataDir, provider)
-  const apiKey = yield* providerApiKey(dataDir, provider, MODEL_PROVIDERS.find((item) => item.id === provider)?.env ?? [])
-  return adapter.layer(dataDir, { ...selection, id: model }, auth, apiKey)
+  const authStore = yield* ProviderAuthStore
+  const auth = yield* getAuth(provider)
+  const apiKey = yield* providerApiKey(provider, MODEL_PROVIDERS.find((item) => item.id === provider)?.env ?? [])
+  return adapter.layer(dataDir, { ...selection, id: model }, auth, apiKey, authStore)
 })

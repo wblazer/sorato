@@ -21,6 +21,7 @@ import { RuntimeConfigLive } from './runtime-config.ts'
 import { SessionsLive } from './sessions.ts'
 import { withSse } from './sse.ts'
 import { dataDir } from './data-dir.ts'
+import { SqliteProviderAuthStore } from './provider-auth.ts'
 
 import { HandshakeResponse } from './api.ts'
 
@@ -43,6 +44,9 @@ const ApiLive = HttpApiBuilder.layer(Api).pipe(
 )
 
 const StorageLive = SqliteSession({ path: join(dataDir, 'sessions.db') })
+const ProviderAuthLive = SqliteProviderAuthStore({
+  path: join(dataDir, 'server.db'),
+})
 
 // ── Serve ───────────────────────────────────────────────────────────
 
@@ -59,6 +63,7 @@ const HttpLive = HttpRouter.toHttpEffect(ApiLive).pipe(
   HttpServer.withLogAddress,
   Layer.provide(RuntimeConfigLive),
   Layer.provide(StorageLive),
+  Layer.provide(ProviderAuthLive),
   Layer.provide(AgentLive),
   Layer.provide(HttpRouter.layer),
   Layer.provide(BunHttpServer.layer({ port: 3100 }))

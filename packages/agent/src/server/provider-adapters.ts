@@ -4,8 +4,8 @@ import { Config, Effect, Layer, Redacted } from 'effect'
 import { FetchHttpClient, HttpClient, HttpClientRequest } from 'effect/unstable/http'
 import { MODEL_PROVIDERS } from './models.generated.ts'
 import type { ModelSelection } from './model-catalog.ts'
-import { ORIGINATOR, refreshOpenAiOauth, soratoUserAgent } from './openai-chatgpt-auth.ts'
-import type { ProviderAuth } from './provider-auth.ts'
+import { ORIGINATOR, currentOpenAiOauth, soratoUserAgent } from './openai-chatgpt-auth.ts'
+import type { ProviderAuth, ProviderAuthStoreApi } from './provider-auth.ts'
 import type { ProviderId } from './provider-definitions.ts'
 
 const present = (key: string) => !!process.env[key]?.trim()
@@ -23,7 +23,8 @@ type ProviderAdapter = {
     dataDir: string,
     selection: ModelSelection,
     auth: ProviderAuth | undefined,
-    apiKey: string | undefined
+    apiKey: string | undefined,
+    authStore: ProviderAuthStoreApi
   ) => unknown
 }
 
@@ -136,7 +137,7 @@ export const PROVIDER_ADAPTERS = {
   openai: {
     available: any,
     supportsModel: (model: string) => openAiModels.has(model),
-    layer: (dataDir: string, selection: ModelSelection, auth: ProviderAuth | undefined, apiKey: string | undefined) => {
+    layer: (_dataDir: string, selection: ModelSelection, auth: ProviderAuth | undefined, apiKey: string | undefined, authStore: ProviderAuthStoreApi) => {
       const reasoning =
         selection.thinkingLevel && selection.thinkingLevel !== 'off'
           ? {
@@ -157,15 +158,13 @@ export const PROVIDER_ADAPTERS = {
                 HttpClient.mapRequestEffect((request) =>
                   Effect.gen(function* () {
                     if (auth.type !== 'oauth') return request
-                    const current = auth.expires <= Date.now()
-                      ? yield* refreshOpenAiOauth(dataDir, auth).pipe(
+                    const current = yield* currentOpenAiOauth(authStore).pipe(
                           Effect.mapError(
                             (error) =>
                               new Error(`Failed to refresh OpenAI ChatGPT credentials: ${error.message}`)
                           ),
                           Effect.orDie
                         )
-                      : auth
 
                     const url = new URL(request.url)
                     const target = url.pathname.endsWith('/responses')
