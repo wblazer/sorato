@@ -23,6 +23,7 @@
     "@types/node": "^25.6.0",
     "bits-ui": "^2.16.3",
     "clsx": "^2.1.1",
+    "paneforge": "^1.0.2",
     "phosphor-svelte": "^3.1.0",
     "svelte": "^5.51.0",
     "svelte-check": "4.4.7",
