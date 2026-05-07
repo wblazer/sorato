@@ -145,6 +145,13 @@ export const BashHandler = {
           })
       )
 
+      yield* Effect.logInfo('Bash tool executing command', {
+        cwd,
+        timeoutMs,
+        commandLength: command.length,
+        description: _description,
+      })
+
       const result = yield* shell.exec({
         command,
         cwd,
@@ -157,6 +164,16 @@ export const BashHandler = {
         .join('\n')
 
       const truncation = truncateOutput(combined)
+      const logCommandResult = result.timedOut || result.exitCode !== 0
+        ? Effect.logWarning
+        : Effect.logDebug
+      yield* logCommandResult('Bash tool command completed', {
+        exitCode: result.exitCode,
+        timedOut: result.timedOut ?? false,
+        outputBytes: truncation.totalBytes,
+        outputLines: truncation.totalLines,
+        truncated: truncation.truncated,
+      })
 
       // If truncated, spill the full output to a sandbox file so the LLM
       // can access it via ReadFile
@@ -175,6 +192,14 @@ export const BashHandler = {
       )
 
       yield* maybeWriteSpillover
+
+      truncation.truncated &&
+        spilloverPath !== undefined &&
+        (yield* Effect.logInfo('Bash tool wrote truncated output spillover', {
+          spilloverPath,
+          outputBytes: truncation.totalBytes,
+          outputLines: truncation.totalLines,
+        }))
 
       // Build the result message
       const parts: string[] = []
@@ -204,5 +229,8 @@ export const BashHandler = {
         )
 
       return parts.join('\n')
-    }),
+    }).pipe(
+      Effect.annotateLogs({ package: 'core', subsystem: 'tool', tool: 'Bash' }),
+      Effect.withLogSpan('tool.Bash')
+    ),
 }

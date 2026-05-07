@@ -243,6 +243,18 @@ export const GrepHandler = {
         )
       const [failureMessage = 'ripgrep failed.'] = failureMessages
 
+      const parsedMatches = parseMatches(result.stdout)
+      const logGrepResult = result.exitCode === 0 || result.exitCode === 1
+        ? Effect.logDebug
+        : Effect.logWarning
+      yield* logGrepResult('Grep tool completed search', {
+        path: path ?? '.',
+        include,
+        exitCode: result.exitCode,
+        matchCount: parsedMatches.length,
+        truncated: parsedMatches.length > MAX_MATCHES,
+      })
+
       return yield* Match.value(result.exitCode).pipe(
         Match.when(1, () => Effect.succeed('No matches found.')),
         Match.when(0, () => Effect.succeed(summarizeOutput(0))),
@@ -256,5 +268,8 @@ export const GrepHandler = {
           )
         )
       )
-    }),
+    }).pipe(
+      Effect.annotateLogs({ package: 'core', subsystem: 'tool', tool: 'Grep' }),
+      Effect.withLogSpan('tool.Grep')
+    ),
 }

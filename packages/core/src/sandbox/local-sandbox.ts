@@ -17,6 +17,7 @@ import {
   type ExecResult,
   type Shell,
   type Files,
+  type SandboxFactory,
   type SandboxSession,
 } from './sandbox.ts'
 
@@ -76,8 +77,9 @@ export const LocalSandbox = Layer.effect(Sandbox)(
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
 
-    const acquire = Effect.fn('Sandbox.acquire')(function* (directory: string) {
+    const doAcquire = Effect.fn('Sandbox.acquire')(function* (directory: string) {
       const rootDir = directory
+      yield* Effect.logInfo('Local sandbox acquired', { directory: rootDir })
 
       function validateResolvedPath(
         resolved: string,
@@ -114,8 +116,7 @@ export const LocalSandbox = Layer.effect(Sandbox)(
 
       // -- Shell service --------------------------------------------------
 
-      const shell: Shell = {
-        exec: Effect.fn('Shell.exec')(function* (input) {
+      const exec = Effect.fn('Shell.exec')(function* (input) {
           const cwd = yield* Match.value(input.cwd).pipe(
             Match.when(undefined, () => Effect.succeed(rootDir)),
             Match.orElse((workingDirectory) =>
@@ -134,6 +135,13 @@ export const LocalSandbox = Layer.effect(Sandbox)(
               Stream.succeed(new TextEncoder().encode(content))
             )
           )
+
+          yield* Effect.logDebug('Local sandbox command starting', {
+            cwd,
+            timeoutMs: input.timeout,
+            commandLength: input.command.length,
+            hasStdin: input.stdin !== undefined,
+          })
 
           const command = ChildProcess.make('/bin/sh', ['-c', input.command], {
             cwd,
@@ -226,6 +234,17 @@ export const LocalSandbox = Layer.effect(Sandbox)(
             exitCode: Number(code),
           }
 
+          const logExecResult = timedOut || result.exitCode !== 0
+            ? Effect.logWarning
+            : Effect.logDebug
+          yield* logExecResult('Local sandbox command completed', {
+            cwd,
+            exitCode: result.exitCode,
+            timedOut,
+            stdoutBytes: Buffer.byteLength(result.stdout, 'utf8'),
+            stderrBytes: Buffer.byteLength(result.stderr, 'utf8'),
+          })
+
           return Match.value(timedOut).pipe(
             Match.when(
               true,
@@ -233,12 +252,18 @@ export const LocalSandbox = Layer.effect(Sandbox)(
             ),
             Match.orElse(() => result satisfies ExecResult)
           )
-        }, Effect.scoped),
+        }, Effect.scoped)
+
+      const shell: Shell = {
+        exec: (input) => exec(input).pipe(
+          Effect.annotateLogs({ package: 'core', subsystem: 'sandbox' }),
+          Effect.withLogSpan('sandbox.exec')
+        ),
       }
 
       // -- Files service --------------------------------------------------
 
-      const readFile = Effect.fn('Files.readFile')(function* (
+      const doReadFile = Effect.fn('Files.readFile')(function* (
         filePath: string
       ) {
         const resolved = yield* resolvePath(filePath, 'readFile')
@@ -263,7 +288,7 @@ export const LocalSandbox = Layer.effect(Sandbox)(
             })
         )
 
-        return yield* fs.readFileString(resolved).pipe(
+        const content = yield* fs.readFileString(resolved).pipe(
           Effect.mapError(
             (error) =>
               new SandboxError({
@@ -273,9 +298,18 @@ export const LocalSandbox = Layer.effect(Sandbox)(
               })
           )
         )
+        yield* Effect.logDebug('Local sandbox read file', {
+          path: filePath,
+          bytes: Buffer.byteLength(content, 'utf8'),
+        })
+        return content
       })
+      const readFile: Files['readFile'] = (filePath) => doReadFile(filePath).pipe(
+        Effect.annotateLogs({ package: 'core', subsystem: 'sandbox' }),
+        Effect.withLogSpan('sandbox.readFile')
+      )
 
-      const writeFile = Effect.fn('Files.writeFile')(function* (
+      const doWriteFile = Effect.fn('Files.writeFile')(function* (
         filePath: string,
         content: string
       ) {
@@ -304,9 +338,17 @@ export const LocalSandbox = Layer.effect(Sandbox)(
               })
           )
         )
+        yield* Effect.logDebug('Local sandbox wrote file', {
+          path: filePath,
+          bytes: Buffer.byteLength(content, 'utf8'),
+        })
       })
+      const writeFile: Files['writeFile'] = (filePath, content) => doWriteFile(filePath, content).pipe(
+        Effect.annotateLogs({ package: 'core', subsystem: 'sandbox' }),
+        Effect.withLogSpan('sandbox.writeFile')
+      )
 
-      const glob = Effect.fn('Files.glob')(function* (pattern: string) {
+      const doGlob = Effect.fn('Files.glob')(function* (pattern: string) {
         const g = new Bun.Glob(pattern)
         async function collectEntries() {
           const results: string[] = []
@@ -324,13 +366,27 @@ export const LocalSandbox = Layer.effect(Sandbox)(
               error,
             }),
         })
+        yield* Effect.logDebug('Local sandbox glob completed', {
+          pattern,
+          matchCount: entries.length,
+        })
         return entries
       })
+      const glob: Files['glob'] = (pattern) => doGlob(pattern).pipe(
+        Effect.annotateLogs({ package: 'core', subsystem: 'sandbox' }),
+        Effect.withLogSpan('sandbox.glob')
+      )
 
       const files: Files = { readFile, writeFile, glob }
 
       return { shell, files } satisfies SandboxSession
     })
+
+    const acquire: SandboxFactory['acquire'] = (directory) =>
+      doAcquire(directory).pipe(
+        Effect.annotateLogs({ package: 'core', subsystem: 'sandbox' }),
+        Effect.withLogSpan('sandbox.acquire')
+      )
 
     return { acquire }
   })

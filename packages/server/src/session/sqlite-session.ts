@@ -137,6 +137,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
           sqlFailure('open', `Failed to initialize database: ${options.path}`)
         )
       )
+      yield* Effect.logInfo('Session database initialized', { path: options.path })
 
       // -- Service methods --------------------------------------------------
 
@@ -151,6 +152,12 @@ export const SqliteSession = (options: { readonly path: string }) =>
           INSERT INTO sessions (id, directory, title, created_at, updated_at)
           VALUES (${id}, ${directory}, ${title ?? null}, ${now}, ${now})
         `.pipe(Effect.mapError(sqlFailure('create', 'Failed to create session')))
+
+        yield* Effect.logInfo('Session created', {
+          sessionId: id,
+          directory,
+          hasTitle: title !== undefined,
+        })
 
         return {
           id,
@@ -200,12 +207,17 @@ export const SqliteSession = (options: { readonly path: string }) =>
         `.pipe(
           Effect.mapError(sqlFailure('setTitle', `Failed to set session title: ${id}`))
         )
+        yield* Effect.logInfo('Session title updated', {
+          sessionId: id,
+          hasTitle: title !== null,
+        })
       })
 
       const del = Effect.fn('SessionStorage.delete')(function* (id: SessionId) {
         yield* sql`DELETE FROM sessions WHERE id = ${id}`.pipe(
           Effect.mapError(sqlFailure('delete', `Failed to delete session: ${id}`))
         )
+        yield* Effect.logInfo('Session deleted', { sessionId: id })
       })
 
       const conversation = Effect.fn('SessionStorage.conversation')(function* (
@@ -298,6 +310,12 @@ export const SqliteSession = (options: { readonly path: string }) =>
             sqlFailure('append', `Failed to append messages to session: ${sessionId}`)
           )
         )
+        yield* Effect.logDebug('Session messages appended', {
+          sessionId,
+          messageCount: messages.length,
+          previousHeadId: session.headId,
+          headId: lastId,
+        })
       })
 
       const setHead = Effect.fn('SessionStorage.setHead')(function* (
@@ -328,6 +346,10 @@ export const SqliteSession = (options: { readonly path: string }) =>
             )
           )
         )
+        yield* Effect.logInfo('Session head updated', {
+          sessionId,
+          messageId,
+        })
       })
 
       const leaves = Effect.fn('SessionStorage.leaves')(function* (

@@ -6,9 +6,10 @@ import { Context, Effect, Layer, Option, Schema } from 'effect'
 const RuntimeConfigFileSchema = Schema.Struct({
   default_model: Schema.optional(Schema.String),
   title_model: Schema.optional(Schema.String),
+  log_level: Schema.optional(Schema.String),
 })
 
-type RuntimeConfigFile = typeof RuntimeConfigFileSchema.Type
+export type RuntimeConfigFile = typeof RuntimeConfigFileSchema.Type
 
 export interface RuntimeConfig {
   readonly default_model: string | null
@@ -219,10 +220,20 @@ const loadFiles = Effect.fn('RuntimeConfig.loadFiles')(function* (
   return cfg
 })
 
+export const loadGlobalRuntimeConfigFile = Effect.fn(
+  'RuntimeConfig.loadGlobalFile'
+)(function* () {
+  return yield* loadFiles(globalConfigFiles())
+})
+
 export const RuntimeConfigLive = Layer.effect(
   RuntimeConfigService,
   Effect.gen(function* () {
-    const globalConfig = normalizeConfig(yield* loadFiles(globalConfigFiles()))
+    const globalConfig = normalizeConfig(yield* loadGlobalRuntimeConfigFile())
+    yield* Effect.logDebug('Loaded global runtime config', {
+      hasDefaultModel: globalConfig.default_model !== null,
+      hasTitleModel: globalConfig.title_model !== null,
+    })
     const projectConfigs = new Map<string, RuntimeConfig>()
 
     const loadProjectConfig = Effect.fn('RuntimeConfig.loadProject')(
@@ -239,6 +250,11 @@ export const RuntimeConfigLive = Layer.effect(
             }).pipe(Effect.as(globalConfig))
           )
         )
+        yield* Effect.logDebug('Loaded project runtime config', {
+          dir,
+          hasDefaultModel: config.default_model !== null,
+          hasTitleModel: config.title_model !== null,
+        })
         projectConfigs.set(dir, config)
         return config
       }

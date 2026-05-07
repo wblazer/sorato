@@ -34,8 +34,17 @@ export const createPersistenceHook = (
         : encoded.content.slice(messageCountBeforeRun)
       if (newMessages.length === 0) return
 
+      yield* Effect.logInfo('Persisting run messages', {
+        sessionId,
+        messageCount: newMessages.length,
+        interrupted: event.interrupted,
+      })
+
       yield* storage.append(sessionId, newMessages)
       publish({ _tag: 'MessagesAppended', sessionId })
       publish({ _tag: 'SessionUpdated', sessionId })
-    }),
+    }).pipe(
+      Effect.annotateLogs({ package: 'server', subsystem: 'run-persistence', sessionId }),
+      Effect.withLogSpan('server.persistRun')
+    ),
 })

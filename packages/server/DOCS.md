@@ -14,7 +14,9 @@ The server depends on `@agents/core` for harness/sandbox/tools, then coordinates
 - Directories API — browse filesystem with `~` expansion
 - SSE `/events` — streaming for session updates and run lifecycle
 
-**Runtime config** — the server resolves optional defaults from `~/.config/agents/config.json(c)` and `<cwd>/.agents/config.json(c)`. It seeds `default_model` for new-session model selection and `title_model` for automatic first-message session titles without mutating existing sessions.
+**Runtime config** — the server resolves optional defaults from `~/.config/agents/config.json(c)` and `<cwd>/.agents/config.json(c)`. It seeds `default_model` for new-session model selection and `title_model` for automatic first-message session titles without mutating existing sessions. Process-wide settings like `log_level` are loaded from global config only and can be overridden by environment variables or CLI flags.
+
+**Logging** — the server logs to stdout and a JSONL file. Development defaults to `./var/log/agents/server.jsonl` at the repository root; production defaults to `$XDG_STATE_HOME/agents/logs/server.jsonl` or `~/.local/state/agents/logs/server.jsonl`. `AGENTS_LOG_DIR` overrides the directory. Log level precedence is CLI `--log-level` > `AGENTS_LOG_LEVEL` > global config `log_level` > `Info`. Keep logs structured and contextual, but never log prompts, file contents, command output, API keys, or OAuth tokens.
 
 **Server session storage** (`src/session/`) — server-owned persistent conversation storage with tree-structured history. Messages form a tree via parent pointers (like git commits). Supports forking and branch switching. Ships `SqliteSession`. This is coordinator state, not core agent runtime.
 

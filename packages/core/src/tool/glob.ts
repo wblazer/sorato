@@ -81,6 +81,11 @@ export const GlobHandler = {
       )
 
       const matches = yield* files.glob(effectivePattern)
+      yield* Effect.logDebug('Glob tool completed search', {
+        pattern: effectivePattern,
+        matchCount: matches.length,
+        truncated: matches.length > MAX_RESULTS,
+      })
 
       return Match.value(matches.length === 0).pipe(
         Match.when(
@@ -89,5 +94,8 @@ export const GlobHandler = {
         ),
         Match.orElse(() => formatMatchesOutput(matches))
       )
-    }),
+    }).pipe(
+      Effect.annotateLogs({ package: 'core', subsystem: 'tool', tool: 'Glob' }),
+      Effect.withLogSpan('tool.Glob')
+    ),
 }

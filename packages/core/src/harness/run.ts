@@ -91,9 +91,15 @@ export const run = <
     // the uninterruptible outer region.
     return yield* Effect.uninterruptibleMask((restore) =>
       // biome-ignore lint/plugin/no-nested-effect-gen: cleanup and recovery need one outer uninterruptible generator around the interruptible loop
-      Effect.gen(function* () {
-        const exit = yield* Effect.exit(
-          restore(
+        Effect.gen(function* () {
+          yield* Effect.logInfo('Harness run starting', {
+            messageCount: conversation.content.length,
+            hookCount: config.hooks?.length ?? 0,
+            hasToolkit: config.toolkit !== undefined,
+          })
+
+          const exit = yield* Effect.exit(
+            restore(
             // biome-ignore lint/plugin/no-nested-effect-gen: @effect/ai stream typing stays stable with the loop kept in one generator
             Effect.gen(function* () {
               // First turn: empty prompt — the conversation already
@@ -105,6 +111,7 @@ export const run = <
               for (let turn = 0; turn < MAX_TURNS; turn++) {
                 let hadToolCalls = false
                 currentTurnText = ''
+                yield* Effect.logDebug('Harness turn starting', { turn })
 
                 let stream = chat.streamText({ prompt }) as Stream.Stream<
                   Response.StreamPart<Tools>,
@@ -139,6 +146,11 @@ export const run = <
                         }
                         case 'tool-call': {
                           hadToolCalls = true
+                          yield* Effect.logInfo('Harness tool call received', {
+                            turn,
+                            toolCallId: part.id,
+                            toolName: part.name,
+                          })
                           yield* fireHooks({
                             _tag: 'ToolCall',
                             id: part.id,
@@ -148,6 +160,15 @@ export const run = <
                           break
                         }
                         case 'tool-result': {
+                          const logToolResult = part.isFailure
+                            ? Effect.logWarning
+                            : Effect.logDebug
+                          yield* logToolResult('Harness tool result received', {
+                            turn,
+                            toolCallId: part.id,
+                            toolName: part.name,
+                            isFailure: part.isFailure,
+                          })
                           yield* fireHooks({
                             _tag: 'ToolResult',
                             id: part.id,
@@ -168,6 +189,11 @@ export const run = <
                           usage.inputTokens += inputTokens
                           usage.outputTokens += outputTokens
                           usage.totalTokens += inputTokens + outputTokens
+                          yield* Effect.logDebug('Harness turn finished', {
+                            turn,
+                            inputTokens,
+                            outputTokens,
+                          })
                           break
                         }
                       }
@@ -175,6 +201,9 @@ export const run = <
                 )
 
                 if (!hadToolCalls) break
+                yield* Effect.logDebug('Harness turn requested tool follow-up', {
+                  turn,
+                })
 
                 // Turn completed — reset for next turn
                 currentTurnText = ''
@@ -202,6 +231,9 @@ export const run = <
           Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)
 
         if (wasInterrupted && currentTurnText.length > 0) {
+          yield* Effect.logInfo('Harness recovering interrupted text', {
+            recoveredLength: currentTurnText.length,
+          })
           fullConversation = Prompt.fromMessages([
             ...fullConversation.content,
             {
@@ -216,6 +248,9 @@ export const run = <
         // preserved. Interrupts are swallowed — the partial result IS
         // the return value.
         if (Exit.isFailure(exit) && !wasInterrupted) {
+          yield* Effect.logError('Harness run failed', {
+            cause: Cause.pretty(exit.cause),
+          })
           return yield* Effect.failCause(exit.cause)
         }
 
@@ -233,7 +268,18 @@ export const run = <
           interrupted: wasInterrupted,
         })
 
+        yield* Effect.logInfo('Harness run completed', {
+          interrupted: wasInterrupted,
+          outputLength: outputText.length,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          totalTokens: usage.totalTokens,
+        })
+
         return result
       })
     )
-  })
+  }).pipe(
+    Effect.annotateLogs({ package: 'core', subsystem: 'harness' }),
+    Effect.withLogSpan('harness.run')
+  )

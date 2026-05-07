@@ -122,12 +122,20 @@ export const SqliteProviderAuthStore = (options: {
       yield* fs.chmod(options.path, 0o600).pipe(
         Effect.mapError(authFailure('Failed to secure provider auth database'))
       )
+      yield* Effect.logInfo('Provider auth database initialized', {
+        path: options.path,
+      })
 
       const getAuth = Effect.fn('ProviderAuthStore.getAuth')(function* (provider: string) {
         const rows = yield* sql<ProviderAuthRow>`
           SELECT * FROM provider_auth WHERE provider = ${provider}
         `.pipe(Effect.mapError(authFailure('Failed to read provider credentials')))
-        return toAuth(rows[0] ?? null)
+        const auth = toAuth(rows[0] ?? null)
+        yield* Effect.logDebug('Provider credentials read', {
+          provider,
+          authType: auth?.type,
+        })
+        return auth
       })
 
       const setApiKey = Effect.fn('ProviderAuthStore.setApiKey')(function* (
@@ -147,6 +155,7 @@ export const SqliteProviderAuthStore = (options: {
             account_id = NULL,
             updated_at = excluded.updated_at
         `.pipe(Effect.mapError(authFailure('Failed to write provider credentials')))
+        yield* Effect.logInfo('Provider API credentials stored', { provider })
       })
 
       const setOauth = Effect.fn('ProviderAuthStore.setOauth')(function* (
@@ -184,6 +193,7 @@ export const SqliteProviderAuthStore = (options: {
             account_id = excluded.account_id,
             updated_at = excluded.updated_at
         `.pipe(Effect.mapError(authFailure('Failed to write provider credentials')))
+        yield* Effect.logInfo('Provider OAuth credentials stored', { provider })
       })
 
       const providerApiKey = Effect.fn('ProviderAuthStore.providerApiKey')(function* (

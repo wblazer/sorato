@@ -143,10 +143,11 @@ const hasProviderAdapter = (
   provider: string
 ): provider is keyof typeof PROVIDER_ADAPTERS => provider in PROVIDER_ADAPTERS
 
-export const listModels = Effect.fn('ModelCatalog.list')(function* (
+const listModelsEffect = Effect.fn('ModelCatalog.list')(function* (
   _dataDir: string,
   dir: string
 ) {
+  yield* Effect.logDebug('Listing available models', { dir })
   const runtimeConfig = yield* RuntimeConfigService
   const cfg = yield* runtimeConfig.get(dir)
 
@@ -165,10 +166,22 @@ export const listModels = Effect.fn('ModelCatalog.list')(function* (
     (cfg.default_model && ids.has(cfg.default_model) && cfg.default_model) ||
     undefined
 
+  yield* Effect.logInfo('Available models resolved', {
+    dir,
+    modelCount: items.length,
+    defaultModel,
+  })
+
   return new ModelsResponse({ models: items, defaultModel })
 })
 
-export const ensureModel = Effect.fn('ModelCatalog.ensure')(function* (
+export const listModels = (dataDir: string, dir: string) =>
+  listModelsEffect(dataDir, dir).pipe(
+    Effect.annotateLogs({ package: 'server', subsystem: 'model-catalog' }),
+    Effect.withLogSpan('server.listModels')
+  )
+
+const ensureModelEffect = Effect.fn('ModelCatalog.ensure')(function* (
   dataDir: string,
   dir: string,
   model: string,
@@ -177,23 +190,54 @@ export const ensureModel = Effect.fn('ModelCatalog.ensure')(function* (
   const models = yield* listModels(dataDir, dir)
 
   const option = models.models.find((item) => item.id === model)
-  if (option && validOptions(option, options)) return
+  if (option && validOptions(option, options)) {
+    yield* Effect.logDebug('Model selection accepted', { dir, model, options })
+    return
+  }
+
+  yield* Effect.logWarning('Model selection rejected', { dir, model, options })
 
   return yield* new ModelError({
     message: `Model is not available for this server: ${model}`,
   })
 })
 
-export const modelLayer = Effect.fn('ModelCatalog.modelLayer')(function* (
+export const ensureModel = (
+  dataDir: string,
+  dir: string,
+  model: string,
+  options: ModelOptions = {}
+) =>
+  ensureModelEffect(dataDir, dir, model, options).pipe(
+    Effect.annotateLogs({ package: 'server', subsystem: 'model-catalog' }),
+    Effect.withLogSpan('server.ensureModel')
+  )
+
+const modelLayerEffect = Effect.fn('ModelCatalog.modelLayer')(function* (
   dataDir: string,
   selection: ModelSelection
 ) {
   const [provider, ...rest] = selection.id.split('/')
   const model = rest.join('/')
-  if (!provider || !hasProviderAdapter(provider) || !model) return
+  if (!provider || !hasProviderAdapter(provider) || !model) {
+    yield* Effect.logWarning('Model layer unavailable', { selection })
+    return
+  }
   const adapter = PROVIDER_ADAPTERS[provider]
   const authStore = yield* ProviderAuthStore
   const auth = yield* getAuth(provider)
   const apiKey = yield* providerApiKey(provider, MODEL_PROVIDERS.find((item) => item.id === provider)?.env ?? [])
+  yield* Effect.logDebug('Model layer resolved', {
+    provider,
+    model,
+    authType: auth?.type,
+    hasApiKey: apiKey !== undefined,
+  })
   return adapter.layer(dataDir, { ...selection, id: model }, auth, apiKey, authStore)
 })
+
+export const modelLayer = (dataDir: string, selection: ModelSelection) =>
+  modelLayerEffect(dataDir, selection).pipe(
+    Effect.annotateLogs({ package: 'server', subsystem: 'model-catalog' }),
+    Effect.withLogSpan('server.modelLayer')
+  )

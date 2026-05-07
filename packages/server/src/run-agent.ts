@@ -152,6 +152,12 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
         }
       })
     ),
-    Effect.annotateLogs('sessionId', sessionId)
+    Effect.annotateLogs({
+      package: 'server',
+      subsystem: 'run-agent',
+      sessionId,
+      runId,
+    }),
+    Effect.withLogSpan('server.runAgent')
   )
 }

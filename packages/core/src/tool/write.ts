@@ -50,10 +50,19 @@ export const WriteFileHandler = {
   }) =>
     Effect.gen(function* () {
       const files = yield* CurrentFiles
+      yield* Effect.logInfo('WriteFile tool writing file', {
+        path,
+        bytes: Buffer.byteLength(content, 'utf8'),
+        lines: content.split('\n').length,
+      })
       yield* files.writeFile(path, content)
 
       const bytes = Buffer.byteLength(content, 'utf8')
       const lines = content.split('\n').length
+      yield* Effect.logInfo('WriteFile tool wrote file', { path, bytes, lines })
       return `Wrote ${path} (${lines} lines, ${bytes} bytes)`
-    }),
+    }).pipe(
+      Effect.annotateLogs({ package: 'core', subsystem: 'tool', tool: 'WriteFile' }),
+      Effect.withLogSpan('tool.WriteFile')
+    ),
 }

@@ -6,16 +6,18 @@
  * Data path resolution:
  *   AGENTS_DATA_DIR env var > XDG_DATA_HOME/agents > ~/.local/share/agents
  */
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { Command, GlobalFlag } from 'effect/unstable/cli'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { HttpMiddleware, HttpRouter, HttpServer } from 'effect/unstable/http'
 import { BunHttpServer, BunRuntime, BunServices } from '@effect/platform-bun'
 import { SqliteClient } from '@effect/sql-sqlite-bun'
-import { Effect, Layer } from 'effect'
+import { Effect, FileSystem, Layer, Option } from 'effect'
 import { Api } from './api.ts'
 import { AgentLive } from './agent-config.ts'
 import { AuthLive } from './auth.ts'
 import { DirectoriesLive } from './directories.ts'
+import { LoggingLive, resolveLogFile, resolveLogLevel } from './logging.ts'
 import { ModelsLive } from './models.ts'
 import { RuntimeConfigLive } from './runtime-config.ts'
 import { SessionsLive } from './sessions.ts'
@@ -47,11 +49,20 @@ const ApiLive = HttpApiBuilder.layer(Api).pipe(
 const sessionsDbPath = join(dataDir, 'sessions.db')
 const providerAuthDbPath = join(dataDir, 'server.db')
 
+const SqliteClientLive = (filename: string) =>
+  Layer.unwrap(
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      yield* fs.makeDirectory(dirname(filename), { recursive: true })
+      return SqliteClient.layer({ filename })
+    })
+  )
+
 const StorageLive = SqliteSession({ path: sessionsDbPath }).pipe(
-  Layer.provide(SqliteClient.layer({ filename: sessionsDbPath }))
+  Layer.provide(SqliteClientLive(sessionsDbPath))
 )
 const ProviderAuthLive = SqliteProviderAuthStore({ path: providerAuthDbPath }).pipe(
-  Layer.provide(SqliteClient.layer({ filename: providerAuthDbPath }))
+  Layer.provide(SqliteClientLive(providerAuthDbPath))
 )
 
 // ── Serve ───────────────────────────────────────────────────────────
@@ -76,4 +87,25 @@ const HttpLive = HttpRouter.toHttpEffect(ApiLive).pipe(
   Layer.provide(BunHttpServer.layer({ port: 3100 }))
 )
 
-Layer.launch(HttpLive).pipe(BunRuntime.runMain)
+const server = Command.make('agents-server', {}, () =>
+  Effect.gen(function* () {
+    const cliLogLevel = yield* GlobalFlag.LogLevel
+    const resolvedLogLevel = yield* resolveLogLevel(
+      Option.getOrUndefined(cliLogLevel)
+    )
+
+    yield* Effect.logInfo('Logging configured', {
+      logLevel: resolvedLogLevel,
+      logFile: resolveLogFile(),
+    }).pipe(
+      Effect.andThen(Layer.launch(HttpLive)),
+      Effect.provide(LoggingLive(resolvedLogLevel)),
+      Effect.annotateLogs({ package: 'server', subsystem: 'startup' })
+    )
+  })
+).pipe(Command.withDescription('Run the local agents HTTP server'))
+
+Command.run(server, { version: '0.0.1' }).pipe(
+  Effect.provide(BunServices.layer),
+  BunRuntime.runMain
+)

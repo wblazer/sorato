@@ -192,6 +192,16 @@ export const ReadFileHandler = {
         maxBytes: MAX_BYTES,
       })
 
+      yield* Effect.logDebug('ReadFile tool encoded file', {
+        path,
+        offset: effectiveOffset,
+        limit: limit ?? DEFAULT_LIMIT,
+        totalLines: result.totalLines,
+        firstLine: effectiveOffset,
+        lastLine: result.lastLine,
+        truncatedByBytes: result.truncatedByBytes,
+      })
+
       yield* Effect.filterOrFail(
         Effect.succeed(result.totalLines),
         (totalLines) => effectiveOffset <= totalLines,
@@ -213,7 +223,10 @@ export const ReadFileHandler = {
       }
 
       return result.text + footer
-    }),
+    }).pipe(
+      Effect.annotateLogs({ package: 'core', subsystem: 'tool', tool: 'ReadFile' }),
+      Effect.withLogSpan('tool.ReadFile')
+    ),
 }
 
 // ---------------------------------------------------------------------------
@@ -555,6 +568,11 @@ export const EditFileHandler = {
       const files = yield* CurrentFiles
       const content = yield* files.readFile(path)
       const originalLines = content.split('\n')
+      yield* Effect.logInfo('EditFile tool resolving edits', {
+        path,
+        editCount: edits.length,
+        originalLines: originalLines.length,
+      })
 
       // Phase 1: Resolve all anchors against the original snapshot
       const resolved: Array<ResolvedEdit> = []
@@ -627,6 +645,16 @@ export const EditFileHandler = {
       const newContent = lines.join('\n')
       yield* files.writeFile(path, newContent)
 
+      yield* Effect.logInfo('EditFile tool applied edits', {
+        path,
+        editCount: edits.length,
+        originalLines: originalLines.length,
+        newLines: lines.length,
+      })
+
       return `Successfully applied ${edits.length} edit(s) to ${path}`
-    }),
+    }).pipe(
+      Effect.annotateLogs({ package: 'core', subsystem: 'tool', tool: 'EditFile' }),
+      Effect.withLogSpan('tool.EditFile')
+    ),
 }
