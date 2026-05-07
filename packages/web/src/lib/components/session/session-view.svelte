@@ -266,7 +266,6 @@
     modelLoading={modelsStore.loading}
     {isRunning}
     {isStopping}
-    autoFocus
     focusKey={sessionId}
     {sessionError}
     disabled={isStopping}

@@ -28,7 +28,7 @@ import type { Effect as EffectType } from 'effect/Effect'
 import type { LanguageModel } from 'effect/unstable/ai'
 import type { HarnessConfig, HarnessEvent, HarnessResult } from './harness.ts'
 
-import { Cause, Effect, Exit, Ref, Stream } from 'effect'
+import { Cause, Effect, Exit, Match, Ref, Stream } from 'effect'
 import { Chat, Prompt } from 'effect/unstable/ai'
 
 /** Maximum agent loop iterations to prevent runaway tool-call cycles. */
@@ -160,9 +160,10 @@ export const run = <
                           break
                         }
                         case 'tool-result': {
-                          const logToolResult = part.isFailure
-                            ? Effect.logWarning
-                            : Effect.logDebug
+                          const logToolResult = Match.value(part.isFailure).pipe(
+                            Match.when(true, () => Effect.logWarning),
+                            Match.orElse(() => Effect.logDebug)
+                          )
                           yield* logToolResult('Harness tool result received', {
                             turn,
                             toolCallId: part.id,

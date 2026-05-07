@@ -1,5 +1,5 @@
 import { Prompt } from 'effect/unstable/ai'
-import { Effect, Schema } from 'effect'
+import { Effect, Match, Schema } from 'effect'
 import type { HarnessEvent, HarnessHook } from '@sorato/core'
 import {
   SessionStorage,
@@ -33,12 +33,13 @@ export const createPersistenceHook = (
           }),
       })
 
-      const newMessages = event.interrupted
-        ? [
-            ...encoded.content.slice(messageCountBeforeRun),
-            stoppedSystemMessage,
-          ]
-        : encoded.content.slice(messageCountBeforeRun)
+      const newMessages = Match.value(event.interrupted).pipe(
+        Match.when(true, () => [
+          ...encoded.content.slice(messageCountBeforeRun),
+          stoppedSystemMessage,
+        ]),
+        Match.orElse(() => encoded.content.slice(messageCountBeforeRun))
+      )
       if (newMessages.length === 0) return
 
       yield* Effect.logInfo('Persisting run messages', {

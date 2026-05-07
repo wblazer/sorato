@@ -1,6 +1,6 @@
 import { createServer, type Server } from 'node:http'
 import { platform, release, arch } from 'node:os'
-import { Effect } from 'effect'
+import { Effect, Match, Option, Schema } from 'effect'
 import {
   ProviderAuthStore,
   ProviderOauthInfo,
@@ -9,17 +9,19 @@ import {
 
 const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const ISSUER = 'https://auth.openai.com'
-const PORTS = [1455, 1457] as const
+const PORTS = [1455, 1457] satisfies ReadonlyArray<number>
 const CALLBACK_PATH = '/auth/callback'
 export const ORIGINATOR = 'sorato'
 
 type Pkce = { verifier: string; challenge: string }
-type TokenResponse = {
-  id_token?: string
-  access_token: string
-  refresh_token: string
-  expires_in?: number
-}
+const TokenResponse = Schema.Struct({
+  id_token: Schema.optional(Schema.String),
+  access_token: Schema.String,
+  refresh_token: Schema.String,
+  expires_in: Schema.optional(Schema.Number),
+})
+type TokenResponse = typeof TokenResponse.Type
+const JwtClaims = Schema.Record(Schema.String, Schema.Unknown)
 
 type Pending = {
   readonly store: ProviderAuthStoreApi
@@ -51,41 +53,58 @@ const pkce = async (): Promise<Pkce> => {
 const parseJwtClaims = (token: string): Record<string, unknown> | undefined => {
   const [, payload] = token.split('.')
   if (!payload) return
-  try {
-    return JSON.parse(Buffer.from(payload, 'base64url').toString())
-  } catch {
-    return
-  }
+  return Effect.runSync(
+    Effect.try({
+      try: () =>
+        Schema.decodeUnknownSync(JwtClaims)(
+          JSON.parse(Buffer.from(payload, 'base64url').toString())
+        ),
+      catch: (error) => error,
+    }).pipe(
+      Effect.option,
+      Effect.map(Option.getOrUndefined)
+    )
+  )
 }
+
+const organizationAccountId = (claims: Record<string, unknown>) =>
+  Match.value(claims.organizations).pipe(
+    Match.when(
+      (value: unknown): value is Array<{ id: string }> =>
+        Array.isArray(value) &&
+        value[0] !== undefined &&
+        typeof value[0] === 'object' &&
+        value[0] !== null &&
+        'id' in value[0] &&
+        typeof value[0].id === 'string',
+      (value) => value[0]?.id
+    ),
+    Match.orElse(() => undefined)
+  )
 
 const accountIdFromClaims = (claims: Record<string, unknown>) => {
   if (typeof claims.chatgpt_account_id === 'string')
     return claims.chatgpt_account_id
   const auth = claims['https://api.openai.com/auth']
-  if (
-    auth &&
-    typeof auth === 'object' &&
-    'chatgpt_account_id' in auth &&
-    typeof auth.chatgpt_account_id === 'string'
-  ) {
-    return auth.chatgpt_account_id
-  }
-  const organizations = claims.organizations
-  if (Array.isArray(organizations)) {
-    const first = organizations[0]
-    if (
-      first &&
-      typeof first === 'object' &&
-      'id' in first &&
-      typeof first.id === 'string'
-    ) {
-      return first.id
-    }
-  }
+  const authAccountId = Match.value(auth).pipe(
+    Match.when(
+      (value: unknown): value is { chatgpt_account_id: string } =>
+        value !== null &&
+        typeof value === 'object' &&
+        'chatgpt_account_id' in value &&
+        typeof value.chatgpt_account_id === 'string',
+      (value) => value.chatgpt_account_id
+    ),
+    Match.orElse(() => undefined)
+  )
+  return authAccountId ?? organizationAccountId(claims)
 }
 
 export const accountIdFromTokens = (tokens: TokenResponse) => {
-  const idClaims = tokens.id_token ? parseJwtClaims(tokens.id_token) : undefined
+  const idClaims = Match.value(tokens.id_token).pipe(
+    Match.when(undefined, () => undefined),
+    Match.orElse(parseJwtClaims)
+  )
   const accessClaims = parseJwtClaims(tokens.access_token)
   return (
     (idClaims && accountIdFromClaims(idClaims)) ||
@@ -186,11 +205,17 @@ const refreshOpenAiOauthWithStore = Effect.fn(
       })
       if (!response.ok)
         throw new Error(`Token refresh failed: ${response.status}`)
-      return (await response.json()) as TokenResponse
+      return Schema.decodeUnknownSync(TokenResponse)(await response.json())
     },
     catch: (cause) =>
       new Error(
-        cause instanceof Error ? cause.message : 'Token refresh failed'
+        Match.value(cause).pipe(
+          Match.when(
+            (value: unknown): value is Error => value instanceof Error,
+            (value) => value.message
+          ),
+          Match.orElse(() => 'Token refresh failed')
+        )
       ),
   })
 
@@ -209,23 +234,32 @@ const refreshOpenAiOauthWithStore = Effect.fn(
 export const currentOpenAiOauth = Effect.fn('OpenAiChatGptAuth.current')(
   function* (store: ProviderAuthStoreApi) {
     const stored = yield* store.getAuth('openai')
-    if (stored?.type !== 'oauth') {
-      return yield* Effect.fail(
-        new Error('OpenAI ChatGPT credentials are not available')
+    const oauth = Match.value(stored).pipe(
+      Match.when(
+        (value: unknown): value is ProviderOauthInfo =>
+          value instanceof ProviderOauthInfo,
+        (value) => value
+      ),
+      Match.orElse(() => undefined)
+    )
+    const current = yield* Effect.fromNullishOr(oauth).pipe(
+      Effect.mapError(
+        () => new Error('OpenAI ChatGPT credentials are not available')
       )
-    }
-    if (!isExpired(stored)) return stored
-
-    if (!refreshOpenAiPromise.current) {
-      refreshOpenAiPromise.current = Effect.runPromise(
-        refreshOpenAiOauthWithStore(store, stored)
+    )
+    const fresh = Effect.succeed(current)
+    const refresh = Effect.suspend(() => {
+      refreshOpenAiPromise.current = refreshOpenAiPromise.current ?? Effect.runPromise(
+        refreshOpenAiOauthWithStore(store, current)
       ).finally(() => {
         refreshOpenAiPromise.current = undefined
       })
-    }
-    return yield* Effect.promise(
-      () => refreshOpenAiPromise.current as Promise<ProviderOauthInfo>
-    )
+      return Effect.promise(
+        () => refreshOpenAiPromise.current as Promise<ProviderOauthInfo>
+      )
+    })
+
+    return yield* ([refresh, fresh][Number(!isExpired(current))] ?? refresh)
   }
 )
 
@@ -246,7 +280,7 @@ const exchangeCode = async (
     }),
   })
   if (!response.ok) throw new Error(`Token exchange failed: ${response.status}`)
-  return (await response.json()) as TokenResponse
+  return Schema.decodeUnknownSync(TokenResponse)(await response.json())
 }
 
 const saveTokens = (store: ProviderAuthStoreApi, tokens: TokenResponse) =>
@@ -262,6 +296,7 @@ const listen = (candidate: number) =>
   new Promise<number>((resolve, reject) => {
     const next = createServer(async (request, response) => {
       const url = new URL(request.url ?? '/', `http://localhost:${candidate}`)
+      // biome-ignore lint/plugin: HTTP callback exits immediately for non-OAuth paths
       if (url.pathname !== CALLBACK_PATH) {
         response.writeHead(404)
         response.end('Not found')
@@ -294,13 +329,9 @@ const listen = (candidate: number) =>
         return
       }
 
-      try {
-        const tokens = await exchangeCode(
-          code,
-          current.pkce.verifier,
-          current.port
-        )
-        await Effect.runPromise(saveTokens(current.store, tokens))
+      await exchangeCode(code, current.pkce.verifier, current.port)
+        .then((tokens) => Effect.runPromise(saveTokens(current.store, tokens)))
+        .then(() => {
         response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
         response.end(
           authPage({
@@ -308,12 +339,18 @@ const listen = (candidate: number) =>
             message: 'You can close this window and return to Sorato.',
           })
         )
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'Sign-in failed'
+        })
+        .catch((error) => {
+        const message = Match.value(error).pipe(
+          Match.when(
+            (value: unknown): value is Error => value instanceof Error,
+            (value) => value.message
+          ),
+          Match.orElse(() => 'Sign-in failed')
+        )
         response.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' })
         response.end(authPage({ title: 'Sign-in failed', message }))
-      }
+        })
     })
     next.once('error', reject)
     next.listen(candidate, () => {
@@ -324,23 +361,32 @@ const listen = (candidate: number) =>
     })
   })
 
+const listenOnPorts = (ports: ReadonlyArray<number>): Promise<number> => {
+  const [port, ...remaining] = ports
+  return Match.value(port).pipe(
+    Match.when(undefined, () =>
+      Promise.reject(
+        new Error('Unable to start OAuth callback server on ports 1455 or 1457')
+      )
+    ),
+    Match.orElse((candidate) =>
+      listen(candidate).catch(() => listenOnPorts(remaining))
+    )
+  )
+}
+
 const ensureServer = Effect.fn('OpenAiChatGptAuth.ensureServer')(function* () {
   if (server && serverPort) return serverPort
   return yield* Effect.tryPromise({
-    try: async () => {
-      for (const port of PORTS) {
-        try {
-          return await listen(port)
-        } catch {}
-      }
-      throw new Error(
-        'Unable to start OAuth callback server on ports 1455 or 1457'
-      )
-    },
+    try: () => listenOnPorts(PORTS),
     catch: (cause) =>
-      cause instanceof Error
-        ? cause
-        : new Error('Unable to start OAuth callback server'),
+      Match.value(cause).pipe(
+        Match.when(
+          (value: unknown): value is Error => value instanceof Error,
+          (value) => value
+        ),
+        Match.orElse(() => new Error('Unable to start OAuth callback server'))
+      ),
   })
 })
 

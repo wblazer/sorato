@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, Match, Option } from 'effect'
 import { ModelError, ModelOption, ModelsResponse } from './api.ts'
 import { MODEL_PROVIDERS } from './models.generated.ts'
 import { PROVIDER_ADAPTERS } from './provider-adapters.ts'
@@ -71,7 +71,12 @@ const openAiOauthModels = new Set([
 const isOpenAiOauthModel = (modelId: string) => {
   if (openAiOauthModels.has(modelId)) return true
   const match = modelId.match(/^gpt-(\d+\.\d+)/)
-  return match?.[1] ? Number.parseFloat(match[1]) > 5.4 : false
+  return Option.fromNullishOr(match?.[1]).pipe(
+    Option.match({
+      onNone: () => false,
+      onSome: (version) => Number.parseFloat(version) > 5.4,
+    })
+  )
 }
 
 const validOptions = (
@@ -143,17 +148,19 @@ const availableEntries = () =>
     Effect.mapError(
       (error) =>
         new ModelError({
-          message:
-            error instanceof Error
-              ? error.message
-              : 'Failed to read provider credentials',
+          message: providerCredentialMessage(error),
         })
     )
   )
 
-const hasProviderAdapter = (
-  provider: string
-): provider is keyof typeof PROVIDER_ADAPTERS => provider in PROVIDER_ADAPTERS
+const providerCredentialMessage = (error: unknown) =>
+  Match.value(error).pipe(
+    Match.when(
+      (value: unknown): value is Error => value instanceof Error,
+      (value) => value.message
+    ),
+    Match.orElse(() => 'Failed to read provider credentials')
+  )
 
 const listModelsEffect = Effect.fn('ModelCatalog.list')(function* (
   _dataDir: string,
@@ -202,16 +209,19 @@ const ensureModelEffect = Effect.fn('ModelCatalog.ensure')(function* (
   const models = yield* listModels(dataDir, dir)
 
   const option = models.models.find((item) => item.id === model)
-  if (option && validOptions(option, options)) {
-    yield* Effect.logDebug('Model selection accepted', { dir, model, options })
-    return
-  }
-
-  yield* Effect.logWarning('Model selection rejected', { dir, model, options })
-
-  return yield* new ModelError({
-    message: `Model is not available for this server: ${model}`,
-  })
+  return yield* Match.value(option !== undefined && validOptions(option, options)).pipe(
+    Match.when(true, () =>
+      Effect.logDebug('Model selection accepted', { dir, model, options })
+    ),
+    Match.orElse(() =>
+      Effect.gen(function* () {
+        yield* Effect.logWarning('Model selection rejected', { dir, model, options })
+        return yield* new ModelError({
+          message: `Model is not available for this server: ${model}`,
+        })
+      })
+    )
+  )
 })
 
 export const ensureModel = (
@@ -231,26 +241,33 @@ const modelLayerEffect = Effect.fn('ModelCatalog.modelLayer')(function* (
 ) {
   const [provider, ...rest] = selection.id.split('/')
   const model = rest.join('/')
-  if (!provider || !hasProviderAdapter(provider) || !model) {
+  const validated = Match.value(`${provider}:${Number(model.length > 0)}`).pipe(
+    Match.when('anthropic:1', () => ({ provider: 'anthropic' as const, model })),
+    Match.when('openai:1', () => ({ provider: 'openai' as const, model })),
+    Match.orElse(() => undefined)
+  )
+  // biome-ignore lint/plugin: provider/model parsing guards adapter lookup before credentials are read
+  if (!validated) {
     yield* Effect.logWarning('Model layer unavailable', { selection })
     return
   }
-  const adapter = PROVIDER_ADAPTERS[provider]
+  const { provider: validProvider, model: validModel } = validated
+  const adapter = PROVIDER_ADAPTERS[validProvider]
   const authStore = yield* ProviderAuthStore
-  const auth = yield* getAuth(provider)
+  const auth = yield* getAuth(validProvider)
   const apiKey = yield* providerApiKey(
-    provider,
-    MODEL_PROVIDERS.find((item) => item.id === provider)?.env ?? []
+    validProvider,
+    MODEL_PROVIDERS.find((item) => item.id === validProvider)?.env ?? []
   )
   yield* Effect.logDebug('Model layer resolved', {
-    provider,
-    model,
+    provider: validProvider,
+    model: validModel,
     authType: auth?.type,
     hasApiKey: apiKey !== undefined,
   })
   return adapter.layer(
     dataDir,
-    { ...selection, id: model },
+    { ...selection, id: validModel },
     auth,
     apiKey,
     authStore

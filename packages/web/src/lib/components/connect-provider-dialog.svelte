@@ -5,6 +5,7 @@
   import { Input } from '$lib/components/ui/input/index.js'
   import { Label } from '$lib/components/ui/label/index.js'
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
+  import { authStore } from '$lib/stores/auth.svelte.js'
   import { modelsStore } from '$lib/stores/models.svelte.js'
   import { useId } from 'bits-ui'
 
@@ -54,6 +55,7 @@
         body: JSON.stringify({ key: apiKey }),
       })
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+      await authStore.load()
       open = false
       if (modelsStore.directory) void modelsStore.load(modelsStore.directory)
     } catch (err) {
@@ -77,6 +79,7 @@
       const body = (await res.json()) as { url: string }
       window.open(body.url, '_blank', 'noopener,noreferrer')
       window.setTimeout(() => {
+        void authStore.load()
         if (modelsStore.directory) void modelsStore.load(modelsStore.directory)
       }, 2500)
     } catch (err) {

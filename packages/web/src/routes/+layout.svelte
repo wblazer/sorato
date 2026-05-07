@@ -7,7 +7,10 @@
       import { sessionStore } from '$lib/stores/sessions.svelte.js'
       import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
       import { connectionsStore } from '$lib/stores/connections.svelte.js'
+      import { authStore } from '$lib/stores/auth.svelte.js'
+      import AppLoading from '$lib/components/app-loading.svelte'
       import NoConnections from '$lib/components/no-connections.svelte'
+      import ProviderRequired from '$lib/components/provider-required.svelte'
       import * as Tooltip from '$lib/components/ui/tooltip/index.js'
 
       let { children } = $props()
@@ -15,6 +18,8 @@
       $effect(() => {
         // Only connect to SSE if we have an active connection
         if (connectionsStore.activeConnection) {
+          void authStore.load()
+
           // Global SSE — one connection for the app's lifetime.
           // Must connect before fetchSessions so that RunStart/RunEnd events
           // from any in-flight runs are captured from the start.
@@ -42,12 +47,18 @@
 
 <Tooltip.Provider>
   {#if connectionsStore.hasConnections}
-    <div class="flex h-screen overflow-hidden">
-      <Sidebar />
-      <main class="flex-1 overflow-y-auto">
-        {@render children()}
-      </main>
-    </div>
+    {#if !authStore.loadedForActiveConnection}
+      <AppLoading />
+    {:else if authStore.hasAuthenticatedProvider}
+      <div class="flex h-screen overflow-hidden">
+        <Sidebar />
+        <main class="flex-1 overflow-y-auto">
+          {@render children()}
+        </main>
+      </div>
+    {:else}
+      <ProviderRequired />
+    {/if}
   {:else}
     <NoConnections />
   {/if}

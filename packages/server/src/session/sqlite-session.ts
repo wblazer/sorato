@@ -93,7 +93,7 @@ const toMessageNode = (row: MessageRow): MessageNode => ({
   id: row.id,
   sessionId: row.session_id,
   parentId: row.parent_id,
-  encoded: JSON.parse(row.encoded) as Prompt.MessageEncoded,
+  encoded: Schema.decodeUnknownSync(Prompt.Message)(JSON.parse(row.encoded)),
   createdAt: row.created_at,
 })
 
@@ -235,10 +235,11 @@ export const SqliteSession = (options: { readonly path: string }) =>
       ) {
         const session = yield* get(sessionId)
 
-        return yield* Option.fromNullishOr(session.headId).pipe(
+        const rows = yield* Option.fromNullishOr(session.headId).pipe(
           Option.match({
-            onNone: () => Effect.succeed(Prompt.empty),
+            onNone: () => Effect.succeed([] as ReadonlyArray<MessageRow>),
             onSome: (headId) =>
+              // biome-ignore lint/plugin: recursive CTE is selected by optional session head
               sql<MessageRow>`
                 WITH RECURSIVE chain AS (
                   SELECT * FROM messages WHERE id = ${headId}
@@ -247,16 +248,6 @@ export const SqliteSession = (options: { readonly path: string }) =>
                 )
                 SELECT * FROM chain
               `.pipe(
-                Effect.map((walkedRows) =>
-                  Schema.decodeUnknownSync(Prompt.Prompt)({
-                    content: [...walkedRows]
-                      .reverse()
-                      .map(
-                        (row) =>
-                          JSON.parse(row.encoded) as Prompt.MessageEncoded
-                      ),
-                  })
-                ),
                 Effect.mapError(
                   sqlFailure(
                     'conversation',
@@ -266,6 +257,13 @@ export const SqliteSession = (options: { readonly path: string }) =>
               ),
           })
         )
+        return Schema.decodeUnknownSync(Prompt.Prompt)({
+          content: [...rows]
+            .reverse()
+            .map((row) =>
+              Schema.decodeUnknownSync(Prompt.Message)(JSON.parse(row.encoded))
+            ),
+        })
       })
 
       const messages = Effect.fn('SessionStorage.messages')(function* (
@@ -273,10 +271,11 @@ export const SqliteSession = (options: { readonly path: string }) =>
       ) {
         const session = yield* get(sessionId)
 
-        return yield* Option.fromNullishOr(session.headId).pipe(
+        const rows = yield* Option.fromNullishOr(session.headId).pipe(
           Option.match({
-            onNone: () => Effect.succeed([] as ReadonlyArray<MessageNode>),
+            onNone: () => Effect.succeed([] as ReadonlyArray<MessageRow>),
             onSome: (headId) =>
+              // biome-ignore lint/plugin: recursive CTE is selected by optional session head
               sql<MessageRow>`
                 WITH RECURSIVE chain AS (
                   SELECT * FROM messages WHERE id = ${headId}
@@ -285,7 +284,6 @@ export const SqliteSession = (options: { readonly path: string }) =>
                 )
                 SELECT * FROM chain
               `.pipe(
-                Effect.map((rows) => [...rows].reverse().map(toMessageNode)),
                 Effect.mapError(
                   sqlFailure(
                     'messages',
@@ -295,6 +293,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
               ),
           })
         )
+        return [...rows].reverse().map(toMessageNode)
       })
 
       const append = Effect.fn('SessionStorage.append')(function* (
@@ -308,26 +307,28 @@ export const SqliteSession = (options: { readonly path: string }) =>
         let parentId: string | null = session.headId
         let lastId: string | null = null
 
-        yield* sql
-          .withTransaction(
-            Effect.gen(function* () {
-              for (const msg of messages) {
-                const id = crypto.randomUUID()
-                yield* sql`
+        // biome-ignore lint/plugin: transaction body is scoped to mutable parent/last ids
+        const insertMessages = Effect.gen(function* () {
+          for (const msg of messages) {
+            const id = crypto.randomUUID()
+            yield* sql`
                 INSERT INTO messages (id, session_id, parent_id, encoded, created_at)
                 VALUES (${id}, ${sessionId}, ${parentId}, ${JSON.stringify(msg)}, ${now})
               `
-                parentId = id
-                lastId = id
-              }
+            parentId = id
+            lastId = id
+          }
 
-              if (lastId !== null) {
-                yield* sql`
-                UPDATE sessions SET head_id = ${lastId}, updated_at = ${now} WHERE id = ${sessionId}
-              `
-              }
-            })
+          yield* Match.value(lastId).pipe(
+            Match.when(null, () => Effect.void),
+            Match.orElse((id) => sql`
+                UPDATE sessions SET head_id = ${id}, updated_at = ${now} WHERE id = ${sessionId}
+              `)
           )
+        })
+
+        yield* sql
+          .withTransaction(insertMessages)
           .pipe(
             Effect.mapError(
               sqlFailure(
@@ -358,6 +359,14 @@ export const SqliteSession = (options: { readonly path: string }) =>
         )
         const exists = rows[0]
 
+        const updateHead = sql`
+          UPDATE sessions SET head_id = ${messageId}, updated_at = ${Date.now()} WHERE id = ${sessionId}
+        `.pipe(
+          Effect.mapError(
+            sqlFailure('setHead', `Failed to update head: ${sessionId}`)
+          )
+        )
+
         yield* Effect.fromNullishOr(exists).pipe(
           Effect.mapError(
             () =>
@@ -366,15 +375,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
                 message: `Message ${messageId} not found in session ${sessionId}`,
               })
           ),
-          Effect.flatMap(() =>
-            sql`
-              UPDATE sessions SET head_id = ${messageId}, updated_at = ${Date.now()} WHERE id = ${sessionId}
-            `.pipe(
-              Effect.mapError(
-                sqlFailure('setHead', `Failed to update head: ${sessionId}`)
-              )
-            )
-          )
+          Effect.andThen(updateHead)
         )
         yield* Effect.logInfo('Session head updated', {
           sessionId,

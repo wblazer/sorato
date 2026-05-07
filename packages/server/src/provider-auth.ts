@@ -1,6 +1,6 @@
 import { FileSystem, Path } from 'effect'
 import { SqlClient } from 'effect/unstable/sql/SqlClient'
-import { Context, Effect, Layer, Schema } from 'effect'
+import { Context, Effect, Layer, Match, Schema } from 'effect'
 
 export class AuthError extends Schema.TaggedErrorClass<AuthError>()(
   'AuthError',
@@ -36,26 +36,24 @@ export const ProviderAuthDatabase = Schema.Record(
 export type ProviderAuthDatabase = typeof ProviderAuthDatabase.Type
 export type ProviderAuth = ProviderAuthDatabase[string]
 
+// biome-ignore lint/plugin/no-manual-effect-channels: service contracts expose typed method effects
+type AuthEffect<A> = Effect.Effect<A, AuthError>
+
 export interface ProviderAuthStoreApi {
-  readonly getAuth: (
-    provider: string
-  ) => Effect.Effect<ProviderAuth | undefined, AuthError>
-  readonly setApiKey: (
-    provider: string,
-    key: string
-  ) => Effect.Effect<void, AuthError>
+  readonly getAuth: (provider: string) => AuthEffect<ProviderAuth | undefined>
+  readonly setApiKey: (provider: string, key: string) => AuthEffect<void>
   readonly setOauth: (
     provider: string,
     info: Omit<ProviderOauthInfo, 'type'>
-  ) => Effect.Effect<void, AuthError>
+  ) => AuthEffect<void>
   readonly providerApiKey: (
     provider: string,
     envKeys: ReadonlyArray<string>
-  ) => Effect.Effect<string | undefined, AuthError>
+  ) => AuthEffect<string | undefined>
   readonly hasProviderAuth: (
     provider: string,
     envKeys: ReadonlyArray<string>
-  ) => Effect.Effect<boolean, AuthError>
+  ) => AuthEffect<boolean>
 }
 
 export class ProviderAuthStore extends Context.Service<
@@ -94,19 +92,36 @@ const authFailure = (message: string) => (cause: unknown) =>
 
 const toAuth = (row: ProviderAuthRow | null): ProviderAuth | undefined => {
   if (!row) return
-  if (row.type === 'api') {
-    if (!row.api_key) return
-    return new ProviderAuthInfo({ type: 'api', key: row.api_key })
-  }
-  if (!row.access_token || !row.refresh_token || row.expires_at === null) return
-  return new ProviderOauthInfo({
-    type: 'oauth',
-    access: row.access_token,
-    refresh: row.refresh_token,
-    expires: row.expires_at,
-    lastRefresh: row.last_refresh_at ?? undefined,
-    accountId: row.account_id ?? undefined,
-  })
+  const apiAuth = Match.value(row.api_key).pipe(
+    Match.when(null, () => undefined),
+    Match.orElse((key) => new ProviderAuthInfo({ type: 'api', key }))
+  )
+  const oauthAuth = Match.value(row).pipe(
+    Match.when(
+      (value): value is ProviderAuthRow & {
+        access_token: string
+        refresh_token: string
+        expires_at: number
+      } =>
+        value.access_token !== null &&
+        value.refresh_token !== null &&
+        value.expires_at !== null,
+      (value) =>
+        new ProviderOauthInfo({
+          type: 'oauth',
+          access: value.access_token,
+          refresh: value.refresh_token,
+          expires: value.expires_at,
+          lastRefresh: value.last_refresh_at ?? undefined,
+          accountId: value.account_id ?? undefined,
+        })
+    ),
+    Match.orElse(() => undefined)
+  )
+  return Match.value(row.type).pipe(
+    Match.when('api', () => apiAuth),
+    Match.orElse(() => oauthAuth)
+  )
 }
 
 export const SqliteProviderAuthStore = (options: { readonly path: string }) =>

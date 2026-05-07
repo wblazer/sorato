@@ -236,10 +236,12 @@ export const LocalSandbox = Layer.effect(Sandbox)(
           exitCode: Number(code),
         }
 
-        const logExecResult =
+        const logExecResult = Match.value(
           timedOut || result.exitCode !== 0
-            ? Effect.logWarning
-            : Effect.logDebug
+        ).pipe(
+          Match.when(true, () => Effect.logWarning),
+          Match.orElse(() => Effect.logDebug)
+        )
         yield* logExecResult('Local sandbox command completed', {
           cwd,
           exitCode: result.exitCode,

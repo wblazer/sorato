@@ -40,17 +40,19 @@
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col" data-slot="session-list">
-  <div class="px-3 py-2">
-	<Button
-		variant="outline"
-		size="lg"
-		class={cn('w-full', sessionStore.composing && 'bg-selected text-foreground')}
-		onclick={() => sessionStore.startComposing()}
-	>
-      <PlusIcon class="size-4" />
-      New Session
-    </Button>
-  </div>
+  {#if sessionStore.selectedDirectory}
+    <div class="px-3 py-2">
+      <Button
+        variant="outline"
+        size="lg"
+        class={cn('w-full', sessionStore.composing && 'bg-selected text-foreground')}
+        onclick={() => sessionStore.startComposing()}
+      >
+        <PlusIcon class="size-4" />
+        New Session
+      </Button>
+    </div>
+  {/if}
 
   <div class="flex-1 overflow-y-auto px-2 pb-2">
     {#if sessionStore.loading && sessionStore.sessions.length === 0}

@@ -1,7 +1,7 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Match } from 'effect'
 import { describe, expect, it } from '@effect/vitest'
 import { MODEL_PROVIDERS } from '../src/models.generated.ts'
 import { ensureModel, listModels } from '../src/model-catalog.ts'
@@ -155,10 +155,15 @@ describe('ModelCatalog', () => {
         models.models.every((item) => {
           const [provider, ...rest] = item.id.split('/')
           const model = rest.join('/')
-          if (!provider || !(provider in PROVIDER_ADAPTERS)) return false
-          return PROVIDER_ADAPTERS[
-            provider as keyof typeof PROVIDER_ADAPTERS
-          ].supportsModel(model)
+          return Match.value(provider).pipe(
+            Match.when('anthropic', () =>
+              PROVIDER_ADAPTERS.anthropic.supportsModel(model)
+            ),
+            Match.when('openai', () =>
+              PROVIDER_ADAPTERS.openai.supportsModel(model)
+            ),
+            Match.orElse(() => false)
+          )
         })
       ).toBe(true)
       expect(models.models.length).toBe(supportedCount(openai))

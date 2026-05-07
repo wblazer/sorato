@@ -1,5 +1,5 @@
-import { Effect, Layer, Stream } from 'effect'
-import { Chat, LanguageModel, Prompt, type Response } from 'effect/unstable/ai'
+import { Effect, Match, Option, Stream } from 'effect'
+import { Chat, Prompt, type Response } from 'effect/unstable/ai'
 import { listModels, modelLayer } from './model-catalog.ts'
 import { dataDir } from './data-dir.ts'
 import { RuntimeConfigService } from './runtime-config.ts'
@@ -10,10 +10,15 @@ const MAX_TITLE_CHARS = 100
 const defaultTitleModels = [
   'anthropic/claude-haiku-4-5',
   'openai/gpt-5-nano',
-] as const
+] satisfies ReadonlyArray<string>
 
 const TITLE_SYSTEM_PROMPT =
   'Generate a concise title for the user request. Return only the title, no quotes, no punctuation, no explanations. Use 2-6 words.'
+
+const truncateTitle = (title: string) =>
+  [title, `${title.slice(0, MAX_TITLE_CHARS - 3)}...`][
+    Number(title.length > MAX_TITLE_CHARS)
+  ] ?? title
 
 const cleanTitle = (text: string) => {
   const cleaned = text
@@ -24,11 +29,7 @@ const cleanTitle = (text: string) => {
     ?.replace(/^['"]|['"]$/g, '')
     .replace(/[.!?]$/, '')
 
-  if (!cleaned) return null
-
-  return cleaned.length > MAX_TITLE_CHARS
-    ? `${cleaned.slice(0, MAX_TITLE_CHARS - 3)}...`
-    : cleaned
+  return Option.fromNullishOr(cleaned).pipe(Option.map(truncateTitle))
 }
 
 const selectTitleModel = Effect.fn('SessionTitle.selectModel')(function* (
@@ -38,9 +39,12 @@ const selectTitleModel = Effect.fn('SessionTitle.selectModel')(function* (
   const cfg = yield* runtimeConfig.get(dir)
   const models = yield* listModels(dataDir, dir)
   const available = new Set(models.models.map((model) => model.id))
-  if (cfg.title_model && available.has(cfg.title_model)) return cfg.title_model
-
-  return defaultTitleModels.find((model) => available.has(model)) ?? null
+  return Option.fromNullishOr(cfg.title_model).pipe(
+    Option.filter((model) => available.has(model)),
+    Option.orElse(() =>
+      Option.fromNullishOr(defaultTitleModels.find((model) => available.has(model)))
+    )
+  )
 })
 
 const generateWithModel = Effect.fn('SessionTitle.generateWithModel')(
@@ -49,12 +53,15 @@ const generateWithModel = Effect.fn('SessionTitle.generateWithModel')(
       id: model,
       thinkingLevel: 'off',
     })
-    if (!services) return null
+    const serviceLayer = yield* Match.value(services).pipe(
+      Match.when(undefined, () => Effect.succeed(Option.none())),
+      Match.orElse((layer) => Effect.succeed(Option.some(layer)))
+    )
 
-    const truncatedInput =
-      input.length > MAX_INPUT_CHARS
-        ? `${input.slice(0, MAX_INPUT_CHARS)}...`
-        : input
+    const truncatedInput = Match.value(input.length > MAX_INPUT_CHARS).pipe(
+      Match.when(true, () => `${input.slice(0, MAX_INPUT_CHARS)}...`),
+      Match.orElse(() => input)
+    )
     const chat = yield* Chat.fromPrompt(
       Prompt.make([
         { role: 'system' as const, content: TITLE_SYSTEM_PROMPT },
@@ -65,36 +72,45 @@ const generateWithModel = Effect.fn('SessionTitle.generateWithModel')(
       ])
     )
 
-    const text = yield* chat.streamText({ prompt: [] }).pipe(
-      Stream.filter(
-        (
-          part
-        ): part is Extract<Response.StreamPart<{}>, { type: 'text-delta' }> =>
-          part.type === 'text-delta'
-      ),
-      Stream.map((part) => part.delta),
-      Stream.mkString,
-      Effect.provide(
-        services as Layer.Layer<LanguageModel.LanguageModel, never, never>
-      )
-    )
-
-    return cleanTitle(text)
+    return yield* Option.match(serviceLayer, {
+      onNone: () => Effect.succeed(Option.none<string>()),
+      onSome: (layer) =>
+        chat.streamText({ prompt: [] }).pipe(
+          Stream.filter(
+            (
+              part
+            ): part is Extract<
+              Response.StreamPart<Record<string, never>>,
+              { type: 'text-delta' }
+            > =>
+              part.type === 'text-delta'
+          ),
+          Stream.map((part) => part.delta),
+          Stream.mkString,
+          Effect.map(cleanTitle),
+          Effect.provide(layer)
+        ),
+    })
   }
 )
 
 export const generateSessionTitle = Effect.fn('SessionTitle.generate')(
   function* (dir: string, input: string) {
     const model = yield* selectTitleModel(dir)
-    if (!model) return null
-
-    return yield* generateWithModel(model, input).pipe(
-      Effect.catchCause((cause) =>
-        Effect.logDebug('Session title generation failed', {
-          model,
-          cause,
-        }).pipe(Effect.as(null))
-      )
-    )
+    return yield* Option.match(model, {
+      onNone: () => Effect.succeed(Option.none<string>()),
+      onSome: (model) =>
+        generateWithModel(model, input).pipe(
+          Effect.catchCause((cause) =>
+            Effect.gen(function* () {
+              yield* Effect.logDebug('Session title generation failed', {
+                model,
+                cause,
+              })
+              return Option.none<string>()
+            })
+          )
+        ),
+    })
   }
 )

@@ -69,9 +69,7 @@
     class="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center gap-4 px-6 py-8 text-center"
   >
     <div>
-      {#if !sessionStore.selectedDirectory}
-        <p class="text-xs text-danger">Select a directory first.</p>
-      {:else if modelsStore.error}
+      {#if modelsStore.error}
         <p class="text-xs text-danger">{modelsStore.error}</p>
       {:else if !modelsStore.loading && modelsStore.models.length === 0}
         <p class="text-xs text-danger">
@@ -90,12 +88,8 @@
     model={modelsStore.selectedModel}
     modelOptions={modelsStore.selectedOptions}
     modelLoading={modelsStore.loading}
-    modelDisabled={!sessionStore.selectedDirectory || sending}
-    autoFocus
-    disabled={sending ||
-      !sessionStore.selectedDirectory ||
-      modelsStore.loading ||
-      !modelsStore.selectedModel}
+    modelDisabled={sending}
+    disabled={sending || modelsStore.loading || !modelsStore.selectedModel}
     placeholder={sending ? 'Creating session...' : 'What would you like to do?'}
   />
 </div>

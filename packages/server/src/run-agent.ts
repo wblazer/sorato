@@ -8,7 +8,7 @@
  *   - Runs as a daemon fiber (fire-and-forget from the HTTP handler)
  */
 import type { Prompt } from 'effect/unstable/ai'
-import { Cause, Effect, Layer, Match } from 'effect'
+import { Cause, Effect, Layer, Match, Option } from 'effect'
 import { CurrentFiles, CurrentShell, run, Sandbox } from '@sorato/core'
 import { SessionStorage, type SessionId } from './session/session.ts'
 import { AllTools, SYSTEM_PROMPT } from './agent-config.ts'
@@ -50,34 +50,39 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       sessionId,
       ...request.modelOptions,
     }).pipe(
-      Effect.map((layer) =>
-        Match.value(layer).pipe(
-          Match.when(undefined, () =>
-            Effect.die(
-              new Error(
-                `Model is not supported by this server: ${request.model}`
-              )
-            )
+      Effect.flatMap((layer) =>
+        // biome-ignore lint/plugin: model layer lookup fails fast when the selected model has no adapter
+        Effect.fromNullishOr(layer).pipe(
+          Effect.mapError(
+            () =>
+              new Error(`Model is not supported by this server: ${request.model}`)
           ),
-          Match.orElse((layer) => Effect.succeed(layer))
+          Effect.orDie
         )
-      ),
-      Effect.flatten
+      )
     )
     yield* Effect.logInfo('Agent run resolved model layer', { runId })
 
     const existingConversation = yield* storage.conversation(sessionId)
     const isFirstMessage = existingConversation.content.length === 0
-    if (isFirstMessage && session.title === null) {
-      const title = yield* generateSessionTitle(
-        session.directory,
-        request.input
-      )
-      if (title) {
-        yield* storage.setTitle(sessionId, title)
-        publish({ _tag: 'SessionUpdated', sessionId })
-      }
-    }
+    const shouldSetTitle = Effect.succeed(isFirstMessage && session.title === null)
+    const publishSessionUpdated = Effect.sync(() =>
+      publish({ _tag: 'SessionUpdated', sessionId })
+    )
+    const maybeSetTitle = generateSessionTitle(session.directory, request.input).pipe(
+      Effect.flatMap((title) =>
+        Option.match(title, {
+          onNone: () => Effect.void,
+          onSome: (title) => {
+            const setTitle = storage.setTitle(sessionId, title)
+            // biome-ignore lint/plugin: title persistence is followed by the matching session update event
+            return setTitle.pipe(Effect.andThen(publishSessionUpdated))
+          },
+        })
+      ),
+      Effect.when(shouldSetTitle)
+    )
+    yield* maybeSetTitle
 
     const preamble: Array<Prompt.MessageEncoded> = Match.value(
       isFirstMessage

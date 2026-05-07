@@ -1,6 +1,7 @@
 import { AnthropicClient, AnthropicLanguageModel } from '@effect/ai-anthropic'
 import { OpenAiClient, OpenAiLanguageModel } from '@effect/ai-openai'
-import { Config, Effect, Layer, Redacted } from 'effect'
+import { Config, Effect, Layer, Match, Redacted, Schema } from 'effect'
+import type { LanguageModel } from 'effect/unstable/ai'
 import {
   FetchHttpClient,
   HttpClient,
@@ -17,6 +18,7 @@ import type { ProviderAuth, ProviderAuthStoreApi } from './provider-auth.ts'
 import type { ProviderId } from './provider-definitions.ts'
 
 const present = (key: string) => !!process.env[key]?.trim()
+const keepRequest = <A>(item: A) => item
 
 const any = (keys: ReadonlyArray<string>, apiKey: string | undefined) =>
   !!apiKey?.trim() || keys.some(present)
@@ -33,8 +35,23 @@ type ProviderAdapter = {
     auth: ProviderAuth | undefined,
     apiKey: string | undefined,
     authStore: ProviderAuthStoreApi
-  ) => unknown
+  ) => ModelServiceLayer
 }
+
+// biome-ignore lint/plugin/no-manual-effect-channels: adapter registry needs a shared layer contract
+type ModelServiceLayer = Layer.Layer<LanguageModel.LanguageModel, Config.ConfigError>
+
+const CodexRequestBody = Schema.Struct({
+  instructions: Schema.optional(Schema.String),
+  input: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        role: Schema.optional(Schema.String),
+        content: Schema.Unknown,
+      })
+    )
+  ),
+})
 
 const modelIds = (provider: ProviderId): ReadonlySet<string> =>
   new Set<string>(
@@ -74,12 +91,26 @@ const anthropicThinkingBudget = (selection: ModelSelection) => {
 
 const anthropicThinkingConfig = (selection: ModelSelection) => {
   const effort = anthropicAdaptiveEffort(selection)
-  if (effort && supportsAnthropicAdaptiveThinking(selection.id)) {
-    return {
+  const adaptiveEffort = [
+    undefined,
+    effort,
+  ][Number(supportsAnthropicAdaptiveThinking(selection.id))]
+  const adaptiveThinking = Match.value(adaptiveEffort).pipe(
+    Match.when('low', (effort) => ({
       thinking: { type: 'adaptive' as const },
       output_config: { effort },
-    }
-  }
+    })),
+    Match.when('medium', (effort) => ({
+      thinking: { type: 'adaptive' as const },
+      output_config: { effort },
+    })),
+    Match.when('high', (effort) => ({
+      thinking: { type: 'adaptive' as const },
+      output_config: { effort },
+    })),
+    Match.orElse(() => undefined)
+  )
+  if (adaptiveThinking) return adaptiveThinking
 
   const targetBudget = anthropicThinkingBudget(selection)
   if (!targetBudget) return {}
@@ -99,10 +130,9 @@ const withCodexInstructions = (
 ) => {
   if (request.body._tag !== 'Uint8Array') return request
 
-  const body = JSON.parse(new TextDecoder().decode(request.body.body)) as {
-    instructions?: string
-    input?: Array<{ role?: string; content?: unknown }>
-  }
+  const body = Schema.decodeUnknownSync(CodexRequestBody)(
+    JSON.parse(new TextDecoder().decode(request.body.body))
+  )
   const input = body.input ?? []
   const instructionIndex = input.findIndex(
     (item) =>
@@ -110,11 +140,11 @@ const withCodexInstructions = (
       typeof item.content === 'string' &&
       item.content.trim()
   )
-  const instructions =
-    body.instructions ??
-    (instructionIndex >= 0
-      ? (input[instructionIndex]?.content as string)
-      : undefined)
+  const inputInstructions = Match.value(instructionIndex >= 0).pipe(
+    Match.when(true, () => input[instructionIndex]?.content),
+    Match.orElse(() => undefined)
+  )
+  const instructions = body.instructions ?? inputInstructions
 
   if (!instructions) return request
 
@@ -156,42 +186,73 @@ export const PROVIDER_ADAPTERS = {
       apiKey: string | undefined,
       authStore: ProviderAuthStoreApi
     ) => {
-      const reasoning =
-        selection.thinkingLevel && selection.thinkingLevel !== 'off'
-          ? {
-              reasoning: {
-                effort: selection.thinkingLevel,
-                summary: 'auto' as const,
-              },
-            }
-          : {}
-      const serviceTier =
-        selection.mode === 'fast' ? { service_tier: 'flex' as const } : {}
+      const reasoning = Match.value(selection.thinkingLevel).pipe(
+        Match.when('minimal', (effort) => ({
+          reasoning: {
+            effort,
+            summary: 'auto' as const,
+          },
+        })),
+        Match.when('low', (effort) => ({
+          reasoning: { effort, summary: 'auto' as const },
+        })),
+        Match.when('medium', (effort) => ({
+          reasoning: { effort, summary: 'auto' as const },
+        })),
+        Match.when('high', (effort) => ({
+          reasoning: { effort, summary: 'auto' as const },
+        })),
+        Match.when('xhigh', (effort) => ({
+          reasoning: { effort, summary: 'auto' as const },
+        })),
+        Match.orElse(() => ({}))
+      )
+      const serviceTier = Match.value(selection.mode).pipe(
+        Match.when('fast', () => ({ service_tier: 'flex' as const })),
+        Match.orElse(() => ({}))
+      )
 
-      const clientLayer =
-        auth?.type === 'oauth'
-          ? OpenAiClient.layerConfig({
+      const clientLayer = Match.value(auth?.type).pipe(
+        Match.when('oauth', () =>
+          OpenAiClient.layerConfig({
               apiKey: Config.succeed(Redacted.make('sorato-chatgpt-oauth')),
               transformClient: (client) =>
+                // biome-ignore lint/plugin: OAuth transport wiring is localized to this provider adapter
                 client.pipe(
                   HttpClient.mapRequestEffect((request) =>
                     Effect.gen(function* () {
-                      if (auth.type !== 'oauth') return request
-                      const current = yield* currentOpenAiOauth(authStore).pipe(
-                        Effect.mapError(
-                          (error) =>
-                            new Error(
-                              `Failed to refresh OpenAI ChatGPT credentials: ${error.message}`
-                            )
-                        ),
-                        Effect.orDie
+                      const currentRaw = currentOpenAiOauth(authStore)
+                      const currentMapped = Effect.mapError(
+                        currentRaw,
+                        (error) =>
+                          new Error(
+                            `Failed to refresh OpenAI ChatGPT credentials: ${error.message}`
+                          )
                       )
+                      const currentEffect = Effect.orDie(currentMapped)
+                      const current = yield* currentEffect
 
                       const url = new URL(request.url)
-                      const target = url.pathname.endsWith('/responses')
-                        ? 'https://chatgpt.com/backend-api/codex/responses'
-                        : request.url
+                      const target = [
+                        request.url,
+                        'https://chatgpt.com/backend-api/codex/responses',
+                      ][Number(url.pathname.endsWith('/responses'))] ?? request.url
+                      const setSessionId = [
+                        keepRequest,
+                        HttpClientRequest.setHeader(
+                          'session_id',
+                          selection.sessionId ?? ''
+                        ),
+                      ][Number(selection.sessionId !== undefined)] ?? keepRequest
+                      const setAccountId = [
+                        keepRequest,
+                        HttpClientRequest.setHeader(
+                          'ChatGPT-Account-Id',
+                          current.accountId ?? ''
+                        ),
+                      ][Number(current.accountId !== undefined)] ?? keepRequest
 
+                      // biome-ignore lint/plugin: request mutation is a single provider-specific transport pipeline
                       return withCodexInstructions(request).pipe(
                         HttpClientRequest.setUrl(target),
                         HttpClientRequest.setHeader(
@@ -203,26 +264,20 @@ export const PROVIDER_ADAPTERS = {
                           'User-Agent',
                           soratoUserAgent()
                         ),
-                        selection.sessionId
-                          ? HttpClientRequest.setHeader(
-                              'session_id',
-                              selection.sessionId
-                            )
-                          : (item) => item,
-                        current.accountId
-                          ? HttpClientRequest.setHeader(
-                              'ChatGPT-Account-Id',
-                              current.accountId
-                            )
-                          : (item) => item
+                        setSessionId,
+                        setAccountId
                       )
                     })
                   )
                 ),
             })
-          : OpenAiClient.layerConfig({
+        ),
+        Match.orElse(() =>
+          OpenAiClient.layerConfig({
               apiKey: Config.succeed(Redacted.make(apiKey ?? '')),
             })
+        )
+      )
 
       return OpenAiLanguageModel.layer({
         model: selection.id as OpenAiLanguageModel.Model,

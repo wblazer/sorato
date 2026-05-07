@@ -70,6 +70,21 @@ export class AuthSetResponse extends Schema.Class<AuthSetResponse>(
   ok: Schema.Boolean,
 }) {}
 
+export class AuthProviderStatus extends Schema.Class<AuthProviderStatus>(
+  'AuthProviderStatus'
+)({
+  id: Schema.String,
+  name: Schema.String,
+  authenticated: Schema.Boolean,
+}) {}
+
+export class AuthStatusResponse extends Schema.Class<AuthStatusResponse>(
+  'AuthStatusResponse'
+)({
+  providers: Schema.Array(AuthProviderStatus),
+  hasAuthenticatedProvider: Schema.Boolean,
+}) {}
+
 export class AuthOauthAuthorizeResponse extends Schema.Class<AuthOauthAuthorizeResponse>(
   'AuthOauthAuthorizeResponse'
 )({
@@ -263,6 +278,12 @@ export class ModelsGroup extends HttpApiGroup.make('models')
 // ── Auth Group ──────────────────────────────────────────────────────
 
 export class AuthGroup extends HttpApiGroup.make('auth')
+  .add(
+    HttpApiEndpoint.get('status', '/', {
+      success: AuthStatusResponse,
+      error: AuthError.pipe(HttpApiSchema.status(500)),
+    })
+  )
   .add(
     HttpApiEndpoint.put('set', '/:provider', {
       params: { provider: Schema.String },

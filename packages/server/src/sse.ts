@@ -268,24 +268,21 @@ export const withSse = (
         const req = yield* HttpServerRequest.HttpServerRequest
         const url = new URL(req.url, 'http://localhost')
 
-        return yield* Match.value(url.pathname).pipe(
-          Match.when('/events', () => {
-            const sessionId = url.searchParams.get('sessionId') ?? undefined
-            const cursor = parseCursor(url.searchParams.get('since'))
-
-            return Effect.logInfo('SSE connection requested', {
+        const eventResponse = Effect.suspend(() => {
+          const sessionId = url.searchParams.get('sessionId') ?? undefined
+          const cursor = parseCursor(url.searchParams.get('since'))
+          return Effect.logInfo('SSE connection requested', {
               sessionId,
               hasCursor: cursor !== undefined,
             }).pipe(
-              Effect.andThen(
-                Effect.succeed(
-                  HttpServerResponse.fromWeb(
-                    createSSEResponse(sessionId, cursor)
-                  )
-                )
+              Effect.map(() =>
+                HttpServerResponse.fromWeb(createSSEResponse(sessionId, cursor))
               )
             )
-          }),
+        })
+
+        return yield* Match.value(url.pathname).pipe(
+          Match.when('/events', () => eventResponse),
           Match.orElse(() => inner(app))
         )
       }).pipe(Effect.annotateLogs({ package: 'server', subsystem: 'sse' }))

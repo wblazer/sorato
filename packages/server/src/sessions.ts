@@ -84,8 +84,14 @@ const modelOptions = (options?: {
     | undefined
   readonly mode?: string | undefined
 }): ModelOptions => ({
-  ...(options?.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
-  ...(options?.mode ? { mode: options.mode } : {}),
+  ...Match.value(options?.thinkingLevel).pipe(
+    Match.when(undefined, () => ({})),
+    Match.orElse((thinkingLevel) => ({ thinkingLevel }))
+  ),
+  ...Match.value(options?.mode).pipe(
+    Match.when(undefined, () => ({})),
+    Match.orElse((mode) => ({ mode }))
+  ),
 })
 
 const registerActiveRun = Effect.fn('Sessions.registerActiveRun')(
@@ -159,12 +165,17 @@ const doPublishMessagesAppended = (sessionId: string) => {
 function createRunWorker(sessionId: string) {
   const clearActive = clearActiveRun(sessionId)
   const releaseRunNow = releaseQueuedRun(sessionId)
+  const releaseSession = Effect.gen(function* () {
+    yield* Effect.logInfo('Session run worker releasing session')
+    yield* releaseRunNow
+  })
 
   return Effect.gen(function* () {
     yield* Effect.logInfo('Session run worker starting')
 
     while (true) {
       const stopRequested = shouldStop(sessionId)
+      // biome-ignore lint/plugin: the worker loop exits early on explicit stop requests
       if (stopRequested) {
         yield* Effect.logInfo('Session run worker stopping before next run')
         break
@@ -201,11 +212,7 @@ function createRunWorker(sessionId: string) {
       )
     }
   }).pipe(
-    Effect.ensuring(
-      Effect.logInfo('Session run worker releasing session').pipe(
-        Effect.andThen(releaseRunNow)
-      )
-    ),
+    Effect.ensuring(releaseSession),
     Effect.annotateLogs('sessionId', sessionId)
   )
 }
@@ -220,10 +227,13 @@ function startRunWorker(sessionId: string) {
     Effect.tap((fiber) => registerRunWorker(sessionId, fiber)),
     Effect.map(() => new RunResponse({ status: 'started' as const })),
     Effect.onError((cause) =>
-      Effect.logError('Session run worker failed to start', {
-        sessionId,
-        cause: Cause.pretty(cause),
-      }).pipe(Effect.andThen(onWorkerError))
+      Effect.gen(function* () {
+        yield* Effect.logError('Session run worker failed to start', {
+          sessionId,
+          cause: Cause.pretty(cause),
+        })
+        yield* onWorkerError
+      })
     )
   )
 }
@@ -370,11 +380,12 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
                 model: payload.model,
                 modelOptions: modelOptions(payload.modelOptions),
               })
+              // biome-ignore lint/plugin: enqueue side effect chooses the response after structured logging
               return Effect.logInfo('Session run request enqueued', {
-                sessionId: params.id,
-                status,
-                queuedRunCount: getQueuedRunCount(params.id),
-              }).pipe(Effect.andThen(selectRunResponse(params.id, status)))
+                  sessionId: params.id,
+                  status,
+                  queuedRunCount: getQueuedRunCount(params.id),
+                }).pipe(Effect.andThen(selectRunResponse(params.id, status)))
             })
           )
         )
