@@ -1,11 +1,8 @@
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { Effect, FileSystem, Layer, Logger, LogLevel, References, Schema } from 'effect'
 import { loadGlobalRuntimeConfigFile } from './runtime-config.ts'
 
-const sourceDir = dirname(fileURLToPath(import.meta.url))
-const repoRoot = join(sourceDir, '..', '..', '..')
 const defaultLogFileName = 'server.jsonl'
 
 export const logLevelChoices = [
@@ -61,17 +58,11 @@ export const resolveLogLevel = (
     return 'Info' satisfies LogLevel.LogLevel
   })
 
-const defaultInstalledLogDir = () =>
+const defaultLogDir = () =>
   join(process.env.XDG_STATE_HOME ?? join(homedir(), '.local', 'state'), 'sorato', 'logs')
 
-const defaultDevelopmentLogDir = () => join(repoRoot, 'var', 'log', 'sorato')
-
-const isProductionRuntime = () =>
-  process.env.NODE_ENV === 'production' || process.env.SORATO_ENV === 'production'
-
 export const resolveLogDir = () =>
-  process.env.SORATO_LOG_DIR ??
-  (isProductionRuntime() ? defaultInstalledLogDir() : defaultDevelopmentLogDir())
+  process.env.SORATO_LOG_DIR ?? defaultLogDir()
 
 export const resolveLogFile = () => join(resolveLogDir(), defaultLogFileName)
 
