@@ -37,6 +37,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # local data (sqlite, etc.)
 data
+.data
 
 # benchmark results
 .results
