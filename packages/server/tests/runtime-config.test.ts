@@ -3,7 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Effect } from 'effect'
 import { describe, expect, it } from '@effect/vitest'
-import { RuntimeConfigLive, RuntimeConfigService } from '../src/runtime-config.ts'
+import {
+  RuntimeConfigLive,
+  RuntimeConfigService,
+} from '../src/runtime-config.ts'
 
 const loadRuntimeConfig = (dir: string) =>
   Effect.gen(function* () {

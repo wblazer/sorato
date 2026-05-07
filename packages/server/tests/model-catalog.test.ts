@@ -40,7 +40,7 @@ const openai = expectDefined(
   'expected openai provider in generated models'
 )
 
-const supportedCount = (provider: typeof MODEL_PROVIDERS[number]) => {
+const supportedCount = (provider: (typeof MODEL_PROVIDERS)[number]) => {
   const adapter = PROVIDER_ADAPTERS[provider.id]
   return provider.models.filter((model) => adapter.supportsModel(model.id))
     .length
@@ -83,7 +83,9 @@ describe('ModelCatalog', () => {
         process.env.ANTHROPIC_API_KEY = 'test-anthropic'
         process.env.OPENAI_API_KEY = 'test-openai'
 
-        const models = yield* listModels('', dir).pipe(Effect.provide(testLayer))
+        const models = yield* listModels('', dir).pipe(
+          Effect.provide(testLayer)
+        )
 
         expect(models.models.length).toBe(
           supportedCount(anthropic) + supportedCount(openai)

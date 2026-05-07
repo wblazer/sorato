@@ -1,7 +1,11 @@
 import { createServer, type Server } from 'node:http'
 import { platform, release, arch } from 'node:os'
 import { Effect } from 'effect'
-import { ProviderAuthStore, ProviderOauthInfo, type ProviderAuthStoreApi } from './provider-auth.ts'
+import {
+  ProviderAuthStore,
+  ProviderOauthInfo,
+  type ProviderAuthStoreApi,
+} from './provider-auth.ts'
 
 const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const ISSUER = 'https://auth.openai.com'
@@ -31,7 +35,10 @@ const base64Url = (buffer: ArrayBuffer) =>
   Buffer.from(buffer).toString('base64url')
 
 const randomString = (length: number) =>
-  base64Url(crypto.getRandomValues(new Uint8Array(length)).buffer).slice(0, length)
+  base64Url(crypto.getRandomValues(new Uint8Array(length)).buffer).slice(
+    0,
+    length
+  )
 
 const pkce = async (): Promise<Pkce> => {
   const verifier = randomString(64)
@@ -52,7 +59,8 @@ const parseJwtClaims = (token: string): Record<string, unknown> | undefined => {
 }
 
 const accountIdFromClaims = (claims: Record<string, unknown>) => {
-  if (typeof claims.chatgpt_account_id === 'string') return claims.chatgpt_account_id
+  if (typeof claims.chatgpt_account_id === 'string')
+    return claims.chatgpt_account_id
   const auth = claims['https://api.openai.com/auth']
   if (
     auth &&
@@ -65,7 +73,12 @@ const accountIdFromClaims = (claims: Record<string, unknown>) => {
   const organizations = claims.organizations
   if (Array.isArray(organizations)) {
     const first = organizations[0]
-    if (first && typeof first === 'object' && 'id' in first && typeof first.id === 'string') {
+    if (
+      first &&
+      typeof first === 'object' &&
+      'id' in first &&
+      typeof first.id === 'string'
+    ) {
       return first.id
     }
   }
@@ -74,7 +87,10 @@ const accountIdFromClaims = (claims: Record<string, unknown>) => {
 export const accountIdFromTokens = (tokens: TokenResponse) => {
   const idClaims = tokens.id_token ? parseJwtClaims(tokens.id_token) : undefined
   const accessClaims = parseJwtClaims(tokens.access_token)
-  return (idClaims && accountIdFromClaims(idClaims)) || (accessClaims && accountIdFromClaims(accessClaims))
+  return (
+    (idClaims && accountIdFromClaims(idClaims)) ||
+    (accessClaims && accountIdFromClaims(accessClaims))
+  )
 }
 
 const htmlEscape = (value: string) =>
@@ -85,16 +101,17 @@ const htmlEscape = (value: string) =>
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;')
 
-const refreshOpenAiPromise: { current: Promise<ProviderOauthInfo> | undefined } = {
+const refreshOpenAiPromise: {
+  current: Promise<ProviderOauthInfo> | undefined
+} = {
   current: undefined,
 }
 
 const isExpired = (auth: ProviderOauthInfo) => auth.expires <= Date.now()
 
-const refreshOpenAiOauthWithStore = Effect.fn('OpenAiChatGptAuth.refreshWithStore')(function* (
-  store: ProviderAuthStoreApi,
-  current: ProviderOauthInfo
-) {
+const refreshOpenAiOauthWithStore = Effect.fn(
+  'OpenAiChatGptAuth.refreshWithStore'
+)(function* (store: ProviderAuthStoreApi, current: ProviderOauthInfo) {
   const tokens = yield* Effect.tryPromise({
     try: async () => {
       const response = await fetch(`${ISSUER}/oauth/token`, {
@@ -106,10 +123,14 @@ const refreshOpenAiOauthWithStore = Effect.fn('OpenAiChatGptAuth.refreshWithStor
           client_id: CLIENT_ID,
         }),
       })
-      if (!response.ok) throw new Error(`Token refresh failed: ${response.status}`)
+      if (!response.ok)
+        throw new Error(`Token refresh failed: ${response.status}`)
       return (await response.json()) as TokenResponse
     },
-    catch: (cause) => new Error(cause instanceof Error ? cause.message : 'Token refresh failed'),
+    catch: (cause) =>
+      new Error(
+        cause instanceof Error ? cause.message : 'Token refresh failed'
+      ),
   })
 
   const next = new ProviderOauthInfo({
@@ -124,26 +145,34 @@ const refreshOpenAiOauthWithStore = Effect.fn('OpenAiChatGptAuth.refreshWithStor
   return next
 })
 
-export const currentOpenAiOauth = Effect.fn('OpenAiChatGptAuth.current')(function* (
-  store: ProviderAuthStoreApi
-) {
-  const stored = yield* store.getAuth('openai')
-  if (stored?.type !== 'oauth') {
-    return yield* Effect.fail(new Error('OpenAI ChatGPT credentials are not available'))
-  }
-  if (!isExpired(stored)) return stored
+export const currentOpenAiOauth = Effect.fn('OpenAiChatGptAuth.current')(
+  function* (store: ProviderAuthStoreApi) {
+    const stored = yield* store.getAuth('openai')
+    if (stored?.type !== 'oauth') {
+      return yield* Effect.fail(
+        new Error('OpenAI ChatGPT credentials are not available')
+      )
+    }
+    if (!isExpired(stored)) return stored
 
-  if (!refreshOpenAiPromise.current) {
-    refreshOpenAiPromise.current = Effect.runPromise(
-      refreshOpenAiOauthWithStore(store, stored)
-    ).finally(() => {
-      refreshOpenAiPromise.current = undefined
-    })
+    if (!refreshOpenAiPromise.current) {
+      refreshOpenAiPromise.current = Effect.runPromise(
+        refreshOpenAiOauthWithStore(store, stored)
+      ).finally(() => {
+        refreshOpenAiPromise.current = undefined
+      })
+    }
+    return yield* Effect.promise(
+      () => refreshOpenAiPromise.current as Promise<ProviderOauthInfo>
+    )
   }
-  return yield* Effect.promise(() => refreshOpenAiPromise.current as Promise<ProviderOauthInfo>)
-})
+)
 
-const exchangeCode = async (code: string, verifier: string, port: number): Promise<TokenResponse> => {
+const exchangeCode = async (
+  code: string,
+  verifier: string,
+  port: number
+): Promise<TokenResponse> => {
   const response = await fetch(`${ISSUER}/oauth/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -190,17 +219,26 @@ const listen = (candidate: number) =>
       const code = url.searchParams.get('code')
       if (!code) {
         response.writeHead(400, { 'Content-Type': 'text/html' })
-        response.end('<h1>Sign-in failed</h1><p>Missing authorization code.</p>')
+        response.end(
+          '<h1>Sign-in failed</h1><p>Missing authorization code.</p>'
+        )
         return
       }
 
       try {
-        const tokens = await exchangeCode(code, current.pkce.verifier, current.port)
+        const tokens = await exchangeCode(
+          code,
+          current.pkce.verifier,
+          current.port
+        )
         await Effect.runPromise(saveTokens(current.store, tokens))
         response.writeHead(200, { 'Content-Type': 'text/html' })
-        response.end('<h1>Signed in to ChatGPT</h1><p>You can close this window and return to Sorato.</p>')
+        response.end(
+          '<h1>Signed in to ChatGPT</h1><p>You can close this window and return to Sorato.</p>'
+        )
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Sign-in failed'
+        const message =
+          error instanceof Error ? error.message : 'Sign-in failed'
         response.writeHead(500, { 'Content-Type': 'text/html' })
         response.end(`<h1>Sign-in failed</h1><p>${htmlEscape(message)}</p>`)
       }
@@ -223,7 +261,9 @@ const ensureServer = Effect.fn('OpenAiChatGptAuth.ensureServer')(function* () {
           return await listen(port)
         } catch {}
       }
-      throw new Error('Unable to start OAuth callback server on ports 1455 or 1457')
+      throw new Error(
+        'Unable to start OAuth callback server on ports 1455 or 1457'
+      )
     },
     catch: (cause) =>
       cause instanceof Error
@@ -232,27 +272,29 @@ const ensureServer = Effect.fn('OpenAiChatGptAuth.ensureServer')(function* () {
   })
 })
 
-export const startOpenAiOauth = Effect.fn('OpenAiChatGptAuth.start')(function* () {
-  const store = yield* ProviderAuthStore
-  const port = yield* ensureServer()
-  const codes = yield* Effect.promise(pkce)
-  const state = randomString(43)
-  pending.set(state, { store, pkce: codes, port })
-  const url = new URL(`${ISSUER}/oauth/authorize`)
-  url.search = new URLSearchParams({
-    response_type: 'code',
-    client_id: CLIENT_ID,
-    redirect_uri: `http://localhost:${port}${CALLBACK_PATH}`,
-    scope: 'openid profile email offline_access',
-    code_challenge: codes.challenge,
-    code_challenge_method: 'S256',
-    id_token_add_organizations: 'true',
-    codex_cli_simplified_flow: 'true',
-    state,
-    originator: ORIGINATOR,
-  }).toString()
-  return { url: url.toString() }
-})
+export const startOpenAiOauth = Effect.fn('OpenAiChatGptAuth.start')(
+  function* () {
+    const store = yield* ProviderAuthStore
+    const port = yield* ensureServer()
+    const codes = yield* Effect.promise(pkce)
+    const state = randomString(43)
+    pending.set(state, { store, pkce: codes, port })
+    const url = new URL(`${ISSUER}/oauth/authorize`)
+    url.search = new URLSearchParams({
+      response_type: 'code',
+      client_id: CLIENT_ID,
+      redirect_uri: `http://localhost:${port}${CALLBACK_PATH}`,
+      scope: 'openid profile email offline_access',
+      code_challenge: codes.challenge,
+      code_challenge_method: 'S256',
+      id_token_add_organizations: 'true',
+      codex_cli_simplified_flow: 'true',
+      state,
+      originator: ORIGINATOR,
+    }).toString()
+    return { url: url.toString() }
+  }
+)
 
 export const soratoUserAgent = () =>
   `sorato/0.0.1 (${platform()} ${release()}; ${arch()})`

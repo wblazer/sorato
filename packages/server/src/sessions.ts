@@ -6,10 +6,7 @@
  */
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { Cause, Effect, Fiber, Match } from 'effect'
-import {
-  SessionStorage,
-  type SessionStorageApi,
-} from './session/session.ts'
+import { SessionStorage, type SessionStorageApi } from './session/session.ts'
 import {
   Api,
   MessageNodeResponse,
@@ -77,7 +74,14 @@ const toMessageNodeResponse = (m: {
   })
 
 const modelOptions = (options?: {
-  readonly thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | undefined
+  readonly thinkingLevel?:
+    | 'off'
+    | 'minimal'
+    | 'low'
+    | 'medium'
+    | 'high'
+    | 'xhigh'
+    | undefined
   readonly mode?: string | undefined
 }): ModelOptions => ({
   ...(options?.thinkingLevel ? { thinkingLevel: options.thinkingLevel } : {}),
@@ -185,7 +189,9 @@ function createRunWorker(sessionId: string) {
 
       const joinedFiber = Fiber.join(fiber)
       yield* joinedFiber.pipe(
-        Effect.tap(() => Effect.logInfo('Session run worker joined active run')),
+        Effect.tap(() =>
+          Effect.logInfo('Session run worker joined active run')
+        ),
         Effect.tapCause((cause) =>
           Effect.logError('Session run worker observed active run failure', {
             cause: Cause.pretty(cause),
@@ -316,13 +322,8 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
       )
       .handle('create', ({ payload }) =>
         storage
-          .create(
-            payload.directory,
-            payload.title
-          )
-          .pipe(
-          Effect.map(toSessionResponse)
-        )
+          .create(payload.directory, payload.title)
+          .pipe(Effect.map(toSessionResponse))
       )
       .handle('get', ({ params }) =>
         storage.get(params.id).pipe(Effect.map(toSessionResponse))

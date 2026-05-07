@@ -54,7 +54,9 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
         Match.value(layer).pipe(
           Match.when(undefined, () =>
             Effect.die(
-              new Error(`Model is not supported by this server: ${request.model}`)
+              new Error(
+                `Model is not supported by this server: ${request.model}`
+              )
             )
           ),
           Match.orElse((layer) => Effect.succeed(layer))

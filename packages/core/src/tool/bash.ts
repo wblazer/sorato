@@ -164,9 +164,10 @@ export const BashHandler = {
         .join('\n')
 
       const truncation = truncateOutput(combined)
-      const logCommandResult = result.timedOut || result.exitCode !== 0
-        ? Effect.logWarning
-        : Effect.logDebug
+      const logCommandResult =
+        result.timedOut || result.exitCode !== 0
+          ? Effect.logWarning
+          : Effect.logDebug
       yield* logCommandResult('Bash tool command completed', {
         exitCode: result.exitCode,
         timedOut: result.timedOut ?? false,

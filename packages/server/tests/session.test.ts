@@ -102,10 +102,7 @@ describe('SessionStorage', () => {
     it.effect('creates a session with generated ID', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(
-          TEST_DIR,
-          'test session'
-        )
+        const session = yield* storage.create(TEST_DIR, 'test session')
 
         expect(session.id).toBeTruthy()
         expect(session.directory).toBe(TEST_DIR)
@@ -217,10 +214,7 @@ describe('SessionStorage', () => {
     it.effect('appends incrementally', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(
-          TEST_DIR,
-          'incremental'
-        )
+        const session = yield* storage.create(TEST_DIR, 'incremental')
 
         // First turn
         yield* storage.append(session.id, [
@@ -369,10 +363,7 @@ describe('SessionStorage', () => {
     it.effect('switches between branches', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(
-          TEST_DIR,
-          'switch-test'
-        )
+        const session = yield* storage.create(TEST_DIR, 'switch-test')
 
         // Branch A: system -> user -> assistantA
         yield* storage.append(session.id, [
@@ -457,10 +448,7 @@ describe('SessionStorage', () => {
     it.effect('advances head on append', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(
-          TEST_DIR,
-          'head-tracking'
-        )
+        const session = yield* storage.create(TEST_DIR, 'head-tracking')
 
         yield* storage.append(session.id, [userMsg('msg1')])
         const after1 = yield* storage.get(session.id)
@@ -476,10 +464,7 @@ describe('SessionStorage', () => {
     it.live('updates updatedAt on append', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(
-          TEST_DIR,
-          'timestamps'
-        )
+        const session = yield* storage.create(TEST_DIR, 'timestamps')
         const created = session.updatedAt
 
         // Small delay to ensure timestamp differs (it.live uses real clock)
@@ -490,7 +475,6 @@ describe('SessionStorage', () => {
         expect(after.updatedAt).toBeGreaterThan(created)
       }).pipe(Effect.provide(testLayer()))
     )
-
   })
 
   // -- Cascade delete -------------------------------------------------------

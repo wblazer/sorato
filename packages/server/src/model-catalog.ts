@@ -3,7 +3,12 @@ import { ModelError, ModelOption, ModelsResponse } from './api.ts'
 import { MODEL_PROVIDERS } from './models.generated.ts'
 import { PROVIDER_ADAPTERS } from './provider-adapters.ts'
 import { RuntimeConfigService } from './runtime-config.ts'
-import { getAuth, hasProviderAuth, ProviderAuthStore, providerApiKey } from './provider-auth.ts'
+import {
+  getAuth,
+  hasProviderAuth,
+  ProviderAuthStore,
+  providerApiKey,
+} from './provider-auth.ts'
 
 type Entry = {
   readonly id: string
@@ -99,7 +104,12 @@ const toEntry = Effect.fn('ModelCatalog.toEntry')(function* (
   const hasAuth = yield* hasProviderAuth(provider.id, provider.env)
 
   if (!adapter?.available(provider.env, apiKey) && !hasAuth) return []
-  if (provider.id === 'openai' && stored?.type === 'oauth' && !isOpenAiOauthModel(model.id)) return []
+  if (
+    provider.id === 'openai' &&
+    stored?.type === 'oauth' &&
+    !isOpenAiOauthModel(model.id)
+  )
+    return []
   if (!adapter.supportsModel(model.id)) return []
 
   if (apiKey && provider.env[0]) process.env[provider.env[0]] = apiKey
@@ -134,7 +144,9 @@ const availableEntries = () =>
       (error) =>
         new ModelError({
           message:
-            error instanceof Error ? error.message : 'Failed to read provider credentials',
+            error instanceof Error
+              ? error.message
+              : 'Failed to read provider credentials',
         })
     )
   )
@@ -226,14 +238,23 @@ const modelLayerEffect = Effect.fn('ModelCatalog.modelLayer')(function* (
   const adapter = PROVIDER_ADAPTERS[provider]
   const authStore = yield* ProviderAuthStore
   const auth = yield* getAuth(provider)
-  const apiKey = yield* providerApiKey(provider, MODEL_PROVIDERS.find((item) => item.id === provider)?.env ?? [])
+  const apiKey = yield* providerApiKey(
+    provider,
+    MODEL_PROVIDERS.find((item) => item.id === provider)?.env ?? []
+  )
   yield* Effect.logDebug('Model layer resolved', {
     provider,
     model,
     authType: auth?.type,
     hasApiKey: apiKey !== undefined,
   })
-  return adapter.layer(dataDir, { ...selection, id: model }, auth, apiKey, authStore)
+  return adapter.layer(
+    dataDir,
+    { ...selection, id: model },
+    auth,
+    apiKey,
+    authStore
+  )
 })
 
 export const modelLayer = (dataDir: string, selection: ModelSelection) =>

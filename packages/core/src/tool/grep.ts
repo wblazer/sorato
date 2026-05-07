@@ -244,9 +244,10 @@ export const GrepHandler = {
       const [failureMessage = 'ripgrep failed.'] = failureMessages
 
       const parsedMatches = parseMatches(result.stdout)
-      const logGrepResult = result.exitCode === 0 || result.exitCode === 1
-        ? Effect.logDebug
-        : Effect.logWarning
+      const logGrepResult =
+        result.exitCode === 0 || result.exitCode === 1
+          ? Effect.logDebug
+          : Effect.logWarning
       yield* logGrepResult('Grep tool completed search', {
         path: path ?? '.',
         include,

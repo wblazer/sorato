@@ -77,7 +77,9 @@ export const LocalSandbox = Layer.effect(Sandbox)(
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
 
-    const doAcquire = Effect.fn('Sandbox.acquire')(function* (directory: string) {
+    const doAcquire = Effect.fn('Sandbox.acquire')(function* (
+      directory: string
+    ) {
       const rootDir = directory
       yield* Effect.logInfo('Local sandbox acquired', { directory: rootDir })
 
@@ -117,148 +119,150 @@ export const LocalSandbox = Layer.effect(Sandbox)(
       // -- Shell service --------------------------------------------------
 
       const exec = Effect.fn('Shell.exec')(function* (input) {
-          const cwd = yield* Match.value(input.cwd).pipe(
-            Match.when(undefined, () => Effect.succeed(rootDir)),
-            Match.orElse((workingDirectory) =>
-              resolvePath(workingDirectory, 'exec')
+        const cwd = yield* Match.value(input.cwd).pipe(
+          Match.when(undefined, () => Effect.succeed(rootDir)),
+          Match.orElse((workingDirectory) =>
+            resolvePath(workingDirectory, 'exec')
+          )
+        )
+
+        // Merge non-interactive defaults under user env (user wins)
+        const mergedEnv: Record<string, string | undefined> = {
+          ...NON_INTERACTIVE_ENV,
+          ...input.env,
+        }
+        const stdin = Match.value(input.stdin).pipe(
+          Match.when(undefined, () => undefined),
+          Match.orElse((content) =>
+            Stream.succeed(new TextEncoder().encode(content))
+          )
+        )
+
+        yield* Effect.logDebug('Local sandbox command starting', {
+          cwd,
+          timeoutMs: input.timeout,
+          commandLength: input.command.length,
+          hasStdin: input.stdin !== undefined,
+        })
+
+        const command = ChildProcess.make('/bin/sh', ['-c', input.command], {
+          cwd,
+          env: mergedEnv,
+          extendEnv: true,
+          stdin,
+        })
+        const process = yield* childProcessSpawner.spawn(command).pipe(
+          Effect.mapError(
+            (error) =>
+              new SandboxError({
+                operation: 'exec',
+                message: `Failed to start command: ${input.command}`,
+                error,
+              })
+          )
+        )
+
+        /**
+         * Kill the process gracefully: SIGTERM → grace period → SIGKILL.
+         * Ignores errors from kill() since the process may already be dead.
+         */
+        const killGracefully = Effect.catch(
+          process.kill({
+            killSignal: 'SIGTERM',
+            forceKillAfter: `${KILL_GRACE_MS} millis`,
+          }),
+          () => Effect.void
+        )
+
+        /**
+         * Collect output and wait for exit. If a timeout is set, fork a
+         * background killer that fires after the deadline. The killer runs
+         * concurrently — it doesn't interfere with stream collection.
+         *
+         * Previous approach raced `process.exitCode` against the timeout
+         * *before* collecting streams. This consumed process state and
+         * caused stdout/stderr to be empty when a timeout was specified
+         * (even if the process finished well before the deadline).
+         */
+        const timedOutRef = yield* Ref.make(false)
+        const markTimedOutAndKill = Effect.andThen(
+          Ref.set(timedOutRef, true),
+          killGracefully
+        )
+        const maybeKillRunningProcess = Effect.when(
+          markTimedOutAndKill,
+          process.isRunning
+        )
+        const timeoutAction = maybeKillRunningProcess.pipe(Effect.asVoid)
+        const timeoutProgram = Option.map(
+          Option.fromNullishOr(input.timeout),
+          (timeout) =>
+            Effect.sleep(timeout).pipe(
+              Effect.andThen(timeoutAction),
+              Effect.catch(() => Effect.void)
             )
-          )
+        )
+        const timeoutFiber = yield* Option.getOrElse(
+          Option.map(timeoutProgram, (program) =>
+            Effect.forkChild(program).pipe(Effect.map(Option.some))
+          ),
+          () => Effect.succeed(Option.none())
+        )
 
-          // Merge non-interactive defaults under user env (user wins)
-          const mergedEnv: Record<string, string | undefined> = {
-            ...NON_INTERACTIVE_ENV,
-            ...input.env,
-          }
-          const stdin = Match.value(input.stdin).pipe(
-            Match.when(undefined, () => undefined),
-            Match.orElse((content) =>
-              Stream.succeed(new TextEncoder().encode(content))
-            )
+        const [stdout, stderr, code] = yield* Effect.all([
+          streamToString(process.stdout),
+          streamToString(process.stderr),
+          process.exitCode,
+        ] as const).pipe(
+          Effect.mapError(
+            (error) =>
+              new SandboxError({
+                operation: 'exec',
+                message: `Failed to execute command: ${input.command}`,
+                error,
+              })
           )
+        )
 
-          yield* Effect.logDebug('Local sandbox command starting', {
-            cwd,
-            timeoutMs: input.timeout,
-            commandLength: input.command.length,
-            hasStdin: input.stdin !== undefined,
-          })
+        yield* Option.match(timeoutFiber, {
+          onNone: () => Effect.void,
+          onSome: Fiber.interrupt,
+        })
 
-          const command = ChildProcess.make('/bin/sh', ['-c', input.command], {
-            cwd,
-            env: mergedEnv,
-            extendEnv: true,
-            stdin,
-          })
-          const process = yield* childProcessSpawner.spawn(command).pipe(
-            Effect.mapError(
-              (error) =>
-                new SandboxError({
-                  operation: 'exec',
-                  message: `Failed to start command: ${input.command}`,
-                  error,
-                })
-            )
-          )
+        const timedOut = yield* Ref.get(timedOutRef)
+        const result = {
+          stdout: stdout ?? '',
+          stderr: stderr ?? '',
+          exitCode: Number(code),
+        }
 
-          /**
-           * Kill the process gracefully: SIGTERM → grace period → SIGKILL.
-           * Ignores errors from kill() since the process may already be dead.
-           */
-          const killGracefully = Effect.catch(
-            process.kill({
-              killSignal: 'SIGTERM',
-              forceKillAfter: `${KILL_GRACE_MS} millis`,
-            }),
-            () => Effect.void
-          )
-
-          /**
-           * Collect output and wait for exit. If a timeout is set, fork a
-           * background killer that fires after the deadline. The killer runs
-           * concurrently — it doesn't interfere with stream collection.
-           *
-           * Previous approach raced `process.exitCode` against the timeout
-           * *before* collecting streams. This consumed process state and
-           * caused stdout/stderr to be empty when a timeout was specified
-           * (even if the process finished well before the deadline).
-           */
-          const timedOutRef = yield* Ref.make(false)
-          const markTimedOutAndKill = Effect.andThen(
-            Ref.set(timedOutRef, true),
-            killGracefully
-          )
-          const maybeKillRunningProcess = Effect.when(
-            markTimedOutAndKill,
-            process.isRunning
-          )
-          const timeoutAction = maybeKillRunningProcess.pipe(Effect.asVoid)
-          const timeoutProgram = Option.map(
-            Option.fromNullishOr(input.timeout),
-            (timeout) =>
-              Effect.sleep(timeout).pipe(
-                Effect.andThen(timeoutAction),
-                Effect.catch(() => Effect.void)
-              )
-          )
-          const timeoutFiber = yield* Option.getOrElse(
-            Option.map(timeoutProgram, (program) =>
-              Effect.forkChild(program).pipe(Effect.map(Option.some))
-            ),
-            () => Effect.succeed(Option.none())
-          )
-
-          const [stdout, stderr, code] = yield* Effect.all([
-            streamToString(process.stdout),
-            streamToString(process.stderr),
-            process.exitCode,
-          ] as const).pipe(
-            Effect.mapError(
-              (error) =>
-                new SandboxError({
-                  operation: 'exec',
-                  message: `Failed to execute command: ${input.command}`,
-                  error,
-                })
-            )
-          )
-
-          yield* Option.match(timeoutFiber, {
-            onNone: () => Effect.void,
-            onSome: Fiber.interrupt,
-          })
-
-          const timedOut = yield* Ref.get(timedOutRef)
-          const result = {
-            stdout: stdout ?? '',
-            stderr: stderr ?? '',
-            exitCode: Number(code),
-          }
-
-          const logExecResult = timedOut || result.exitCode !== 0
+        const logExecResult =
+          timedOut || result.exitCode !== 0
             ? Effect.logWarning
             : Effect.logDebug
-          yield* logExecResult('Local sandbox command completed', {
-            cwd,
-            exitCode: result.exitCode,
-            timedOut,
-            stdoutBytes: Buffer.byteLength(result.stdout, 'utf8'),
-            stderrBytes: Buffer.byteLength(result.stderr, 'utf8'),
-          })
+        yield* logExecResult('Local sandbox command completed', {
+          cwd,
+          exitCode: result.exitCode,
+          timedOut,
+          stdoutBytes: Buffer.byteLength(result.stdout, 'utf8'),
+          stderrBytes: Buffer.byteLength(result.stderr, 'utf8'),
+        })
 
-          return Match.value(timedOut).pipe(
-            Match.when(
-              true,
-              () => ({ ...result, timedOut: true }) satisfies ExecResult
-            ),
-            Match.orElse(() => result satisfies ExecResult)
-          )
-        }, Effect.scoped)
+        return Match.value(timedOut).pipe(
+          Match.when(
+            true,
+            () => ({ ...result, timedOut: true }) satisfies ExecResult
+          ),
+          Match.orElse(() => result satisfies ExecResult)
+        )
+      }, Effect.scoped)
 
       const shell: Shell = {
-        exec: (input) => exec(input).pipe(
-          Effect.annotateLogs({ package: 'core', subsystem: 'sandbox' }),
-          Effect.withLogSpan('sandbox.exec')
-        ),
+        exec: (input) =>
+          exec(input).pipe(
+            Effect.annotateLogs({ package: 'core', subsystem: 'sandbox' }),
+            Effect.withLogSpan('sandbox.exec')
+          ),
       }
 
       // -- Files service --------------------------------------------------
@@ -304,10 +308,11 @@ export const LocalSandbox = Layer.effect(Sandbox)(
         })
         return content
       })
-      const readFile: Files['readFile'] = (filePath) => doReadFile(filePath).pipe(
-        Effect.annotateLogs({ package: 'core', subsystem: 'sandbox' }),
-        Effect.withLogSpan('sandbox.readFile')
-      )
+      const readFile: Files['readFile'] = (filePath) =>
+        doReadFile(filePath).pipe(
+          Effect.annotateLogs({ package: 'core', subsystem: 'sandbox' }),
+          Effect.withLogSpan('sandbox.readFile')
+        )
 
       const doWriteFile = Effect.fn('Files.writeFile')(function* (
         filePath: string,
@@ -343,10 +348,11 @@ export const LocalSandbox = Layer.effect(Sandbox)(
           bytes: Buffer.byteLength(content, 'utf8'),
         })
       })
-      const writeFile: Files['writeFile'] = (filePath, content) => doWriteFile(filePath, content).pipe(
-        Effect.annotateLogs({ package: 'core', subsystem: 'sandbox' }),
-        Effect.withLogSpan('sandbox.writeFile')
-      )
+      const writeFile: Files['writeFile'] = (filePath, content) =>
+        doWriteFile(filePath, content).pipe(
+          Effect.annotateLogs({ package: 'core', subsystem: 'sandbox' }),
+          Effect.withLogSpan('sandbox.writeFile')
+        )
 
       const doGlob = Effect.fn('Files.glob')(function* (pattern: string) {
         const g = new Bun.Glob(pattern)
@@ -372,10 +378,11 @@ export const LocalSandbox = Layer.effect(Sandbox)(
         })
         return entries
       })
-      const glob: Files['glob'] = (pattern) => doGlob(pattern).pipe(
-        Effect.annotateLogs({ package: 'core', subsystem: 'sandbox' }),
-        Effect.withLogSpan('sandbox.glob')
-      )
+      const glob: Files['glob'] = (pattern) =>
+        doGlob(pattern).pipe(
+          Effect.annotateLogs({ package: 'core', subsystem: 'sandbox' }),
+          Effect.withLogSpan('sandbox.glob')
+        )
 
       const files: Files = { readFile, writeFile, glob }
 

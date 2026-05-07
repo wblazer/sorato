@@ -224,7 +224,11 @@ export const ReadFileHandler = {
 
       return result.text + footer
     }).pipe(
-      Effect.annotateLogs({ package: 'core', subsystem: 'tool', tool: 'ReadFile' }),
+      Effect.annotateLogs({
+        package: 'core',
+        subsystem: 'tool',
+        tool: 'ReadFile',
+      }),
       Effect.withLogSpan('tool.ReadFile')
     ),
 }
@@ -654,7 +658,11 @@ export const EditFileHandler = {
 
       return `Successfully applied ${edits.length} edit(s) to ${path}`
     }).pipe(
-      Effect.annotateLogs({ package: 'core', subsystem: 'tool', tool: 'EditFile' }),
+      Effect.annotateLogs({
+        package: 'core',
+        subsystem: 'tool',
+        tool: 'EditFile',
+      }),
       Effect.withLogSpan('tool.EditFile')
     ),
 }

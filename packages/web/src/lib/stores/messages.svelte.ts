@@ -292,10 +292,7 @@ function createMessagesStore() {
         }
       }
     } catch {
-      if (
-        opts?.clearPartsForRun &&
-        currentSessionId === sessionId
-      ) {
+      if (opts?.clearPartsForRun && currentSessionId === sessionId) {
         streamingParts = []
         if (activeRunId === opts.clearPartsForRun) {
           activeRunId = null

@@ -1,7 +1,11 @@
 import { Prompt } from 'effect/unstable/ai'
 import { Effect, Schema } from 'effect'
 import type { HarnessEvent, HarnessHook } from '@sorato/core'
-import { SessionStorage, StorageError, type SessionId } from './session/session.ts'
+import {
+  SessionStorage,
+  StorageError,
+  type SessionId,
+} from './session/session.ts'
 import { publish } from './event-bus.ts'
 
 const stoppedSystemMessage = {
@@ -30,7 +34,10 @@ export const createPersistenceHook = (
       })
 
       const newMessages = event.interrupted
-        ? [...encoded.content.slice(messageCountBeforeRun), stoppedSystemMessage]
+        ? [
+            ...encoded.content.slice(messageCountBeforeRun),
+            stoppedSystemMessage,
+          ]
         : encoded.content.slice(messageCountBeforeRun)
       if (newMessages.length === 0) return
 
@@ -44,7 +51,11 @@ export const createPersistenceHook = (
       publish({ _tag: 'MessagesAppended', sessionId })
       publish({ _tag: 'SessionUpdated', sessionId })
     }).pipe(
-      Effect.annotateLogs({ package: 'server', subsystem: 'run-persistence', sessionId }),
+      Effect.annotateLogs({
+        package: 'server',
+        subsystem: 'run-persistence',
+        sessionId,
+      }),
       Effect.withLogSpan('server.persistRun')
     ),
 })

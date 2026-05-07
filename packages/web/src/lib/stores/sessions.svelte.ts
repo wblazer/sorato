@@ -1,7 +1,4 @@
-import type {
-  ModelOptions,
-  Session,
-} from '$lib/types.js'
+import type { ModelOptions, Session } from '$lib/types.js'
 import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
 import { messagesStore } from './messages.svelte.js'

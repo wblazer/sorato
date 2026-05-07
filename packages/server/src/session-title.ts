@@ -45,7 +45,10 @@ const selectTitleModel = Effect.fn('SessionTitle.selectModel')(function* (
 
 const generateWithModel = Effect.fn('SessionTitle.generateWithModel')(
   function* (model: string, input: string) {
-    const services = yield* modelLayer(dataDir, { id: model, thinkingLevel: 'off' })
+    const services = yield* modelLayer(dataDir, {
+      id: model,
+      thinkingLevel: 'off',
+    })
     if (!services) return null
 
     const truncatedInput =
@@ -87,9 +90,10 @@ export const generateSessionTitle = Effect.fn('SessionTitle.generate')(
 
     return yield* generateWithModel(model, input).pipe(
       Effect.catchCause((cause) =>
-        Effect.logDebug('Session title generation failed', { model, cause }).pipe(
-          Effect.as(null)
-        )
+        Effect.logDebug('Session title generation failed', {
+          model,
+          cause,
+        }).pipe(Effect.as(null))
       )
     )
   }

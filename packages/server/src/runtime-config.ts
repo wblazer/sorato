@@ -236,29 +236,29 @@ export const RuntimeConfigLive = Layer.effect(
     })
     const projectConfigs = new Map<string, RuntimeConfig>()
 
-    const loadProjectConfig = Effect.fn('RuntimeConfig.loadProject')(
-      function* (dir: string) {
-        const cached = projectConfigs.get(dir)
-        if (cached) return cached
+    const loadProjectConfig = Effect.fn('RuntimeConfig.loadProject')(function* (
+      dir: string
+    ) {
+      const cached = projectConfigs.get(dir)
+      if (cached) return cached
 
-        const config = yield* loadFiles(projectConfigFiles(dir)).pipe(
-          Effect.map((projectConfig) => mergeConfig(globalConfig, projectConfig)),
-          Effect.catchCause((cause) =>
-            Effect.logError('Failed to load project runtime config', {
-              dir,
-              cause,
-            }).pipe(Effect.as(globalConfig))
-          )
+      const config = yield* loadFiles(projectConfigFiles(dir)).pipe(
+        Effect.map((projectConfig) => mergeConfig(globalConfig, projectConfig)),
+        Effect.catchCause((cause) =>
+          Effect.logError('Failed to load project runtime config', {
+            dir,
+            cause,
+          }).pipe(Effect.as(globalConfig))
         )
-        yield* Effect.logDebug('Loaded project runtime config', {
-          dir,
-          hasDefaultModel: config.default_model !== null,
-          hasTitleModel: config.title_model !== null,
-        })
-        projectConfigs.set(dir, config)
-        return config
-      }
-    )
+      )
+      yield* Effect.logDebug('Loaded project runtime config', {
+        dir,
+        hasDefaultModel: config.default_model !== null,
+        hasTitleModel: config.title_model !== null,
+      })
+      projectConfigs.set(dir, config)
+      return config
+    })
 
     return {
       get: loadProjectConfig,

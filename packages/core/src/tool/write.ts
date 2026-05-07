@@ -62,7 +62,11 @@ export const WriteFileHandler = {
       yield* Effect.logInfo('WriteFile tool wrote file', { path, bytes, lines })
       return `Wrote ${path} (${lines} lines, ${bytes} bytes)`
     }).pipe(
-      Effect.annotateLogs({ package: 'core', subsystem: 'tool', tool: 'WriteFile' }),
+      Effect.annotateLogs({
+        package: 'core',
+        subsystem: 'tool',
+        tool: 'WriteFile',
+      }),
       Effect.withLogSpan('tool.WriteFile')
     ),
 }

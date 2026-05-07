@@ -91,15 +91,15 @@ export const run = <
     // the uninterruptible outer region.
     return yield* Effect.uninterruptibleMask((restore) =>
       // biome-ignore lint/plugin/no-nested-effect-gen: cleanup and recovery need one outer uninterruptible generator around the interruptible loop
-        Effect.gen(function* () {
-          yield* Effect.logInfo('Harness run starting', {
-            messageCount: conversation.content.length,
-            hookCount: config.hooks?.length ?? 0,
-            hasToolkit: config.toolkit !== undefined,
-          })
+      Effect.gen(function* () {
+        yield* Effect.logInfo('Harness run starting', {
+          messageCount: conversation.content.length,
+          hookCount: config.hooks?.length ?? 0,
+          hasToolkit: config.toolkit !== undefined,
+        })
 
-          const exit = yield* Effect.exit(
-            restore(
+        const exit = yield* Effect.exit(
+          restore(
             // biome-ignore lint/plugin/no-nested-effect-gen: @effect/ai stream typing stays stable with the loop kept in one generator
             Effect.gen(function* () {
               // First turn: empty prompt — the conversation already
@@ -201,9 +201,12 @@ export const run = <
                 )
 
                 if (!hadToolCalls) break
-                yield* Effect.logDebug('Harness turn requested tool follow-up', {
-                  turn,
-                })
+                yield* Effect.logDebug(
+                  'Harness turn requested tool follow-up',
+                  {
+                    turn,
+                  }
+                )
 
                 // Turn completed — reset for next turn
                 currentTurnText = ''

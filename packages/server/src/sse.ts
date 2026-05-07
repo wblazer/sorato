@@ -145,11 +145,11 @@ function createSSEResponse(
         const isSessionEvent = (event: ServerEvent): boolean =>
           'sessionId' in event && event.sessionId === sessionId
 
-          const isSessionStreamEvent = (event: ServerEvent): boolean =>
-            event._tag === 'RunStart' ||
-            event._tag === 'RunEnd' ||
-            event._tag === 'RunFailed' ||
-            isContentEvent(event)
+        const isSessionStreamEvent = (event: ServerEvent): boolean =>
+          event._tag === 'RunStart' ||
+          event._tag === 'RunEnd' ||
+          event._tag === 'RunFailed' ||
+          isContentEvent(event)
 
         const writeSessionEvent = Match.type<ServerEvent>().pipe(
           Match.tagsExhaustive({
@@ -279,7 +279,9 @@ export const withSse = (
             }).pipe(
               Effect.andThen(
                 Effect.succeed(
-                  HttpServerResponse.fromWeb(createSSEResponse(sessionId, cursor))
+                  HttpServerResponse.fromWeb(
+                    createSSEResponse(sessionId, cursor)
+                  )
                 )
               )
             )

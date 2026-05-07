@@ -1,6 +1,11 @@
 import { Effect } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
-import { Api, AuthError, AuthOauthAuthorizeResponse, AuthSetResponse } from './api.ts'
+import {
+  Api,
+  AuthError,
+  AuthOauthAuthorizeResponse,
+  AuthSetResponse,
+} from './api.ts'
 import { startOpenAiOauth } from './openai-chatgpt-auth.ts'
 import { setApiKey } from './provider-auth.ts'
 
@@ -9,24 +14,33 @@ export const AuthLive = HttpApiBuilder.group(Api, 'auth', (handlers) =>
     .handle('set', ({ params, payload }) =>
       setApiKey(params.provider, payload.key.trim()).pipe(
         Effect.as(new AuthSetResponse({ ok: true })),
-        Effect.mapError((error) =>
-          new AuthError({
-            message:
-              error instanceof Error ? error.message : 'Failed to save provider credentials',
-          })
+        Effect.mapError(
+          (error) =>
+            new AuthError({
+              message:
+                error instanceof Error
+                  ? error.message
+                  : 'Failed to save provider credentials',
+            })
         )
       )
     )
     .handle('oauthAuthorize', ({ params }) => {
       if (params.provider !== 'openai') {
-        return Effect.fail(new AuthError({ message: 'OAuth is only supported for OpenAI' }))
+        return Effect.fail(
+          new AuthError({ message: 'OAuth is only supported for OpenAI' })
+        )
       }
       return startOpenAiOauth().pipe(
         Effect.map((result) => new AuthOauthAuthorizeResponse(result)),
-        Effect.mapError((error) =>
-          new AuthError({
-            message: error instanceof Error ? error.message : 'Failed to start ChatGPT sign-in',
-          })
+        Effect.mapError(
+          (error) =>
+            new AuthError({
+              message:
+                error instanceof Error
+                  ? error.message
+                  : 'Failed to start ChatGPT sign-in',
+            })
         )
       )
     })

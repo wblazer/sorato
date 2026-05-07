@@ -61,9 +61,9 @@ const SqliteClientLive = (filename: string) =>
 const StorageLive = SqliteSession({ path: sessionsDbPath }).pipe(
   Layer.provide(SqliteClientLive(sessionsDbPath))
 )
-const ProviderAuthLive = SqliteProviderAuthStore({ path: providerAuthDbPath }).pipe(
-  Layer.provide(SqliteClientLive(providerAuthDbPath))
-)
+const ProviderAuthLive = SqliteProviderAuthStore({
+  path: providerAuthDbPath,
+}).pipe(Layer.provide(SqliteClientLive(providerAuthDbPath)))
 
 // ── Serve ───────────────────────────────────────────────────────────
 

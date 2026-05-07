@@ -23,7 +23,9 @@ export interface AvailableModel {
     reasoning: boolean
     temperature: boolean
     toolCall: boolean
-    thinkingLevels: Array<'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'>
+    thinkingLevels: Array<
+      'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+    >
     modes: string[]
     limits: {
       context: number

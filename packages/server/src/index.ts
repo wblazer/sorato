@@ -20,7 +20,11 @@ export { publish, subscribe, createBusHook } from './event-bus.ts'
 export type { ContentEvent, ServerEvent } from './event-bus.ts'
 export { getReplayBufferSince } from './event-replay.ts'
 export type { StreamCursor } from './event-replay.ts'
-export type { ModelOptions, ModelSelection, ThinkingLevel } from './model-catalog.ts'
+export type {
+  ModelOptions,
+  ModelSelection,
+  ThinkingLevel,
+} from './model-catalog.ts'
 export { getRunningSessionIds, isRunning } from './run-registry.ts'
 export {
   MessageId,

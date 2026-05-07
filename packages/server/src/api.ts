@@ -57,9 +57,12 @@ export class ModelError extends Schema.TaggedErrorClass<ModelError>()(
   }
 ) {}
 
-export class AuthError extends Schema.TaggedErrorClass<AuthError>()('AuthError', {
-  message: Schema.String,
-}) {}
+export class AuthError extends Schema.TaggedErrorClass<AuthError>()(
+  'AuthError',
+  {
+    message: Schema.String,
+  }
+) {}
 
 export class AuthSetResponse extends Schema.Class<AuthSetResponse>(
   'AuthSetResponse'
@@ -191,7 +194,14 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
         modelOptions: Schema.optional(
           Schema.Struct({
             thinkingLevel: Schema.optional(
-              Schema.Literals(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'])
+              Schema.Literals([
+                'off',
+                'minimal',
+                'low',
+                'medium',
+                'high',
+                'xhigh',
+              ])
             ),
             mode: Schema.optional(Schema.String),
           })

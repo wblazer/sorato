@@ -1,6 +1,14 @@
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { Effect, FileSystem, Layer, Logger, LogLevel, References, Schema } from 'effect'
+import {
+  Effect,
+  FileSystem,
+  Layer,
+  Logger,
+  LogLevel,
+  References,
+  Schema,
+} from 'effect'
 import { loadGlobalRuntimeConfigFile } from './runtime-config.ts'
 
 const defaultLogFileName = 'server.jsonl'
@@ -39,9 +47,7 @@ const parseLogLevel = (source: string, value: string) =>
     })
   })
 
-export const resolveLogLevel = (
-  cliLogLevel: LogLevel.LogLevel | undefined
-) =>
+export const resolveLogLevel = (cliLogLevel: LogLevel.LogLevel | undefined) =>
   Effect.gen(function* () {
     if (cliLogLevel) return cliLogLevel
 
@@ -59,10 +65,13 @@ export const resolveLogLevel = (
   })
 
 const defaultLogDir = () =>
-  join(process.env.XDG_STATE_HOME ?? join(homedir(), '.local', 'state'), 'sorato', 'logs')
+  join(
+    process.env.XDG_STATE_HOME ?? join(homedir(), '.local', 'state'),
+    'sorato',
+    'logs'
+  )
 
-export const resolveLogDir = () =>
-  process.env.SORATO_LOG_DIR ?? defaultLogDir()
+export const resolveLogDir = () => process.env.SORATO_LOG_DIR ?? defaultLogDir()
 
 export const resolveLogFile = () => join(resolveLogDir(), defaultLogFileName)
 
