@@ -13,7 +13,7 @@
     "lint:fix": "biome lint . --write",
     "effect-solutions": "bun node_modules/effect-solutions/dist/cli.js",
     "web": "bun run --filter @agents/web dev",
-    "server": "bun run --filter @agents/agent dev"
+    "server": "bun run --filter @agents/server dev"
   },
   "devDependencies": {
     "@typescript/native-preview": "beta",

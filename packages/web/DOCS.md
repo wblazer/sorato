@@ -41,8 +41,8 @@ Today that especially applies to remembered model selection: it is client-owned 
 
 ## Related Context
 
-- `../agent/src/server/DOCS.md` — server-side transport and run lifecycle
-- `../agent/DOCS.md` — core agent architecture
+- `../server/src/DOCS.md` — server-side transport and run lifecycle
+- `../core/DOCS.md` — core agent architecture
 
 ## Development
 

@@ -1,0 +1,29 @@
+{
+  "name": "@agents/server",
+  "module": "src/index.ts",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./api": "./src/api.ts",
+    "./session": "./src/session/session.ts"
+  },
+  "scripts": {
+    "generate-models": "bun run scripts/generate-models.ts",
+    "typecheck": "tsgo --noEmit",
+    "test": "bun --bun vitest run",
+    "dev": "bun --env-file=../../.env --watch run src/main.ts",
+    "start": "bun --env-file=../../.env run src/main.ts"
+  },
+  "dependencies": {
+    "@agents/core": "workspace:*",
+    "@effect/ai-anthropic": "4.0.0-beta.60",
+    "@effect/ai-openai": "4.0.0-beta.60",
+    "@effect/platform-bun": "4.0.0-beta.60",
+    "@effect/sql-sqlite-bun": "4.0.0-beta.60",
+    "effect": "4.0.0-beta.60"
+  },
+  "devDependencies": {
+    "@effect/vitest": "4.0.0-beta.60",
+    "vitest": "^4.0.18"
+  }
+}

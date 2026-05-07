@@ -13,7 +13,8 @@ A coding agent with tree-structured conversations, tracked side effects, and dec
 
 Bun workspaces. Packages depend on each other via `workspace:*`.
 
-- `packages/agent/` — the coding agent: sandbox, tools, harness, session, server. See `packages/agent/DOCS.md`.
+- `packages/core/` — reusable agent runtime: sandbox, tools, harness. See `packages/core/DOCS.md`.
+- `packages/server/` — local coordinator/server: sessions, model availability, runtime config, SSE, HTTP. See `packages/server/DOCS.md`.
 - `packages/web/` — web UI with multi-server connection management. See `packages/web/DOCS.md`.
 
 ## Agent Map
