@@ -12,7 +12,7 @@
           variant: {
             default: 'bg-accent text-accent-foreground hover:bg-accent-hover',
             outline:
-              'border-border bg-surface text-foreground hover:bg-base-hover aria-expanded:bg-selected aria-expanded:text-foreground',
+              'border-border bg-surface text-foreground hover:bg-surface-hover aria-expanded:bg-selected aria-expanded:text-foreground',
             ghost:
               'hover:bg-base-hover hover:text-foreground aria-expanded:bg-selected aria-expanded:text-foreground',
             destructive:

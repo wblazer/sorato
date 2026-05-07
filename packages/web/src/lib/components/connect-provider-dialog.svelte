@@ -126,7 +126,7 @@
     {:else}
       <form class="space-y-4" onsubmit={(event) => { event.preventDefault(); void submit() }}>
         {#if provider.id === 'openai'}
-          <div class="rounded-lg border border-border bg-surface p-3">
+          <div class="rounded-lg border border-border p-3">
             <p class="text-sm font-medium text-foreground">ChatGPT subscription</p>
             <p class="mt-1 text-xs text-muted-foreground">
               Use your ChatGPT Plus, Pro, Team, Edu, or Enterprise access for Sorato.

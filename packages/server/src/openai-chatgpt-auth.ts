@@ -101,6 +101,67 @@ const htmlEscape = (value: string) =>
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;')
 
+const authPage = (options: {
+  readonly title: string
+  readonly message: string
+}) => {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>${htmlEscape(options.title)}</title>
+    <style>
+      :root {
+        --background: oklch(0.22 0.002 0);
+        --foreground: oklch(0.91 0.008 80);
+        --muted-foreground: oklch(0.66 0.006 80);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        padding: 1.5rem;
+        background: var(--background);
+        color: var(--foreground);
+        font-family: "Nunito Sans", ui-sans-serif, system-ui, sans-serif;
+      }
+
+      main {
+        width: min(100%, 28rem);
+        text-align: center;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.5rem, 5vw, 2rem);
+        line-height: 1.1;
+      }
+
+      p {
+        margin: 0.75rem 0 0;
+        color: var(--muted-foreground);
+        font-size: 1rem;
+        line-height: 1.6;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>${htmlEscape(options.title)}</h1>
+      <p>${htmlEscape(options.message)}</p>
+    </main>
+  </body>
+</html>`
+}
+
 const refreshOpenAiPromise: {
   current: Promise<ProviderOauthInfo> | undefined
 } = {
@@ -211,16 +272,24 @@ const listen = (candidate: number) =>
       const current = pending.get(state)
       pending.delete(state)
       if (!current) {
-        response.writeHead(400, { 'Content-Type': 'text/html' })
-        response.end('<h1>Sign-in failed</h1><p>Invalid OAuth state.</p>')
+        response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
+        response.end(
+          authPage({
+            title: 'Sign-in failed',
+            message: 'Invalid OAuth state.',
+          })
+        )
         return
       }
 
       const code = url.searchParams.get('code')
       if (!code) {
-        response.writeHead(400, { 'Content-Type': 'text/html' })
+        response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
         response.end(
-          '<h1>Sign-in failed</h1><p>Missing authorization code.</p>'
+          authPage({
+            title: 'Sign-in failed',
+            message: 'Missing authorization code.',
+          })
         )
         return
       }
@@ -232,15 +301,18 @@ const listen = (candidate: number) =>
           current.port
         )
         await Effect.runPromise(saveTokens(current.store, tokens))
-        response.writeHead(200, { 'Content-Type': 'text/html' })
+        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
         response.end(
-          '<h1>Signed in to ChatGPT</h1><p>You can close this window and return to Sorato.</p>'
+          authPage({
+            title: 'Signed in to ChatGPT',
+            message: 'You can close this window and return to Sorato.',
+          })
         )
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Sign-in failed'
-        response.writeHead(500, { 'Content-Type': 'text/html' })
-        response.end(`<h1>Sign-in failed</h1><p>${htmlEscape(message)}</p>`)
+        response.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' })
+        response.end(authPage({ title: 'Sign-in failed', message }))
       }
     })
     next.once('error', reject)
