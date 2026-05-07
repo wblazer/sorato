@@ -6,6 +6,7 @@ export type ActionId =
   | 'connection.add'
   | 'directory.open'
   | 'provider.connect'
+  | 'session.new'
 
 export type ActionContext = 'global' | string
 export type ActionPaletteVisibility = 'auto' | 'never'

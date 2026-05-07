@@ -1,7 +1,9 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js'
+      import { actionStore } from '$lib/stores/actions.svelte.js'
       import { sessionStore } from '$lib/stores/sessions.svelte.js'
       import { cn } from '$lib/utils.js'
+      import { onMount } from 'svelte'
       import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
 
       function formatRelativeTime(timestamp: number): string {
@@ -36,6 +38,20 @@
       function isSessionRunning(status: string) {
         return status === 'running'
       }
+
+      onMount(() => {
+        return actionStore.register({
+          id: 'session.new',
+          title: 'New Session',
+          category: 'Sessions',
+          description: 'Start composing a new session in the selected directory.',
+          keywords: ['chat', 'compose', 'conversation'],
+          enabled: () => !!sessionStore.selectedDirectory,
+          run: () => {
+            sessionStore.startComposing()
+          },
+        })
+      })
 
 </script>
 
