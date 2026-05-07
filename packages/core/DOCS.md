@@ -1,4 +1,4 @@
-# @agents/core
+# @sorato/core
 
 Reusable agent runtime primitives. This package answers "how does an agent run?" without owning product/session/server concerns.
 

@@ -9,7 +9,7 @@
  */
 import type { Prompt } from 'effect/unstable/ai'
 import { Cause, Effect, Layer, Match } from 'effect'
-import { CurrentFiles, CurrentShell, run, Sandbox } from '@agents/core'
+import { CurrentFiles, CurrentShell, run, Sandbox } from '@sorato/core'
 import { SessionStorage, type SessionId } from './session/session.ts'
 import { AllTools, SYSTEM_PROMPT } from './agent-config.ts'
 import { createBusHook, publish } from './event-bus.ts'

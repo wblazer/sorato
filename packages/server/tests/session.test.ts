@@ -13,7 +13,7 @@ import { SqliteSession } from '../src/session/sqlite-session.ts'
 // ---------------------------------------------------------------------------
 
 const testLayer = () => {
-  const path = join(tmpdir(), `agents-session-${crypto.randomUUID()}.db`)
+  const path = join(tmpdir(), `sorato-session-${crypto.randomUUID()}.db`)
   return SqliteSession({ path }).pipe(
     Layer.provide(SqliteClient.layer({ filename: path })),
     Layer.provide(BunServices.layer)

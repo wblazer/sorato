@@ -1,6 +1,6 @@
-# @agents/web
+# @sorato/web
 
-SvelteKit web interface for the agents system.
+SvelteKit web interface for Sorato.
 
 ## Architecture
 

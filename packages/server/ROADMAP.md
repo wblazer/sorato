@@ -55,7 +55,7 @@ The key differentiator. Every message gets associated filesystem changes that ca
 
 ## Phase 6: Polymorphic Execution
 
-Agents leave localhost. The decoupled execution model pays off.
+Sorato leaves localhost. The decoupled execution model pays off.
 
 - [ ] **Polymorphic session directories** — refactor directory handling to support repos, branches, not just local paths. A local server uses directories; a company server uses repo+branch identifiers that spawn remote sandboxes.
 - [ ] **Remote sandboxes** — SSH or API-based `Shell`/`Files` implementations. Same tool interfaces, different execution target.

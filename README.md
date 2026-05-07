@@ -1,4 +1,4 @@
-# agents
+# Sorato
 
 A coding agent built on Effect and Bun.
 
@@ -12,5 +12,5 @@ What makes it different:
 
 ```bash
 bun install
-bun run --filter @agents/server start   # run the server
+bun run --filter @sorato/server start   # run the server
 ```

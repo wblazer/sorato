@@ -19,7 +19,7 @@
           id: 'connection.add',
           title: 'Add Connection',
           category: 'Connections',
-          description: 'Add an agents server to the connection list.',
+          description: 'Add a Sorato server to the connection list.',
           keywords: ['server', 'endpoint', 'url'],
           run: () => {
             dialogOpen = true
@@ -35,7 +35,7 @@
 
   <h2 class="mt-4 text-lg font-semibold">No Server Connection</h2>
   <p class="mt-2 max-w-sm text-center text-sm text-muted-foreground">
-    You need to connect to an agents server to get started. Add a connection to
+    You need to connect to a Sorato server to get started. Add a connection to
     your local server or a remote instance.
   </p>
 

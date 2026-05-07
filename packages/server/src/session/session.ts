@@ -171,4 +171,4 @@ export interface SessionStorageApi {
 export class SessionStorage extends Context.Service<
   SessionStorage,
   SessionStorageApi
->()('@agents/SessionStorage') {}
+>()('@sorato/SessionStorage') {}

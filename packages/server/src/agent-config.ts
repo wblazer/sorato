@@ -14,7 +14,7 @@ import {
   Toolkit,
   WriteFile,
   WriteFileHandler,
-} from '@agents/core'
+} from '@sorato/core'
 
 export const SYSTEM_PROMPT = `You are a helpful coding agent. You have access to tools for reading, editing, writing, and searching files, as well as running shell commands. Use them as needed to help the user.
 

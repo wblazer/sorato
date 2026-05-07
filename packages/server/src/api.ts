@@ -1,5 +1,5 @@
 /**
- * HTTP API definition for the agents server.
+ * HTTP API definition for the Sorato server.
  *
  * Pure schema — no runtime behavior. Shared between server and (eventually)
  * a type-safe client generated via HttpApiClient.
@@ -272,7 +272,7 @@ export class AuthGroup extends HttpApiGroup.make('auth')
 
 // ── Root API ────────────────────────────────────────────────────────
 
-export class Api extends HttpApi.make('agents')
+export class Api extends HttpApi.make('sorato')
   .add(SessionsGroup)
   .add(DirectoriesGroup)
   .add(ModelsGroup)

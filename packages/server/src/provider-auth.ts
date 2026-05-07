@@ -53,7 +53,7 @@ export interface ProviderAuthStoreApi {
 export class ProviderAuthStore extends Context.Service<
   ProviderAuthStore,
   ProviderAuthStoreApi
->()('@agents/server/ProviderAuthStore') {}
+>()('@sorato/server/ProviderAuthStore') {}
 
 interface ProviderAuthRow {
   provider: string

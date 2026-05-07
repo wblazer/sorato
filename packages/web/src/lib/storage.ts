@@ -6,7 +6,7 @@
  * Future: swap to electron-store when Electron arrives.
  */
 
-const STORAGE_PREFIX = 'agents:'
+const STORAGE_PREFIX = 'sorato:'
 
 export interface Storage {
   get(key: string): string | null

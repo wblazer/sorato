@@ -137,7 +137,7 @@
       <Dialog.Description>
         {connection
           ? 'Update the server connection details.'
-          : 'Add a new agents server to connect to.'}
+          : 'Add a new Sorato server to connect to.'}
       </Dialog.Description>
     </Dialog.Header>
 

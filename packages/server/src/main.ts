@@ -4,7 +4,7 @@
  * Composes the API layer with SessionStorage (SQLite) and serves via Effect Platform.
  *
  * Data path resolution:
- *   AGENTS_DATA_DIR env var > XDG_DATA_HOME/agents > ~/.local/share/agents
+ *   SORATO_DATA_DIR env var > XDG_DATA_HOME/sorato > ~/.local/share/sorato
  */
 import { dirname, join } from 'node:path'
 import { Command, GlobalFlag } from 'effect/unstable/cli'
@@ -87,7 +87,7 @@ const HttpLive = HttpRouter.toHttpEffect(ApiLive).pipe(
   Layer.provide(BunHttpServer.layer({ port: 3100 }))
 )
 
-const server = Command.make('agents-server', {}, () =>
+const server = Command.make('sorato-server', {}, () =>
   Effect.gen(function* () {
     const cliLogLevel = yield* GlobalFlag.LogLevel
     const resolvedLogLevel = yield* resolveLogLevel(
@@ -103,7 +103,7 @@ const server = Command.make('agents-server', {}, () =>
       Effect.annotateLogs({ package: 'server', subsystem: 'startup' })
     )
   })
-).pipe(Command.withDescription('Run the local agents HTTP server'))
+).pipe(Command.withDescription('Run the local Sorato HTTP server'))
 
 Command.run(server, { version: '0.0.1' }).pipe(
   Effect.provide(BunServices.layer),

@@ -18,7 +18,7 @@
  */
 import { EventEmitter } from 'node:events'
 import { Effect } from 'effect'
-import type { HarnessEvent, HarnessHook } from '@agents/core'
+import type { HarnessEvent, HarnessHook } from '@sorato/core'
 import { appendReplayEvent } from './event-replay.ts'
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 import { Prompt } from 'effect/unstable/ai'
 import { Effect, Schema } from 'effect'
-import type { HarnessEvent, HarnessHook } from '@agents/core'
+import type { HarnessEvent, HarnessHook } from '@sorato/core'
 import { SessionStorage, StorageError, type SessionId } from './session/session.ts'
 import { publish } from './event-bus.ts'
 

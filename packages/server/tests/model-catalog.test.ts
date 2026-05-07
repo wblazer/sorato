@@ -60,7 +60,7 @@ describe('ModelCatalog', () => {
     () =>
       Effect.gen(function* () {
         const root = yield* Effect.tryPromise(() =>
-          mkdtemp(join(tmpdir(), 'agents-'))
+          mkdtemp(join(tmpdir(), 'sorato-'))
         )
         const xdg = join(root, 'xdg')
         const dir = join(root, 'project')
@@ -69,12 +69,12 @@ describe('ModelCatalog', () => {
         const prevOpenAi = process.env.OPENAI_API_KEY
 
         yield* Effect.tryPromise(() =>
-          mkdir(join(xdg, 'agents'), { recursive: true })
+          mkdir(join(xdg, 'sorato'), { recursive: true })
         )
         yield* Effect.tryPromise(() => mkdir(dir, { recursive: true }))
         yield* Effect.tryPromise(() =>
           writeFile(
-            join(xdg, 'agents', 'config.jsonc'),
+            join(xdg, 'sorato', 'config.jsonc'),
             JSON.stringify({ default_model: `openai/${openai.models[0]?.id}` })
           )
         )
@@ -105,7 +105,7 @@ describe('ModelCatalog', () => {
   it.effect('filters to providers with available credentials', () =>
     Effect.gen(function* () {
       const root = yield* Effect.tryPromise(() =>
-        mkdtemp(join(tmpdir(), 'agents-'))
+        mkdtemp(join(tmpdir(), 'sorato-'))
       )
       const dir = join(root, 'project')
       const prevXdg = process.env.XDG_CONFIG_HOME
@@ -135,7 +135,7 @@ describe('ModelCatalog', () => {
   it.effect('only lists generated catalog models supported by adapters', () =>
     Effect.gen(function* () {
       const root = yield* Effect.tryPromise(() =>
-        mkdtemp(join(tmpdir(), 'agents-'))
+        mkdtemp(join(tmpdir(), 'sorato-'))
       )
       const dir = join(root, 'project')
       const prevXdg = process.env.XDG_CONFIG_HOME
@@ -169,7 +169,7 @@ describe('ModelCatalog', () => {
   it.effect('accepts model selections with supported runtime variants', () =>
     Effect.gen(function* () {
       const root = yield* Effect.tryPromise(() =>
-        mkdtemp(join(tmpdir(), 'agents-'))
+        mkdtemp(join(tmpdir(), 'sorato-'))
       )
       const dir = join(root, 'project')
       const prevXdg = process.env.XDG_CONFIG_HOME

@@ -23,7 +23,7 @@ export interface RuntimeConfigApi {
 export class RuntimeConfigService extends Context.Service<
   RuntimeConfigService,
   RuntimeConfigApi
->()('@agents/RuntimeConfig') {}
+>()('@sorato/RuntimeConfig') {}
 
 export class RuntimeConfigError extends Schema.TaggedErrorClass<RuntimeConfigError>()(
   'RuntimeConfigError',
@@ -33,7 +33,7 @@ export class RuntimeConfigError extends Schema.TaggedErrorClass<RuntimeConfigErr
 ) {}
 
 const configRoot = () =>
-  join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'agents')
+  join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'sorato')
 
 const globalConfigFiles = () => [
   join(configRoot(), 'config.json'),
@@ -41,8 +41,8 @@ const globalConfigFiles = () => [
 ]
 
 const projectConfigFiles = (dir: string) => [
-  join(dir, '.agents', 'config.json'),
-  join(dir, '.agents', 'config.jsonc'),
+  join(dir, '.sorato', 'config.json'),
+  join(dir, '.sorato', 'config.jsonc'),
 ]
 
 const normalizeConfig = (cfg: RuntimeConfigFile): RuntimeConfig => ({

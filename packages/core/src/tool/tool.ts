@@ -1,7 +1,7 @@
 /**
  * Tool barrel — re-exports all agent tools.
  *
- * The package.json `exports` map points `@agents/core/tool` here.
+ * The package.json `exports` map points `@sorato/core/tool` here.
  */
 
 // Hashline protocol — content-hash anchored read + edit

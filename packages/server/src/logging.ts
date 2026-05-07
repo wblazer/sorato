@@ -48,9 +48,9 @@ export const resolveLogLevel = (
   Effect.gen(function* () {
     if (cliLogLevel) return cliLogLevel
 
-    const envLogLevel = process.env.AGENTS_LOG_LEVEL
+    const envLogLevel = process.env.SORATO_LOG_LEVEL
     if (envLogLevel !== undefined) {
-      return yield* parseLogLevel('AGENTS_LOG_LEVEL', envLogLevel)
+      return yield* parseLogLevel('SORATO_LOG_LEVEL', envLogLevel)
     }
 
     const config = yield* loadGlobalRuntimeConfigFile()
@@ -62,15 +62,15 @@ export const resolveLogLevel = (
   })
 
 const defaultInstalledLogDir = () =>
-  join(process.env.XDG_STATE_HOME ?? join(homedir(), '.local', 'state'), 'agents', 'logs')
+  join(process.env.XDG_STATE_HOME ?? join(homedir(), '.local', 'state'), 'sorato', 'logs')
 
-const defaultDevelopmentLogDir = () => join(repoRoot, 'var', 'log', 'agents')
+const defaultDevelopmentLogDir = () => join(repoRoot, 'var', 'log', 'sorato')
 
 const isProductionRuntime = () =>
-  process.env.NODE_ENV === 'production' || process.env.AGENTS_ENV === 'production'
+  process.env.NODE_ENV === 'production' || process.env.SORATO_ENV === 'production'
 
 export const resolveLogDir = () =>
-  process.env.AGENTS_LOG_DIR ??
+  process.env.SORATO_LOG_DIR ??
   (isProductionRuntime() ? defaultInstalledLogDir() : defaultDevelopmentLogDir())
 
 export const resolveLogFile = () => join(resolveLogDir(), defaultLogFileName)

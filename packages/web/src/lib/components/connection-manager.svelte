@@ -63,7 +63,7 @@
           id: 'connection.add',
           title: 'Add Connection',
           category: 'Connections',
-          description: 'Add an agents server to the connection list.',
+          description: 'Add a Sorato server to the connection list.',
           keywords: ['server', 'endpoint', 'url'],
           run: () => {
             editingConnection = null

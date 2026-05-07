@@ -1,5 +1,5 @@
 {
-  "name": "@agents/core",
+  "name": "@sorato/core",
   "module": "src/index.ts",
   "type": "module",
   "exports": {

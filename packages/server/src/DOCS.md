@@ -1,13 +1,13 @@
 # Server
 
-The local HTTP boundary for `@agents/server`.
+The local HTTP boundary for `@sorato/server`.
 
 This folder exists to adapt the library primitives to a long-lived local server process: typed HTTP endpoints, live event streaming, and in-memory coordination for active runs. If you are changing how the browser or another client talks to the agent, start here.
 
 ## What Belongs Here
 
 - Add code here when the change is about transport or server-owned runtime state: HTTP routes, SSE delivery, run lifecycle coordination, or local-dev process behavior.
-- Do not put core agent-loop logic here. If the change should also make sense in evals or a non-HTTP embedding, it probably belongs in `@agents/core` instead.
+- Do not put core agent-loop logic here. If the change should also make sense in evals or a non-HTTP embedding, it probably belongs in `@sorato/core` instead.
 
 ## Architectural Boundaries
 

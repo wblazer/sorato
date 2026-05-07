@@ -9,7 +9,7 @@ Agent tools — `@effect/ai Toolkit` tools that delegate to sandbox services.
 - `write.ts` — `WriteFile` tool for creating/overwriting files. Thin wrapper over `CurrentFiles.writeFile`. Parent directory creation is a sandbox concern.
 - `glob.ts` — `Glob` tool for file pattern matching. Delegates to `CurrentFiles.glob` with result capping at 500 entries to prevent context window explosions.
 - `grep.ts` — `Grep` tool for regex content search. Shells out to `rg` (ripgrep) via `CurrentShell`. Results sorted by file mtime (most recent first), capped at 100 matches. Requires `rg` in the sandbox — fails explicitly if missing.
-- `tool.ts` — barrel export for `@agents/core/tool` sub-path.
+- `tool.ts` — barrel export for `@sorato/core/tool` sub-path.
 
 ## How It Works
 

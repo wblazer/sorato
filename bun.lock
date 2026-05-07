@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "agents",
+      "name": "sorato",
       "devDependencies": {
         "@catenarycloud/linteffect": "0.0.4-0",
         "@effect/language-service": "^0.85.1",
@@ -14,20 +14,20 @@
       },
     },
     "packages/core": {
-      "name": "@agents/core",
+      "name": "@sorato/core",
       "dependencies": {
         "@effect/platform-bun": "4.0.0-beta.60",
         "effect": "4.0.0-beta.60",
       },
     },
     "packages/server": {
-      "name": "@agents/server",
+      "name": "@sorato/server",
       "dependencies": {
-        "@agents/core": "workspace:*",
         "@effect/ai-anthropic": "4.0.0-beta.60",
         "@effect/ai-openai": "4.0.0-beta.60",
         "@effect/platform-bun": "4.0.0-beta.60",
         "@effect/sql-sqlite-bun": "4.0.0-beta.60",
+        "@sorato/core": "workspace:*",
         "effect": "4.0.0-beta.60",
       },
       "devDependencies": {
@@ -36,7 +36,7 @@
       },
     },
     "packages/web": {
-      "name": "@agents/web",
+      "name": "@sorato/web",
       "version": "0.0.1",
       "dependencies": {
         "@tanstack/hotkeys": "^0.4.0",
@@ -64,12 +64,6 @@
     },
   },
   "packages": {
-    "@agents/core": ["@agents/core@workspace:packages/core"],
-
-    "@agents/server": ["@agents/server@workspace:packages/server"],
-
-    "@agents/web": ["@agents/web@workspace:packages/web"],
-
     "@biomejs/biome": ["@biomejs/biome@2.4.14", "", { "optionalDependencies": { "@biomejs/cli-darwin-arm64": "2.4.14", "@biomejs/cli-darwin-x64": "2.4.14", "@biomejs/cli-linux-arm64": "2.4.14", "@biomejs/cli-linux-arm64-musl": "2.4.14", "@biomejs/cli-linux-x64": "2.4.14", "@biomejs/cli-linux-x64-musl": "2.4.14", "@biomejs/cli-win32-arm64": "2.4.14", "@biomejs/cli-win32-x64": "2.4.14" }, "bin": { "biome": "bin/biome" } }, "sha512-TmAvxOEgrpLypzVGJ8FulIZnlyA9TxrO1hyqYrCz9r+bwma9xXxuLA5IuYnj55XQneFx460KjRbx6SWGLkg3bQ=="],
 
     "@biomejs/cli-darwin-arm64": ["@biomejs/cli-darwin-arm64@2.4.14", "", { "os": "darwin", "cpu": "arm64" }, "sha512-XvgoE9XOawUOQPdmvs4J7wPhi/DLwSCGks3AlPJDmh34O0awRTqCED1HRcRDdpf1Zrp4us4MGOOdIxNpbqNF5Q=="],
@@ -289,6 +283,12 @@
     "@rollup/rollup-win32-x64-gnu": ["@rollup/rollup-win32-x64-gnu@4.60.3", "", { "os": "win32", "cpu": "x64" }, "sha512-E5Eb5H/DpxaoXH++Qkv28RcUJboMopmdDUALBczvHMf7hNIxaDZqwY5lK12UK1BHacSmvupoEWGu+n993Z0y1A=="],
 
     "@rollup/rollup-win32-x64-msvc": ["@rollup/rollup-win32-x64-msvc@4.60.3", "", { "os": "win32", "cpu": "x64" }, "sha512-hPt/bgL5cE+Qp+/TPHBqptcAgPzgj46mPcg/16zNUmbQk0j+mOEQV/+Lqu8QRtDV3Ek95Q6FeFITpuhl6OTsAA=="],
+
+    "@sorato/core": ["@sorato/core@workspace:packages/core"],
+
+    "@sorato/server": ["@sorato/server@workspace:packages/server"],
+
+    "@sorato/web": ["@sorato/web@workspace:packages/web"],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 

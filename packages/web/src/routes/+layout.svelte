@@ -35,7 +35,7 @@
 
 <svelte:head>
   <link rel="icon" href={favicon} />
-  <title>Agents</title>
+  <title>Sorato</title>
 </svelte:head>
 
 <GlobalActionHost />

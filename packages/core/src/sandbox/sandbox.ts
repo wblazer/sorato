@@ -77,7 +77,7 @@ export interface Shell {
 
 /** Per-scenario shell service. Tools that execute commands require this in their `R`. */
 export class CurrentShell extends Context.Service<CurrentShell, Shell>()(
-  '@agents/Shell'
+  '@sorato/Shell'
 ) {}
 
 // ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ export interface Files {
 
 /** Per-scenario files service. Tools that access files require this in their `R`. */
 export class CurrentFiles extends Context.Service<CurrentFiles, Files>()(
-  '@agents/Files'
+  '@sorato/Files'
 ) {}
 
 // ---------------------------------------------------------------------------
@@ -148,5 +148,5 @@ export interface SandboxFactory {
  * The runner uses this to acquire sessions per scenario.
  */
 export class Sandbox extends Context.Service<Sandbox, SandboxFactory>()(
-  '@agents/Sandbox'
+  '@sorato/Sandbox'
 ) {}

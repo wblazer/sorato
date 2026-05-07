@@ -16,7 +16,7 @@ System --- User_1 --- Assist_1 --+-- User_2  --- Assist_2  (branch A)
                                  +-- User_2' --- Assist_2' (branch B)
 ```
 
-Agents explore. They try things, hit walls, backtrack. A tree makes that structure visible and navigable. You can try N approaches in parallel, compare results, continue from the best one.
+Sorato is built for exploration. Agents try things, hit walls, backtrack. A tree makes that structure visible and navigable. You can try N approaches in parallel, compare results, continue from the best one.
 
 ### Tracked Side Effects
 

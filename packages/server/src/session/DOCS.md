@@ -32,5 +32,5 @@ System ─── User₁ ─── Assist₁ ─┬─ User₂  ─── Assist
 
 ## Related Context
 
-- `@agents/core` — produces conversations (`Prompt.Prompt`) that session storage persists through server hooks
+- `@sorato/core` — produces conversations (`Prompt.Prompt`) that session storage persists through server hooks
 - `@effect/ai` `Prompt` module — the message/part schema that session storage round-trips

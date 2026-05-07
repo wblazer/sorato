@@ -1,8 +1,8 @@
 /**
- * @agents/core — agent primitives for building AI systems
+ * @sorato/core — agent primitives for building AI systems
  *
  * Re-exports the core agent primitives so consumers can do:
- *   import { Sandbox, run } from "@agents/core"
+ *   import { Sandbox, run } from "@sorato/core"
  */
 
 // Sandbox

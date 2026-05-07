@@ -1,4 +1,4 @@
-# Agents
+# Sorato
 
 A coding agent with tree-structured conversations, tracked side effects, and decoupled execution.
 
