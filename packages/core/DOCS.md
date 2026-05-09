@@ -1,18 +1,11 @@
 # @sorato/core
 
-Reusable agent runtime primitives. This package answers "how does an agent run?" without owning product/session/server concerns.
+Reusable agent runtime primitives.
 
-## Architecture
+Core runs agents with a provided `LanguageModel` and sandbox services. It does not own HTTP, SSE, persistent sessions, provider auth, model availability, or browser state.
 
-- `src/harness/` — the agent loop, lifecycle events, and hooks.
-- `src/sandbox/` — execution boundary with `Shell` and `Files` services.
-- `src/tool/` — `@effect/ai Toolkit` tool declarations and handlers backed by sandbox services.
+## Pointers
 
-## Boundary
-
-Core consumes a provided `LanguageModel` and emits lifecycle events through hooks. It does not know about HTTP, SSE, persistent sessions, model availability, provider auth, or browser clients.
-
-## Related Context
-
-- `../server/` — coordinator that persists sessions, resolves models, streams events, and invokes core.
-- `../web/` — browser client for the server.
+- `src/harness/` - agent loop, lifecycle events, hooks
+- `src/sandbox/` - execution boundary services
+- `src/tool/` - toolkit declarations and handlers
