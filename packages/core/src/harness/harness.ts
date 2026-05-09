@@ -85,10 +85,11 @@ export interface HarnessConfig<
   readonly systemPrompt?: string | undefined
 
   /**
-   * The toolkit — tools + handlers. Accepts either a resolved `WithHandler`
-   * or a `Toolkit` Effect (which resolves handlers from the Effect context).
+   * The toolkit — tools + handlers. Pass `Toolkit.empty` for no-tool runs.
+   * Accepts either a resolved `WithHandler` or a `Toolkit` Effect (which
+   * resolves handlers from the Effect context).
    */
-  readonly toolkit?: LanguageModel.ToolkitInput<Tools> | undefined
+  readonly toolkit: LanguageModel.ToolkitInput<Tools>
 
   /** Lifecycle hooks. All hooks run for every event — compose freely. */
   readonly hooks?: ReadonlyArray<HarnessHook<HookE, HookR>> | undefined

@@ -79,6 +79,99 @@ export const run = <
     // never fires when the stream is interrupted mid-text.
     let currentTurnText = ''
 
+    const runTurn = Effect.fn('Harness.runTurn')(function* (
+      turn: number,
+      prompt: Prompt.RawInput
+    ) {
+      let hadToolCalls = false
+      currentTurnText = ''
+      yield* Effect.logDebug('Harness turn starting', { turn })
+
+      const stream = chat.streamText({
+        prompt,
+        toolkit: config.toolkit,
+      })
+
+      yield* Stream.runForEach(
+        stream,
+        (part: Response.StreamPart<Tools>) =>
+          // biome-ignore lint/plugin/no-nested-effect-gen: keeping the streamed part handling in one generator preserves precise narrowing
+          Effect.gen(function* () {
+            switch (part.type) {
+              case 'text-delta': {
+                outputText += part.delta
+                currentTurnText += part.delta
+                yield* fireHooks({
+                  _tag: 'TextDelta',
+                  delta: part.delta,
+                })
+                break
+              }
+              case 'reasoning-delta': {
+                yield* fireHooks({
+                  _tag: 'ReasoningDelta',
+                  delta: part.delta,
+                })
+                break
+              }
+              case 'tool-call': {
+                hadToolCalls = true
+                yield* Effect.logInfo('Harness tool call received', {
+                  turn,
+                  toolCallId: part.id,
+                  toolName: part.name,
+                })
+                yield* fireHooks({
+                  _tag: 'ToolCall',
+                  id: part.id,
+                  name: part.name,
+                  params: part.params,
+                })
+                break
+              }
+              case 'tool-result': {
+                const logToolResult = Match.value(part.isFailure).pipe(
+                  Match.when(true, () => Effect.logWarning),
+                  Match.orElse(() => Effect.logDebug)
+                )
+                yield* logToolResult('Harness tool result received', {
+                  turn,
+                  toolCallId: part.id,
+                  toolName: part.name,
+                  isFailure: part.isFailure,
+                })
+                yield* fireHooks({
+                  _tag: 'ToolResult',
+                  id: part.id,
+                  name: part.name,
+                  result: part.result,
+                  isFailure: part.isFailure,
+                })
+                break
+              }
+              case 'finish': {
+                // Turn completed normally — clear currentTurnText so the
+                // interrupt path knows there's nothing to recover.
+                currentTurnText = ''
+                const inputTokens = part.usage.inputTokens.total ?? 0
+                const outputTokens = part.usage.outputTokens.total ?? 0
+                usage.inputTokens += inputTokens
+                usage.outputTokens += outputTokens
+                usage.totalTokens += inputTokens + outputTokens
+                yield* Effect.logDebug('Harness turn finished', {
+                  turn,
+                  inputTokens,
+                  outputTokens,
+                })
+                break
+              }
+            }
+          })
+      )
+
+      return hadToolCalls
+    })
+
     yield* fireHooks({ _tag: 'RunStart' })
 
     // The agent loop runs interruptibly so the user can stop it mid-
@@ -109,97 +202,7 @@ export const run = <
               let prompt: Prompt.RawInput = [] as Array<Prompt.MessageEncoded>
 
               for (let turn = 0; turn < MAX_TURNS; turn++) {
-                let hadToolCalls = false
-                currentTurnText = ''
-                yield* Effect.logDebug('Harness turn starting', { turn })
-
-                let stream = chat.streamText({ prompt }) as Stream.Stream<
-                  Response.StreamPart<Tools>,
-                  AiError.AiError,
-                  LanguageModel.LanguageModel | HookR
-                >
-                if (config.toolkit !== undefined) {
-                  stream = chat.streamText({ prompt, toolkit: config.toolkit })
-                }
-
-                yield* Stream.runForEach(
-                  stream,
-                  (part: Response.StreamPart<Tools>) =>
-                    // biome-ignore lint/plugin/no-nested-effect-gen: keeping the streamed part handling in one generator preserves precise narrowing
-                    Effect.gen(function* () {
-                      switch (part.type) {
-                        case 'text-delta': {
-                          outputText += part.delta
-                          currentTurnText += part.delta
-                          yield* fireHooks({
-                            _tag: 'TextDelta',
-                            delta: part.delta,
-                          })
-                          break
-                        }
-                        case 'reasoning-delta': {
-                          yield* fireHooks({
-                            _tag: 'ReasoningDelta',
-                            delta: part.delta,
-                          })
-                          break
-                        }
-                        case 'tool-call': {
-                          hadToolCalls = true
-                          yield* Effect.logInfo('Harness tool call received', {
-                            turn,
-                            toolCallId: part.id,
-                            toolName: part.name,
-                          })
-                          yield* fireHooks({
-                            _tag: 'ToolCall',
-                            id: part.id,
-                            name: part.name,
-                            params: part.params,
-                          })
-                          break
-                        }
-                        case 'tool-result': {
-                          const logToolResult = Match.value(part.isFailure).pipe(
-                            Match.when(true, () => Effect.logWarning),
-                            Match.orElse(() => Effect.logDebug)
-                          )
-                          yield* logToolResult('Harness tool result received', {
-                            turn,
-                            toolCallId: part.id,
-                            toolName: part.name,
-                            isFailure: part.isFailure,
-                          })
-                          yield* fireHooks({
-                            _tag: 'ToolResult',
-                            id: part.id,
-                            name: part.name,
-                            result: part.result,
-                            isFailure: part.isFailure,
-                          })
-                          break
-                        }
-                        case 'finish': {
-                          // Turn completed normally — clear
-                          // currentTurnText so the interrupt
-                          // path knows there's nothing to recover.
-                          currentTurnText = ''
-                          const inputTokens = part.usage.inputTokens.total ?? 0
-                          const outputTokens =
-                            part.usage.outputTokens.total ?? 0
-                          usage.inputTokens += inputTokens
-                          usage.outputTokens += outputTokens
-                          usage.totalTokens += inputTokens + outputTokens
-                          yield* Effect.logDebug('Harness turn finished', {
-                            turn,
-                            inputTokens,
-                            outputTokens,
-                          })
-                          break
-                        }
-                      }
-                    })
-                )
+                const hadToolCalls = yield* runTurn(turn, prompt)
 
                 if (!hadToolCalls) break
                 yield* Effect.logDebug(
