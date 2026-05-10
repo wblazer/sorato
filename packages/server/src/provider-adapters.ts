@@ -55,6 +55,7 @@ const CodexRequestBody = Schema.Struct({
     )
   ),
 })
+const CodexRequestRecord = Schema.Record(Schema.String, Schema.Unknown)
 
 const modelIds = (provider: ProviderId): ReadonlySet<string> =>
   new Set<string>(
@@ -132,9 +133,9 @@ const withCodexInstructions = (
 ) => {
   if (request.body._tag !== 'Uint8Array') return request
 
-  const body = Schema.decodeUnknownSync(CodexRequestBody)(
-    JSON.parse(new TextDecoder().decode(request.body.body))
-  )
+  const parsed = JSON.parse(new TextDecoder().decode(request.body.body))
+  const rawBody = Schema.decodeUnknownSync(CodexRequestRecord)(parsed)
+  const body = Schema.decodeUnknownSync(CodexRequestBody)(parsed)
   const input = body.input ?? []
   const instructionIndex = input.findIndex(
     (item) =>
@@ -152,7 +153,7 @@ const withCodexInstructions = (
 
   return request.pipe(
     HttpClientRequest.bodyJsonUnsafe({
-      ...body,
+      ...rawBody,
       instructions,
       store: false,
       input: input.filter((_, index) => index !== instructionIndex),
