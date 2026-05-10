@@ -36,24 +36,26 @@ export const ProviderAuthDatabase = Schema.Record(
 export type ProviderAuthDatabase = typeof ProviderAuthDatabase.Type
 export type ProviderAuth = ProviderAuthDatabase[string]
 
-// oxlint-disable-next-line sorato/no-effect-type-alias, sorato/no-manual-effect-channels -- service contracts expose typed method effects
-type AuthEffect<A> = Effect.Effect<A, AuthError>
-
 export interface ProviderAuthStoreApi {
-  readonly getAuth: (provider: string) => AuthEffect<ProviderAuth | undefined>
-  readonly setApiKey: (provider: string, key: string) => AuthEffect<void>
+  readonly getAuth: (
+    provider: string
+  ) => Effect.Effect<ProviderAuth | undefined, AuthError>
+  readonly setApiKey: (
+    provider: string,
+    key: string
+  ) => Effect.Effect<void, AuthError>
   readonly setOauth: (
     provider: string,
     info: Omit<ProviderOauthInfo, 'type'>
-  ) => AuthEffect<void>
+  ) => Effect.Effect<void, AuthError>
   readonly providerApiKey: (
     provider: string,
     envKeys: ReadonlyArray<string>
-  ) => AuthEffect<string | undefined>
+  ) => Effect.Effect<string | undefined, AuthError>
   readonly hasProviderAuth: (
     provider: string,
     envKeys: ReadonlyArray<string>
-  ) => AuthEffect<boolean>
+  ) => Effect.Effect<boolean, AuthError>
 }
 
 export class ProviderAuthStore extends Context.Service<

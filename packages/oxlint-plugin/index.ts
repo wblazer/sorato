@@ -392,8 +392,22 @@ const noEffectTypeAlias = rule(
   })
 )
 
+const isDeclarationContract = (node: ESTree.Node) => {
+  let parent = node.parent
+  while (parent) {
+    if (
+      parent.type === 'TSInterfaceDeclaration' ||
+      parent.type === 'TSTypeLiteral'
+    ) {
+      return true
+    }
+    parent = parent.parent
+  }
+  return false
+}
+
 const noManualEffectChannels = rule(
-  'Avoid manual Effect channel tuples. Let Effect/Layer return types infer from the value you return.',
+  'Avoid manual Effect channel tuples on implementations. Use explicit Effect method types only at declaration boundaries.',
   (context) => ({
     TSTypeReference(node) {
       const path = memberPath(node.typeName)
@@ -404,6 +418,7 @@ const noManualEffectChannels = rule(
       )
         return
       if ((node.typeArguments?.params.length ?? 0) >= 2) {
+        if (isDeclarationContract(node)) return
         reportRule(
           context,
           node,
