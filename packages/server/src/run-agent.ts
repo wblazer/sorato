@@ -22,8 +22,9 @@ import { generateSessionTitle } from './session-title.ts'
 
 export const runAgent = (sessionId: SessionId, request: RunRequest) => {
   const runId = crypto.randomUUID()
+  let runFailed = false
   const finalizeRun = Effect.sync(() => {
-    endEventReplay(sessionId, runId)
+    endEventReplay(sessionId, runId, runFailed ? 'failed' : 'completed')
     publish({ _tag: 'RunEnd', sessionId, runId })
   })
 
@@ -145,12 +146,12 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
 
     yield* Effect.logInfo('Agent run completed harness', { runId })
   }).pipe(
-    Effect.ensuring(finalizeRun),
     Effect.catchCause((cause) =>
       Effect.gen(function* () {
         if (Cause.hasInterruptsOnly(cause)) {
           yield* Effect.logInfo('Agent run interrupted', { runId })
         } else {
+          runFailed = true
           yield* Effect.logError('Agent run failed', {
             runId,
             cause: Cause.pretty(cause),
@@ -164,6 +165,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
         }
       })
     ),
+    Effect.ensuring(finalizeRun),
     Effect.annotateLogs({
       package: 'server',
       subsystem: 'run-agent',

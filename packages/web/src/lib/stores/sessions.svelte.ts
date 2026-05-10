@@ -3,6 +3,7 @@ import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
 import { messagesStore } from './messages.svelte.js'
 import { modelsStore } from './models.svelte.js'
+import { onSessionRefreshRequest } from './session-refresh-bus.js'
 
 export interface QueuedMessageDraft {
   id: string
@@ -55,6 +56,10 @@ function createSessionStore() {
   let queuedMessages = $state(new Map<string, QueuedMessageDraft[]>())
   let pendingRunStarts = $state(new Map<string, number>())
   let sessionErrors = $state(new Map<string, string>())
+
+  onSessionRefreshRequest((sessionId) => {
+    void refreshSession(sessionId)
+  })
 
   sseStore.onEvent((event) => {
     if (event._tag === 'RunStart') {

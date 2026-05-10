@@ -180,3 +180,14 @@ export type ServerEvent =
   | { _tag: 'RunStart'; sessionId: string; runId: string }
   | { _tag: 'RunEnd'; sessionId: string; runId: string }
   | { _tag: 'RunFailed'; sessionId: string; runId: string; message: string }
+  | {
+      _tag: 'ReplayReset'
+      sessionId: string
+      runId: string
+      reason:
+        | 'run_completed'
+        | 'run_failed'
+        | 'replay_unavailable'
+        | 'replay_gap'
+      refetch: true
+    }

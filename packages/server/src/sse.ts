@@ -10,10 +10,7 @@
  *   - `since` (optional, session streams only) — replay content events after
  *     the `runId:eventId` cursor before switching to live delivery
  */
-import {
-  HttpRouter,
-  HttpServerResponse,
-} from 'effect/unstable/http'
+import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
 import { Effect, Match, Queue, Scope, Stream } from 'effect'
 import {
   isContentEvent,
@@ -23,6 +20,7 @@ import {
 } from './event-bus.ts'
 import {
   getReplayBufferSince,
+  getReplayResetReason,
   getReplaySnapshot,
   type StreamCursor,
 } from './event-replay.ts'
@@ -63,6 +61,7 @@ const formatEvent = Match.type<ServerEvent>().pipe(
     RunFailed: formatLifecycleEvent,
     RunStart: formatLifecycleEvent,
     SessionUpdated: formatLifecycleEvent,
+    ReplayReset: formatLifecycleEvent,
     ReasoningDelta: formatContentEvent,
     TextDelta: formatContentEvent,
     ToolCall: formatContentEvent,
@@ -70,13 +69,16 @@ const formatEvent = Match.type<ServerEvent>().pipe(
   })
 )
 
-const isSessionEvent = (sessionId: string) => (event: ServerEvent): boolean =>
-  'sessionId' in event && event.sessionId === sessionId
+const isSessionEvent =
+  (sessionId: string) =>
+  (event: ServerEvent): boolean =>
+    'sessionId' in event && event.sessionId === sessionId
 
 const isSessionStreamEvent = (event: ServerEvent): boolean =>
   event._tag === 'RunStart' ||
   event._tag === 'RunEnd' ||
   event._tag === 'RunFailed' ||
+  event._tag === 'ReplayReset' ||
   isContentEvent(event)
 
 const liveGlobalStream = Stream.callback<string>((queue) =>
@@ -104,7 +106,8 @@ const liveSessionStream = (
 
       const writeSessionContentEvent = (event: ContentEvent) => {
         const alreadyStreamed =
-          lastCursor?.runId === event.runId && event.eventId <= lastCursor.eventId
+          lastCursor?.runId === event.runId &&
+          event.eventId <= lastCursor.eventId
 
         if (alreadyStreamed) return
 
@@ -114,11 +117,14 @@ const liveSessionStream = (
 
       const writeSessionEvent = Match.type<ServerEvent>().pipe(
         Match.tagsExhaustive({
-          MessagesAppended: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
+          MessagesAppended: (event) =>
+            Queue.offerUnsafe(queue, formatEvent(event)),
           RunEnd: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
           RunFailed: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
           RunStart: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
-          SessionUpdated: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
+          SessionUpdated: (event) =>
+            Queue.offerUnsafe(queue, formatEvent(event)),
+          ReplayReset: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
           ReasoningDelta: writeSessionContentEvent,
           TextDelta: writeSessionContentEvent,
           ToolCall: writeSessionContentEvent,
@@ -163,9 +169,24 @@ const liveSessionStream = (
             !pendingRunStartIds.has(replayRunId)
         )
       ]
+      const resetReason = getReplayResetReason(sessionId, cursor)
       const replay = getReplayBufferSince(sessionId, cursor)
 
-      replayStartEvent && Queue.offerUnsafe(queue, formatEvent(replayStartEvent))
+      resetReason &&
+        cursor &&
+        Queue.offerUnsafe(
+          queue,
+          formatEvent({
+            _tag: 'ReplayReset',
+            sessionId,
+            runId: cursor.runId,
+            reason: resetReason,
+            refetch: true,
+          })
+        )
+      !resetReason &&
+        replayStartEvent &&
+        Queue.offerUnsafe(queue, formatEvent(replayStartEvent))
 
       replaying = false
       for (const event of [...replay, ...pending]) {

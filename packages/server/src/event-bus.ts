@@ -77,6 +77,17 @@ export type ServerEvent =
       readonly runId: string
       readonly message: string
     }
+  | {
+      readonly _tag: 'ReplayReset'
+      readonly sessionId: string
+      readonly runId: string
+      readonly reason:
+        | 'run_completed'
+        | 'run_failed'
+        | 'replay_unavailable'
+        | 'replay_gap'
+      readonly refetch: true
+    }
 
 export type ContentEvent = Extract<
   ServerEvent,

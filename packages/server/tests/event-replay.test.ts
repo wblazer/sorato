@@ -3,6 +3,7 @@ import {
   appendReplayEvent,
   endEventReplay,
   getReplayBufferSince,
+  getReplayResetReason,
   getReplaySnapshot,
   resetEventReplay,
   startEventReplay,
@@ -84,6 +85,17 @@ describe('EventReplay', () => {
 
     endEventReplay('session-1', 'run-1')
     expect(getReplayBufferSince('session-1', undefined)).toEqual([])
+    expect(
+      getReplayResetReason('session-1', { runId: 'run-1', eventId: 2 })
+    ).toBe('run_completed')
+  })
+
+  it('reports unavailable replay for cursors with no known run state', () => {
+    resetEventReplay()
+
+    expect(
+      getReplayResetReason('session-1', { runId: 'run-1', eventId: 1 })
+    ).toBe('replay_unavailable')
   })
 
   it('treats cursors from older runs as a full replay of the active run', () => {

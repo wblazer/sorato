@@ -11,11 +11,13 @@ const EVENT_TAGS = [
   'SessionUpdated',
   'MessagesAppended',
   'TextDelta',
+  'ReasoningDelta',
   'ToolCall',
   'ToolResult',
   'RunStart',
   'RunEnd',
   'RunFailed',
+  'ReplayReset',
 ] as const
 
 export interface SseConnection {

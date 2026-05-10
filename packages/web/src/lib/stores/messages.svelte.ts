@@ -23,6 +23,7 @@ import type { MessageNode, MessagePart, StreamCursor } from '$lib/types.js'
 import { connectSse, type SseConnection } from '$lib/sse.js'
 import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
+import { requestSessionRefresh } from './session-refresh-bus.js'
 
 function createMessagesStore() {
   let messages = $state<MessageNode[]>([])
@@ -130,6 +131,17 @@ function createMessagesStore() {
           case 'RunEnd':
             // Refresh messages to pick up the persisted conversation.
             // Streaming parts stay visible until the refresh lands.
+            refreshMessages(sessionId, { clearPartsForRun: event.runId })
+            break
+
+          case 'RunFailed':
+            requestSessionRefresh(sessionId)
+            break
+
+          case 'ReplayReset':
+            // The server cannot satisfy our run cursor from the live replay
+            // buffer. Fall back to canonical persisted session/messages.
+            requestSessionRefresh(sessionId)
             refreshMessages(sessionId, { clearPartsForRun: event.runId })
             break
 
