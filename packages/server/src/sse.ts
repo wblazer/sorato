@@ -1,9 +1,9 @@
 /**
- * SSE middleware — intercepts `/events` and serves a Server-Sent Events stream.
+ * SSE route — serves `/events` as a Server-Sent Events stream.
  *
- * Implemented as HTTP middleware that short-circuits before the API router.
- * Uses native Web API `Response` + `ReadableStream` for the SSE body,
- * then wraps it via `HttpServerResponse.fromWeb` for @effect/platform.
+ * Uses Effect HTTP's native `HttpServerResponse.stream` so the endpoint is a
+ * normal router route rather than middleware that intercepts requests before
+ * the API router.
  *
  * Query params:
  *   - `sessionId` (optional) — filter events to a specific session
@@ -11,11 +11,10 @@
  *     the `runId:eventId` cursor before switching to live delivery
  */
 import {
-  HttpMiddleware,
-  HttpServerRequest,
+  HttpRouter,
   HttpServerResponse,
 } from 'effect/unstable/http'
-import { Effect, Match } from 'effect'
+import { Effect, Match, Queue, Scope, Stream } from 'effect'
 import {
   isContentEvent,
   subscribe,
@@ -48,243 +47,165 @@ function parseCursor(raw: string | null): StreamCursor | undefined {
   }
 }
 
-// ---------------------------------------------------------------------------
-// SSE response factory
-// ---------------------------------------------------------------------------
+const connectedEvent = () =>
+  `event: connected\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`
 
-function createSSEResponse(
-  sessionId: string | undefined,
+const formatContentEvent = (event: ContentEvent) =>
+  `id: ${formatCursor({ runId: event.runId, eventId: event.eventId })}\nevent: ${event._tag}\ndata: ${JSON.stringify(event)}\n\n`
+
+const formatLifecycleEvent = (event: Exclude<ServerEvent, ContentEvent>) =>
+  `event: ${event._tag}\ndata: ${JSON.stringify(event)}\n\n`
+
+const formatEvent = Match.type<ServerEvent>().pipe(
+  Match.tagsExhaustive({
+    MessagesAppended: formatLifecycleEvent,
+    RunEnd: formatLifecycleEvent,
+    RunFailed: formatLifecycleEvent,
+    RunStart: formatLifecycleEvent,
+    SessionUpdated: formatLifecycleEvent,
+    ReasoningDelta: formatContentEvent,
+    TextDelta: formatContentEvent,
+    ToolCall: formatContentEvent,
+    ToolResult: formatContentEvent,
+  })
+)
+
+const isSessionEvent = (sessionId: string) => (event: ServerEvent): boolean =>
+  'sessionId' in event && event.sessionId === sessionId
+
+const isSessionStreamEvent = (event: ServerEvent): boolean =>
+  event._tag === 'RunStart' ||
+  event._tag === 'RunEnd' ||
+  event._tag === 'RunFailed' ||
+  isContentEvent(event)
+
+const liveGlobalStream = Stream.callback<string>((queue) =>
+  Effect.gen(function* () {
+    Queue.offerUnsafe(queue, connectedEvent())
+    const unsubscribe = subscribe((event) => {
+      isContentEvent(event) || Queue.offerUnsafe(queue, formatEvent(event))
+    })
+    const scope = yield* Scope.Scope
+    yield* Scope.addFinalizer(scope, Effect.sync(unsubscribe))
+  })
+)
+
+const liveSessionStream = (
+  sessionId: string,
   cursor: StreamCursor | undefined
-): globalThis.Response {
-  const encoder = new TextEncoder()
-  let unsubscribe: (() => void) | undefined
-  let heartbeatInterval: ReturnType<typeof setInterval> | undefined
+) =>
+  Stream.callback<string>((queue) =>
+    Effect.gen(function* () {
+      Queue.offerUnsafe(queue, connectedEvent())
 
-  const cleanup = () => {
-    unsubscribe?.()
-    unsubscribe = undefined
-    heartbeatInterval && clearInterval(heartbeatInterval)
-    heartbeatInterval = undefined
-  }
+      let lastCursor = cursor
+      let replaying = true
+      const pending: ServerEvent[] = []
 
-  const stream = new ReadableStream({
-    start(controller) {
-      let closed = false
-      const closeStream = () => {
-        closed = true
-        cleanup()
+      const writeSessionContentEvent = (event: ContentEvent) => {
+        const alreadyStreamed =
+          lastCursor?.runId === event.runId && event.eventId <= lastCursor.eventId
+
+        if (alreadyStreamed) return
+
+        lastCursor = { runId: event.runId, eventId: event.eventId }
+        Queue.offerUnsafe(queue, formatEvent(event))
       }
 
-      const write = (payload: string) => {
-        if (closed) return
-        Effect.runSync(
-          Effect.try({
-            try: () => controller.enqueue(encoder.encode(payload)),
-            catch: () => undefined,
-          }).pipe(
-            Effect.match({
-              onFailure: closeStream,
-              onSuccess: () => undefined,
-            })
-          )
-        )
-      }
-
-      const writeContentEvent = (event: ContentEvent) =>
-        write(
-          `id: ${formatCursor({ runId: event.runId, eventId: event.eventId })}\nevent: ${event._tag}\ndata: ${JSON.stringify(event)}\n\n`
-        )
-
-      const writeLifecycleEvent = (event: Exclude<ServerEvent, ContentEvent>) =>
-        write(`event: ${event._tag}\ndata: ${JSON.stringify(event)}\n\n`)
-
-      const writeEvent = Match.type<ServerEvent>().pipe(
+      const writeSessionEvent = Match.type<ServerEvent>().pipe(
         Match.tagsExhaustive({
-          MessagesAppended: writeLifecycleEvent,
-          RunEnd: writeLifecycleEvent,
-          RunFailed: writeLifecycleEvent,
-          RunStart: writeLifecycleEvent,
-          SessionUpdated: writeLifecycleEvent,
-          ReasoningDelta: writeContentEvent,
-          TextDelta: writeContentEvent,
-          ToolCall: writeContentEvent,
-          ToolResult: writeContentEvent,
+          MessagesAppended: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
+          RunEnd: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
+          RunFailed: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
+          RunStart: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
+          SessionUpdated: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
+          ReasoningDelta: writeSessionContentEvent,
+          TextDelta: writeSessionContentEvent,
+          ToolCall: writeSessionContentEvent,
+          ToolResult: writeSessionContentEvent,
         })
       )
 
-      // Initial connection event
-      write(`event: connected\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`)
+      const unsubscribe = subscribe((event) => {
+        const isLiveSessionEvent =
+          isSessionEvent(sessionId)(event) && isSessionStreamEvent(event)
 
-      if (!sessionId) {
-        // Global stream: control-plane events only.
-        unsubscribe = subscribe((event: ServerEvent) => {
-          isContentEvent(event) || writeEvent(event)
-        })
-      } else {
-        // Session stream: replay content since cursor, then continue live.
-        let lastCursor = cursor
-        let replaying = true
-        const pending: ServerEvent[] = []
-
-        const writeSessionContentEvent = (
-          event: Extract<
-            ServerEvent,
-            { _tag: 'TextDelta' | 'ReasoningDelta' | 'ToolCall' | 'ToolResult' }
-          >
-        ) => {
-          const alreadyStreamed =
-            lastCursor?.runId === event.runId &&
-            event.eventId <= lastCursor.eventId
-
-          if (alreadyStreamed) return
-
-          lastCursor = { runId: event.runId, eventId: event.eventId }
-          writeEvent(event)
-        }
-
-        const isSessionEvent = (event: ServerEvent): boolean =>
-          'sessionId' in event && event.sessionId === sessionId
-
-        const isSessionStreamEvent = (event: ServerEvent): boolean =>
-          event._tag === 'RunStart' ||
-          event._tag === 'RunEnd' ||
-          event._tag === 'RunFailed' ||
-          isContentEvent(event)
-
-        const writeSessionEvent = Match.type<ServerEvent>().pipe(
-          Match.tagsExhaustive({
-            MessagesAppended: writeEvent,
-            RunEnd: writeEvent,
-            RunFailed: writeEvent,
-            RunStart: writeEvent,
-            SessionUpdated: writeEvent,
-            ReasoningDelta: writeSessionContentEvent,
-            TextDelta: writeSessionContentEvent,
-            ToolCall: writeSessionContentEvent,
-            ToolResult: writeSessionContentEvent,
-          })
-        )
-
-        unsubscribe = subscribe((event: ServerEvent) => {
-          const isLiveSessionEvent =
-            isSessionEvent(event) && isSessionStreamEvent(event)
-
-          isLiveSessionEvent &&
-            Match.value(replaying).pipe(
-              Match.when(true, () => pending.push(event)),
-              Match.orElse(() => writeSessionEvent(event))
-            )
-        })
-
-        const pendingRunStartIds = new Set(
-          pending
-            .filter(
-              (event): event is Extract<ServerEvent, { _tag: 'RunStart' }> =>
-                event._tag === 'RunStart'
-            )
-            .map((event) => event.runId)
-        )
-        const replaySnapshot = getReplaySnapshot(sessionId)
-        const replayRunId = replaySnapshot?.runId
-        const replayStartEvent = [
-          undefined,
-          {
-            _tag: 'RunStart' as const,
-            sessionId,
-            runId: replayRunId ?? '',
-          },
-        ][
-          Number(
-            replayRunId !== undefined &&
-              cursor?.runId !== replayRunId &&
-              !pendingRunStartIds.has(replayRunId)
+        isLiveSessionEvent &&
+          Match.value(replaying).pipe(
+            Match.when(true, () => pending.push(event)),
+            Match.orElse(() => writeSessionEvent(event))
           )
-        ]
-        const replay = getReplayBufferSince(sessionId, cursor)
+      })
+      const scope = yield* Scope.Scope
+      yield* Scope.addFinalizer(scope, Effect.sync(unsubscribe))
 
-        replayStartEvent && writeEvent(replayStartEvent)
+      const pendingRunStartIds = new Set(
+        pending
+          .filter(
+            (event): event is Extract<ServerEvent, { _tag: 'RunStart' }> =>
+              event._tag === 'RunStart'
+          )
+          .map((event) => event.runId)
+      )
+      const replaySnapshot = getReplaySnapshot(sessionId)
+      const replayRunId = replaySnapshot?.runId
+      const replayStartEvent = [
+        undefined,
+        {
+          _tag: 'RunStart' as const,
+          sessionId,
+          runId: replayRunId ?? '',
+        },
+      ][
+        Number(
+          replayRunId !== undefined &&
+            cursor?.runId !== replayRunId &&
+            !pendingRunStartIds.has(replayRunId)
+        )
+      ]
+      const replay = getReplayBufferSince(sessionId, cursor)
 
-        replaying = false
-        for (const event of [...replay, ...pending]) {
-          writeSessionEvent(event)
-        }
+      replayStartEvent && Queue.offerUnsafe(queue, formatEvent(replayStartEvent))
+
+      replaying = false
+      for (const event of [...replay, ...pending]) {
+        writeSessionEvent(event)
       }
-
-      // Heartbeat every 15s to keep the connection alive
-      heartbeatInterval = setInterval(() => {
-        write(':heartbeat\n\n')
-      }, 15_000)
-    },
-    cancel() {
-      cleanup()
-    },
-  })
-
-  return new globalThis.Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-    },
-  })
-}
-
-// ---------------------------------------------------------------------------
-// Middleware
-// ---------------------------------------------------------------------------
-
-/**
- * Compose with another middleware (typically `HttpMiddleware.logger`).
- *
- * Usage in main.ts:
- * ```ts
- * HttpApiBuilder.serve(withSse(HttpMiddleware.logger))
- * ```
- */
-// oxlint-disable sorato/no-manual-effect-channels -- middleware wrapper must preserve the generic Effect channels it receives
-export const withSse = (
-  inner: <E, R>(
-    app: Effect.Effect<
-      HttpServerResponse.HttpServerResponse,
-      E,
-      HttpServerRequest.HttpServerRequest | R
-    >
-  ) => Effect.Effect<
-    HttpServerResponse.HttpServerResponse,
-    E,
-    HttpServerRequest.HttpServerRequest | R
-  >
-) =>
-  HttpMiddleware.make(
-    <E, R>(
-      app: Effect.Effect<
-        HttpServerResponse.HttpServerResponse,
-        E,
-        HttpServerRequest.HttpServerRequest | R
-      >
-    ) =>
-      Effect.gen(function* () {
-        const req = yield* HttpServerRequest.HttpServerRequest
-        const url = new URL(req.url, 'http://localhost')
-
-        const eventResponse = Effect.suspend(() => {
-          const sessionId = url.searchParams.get('sessionId') ?? undefined
-          const cursor = parseCursor(url.searchParams.get('since'))
-          return Effect.logInfo('SSE connection requested', {
-            sessionId,
-            hasCursor: cursor !== undefined,
-          }).pipe(
-            Effect.map(() =>
-              HttpServerResponse.fromWeb(createSSEResponse(sessionId, cursor))
-            )
-          )
-        })
-
-        return yield* Match.value(url.pathname).pipe(
-          Match.when('/events', () => eventResponse),
-          Match.orElse(() => inner(app))
-        )
-      }).pipe(Effect.annotateLogs({ package: 'server', subsystem: 'sse' }))
+    })
   )
-// oxlint-enable sorato/no-manual-effect-channels
+
+const heartbeatStream = Stream.tick('15 seconds').pipe(
+  Stream.map(() => ':heartbeat\n\n')
+)
+
+const makeSseStream = (
+  sessionId: string | undefined,
+  cursor: StreamCursor | undefined
+) =>
+  (sessionId ? liveSessionStream(sessionId, cursor) : liveGlobalStream).pipe(
+    Stream.merge(heartbeatStream),
+    Stream.encodeText
+  )
+
+export const SseLive = HttpRouter.add('GET', '/events', (request) => {
+  const url = new URL(request.url, 'http://localhost')
+  const sessionId = url.searchParams.get('sessionId') ?? undefined
+  const cursor = parseCursor(url.searchParams.get('since'))
+
+  return Effect.logInfo('SSE connection requested', {
+    sessionId,
+    hasCursor: cursor !== undefined,
+  }).pipe(
+    Effect.map(() =>
+      HttpServerResponse.stream(makeSseStream(sessionId, cursor), {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+          'Access-Control-Allow-Origin': '*',
+        },
+      })
+    ),
+    Effect.annotateLogs({ package: 'server', subsystem: 'sse' })
+  )
+})

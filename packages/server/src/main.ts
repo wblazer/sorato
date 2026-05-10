@@ -21,7 +21,7 @@ import { LoggingLive, resolveLogFile, resolveLogLevel } from './logging.ts'
 import { ModelsLive } from './models.ts'
 import { RuntimeConfigLive } from './runtime-config.ts'
 import { SessionsLive } from './sessions.ts'
-import { withSse } from './sse.ts'
+import { SseLive } from './sse.ts'
 import { dataDir } from './data-dir.ts'
 import { SqliteProviderAuthStore } from './provider-auth.ts'
 import { SqliteSession } from './session/sqlite-session.ts'
@@ -67,13 +67,12 @@ const ProviderAuthLive = SqliteProviderAuthStore({
 
 // ── Serve ───────────────────────────────────────────────────────────
 
-const HttpLive = HttpRouter.toHttpEffect(ApiLive).pipe(
+const AppLive = Layer.merge(ApiLive, SseLive)
+
+const HttpLive = HttpRouter.toHttpEffect(AppLive).pipe(
   Effect.map((app) =>
-    HttpServer.serve(
-      app,
-      withSse((httpApp) =>
-        HttpMiddleware.cors()(HttpMiddleware.logger(httpApp))
-      )
+    HttpServer.serve(app, (httpApp) =>
+      HttpMiddleware.cors()(HttpMiddleware.logger(httpApp))
     )
   ),
   Layer.unwrap,
