@@ -28,11 +28,35 @@ import type { Effect as EffectType } from 'effect/Effect'
 import type { LanguageModel } from 'effect/unstable/ai'
 import type { HarnessConfig, HarnessEvent, HarnessResult } from './harness.ts'
 
-import { Cause, Effect, Exit, Match, Ref, Stream } from 'effect'
+import { Cause, Effect, Exit, Ref, Stream } from 'effect'
 import { Chat, Prompt } from 'effect/unstable/ai'
 
 /** Maximum agent loop iterations to prevent runaway tool-call cycles. */
 const MAX_TURNS = 25
+
+interface RunUsage {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+}
+
+interface RunState {
+  outputText: string
+  currentTurnText: string
+  usage: RunUsage
+}
+
+const fireHooks = <Tools extends Record<string, Tool.Any>, HookE, HookR>(
+  config: HarnessConfig<Tools, HookE, HookR>,
+  event: HarnessEvent
+): EffectType<void, HookE, HookR> =>
+  Effect.gen(function* () {
+    if (config.hooks) {
+      for (const hook of config.hooks) {
+        yield* hook.handle(event)
+      }
+    }
+  })
 
 /**
  * Continue an agent conversation from where it left off.
@@ -58,32 +82,23 @@ export const run = <
   Effect.gen(function* () {
     const chat = yield* Chat.fromPrompt(conversation)
 
-    const fireHooks = Effect.fn('Harness.fireHooks')(function* (
-      event: HarnessEvent
-    ) {
-      if (config.hooks) {
-        for (const hook of config.hooks) {
-          yield* hook.handle(event)
-        }
-      }
-    })
+    const state: RunState = {
+      outputText: '',
+      currentTurnText: '',
+      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+    }
 
-    // Accumulate text and usage across all turns
-    let outputText = ''
-    const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
-
-    // Text accumulated in the CURRENT turn only. Reset at the start of
-    // each turn. Used to recover partial text on interrupt — @effect/ai's
-    // Prompt.fromResponseParts only flushes text on `text-end`, which
-    // never fires when the stream is interrupted mid-text.
-    let currentTurnText = ''
+    // state.currentTurnText is accumulated in the CURRENT turn only. Reset at
+    // the start of each turn. Used to recover partial text on interrupt —
+    // @effect/ai's Prompt.fromResponseParts only flushes text on `text-end`,
+    // which never fires when the stream is interrupted mid-text.
 
     const runTurn = Effect.fn('Harness.runTurn')(function* (
       turn: number,
       prompt: Prompt.RawInput
     ) {
       let hadToolCalls = false
-      currentTurnText = ''
+      state.currentTurnText = ''
       yield* Effect.logDebug('Harness turn starting', { turn })
 
       const stream = chat.streamText({
@@ -91,85 +106,189 @@ export const run = <
         toolkit: config.toolkit,
       })
 
-      yield* Stream.runForEach(stream, (part: Response.StreamPart<Tools>) =>
-        // oxlint-disable-next-line sorato/no-nested-effect-gen -- keeping the streamed part handling in one generator preserves precise narrowing
-        Effect.gen(function* () {
-          switch (part.type) {
-            case 'text-delta': {
-              outputText += part.delta
-              currentTurnText += part.delta
-              yield* fireHooks({
-                _tag: 'TextDelta',
-                delta: part.delta,
-              })
-              break
-            }
-            case 'reasoning-delta': {
-              yield* fireHooks({
-                _tag: 'ReasoningDelta',
-                delta: part.delta,
-              })
-              break
-            }
-            case 'tool-call': {
-              hadToolCalls = true
-              yield* Effect.logInfo('Harness tool call received', {
-                turn,
-                toolCallId: part.id,
-                toolName: part.name,
-              })
-              yield* fireHooks({
-                _tag: 'ToolCall',
-                id: part.id,
-                name: part.name,
-                params: part.params,
-              })
-              break
-            }
-            case 'tool-result': {
-              const logToolResult = Match.value(part.isFailure).pipe(
-                Match.when(true, () => Effect.logWarning),
-                Match.orElse(() => Effect.logDebug)
+      yield* Stream.runForEach(stream, (part: Response.StreamPart<Tools>) => {
+        switch (part.type) {
+          case 'text-delta':
+            return Effect.sync(() => {
+              state.outputText += part.delta
+              state.currentTurnText += part.delta
+            }).pipe(
+              Effect.flatMap(() =>
+                fireHooks(config, {
+                  _tag: 'TextDelta',
+                  delta: part.delta,
+                })
               )
-              yield* logToolResult('Harness tool result received', {
-                turn,
-                toolCallId: part.id,
-                toolName: part.name,
-                isFailure: part.isFailure,
-              })
-              yield* fireHooks({
-                _tag: 'ToolResult',
-                id: part.id,
-                name: part.name,
-                result: part.result,
-                isFailure: part.isFailure,
-              })
-              break
-            }
-            case 'finish': {
+            )
+
+          case 'reasoning-delta':
+            return fireHooks(config, {
+              _tag: 'ReasoningDelta',
+              delta: part.delta,
+            })
+
+          case 'tool-call':
+            return Effect.sync(() => {
+              hadToolCalls = true
+            }).pipe(
+              Effect.flatMap(() =>
+                Effect.logInfo('Harness tool call received', {
+                  turn,
+                  toolCallId: part.id,
+                  toolName: part.name,
+                })
+              ),
+              Effect.flatMap(() =>
+                fireHooks(config, {
+                  _tag: 'ToolCall',
+                  id: part.id,
+                  name: part.name,
+                  params: part.params,
+                })
+              )
+            )
+
+          case 'tool-result': {
+            const logToolResult = part.isFailure
+              ? Effect.logWarning
+              : Effect.logDebug
+            return logToolResult('Harness tool result received', {
+              turn,
+              toolCallId: part.id,
+              toolName: part.name,
+              isFailure: part.isFailure,
+            }).pipe(
+              Effect.flatMap(() =>
+                fireHooks(config, {
+                  _tag: 'ToolResult',
+                  id: part.id,
+                  name: part.name,
+                  result: part.result,
+                  isFailure: part.isFailure,
+                })
+              )
+            )
+          }
+
+          case 'finish': {
+            const inputTokens = part.usage.inputTokens.total ?? 0
+            const outputTokens = part.usage.outputTokens.total ?? 0
+            return Effect.sync(() => {
               // Turn completed normally — clear currentTurnText so the
               // interrupt path knows there's nothing to recover.
-              currentTurnText = ''
-              const inputTokens = part.usage.inputTokens.total ?? 0
-              const outputTokens = part.usage.outputTokens.total ?? 0
-              usage.inputTokens += inputTokens
-              usage.outputTokens += outputTokens
-              usage.totalTokens += inputTokens + outputTokens
-              yield* Effect.logDebug('Harness turn finished', {
-                turn,
-                inputTokens,
-                outputTokens,
-              })
-              break
-            }
+              state.currentTurnText = ''
+              state.usage.inputTokens += inputTokens
+              state.usage.outputTokens += outputTokens
+              state.usage.totalTokens += inputTokens + outputTokens
+            }).pipe(
+              Effect.flatMap(() =>
+                Effect.logDebug('Harness turn finished', {
+                  turn,
+                  inputTokens,
+                  outputTokens,
+                })
+              )
+            )
           }
-        })
-      )
+        }
+
+        return Effect.void
+      })
 
       return hadToolCalls
     })
 
-    yield* fireHooks({ _tag: 'RunStart' })
+    const runToolLoop = Effect.fn('Harness.runToolLoop')(function* () {
+      // First turn: empty prompt — the conversation already ends with the
+      // user's message, so Chat.streamText sends it as-is. Subsequent turns
+      // also use empty (tool results are in Chat).
+      let prompt: Prompt.RawInput = [] as Array<Prompt.MessageEncoded>
+
+      for (let turn = 0; turn < MAX_TURNS; turn++) {
+        const hadToolCalls = yield* runTurn(turn, prompt)
+
+        if (!hadToolCalls) break
+        yield* Effect.logDebug('Harness turn requested tool follow-up', {
+          turn,
+        })
+
+        // Turn completed — reset for next turn
+        state.currentTurnText = ''
+        prompt = [] as Array<Prompt.MessageEncoded>
+      }
+    })
+
+    const finalizeRun = Effect.fn('Harness.finalizeRun')(function* (
+      exit: Exit.Exit<void, AiError.AiError | HookE>
+    ) {
+      // Uninterruptible from here: fire RunEnd, read history, and return the
+      // result — guaranteed to complete even after interrupt.
+      yield* fireHooks(config, {
+        _tag: 'RunEnd',
+        output: state.outputText,
+        usage: state.usage,
+      })
+
+      let fullConversation = yield* Ref.get(chat.history)
+
+      // On interrupt, @effect/ai's Prompt.fromResponseParts drops in-flight
+      // text (it only flushes on `text-end`, which never arrives). If there's
+      // partial text from the interrupted turn, append a synthetic assistant
+      // message so it gets persisted.
+      const wasInterrupted =
+        Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)
+
+      if (wasInterrupted && state.currentTurnText.length > 0) {
+        yield* Effect.logInfo('Harness recovering interrupted text', {
+          recoveredLength: state.currentTurnText.length,
+        })
+        fullConversation = Prompt.fromMessages([
+          ...fullConversation.content,
+          {
+            ...Prompt.makeMessage('assistant', {
+              content: [
+                Prompt.makePart('text', { text: state.currentTurnText }),
+              ],
+            }),
+          },
+        ])
+      }
+
+      // Re-surface real failures so the caller's error channel is preserved.
+      // Interrupts are swallowed — the partial result IS the return value.
+      if (Exit.isFailure(exit) && !wasInterrupted) {
+        yield* Effect.logError('Harness run failed', {
+          cause: Cause.pretty(exit.cause),
+        })
+        return yield* Effect.failCause(exit.cause)
+      }
+
+      const result = {
+        conversation: fullConversation,
+        text: state.outputText,
+        usage: state.usage,
+      } satisfies HarnessResult
+
+      // Fire RunResult inside the uninterruptible region so hooks
+      // (e.g. persistence) are guaranteed to run even on interrupt.
+      yield* fireHooks(config, {
+        _tag: 'RunResult',
+        result,
+        interrupted: wasInterrupted,
+      })
+
+      yield* Effect.logInfo('Harness run completed', {
+        interrupted: wasInterrupted,
+        outputLength: state.outputText.length,
+        inputTokens: state.usage.inputTokens,
+        outputTokens: state.usage.outputTokens,
+        totalTokens: state.usage.totalTokens,
+      })
+
+      return result
+    })
+
+    yield* fireHooks(config, { _tag: 'RunStart' })
 
     // The agent loop runs interruptibly so the user can stop it mid-
     // stream. But cleanup (RunEnd hook, reading history, returning the
@@ -180,108 +299,14 @@ export const run = <
     // for the inner loop, while everything after Effect.exit runs in
     // the uninterruptible outer region.
     return yield* Effect.uninterruptibleMask((restore) =>
-      // oxlint-disable-next-line sorato/no-nested-effect-gen -- cleanup and recovery need one outer uninterruptible generator around the interruptible loop
-      Effect.gen(function* () {
-        yield* Effect.logInfo('Harness run starting', {
-          messageCount: conversation.content.length,
-          hookCount: config.hooks?.length ?? 0,
-          hasToolkit: config.toolkit !== undefined,
-        })
-
-        const exit = yield* Effect.exit(
-          restore(
-            // oxlint-disable-next-line sorato/no-nested-effect-gen -- @effect/ai stream typing stays stable with the loop kept in one generator
-            Effect.gen(function* () {
-              // First turn: empty prompt — the conversation already
-              // ends with the user's message, so Chat.streamText sends
-              // it as-is. Subsequent turns also use empty (tool results
-              // are in Chat).
-              let prompt: Prompt.RawInput = [] as Array<Prompt.MessageEncoded>
-
-              for (let turn = 0; turn < MAX_TURNS; turn++) {
-                const hadToolCalls = yield* runTurn(turn, prompt)
-
-                if (!hadToolCalls) break
-                yield* Effect.logDebug(
-                  'Harness turn requested tool follow-up',
-                  {
-                    turn,
-                  }
-                )
-
-                // Turn completed — reset for next turn
-                currentTurnText = ''
-                prompt = [] as Array<Prompt.MessageEncoded>
-              }
-            })
-          )
-        )
-
-        // Uninterruptible from here: fire RunEnd, read history, and
-        // return the result — guaranteed to complete even after interrupt.
-        yield* fireHooks({
-          _tag: 'RunEnd',
-          output: outputText,
-          usage,
-        })
-
-        let fullConversation = yield* Ref.get(chat.history)
-
-        // On interrupt, @effect/ai's Prompt.fromResponseParts drops
-        // in-flight text (it only flushes on `text-end`, which never
-        // arrives). If there's partial text from the interrupted turn,
-        // append a synthetic assistant message so it gets persisted.
-        const wasInterrupted =
-          Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)
-
-        if (wasInterrupted && currentTurnText.length > 0) {
-          yield* Effect.logInfo('Harness recovering interrupted text', {
-            recoveredLength: currentTurnText.length,
-          })
-          fullConversation = Prompt.fromMessages([
-            ...fullConversation.content,
-            {
-              ...Prompt.makeMessage('assistant', {
-                content: [Prompt.makePart('text', { text: currentTurnText })],
-              }),
-            },
-          ])
-        }
-
-        // Re-surface real failures so the caller's error channel is
-        // preserved. Interrupts are swallowed — the partial result IS
-        // the return value.
-        if (Exit.isFailure(exit) && !wasInterrupted) {
-          yield* Effect.logError('Harness run failed', {
-            cause: Cause.pretty(exit.cause),
-          })
-          return yield* Effect.failCause(exit.cause)
-        }
-
-        const result = {
-          conversation: fullConversation,
-          text: outputText,
-          usage,
-        } satisfies HarnessResult
-
-        // Fire RunResult inside the uninterruptible region so hooks
-        // (e.g. persistence) are guaranteed to run even on interrupt.
-        yield* fireHooks({
-          _tag: 'RunResult',
-          result,
-          interrupted: wasInterrupted,
-        })
-
-        yield* Effect.logInfo('Harness run completed', {
-          interrupted: wasInterrupted,
-          outputLength: outputText.length,
-          inputTokens: usage.inputTokens,
-          outputTokens: usage.outputTokens,
-          totalTokens: usage.totalTokens,
-        })
-
-        return result
-      })
+      Effect.logInfo('Harness run starting', {
+        messageCount: conversation.content.length,
+        hookCount: config.hooks?.length ?? 0,
+        hasToolkit: config.toolkit !== undefined,
+      }).pipe(
+        Effect.flatMap(() => Effect.exit(restore(runToolLoop()))),
+        Effect.flatMap(finalizeRun)
+      )
     )
   }).pipe(
     Effect.annotateLogs({ package: 'core', subsystem: 'harness' }),
