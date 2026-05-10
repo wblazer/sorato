@@ -21,9 +21,12 @@ Bun workspaces. Packages depend on each other via `workspace:*`.
 ## Development Commands
 
 ```bash
+# These must all pass
 bun run typecheck
+bun run test
 bun run lint
 bun run format
+
 bun run web
 bun run server
 ```
