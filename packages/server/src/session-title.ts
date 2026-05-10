@@ -37,7 +37,7 @@ const selectTitleModel = Effect.fn('SessionTitle.selectModel')(function* (
 ) {
   const runtimeConfig = yield* RuntimeConfigService
   const cfg = yield* runtimeConfig.get(dir)
-  const models = yield* listModels(dataDir, dir)
+  const models = yield* listModels(dir)
   const available = new Set(models.models.map((model) => model.id))
   return Option.fromNullishOr(cfg.title_model).pipe(
     Option.filter((model) => available.has(model)),

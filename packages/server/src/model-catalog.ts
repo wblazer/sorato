@@ -162,10 +162,7 @@ const providerCredentialMessage = (error: unknown) =>
     Match.orElse(() => 'Failed to read provider credentials')
   )
 
-const listModelsEffect = Effect.fn('ModelCatalog.list')(function* (
-  _dataDir: string,
-  dir: string
-) {
+const listModelsEffect = Effect.fn('ModelCatalog.list')(function* (dir: string) {
   yield* Effect.logDebug('Listing available models', { dir })
   const runtimeConfig = yield* RuntimeConfigService
   const cfg = yield* runtimeConfig.get(dir)
@@ -194,19 +191,18 @@ const listModelsEffect = Effect.fn('ModelCatalog.list')(function* (
   return new ModelsResponse({ models: items, defaultModel })
 })
 
-export const listModels = (dataDir: string, dir: string) =>
-  listModelsEffect(dataDir, dir).pipe(
+export const listModels = (dir: string) =>
+  listModelsEffect(dir).pipe(
     Effect.annotateLogs({ package: 'server', subsystem: 'model-catalog' }),
     Effect.withLogSpan('server.listModels')
   )
 
 const ensureModelEffect = Effect.fn('ModelCatalog.ensure')(function* (
-  dataDir: string,
   dir: string,
   model: string,
   options: ModelOptions = {}
 ) {
-  const models = yield* listModels(dataDir, dir)
+  const models = yield* listModels(dir)
 
   const option = models.models.find((item) => item.id === model)
   return yield* Match.value(option !== undefined && validOptions(option, options)).pipe(
@@ -225,12 +221,11 @@ const ensureModelEffect = Effect.fn('ModelCatalog.ensure')(function* (
 })
 
 export const ensureModel = (
-  dataDir: string,
   dir: string,
   model: string,
   options: ModelOptions = {}
 ) =>
-  ensureModelEffect(dataDir, dir, model, options).pipe(
+  ensureModelEffect(dir, model, options).pipe(
     Effect.annotateLogs({ package: 'server', subsystem: 'model-catalog' }),
     Effect.withLogSpan('server.ensureModel')
   )

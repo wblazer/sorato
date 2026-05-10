@@ -16,7 +16,6 @@ import {
 } from './api.ts'
 import { ensureModel } from './model-catalog.ts'
 import type { ModelOptions } from './model-catalog.ts'
-import { dataDir } from './data-dir.ts'
 import { runAgent } from './run-agent.ts'
 import {
   clearActiveFiber,
@@ -361,7 +360,6 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
           ),
           Effect.flatMap((session) =>
             ensureModel(
-              dataDir,
               session.directory,
               payload.model,
               modelOptions(payload.modelOptions)

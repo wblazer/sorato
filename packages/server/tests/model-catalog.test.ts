@@ -83,7 +83,7 @@ describe('ModelCatalog', () => {
         process.env.ANTHROPIC_API_KEY = 'test-anthropic'
         process.env.OPENAI_API_KEY = 'test-openai'
 
-        const models = yield* listModels('', dir).pipe(
+        const models = yield* listModels(dir).pipe(
           Effect.provide(testLayer)
         )
 
@@ -120,7 +120,7 @@ describe('ModelCatalog', () => {
       delete process.env.ANTHROPIC_API_KEY
       process.env.OPENAI_API_KEY = 'test-openai'
 
-      const models = yield* listModels('', dir).pipe(Effect.provide(testLayer))
+      const models = yield* listModels(dir).pipe(Effect.provide(testLayer))
 
       expect(models.models.length).toBe(supportedCount(openai))
       expect(models.models.every((item) => item.id.startsWith('openai/'))).toBe(
@@ -149,7 +149,7 @@ describe('ModelCatalog', () => {
       delete process.env.ANTHROPIC_API_KEY
       process.env.OPENAI_API_KEY = 'test-openai'
 
-      const models = yield* listModels('', dir).pipe(Effect.provide(testLayer))
+      const models = yield* listModels(dir).pipe(Effect.provide(testLayer))
 
       expect(
         models.models.every((item) => {
@@ -189,7 +189,7 @@ describe('ModelCatalog', () => {
       delete process.env.ANTHROPIC_API_KEY
       process.env.OPENAI_API_KEY = 'test-openai'
 
-      const models = yield* listModels('', dir).pipe(Effect.provide(testLayer))
+      const models = yield* listModels(dir).pipe(Effect.provide(testLayer))
       const reasoning = expectDefined(
         models.models.find((item) =>
           item.capabilities.thinkingLevels.includes('low')
@@ -201,10 +201,10 @@ describe('ModelCatalog', () => {
         'expected at least one OpenAI fast mode model'
       )
 
-      yield* ensureModel('', dir, reasoning.id, { thinkingLevel: 'low' }).pipe(
+      yield* ensureModel(dir, reasoning.id, { thinkingLevel: 'low' }).pipe(
         Effect.provide(testLayer)
       )
-      yield* ensureModel('', dir, fast.id, { mode: 'fast' }).pipe(
+      yield* ensureModel(dir, fast.id, { mode: 'fast' }).pipe(
         Effect.provide(testLayer)
       )
 
