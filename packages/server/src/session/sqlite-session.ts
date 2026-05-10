@@ -76,6 +76,14 @@ interface MessageRow {
   created_at: number
 }
 
+interface MessageInsertRow extends Record<string, unknown> {
+  id: string
+  session_id: string
+  parent_id: string | null
+  encoded: string
+  created_at: number
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -111,6 +119,30 @@ const ensureDatabaseDirectory = (databasePath: string) =>
 
 const sqlFailure = (operation: string, message: string) => (error: unknown) =>
   new StorageError({ operation, message, error })
+
+const messageInsertRows = (
+  sessionId: SessionId,
+  parentId: string | null,
+  messages: ReadonlyArray<Prompt.MessageEncoded>,
+  createdAt: number
+): ReadonlyArray<MessageInsertRow> => {
+  const rows: Array<MessageInsertRow> = []
+  let nextParentId = parentId
+
+  for (const msg of messages) {
+    const id = crypto.randomUUID()
+    rows.push({
+      id,
+      session_id: sessionId,
+      parent_id: nextParentId,
+      encoded: JSON.stringify(msg),
+      created_at: createdAt,
+    })
+    nextParentId = id
+  }
+
+  return rows
+}
 
 // ---------------------------------------------------------------------------
 // Implementation
@@ -302,30 +334,18 @@ export const SqliteSession = (options: { readonly path: string }) =>
 
         const session = yield* get(sessionId)
         const now = Date.now()
-        let parentId: string | null = session.headId
-        let lastId: string | null = null
+        const rows = messageInsertRows(sessionId, session.headId, messages, now)
+        const headId = rows.at(-1)?.id ?? session.headId
 
-        // oxlint-disable-next-line sorato/no-nested-effect-gen -- transaction body is scoped to mutable parent/last ids
-        const insertMessages = Effect.gen(function* () {
-          for (const msg of messages) {
-            const id = crypto.randomUUID()
-            yield* sql`
-                INSERT INTO messages (id, session_id, parent_id, encoded, created_at)
-                VALUES (${id}, ${sessionId}, ${parentId}, ${JSON.stringify(msg)}, ${now})
-              `
-            parentId = id
-            lastId = id
-          }
-
-          yield* Match.value(lastId).pipe(
-            Match.when(null, () => Effect.void),
-            Match.orElse(
-              (id) => sql`
-                UPDATE sessions SET head_id = ${id}, updated_at = ${now} WHERE id = ${sessionId}
-              `
-            )
+        const insertMessages = sql`
+          INSERT INTO messages ${sql.insert(rows)}
+        `.pipe(
+          Effect.andThen(
+            sql`
+              UPDATE sessions SET head_id = ${headId}, updated_at = ${now} WHERE id = ${sessionId}
+            `
           )
-        })
+        )
 
         yield* sql
           .withTransaction(insertMessages)
@@ -341,7 +361,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
           sessionId,
           messageCount: messages.length,
           previousHeadId: session.headId,
-          headId: lastId,
+          headId,
         })
       })
 
