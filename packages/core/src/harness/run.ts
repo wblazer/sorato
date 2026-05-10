@@ -61,7 +61,6 @@ export const run = <
     const fireHooks = Effect.fn('Harness.fireHooks')(function* (
       event: HarnessEvent
     ) {
-      // biome-ignore lint/plugin/no-if-statement: optional hook iteration is the clearest shape here
       if (config.hooks) {
         for (const hook of config.hooks) {
           yield* hook.handle(event)
@@ -92,81 +91,79 @@ export const run = <
         toolkit: config.toolkit,
       })
 
-      yield* Stream.runForEach(
-        stream,
-        (part: Response.StreamPart<Tools>) =>
-          // biome-ignore lint/plugin/no-nested-effect-gen: keeping the streamed part handling in one generator preserves precise narrowing
-          Effect.gen(function* () {
-            switch (part.type) {
-              case 'text-delta': {
-                outputText += part.delta
-                currentTurnText += part.delta
-                yield* fireHooks({
-                  _tag: 'TextDelta',
-                  delta: part.delta,
-                })
-                break
-              }
-              case 'reasoning-delta': {
-                yield* fireHooks({
-                  _tag: 'ReasoningDelta',
-                  delta: part.delta,
-                })
-                break
-              }
-              case 'tool-call': {
-                hadToolCalls = true
-                yield* Effect.logInfo('Harness tool call received', {
-                  turn,
-                  toolCallId: part.id,
-                  toolName: part.name,
-                })
-                yield* fireHooks({
-                  _tag: 'ToolCall',
-                  id: part.id,
-                  name: part.name,
-                  params: part.params,
-                })
-                break
-              }
-              case 'tool-result': {
-                const logToolResult = Match.value(part.isFailure).pipe(
-                  Match.when(true, () => Effect.logWarning),
-                  Match.orElse(() => Effect.logDebug)
-                )
-                yield* logToolResult('Harness tool result received', {
-                  turn,
-                  toolCallId: part.id,
-                  toolName: part.name,
-                  isFailure: part.isFailure,
-                })
-                yield* fireHooks({
-                  _tag: 'ToolResult',
-                  id: part.id,
-                  name: part.name,
-                  result: part.result,
-                  isFailure: part.isFailure,
-                })
-                break
-              }
-              case 'finish': {
-                // Turn completed normally — clear currentTurnText so the
-                // interrupt path knows there's nothing to recover.
-                currentTurnText = ''
-                const inputTokens = part.usage.inputTokens.total ?? 0
-                const outputTokens = part.usage.outputTokens.total ?? 0
-                usage.inputTokens += inputTokens
-                usage.outputTokens += outputTokens
-                usage.totalTokens += inputTokens + outputTokens
-                yield* Effect.logDebug('Harness turn finished', {
-                  turn,
-                  inputTokens,
-                  outputTokens,
-                })
-                break
-              }
+      yield* Stream.runForEach(stream, (part: Response.StreamPart<Tools>) =>
+        // oxlint-disable-next-line sorato/no-nested-effect-gen -- keeping the streamed part handling in one generator preserves precise narrowing
+        Effect.gen(function* () {
+          switch (part.type) {
+            case 'text-delta': {
+              outputText += part.delta
+              currentTurnText += part.delta
+              yield* fireHooks({
+                _tag: 'TextDelta',
+                delta: part.delta,
+              })
+              break
             }
-          })
+            case 'reasoning-delta': {
+              yield* fireHooks({
+                _tag: 'ReasoningDelta',
+                delta: part.delta,
+              })
+              break
+            }
+            case 'tool-call': {
+              hadToolCalls = true
+              yield* Effect.logInfo('Harness tool call received', {
+                turn,
+                toolCallId: part.id,
+                toolName: part.name,
+              })
+              yield* fireHooks({
+                _tag: 'ToolCall',
+                id: part.id,
+                name: part.name,
+                params: part.params,
+              })
+              break
+            }
+            case 'tool-result': {
+              const logToolResult = Match.value(part.isFailure).pipe(
+                Match.when(true, () => Effect.logWarning),
+                Match.orElse(() => Effect.logDebug)
+              )
+              yield* logToolResult('Harness tool result received', {
+                turn,
+                toolCallId: part.id,
+                toolName: part.name,
+                isFailure: part.isFailure,
+              })
+              yield* fireHooks({
+                _tag: 'ToolResult',
+                id: part.id,
+                name: part.name,
+                result: part.result,
+                isFailure: part.isFailure,
+              })
+              break
+            }
+            case 'finish': {
+              // Turn completed normally — clear currentTurnText so the
+              // interrupt path knows there's nothing to recover.
+              currentTurnText = ''
+              const inputTokens = part.usage.inputTokens.total ?? 0
+              const outputTokens = part.usage.outputTokens.total ?? 0
+              usage.inputTokens += inputTokens
+              usage.outputTokens += outputTokens
+              usage.totalTokens += inputTokens + outputTokens
+              yield* Effect.logDebug('Harness turn finished', {
+                turn,
+                inputTokens,
+                outputTokens,
+              })
+              break
+            }
+          }
+        })
       )
 
       return hadToolCalls
@@ -183,7 +180,7 @@ export const run = <
     // for the inner loop, while everything after Effect.exit runs in
     // the uninterruptible outer region.
     return yield* Effect.uninterruptibleMask((restore) =>
-      // biome-ignore lint/plugin/no-nested-effect-gen: cleanup and recovery need one outer uninterruptible generator around the interruptible loop
+      // oxlint-disable-next-line sorato/no-nested-effect-gen -- cleanup and recovery need one outer uninterruptible generator around the interruptible loop
       Effect.gen(function* () {
         yield* Effect.logInfo('Harness run starting', {
           messageCount: conversation.content.length,
@@ -193,7 +190,7 @@ export const run = <
 
         const exit = yield* Effect.exit(
           restore(
-            // biome-ignore lint/plugin/no-nested-effect-gen: @effect/ai stream typing stays stable with the loop kept in one generator
+            // oxlint-disable-next-line sorato/no-nested-effect-gen -- @effect/ai stream typing stays stable with the loop kept in one generator
             Effect.gen(function* () {
               // First turn: empty prompt — the conversation already
               // ends with the user's message, so Chat.streamText sends

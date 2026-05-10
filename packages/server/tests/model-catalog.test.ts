@@ -83,9 +83,7 @@ describe('ModelCatalog', () => {
         process.env.ANTHROPIC_API_KEY = 'test-anthropic'
         process.env.OPENAI_API_KEY = 'test-openai'
 
-        const models = yield* listModels(dir).pipe(
-          Effect.provide(testLayer)
-        )
+        const models = yield* listModels(dir).pipe(Effect.provide(testLayer))
 
         expect(models.models.length).toBe(
           supportedCount(anthropic) + supportedCount(openai)

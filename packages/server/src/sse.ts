@@ -242,6 +242,7 @@ function createSSEResponse(
  * HttpApiBuilder.serve(withSse(HttpMiddleware.logger))
  * ```
  */
+// oxlint-disable sorato/no-manual-effect-channels -- middleware wrapper must preserve the generic Effect channels it receives
 export const withSse = (
   inner: <E, R>(
     app: Effect.Effect<
@@ -257,7 +258,6 @@ export const withSse = (
 ) =>
   HttpMiddleware.make(
     <E, R>(
-      // biome-ignore lint/plugin/no-manual-effect-channels: preserve applied middleware typing through the wrapper
       app: Effect.Effect<
         HttpServerResponse.HttpServerResponse,
         E,
@@ -272,13 +272,13 @@ export const withSse = (
           const sessionId = url.searchParams.get('sessionId') ?? undefined
           const cursor = parseCursor(url.searchParams.get('since'))
           return Effect.logInfo('SSE connection requested', {
-              sessionId,
-              hasCursor: cursor !== undefined,
-            }).pipe(
-              Effect.map(() =>
-                HttpServerResponse.fromWeb(createSSEResponse(sessionId, cursor))
-              )
+            sessionId,
+            hasCursor: cursor !== undefined,
+          }).pipe(
+            Effect.map(() =>
+              HttpServerResponse.fromWeb(createSSEResponse(sessionId, cursor))
             )
+          )
         })
 
         return yield* Match.value(url.pathname).pipe(
@@ -287,3 +287,4 @@ export const withSse = (
         )
       }).pipe(Effect.annotateLogs({ package: 'server', subsystem: 'sse' }))
   )
+// oxlint-enable sorato/no-manual-effect-channels

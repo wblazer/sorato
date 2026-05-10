@@ -42,7 +42,9 @@ const selectTitleModel = Effect.fn('SessionTitle.selectModel')(function* (
   return Option.fromNullishOr(cfg.title_model).pipe(
     Option.filter((model) => available.has(model)),
     Option.orElse(() =>
-      Option.fromNullishOr(defaultTitleModels.find((model) => available.has(model)))
+      Option.fromNullishOr(
+        defaultTitleModels.find((model) => available.has(model))
+      )
     )
   )
 })
@@ -82,8 +84,7 @@ const generateWithModel = Effect.fn('SessionTitle.generateWithModel')(
             ): part is Extract<
               Response.StreamPart<Record<string, never>>,
               { type: 'text-delta' }
-            > =>
-              part.type === 'text-delta'
+            > => part.type === 'text-delta'
           ),
           Stream.map((part) => part.delta),
           Stream.mkString,

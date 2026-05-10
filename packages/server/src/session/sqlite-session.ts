@@ -239,7 +239,6 @@ export const SqliteSession = (options: { readonly path: string }) =>
           Option.match({
             onNone: () => Effect.succeed([] as ReadonlyArray<MessageRow>),
             onSome: (headId) =>
-              // biome-ignore lint/plugin: recursive CTE is selected by optional session head
               sql<MessageRow>`
                 WITH RECURSIVE chain AS (
                   SELECT * FROM messages WHERE id = ${headId}
@@ -275,7 +274,6 @@ export const SqliteSession = (options: { readonly path: string }) =>
           Option.match({
             onNone: () => Effect.succeed([] as ReadonlyArray<MessageRow>),
             onSome: (headId) =>
-              // biome-ignore lint/plugin: recursive CTE is selected by optional session head
               sql<MessageRow>`
                 WITH RECURSIVE chain AS (
                   SELECT * FROM messages WHERE id = ${headId}
@@ -307,7 +305,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
         let parentId: string | null = session.headId
         let lastId: string | null = null
 
-        // biome-ignore lint/plugin: transaction body is scoped to mutable parent/last ids
+        // oxlint-disable-next-line sorato/no-nested-effect-gen -- transaction body is scoped to mutable parent/last ids
         const insertMessages = Effect.gen(function* () {
           for (const msg of messages) {
             const id = crypto.randomUUID()
@@ -321,9 +319,11 @@ export const SqliteSession = (options: { readonly path: string }) =>
 
           yield* Match.value(lastId).pipe(
             Match.when(null, () => Effect.void),
-            Match.orElse((id) => sql`
+            Match.orElse(
+              (id) => sql`
                 UPDATE sessions SET head_id = ${id}, updated_at = ${now} WHERE id = ${sessionId}
-              `)
+              `
+            )
           )
         })
 

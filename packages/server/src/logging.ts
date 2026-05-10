@@ -46,19 +46,18 @@ const parseLogLevel = (
 ): LogLevel.LogLevel | LoggingConfigError => {
   const level = logLevelsByName.get(value.toLowerCase())
   return Match.value(level).pipe(
-    Match.when(undefined, () =>
-      new LoggingConfigError({
-        message: `Invalid ${source} log level: ${value}`,
-      })
+    Match.when(
+      undefined,
+      () =>
+        new LoggingConfigError({
+          message: `Invalid ${source} log level: ${value}`,
+        })
     ),
     Match.orElse((level) => level)
   )
 }
 
-const parsedLogLevelEffect = (
-  source: string,
-  value: string
-) =>
+const parsedLogLevelEffect = (source: string, value: string) =>
   Match.value(parseLogLevel(source, value)).pipe(
     Match.when(
       (result): result is LoggingConfigError =>
@@ -87,9 +86,7 @@ const envLogLevelEffect = Option.fromNullishOr(
   })
 )
 
-export const resolveLogLevel = (
-  cliLogLevel: string | undefined
-) =>
+export const resolveLogLevel = (cliLogLevel: string | undefined) =>
   Option.fromNullishOr(cliLogLevel).pipe(
     Option.match({
       onNone: () => envLogLevelEffect,

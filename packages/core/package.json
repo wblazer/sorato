@@ -1,7 +1,7 @@
 {
   "name": "@sorato/core",
-  "module": "src/index.ts",
   "type": "module",
+  "module": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
     "./sandbox": "./src/sandbox/sandbox.ts",

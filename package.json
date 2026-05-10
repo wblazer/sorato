@@ -8,20 +8,22 @@
     "prepare": "effect-language-service patch",
     "test": "bun run --filter '*' test",
     "typecheck": "bun --filter '*' typecheck && bun run --filter @sorato/web check",
-    "format": "biome format . --write",
-    "format:check": "biome check . --formatter-enabled=true --linter-enabled=false",
-    "lint": "biome lint .",
-    "lint:fix": "biome lint . --write",
+    "format": "oxfmt . --write",
+    "format:check": "oxfmt . --check",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint . --fix",
     "effect-solutions": "bun node_modules/effect-solutions/dist/cli.js",
     "web": "bun run --filter @sorato/web dev",
     "server": "bun run --filter @sorato/server dev"
   },
   "devDependencies": {
-    "@typescript/native-preview": "beta",
-    "@catenarycloud/linteffect": "0.0.4-0",
     "@effect/language-service": "^0.85.1",
+    "@oxlint/plugins": "^1.63.0",
     "@types/bun": "latest",
+    "@typescript/native-preview": "beta",
     "effect-solutions": "^0.4.13",
+    "oxfmt": "^0.48.0",
+    "oxlint": "^1.63.0",
     "typescript": "^6"
   }
 }

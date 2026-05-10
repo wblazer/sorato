@@ -51,11 +51,12 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       ...request.modelOptions,
     }).pipe(
       Effect.flatMap((layer) =>
-        // biome-ignore lint/plugin: model layer lookup fails fast when the selected model has no adapter
         Effect.fromNullishOr(layer).pipe(
           Effect.mapError(
             () =>
-              new Error(`Model is not supported by this server: ${request.model}`)
+              new Error(
+                `Model is not supported by this server: ${request.model}`
+              )
           ),
           Effect.orDie
         )
@@ -65,17 +66,21 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
 
     const existingConversation = yield* storage.conversation(sessionId)
     const isFirstMessage = existingConversation.content.length === 0
-    const shouldSetTitle = Effect.succeed(isFirstMessage && session.title === null)
+    const shouldSetTitle = Effect.succeed(
+      isFirstMessage && session.title === null
+    )
     const publishSessionUpdated = Effect.sync(() =>
       publish({ _tag: 'SessionUpdated', sessionId })
     )
-    const maybeSetTitle = generateSessionTitle(session.directory, request.input).pipe(
+    const maybeSetTitle = generateSessionTitle(
+      session.directory,
+      request.input
+    ).pipe(
       Effect.flatMap((title) =>
         Option.match(title, {
           onNone: () => Effect.void,
           onSome: (title) => {
             const setTitle = storage.setTitle(sessionId, title)
-            // biome-ignore lint/plugin: title persistence is followed by the matching session update event
             return setTitle.pipe(Effect.andThen(publishSessionUpdated))
           },
         })

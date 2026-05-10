@@ -162,7 +162,9 @@ const providerCredentialMessage = (error: unknown) =>
     Match.orElse(() => 'Failed to read provider credentials')
   )
 
-const listModelsEffect = Effect.fn('ModelCatalog.list')(function* (dir: string) {
+const listModelsEffect = Effect.fn('ModelCatalog.list')(function* (
+  dir: string
+) {
   yield* Effect.logDebug('Listing available models', { dir })
   const runtimeConfig = yield* RuntimeConfigService
   const cfg = yield* runtimeConfig.get(dir)
@@ -205,13 +207,19 @@ const ensureModelEffect = Effect.fn('ModelCatalog.ensure')(function* (
   const models = yield* listModels(dir)
 
   const option = models.models.find((item) => item.id === model)
-  return yield* Match.value(option !== undefined && validOptions(option, options)).pipe(
+  return yield* Match.value(
+    option !== undefined && validOptions(option, options)
+  ).pipe(
     Match.when(true, () =>
       Effect.logDebug('Model selection accepted', { dir, model, options })
     ),
     Match.orElse(() =>
       Effect.gen(function* () {
-        yield* Effect.logWarning('Model selection rejected', { dir, model, options })
+        yield* Effect.logWarning('Model selection rejected', {
+          dir,
+          model,
+          options,
+        })
         return yield* new ModelError({
           message: `Model is not available for this server: ${model}`,
         })
@@ -237,11 +245,13 @@ const modelLayerEffect = Effect.fn('ModelCatalog.modelLayer')(function* (
   const [provider, ...rest] = selection.id.split('/')
   const model = rest.join('/')
   const validated = Match.value(`${provider}:${Number(model.length > 0)}`).pipe(
-    Match.when('anthropic:1', () => ({ provider: 'anthropic' as const, model })),
+    Match.when('anthropic:1', () => ({
+      provider: 'anthropic' as const,
+      model,
+    })),
     Match.when('openai:1', () => ({ provider: 'openai' as const, model })),
     Match.orElse(() => undefined)
   )
-  // biome-ignore lint/plugin: provider/model parsing guards adapter lookup before credentials are read
   if (!validated) {
     yield* Effect.logWarning('Model layer unavailable', { selection })
     return

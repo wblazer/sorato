@@ -38,8 +38,11 @@ type ProviderAdapter = {
   ) => ModelServiceLayer
 }
 
-// biome-ignore lint/plugin/no-manual-effect-channels: adapter registry needs a shared layer contract
-type ModelServiceLayer = Layer.Layer<LanguageModel.LanguageModel, Config.ConfigError>
+// oxlint-disable-next-line sorato/no-manual-effect-channels -- adapter registry needs a shared layer contract
+type ModelServiceLayer = Layer.Layer<
+  LanguageModel.LanguageModel,
+  Config.ConfigError
+>
 
 const CodexRequestBody = Schema.Struct({
   instructions: Schema.optional(Schema.String),
@@ -91,10 +94,9 @@ const anthropicThinkingBudget = (selection: ModelSelection) => {
 
 const anthropicThinkingConfig = (selection: ModelSelection) => {
   const effort = anthropicAdaptiveEffort(selection)
-  const adaptiveEffort = [
-    undefined,
-    effort,
-  ][Number(supportsAnthropicAdaptiveThinking(selection.id))]
+  const adaptiveEffort = [undefined, effort][
+    Number(supportsAnthropicAdaptiveThinking(selection.id))
+  ]
   const adaptiveThinking = Match.value(adaptiveEffort).pipe(
     Match.when('low', (effort) => ({
       thinking: { type: 'adaptive' as const },
@@ -215,36 +217,40 @@ export const PROVIDER_ADAPTERS = {
       const clientLayer = Match.value(auth?.type).pipe(
         Match.when('oauth', () =>
           OpenAiClient.layerConfig({
-              apiKey: Config.succeed(Redacted.make('sorato-chatgpt-oauth')),
-              transformClient: (client) =>
-                // biome-ignore lint/plugin: OAuth transport wiring is localized to this provider adapter
-                client.pipe(
-                  HttpClient.mapRequestEffect((request) =>
-                    Effect.gen(function* () {
-                      const currentRaw = currentOpenAiOauth(authStore)
-                      const currentMapped = Effect.mapError(
-                        currentRaw,
-                        (error) =>
-                          new Error(
-                            `Failed to refresh OpenAI ChatGPT credentials: ${error.message}`
-                          )
-                      )
-                      const currentEffect = Effect.orDie(currentMapped)
-                      const current = yield* currentEffect
+            apiKey: Config.succeed(Redacted.make('sorato-chatgpt-oauth')),
+            transformClient: (client) =>
+              client.pipe(
+                HttpClient.mapRequestEffect((request) =>
+                  Effect.gen(function* () {
+                    const currentRaw = currentOpenAiOauth(authStore)
+                    const currentMapped = Effect.mapError(
+                      currentRaw,
+                      (error) =>
+                        new Error(
+                          `Failed to refresh OpenAI ChatGPT credentials: ${error.message}`
+                        )
+                    )
+                    const currentEffect = Effect.orDie(currentMapped)
+                    const current = yield* currentEffect
 
-                      const url = new URL(request.url)
-                      const target = [
+                    const url = new URL(request.url)
+                    const target =
+                      [
                         request.url,
                         'https://chatgpt.com/backend-api/codex/responses',
-                      ][Number(url.pathname.endsWith('/responses'))] ?? request.url
-                      const setSessionId = [
+                      ][Number(url.pathname.endsWith('/responses'))] ??
+                      request.url
+                    const setSessionId =
+                      [
                         keepRequest,
                         HttpClientRequest.setHeader(
                           'session_id',
                           selection.sessionId ?? ''
                         ),
-                      ][Number(selection.sessionId !== undefined)] ?? keepRequest
-                      const setAccountId = [
+                      ][Number(selection.sessionId !== undefined)] ??
+                      keepRequest
+                    const setAccountId =
+                      [
                         keepRequest,
                         HttpClientRequest.setHeader(
                           'ChatGPT-Account-Id',
@@ -252,30 +258,29 @@ export const PROVIDER_ADAPTERS = {
                         ),
                       ][Number(current.accountId !== undefined)] ?? keepRequest
 
-                      // biome-ignore lint/plugin: request mutation is a single provider-specific transport pipeline
-                      return withCodexInstructions(request).pipe(
-                        HttpClientRequest.setUrl(target),
-                        HttpClientRequest.setHeader(
-                          'authorization',
-                          `Bearer ${current.access}`
-                        ),
-                        HttpClientRequest.setHeader('originator', ORIGINATOR),
-                        HttpClientRequest.setHeader(
-                          'User-Agent',
-                          soratoUserAgent()
-                        ),
-                        setSessionId,
-                        setAccountId
-                      )
-                    })
-                  )
-                ),
-            })
+                    return withCodexInstructions(request).pipe(
+                      HttpClientRequest.setUrl(target),
+                      HttpClientRequest.setHeader(
+                        'authorization',
+                        `Bearer ${current.access}`
+                      ),
+                      HttpClientRequest.setHeader('originator', ORIGINATOR),
+                      HttpClientRequest.setHeader(
+                        'User-Agent',
+                        soratoUserAgent()
+                      ),
+                      setSessionId,
+                      setAccountId
+                    )
+                  })
+                )
+              ),
+          })
         ),
         Match.orElse(() =>
           OpenAiClient.layerConfig({
-              apiKey: Config.succeed(Redacted.make(apiKey ?? '')),
-            })
+            apiKey: Config.succeed(Redacted.make(apiKey ?? '')),
+          })
         )
       )
 

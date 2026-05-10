@@ -36,7 +36,7 @@ export const ProviderAuthDatabase = Schema.Record(
 export type ProviderAuthDatabase = typeof ProviderAuthDatabase.Type
 export type ProviderAuth = ProviderAuthDatabase[string]
 
-// biome-ignore lint/plugin/no-manual-effect-channels: service contracts expose typed method effects
+// oxlint-disable-next-line sorato/no-effect-type-alias, sorato/no-manual-effect-channels -- service contracts expose typed method effects
 type AuthEffect<A> = Effect.Effect<A, AuthError>
 
 export interface ProviderAuthStoreApi {
@@ -98,7 +98,9 @@ const toAuth = (row: ProviderAuthRow | null): ProviderAuth | undefined => {
   )
   const oauthAuth = Match.value(row).pipe(
     Match.when(
-      (value): value is ProviderAuthRow & {
+      (
+        value
+      ): value is ProviderAuthRow & {
         access_token: string
         refresh_token: string
         expires_at: number

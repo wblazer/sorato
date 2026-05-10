@@ -1,7 +1,7 @@
 {
   "name": "@sorato/server",
-  "module": "src/index.ts",
   "type": "module",
+  "module": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
     "./api": "./src/api.ts",
@@ -15,11 +15,11 @@
     "start": "bun --env-file=../../.env run src/main.ts"
   },
   "dependencies": {
-    "@sorato/core": "workspace:*",
     "@effect/ai-anthropic": "4.0.0-beta.60",
     "@effect/ai-openai": "4.0.0-beta.60",
     "@effect/platform-bun": "4.0.0-beta.60",
     "@effect/sql-sqlite-bun": "4.0.0-beta.60",
+    "@sorato/core": "workspace:*",
     "effect": "4.0.0-beta.60"
   },
   "devDependencies": {

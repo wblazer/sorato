@@ -60,10 +60,7 @@ const parseJwtClaims = (token: string): Record<string, unknown> | undefined => {
           JSON.parse(Buffer.from(payload, 'base64url').toString())
         ),
       catch: (error) => error,
-    }).pipe(
-      Effect.option,
-      Effect.map(Option.getOrUndefined)
-    )
+    }).pipe(Effect.option, Effect.map(Option.getOrUndefined))
   )
 }
 
@@ -249,17 +246,19 @@ export const currentOpenAiOauth = Effect.fn('OpenAiChatGptAuth.current')(
     )
     const fresh = Effect.succeed(current)
     const refresh = Effect.suspend(() => {
-      refreshOpenAiPromise.current = refreshOpenAiPromise.current ?? Effect.runPromise(
-        refreshOpenAiOauthWithStore(store, current)
-      ).finally(() => {
-        refreshOpenAiPromise.current = undefined
-      })
+      refreshOpenAiPromise.current =
+        refreshOpenAiPromise.current ??
+        Effect.runPromise(refreshOpenAiOauthWithStore(store, current)).finally(
+          () => {
+            refreshOpenAiPromise.current = undefined
+          }
+        )
       return Effect.promise(
         () => refreshOpenAiPromise.current as Promise<ProviderOauthInfo>
       )
     })
 
-    return yield* ([refresh, fresh][Number(!isExpired(current))] ?? refresh)
+    return yield* [refresh, fresh][Number(!isExpired(current))] ?? refresh
   }
 )
 
@@ -296,7 +295,6 @@ const listen = (candidate: number) =>
   new Promise<number>((resolve, reject) => {
     const next = createServer(async (request, response) => {
       const url = new URL(request.url ?? '/', `http://localhost:${candidate}`)
-      // biome-ignore lint/plugin: HTTP callback exits immediately for non-OAuth paths
       if (url.pathname !== CALLBACK_PATH) {
         response.writeHead(404)
         response.end('Not found')
@@ -332,24 +330,28 @@ const listen = (candidate: number) =>
       await exchangeCode(code, current.pkce.verifier, current.port)
         .then((tokens) => Effect.runPromise(saveTokens(current.store, tokens)))
         .then(() => {
-        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-        response.end(
-          authPage({
-            title: 'Signed in to ChatGPT',
-            message: 'You can close this window and return to Sorato.',
+          response.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
           })
-        )
+          response.end(
+            authPage({
+              title: 'Signed in to ChatGPT',
+              message: 'You can close this window and return to Sorato.',
+            })
+          )
         })
         .catch((error) => {
-        const message = Match.value(error).pipe(
-          Match.when(
-            (value: unknown): value is Error => value instanceof Error,
-            (value) => value.message
-          ),
-          Match.orElse(() => 'Sign-in failed')
-        )
-        response.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' })
-        response.end(authPage({ title: 'Sign-in failed', message }))
+          const message = Match.value(error).pipe(
+            Match.when(
+              (value: unknown): value is Error => value instanceof Error,
+              (value) => value.message
+            ),
+            Match.orElse(() => 'Sign-in failed')
+          )
+          response.writeHead(500, {
+            'Content-Type': 'text/html; charset=utf-8',
+          })
+          response.end(authPage({ title: 'Sign-in failed', message }))
         })
     })
     next.once('error', reject)

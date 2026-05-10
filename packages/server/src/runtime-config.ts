@@ -17,7 +17,6 @@ export interface RuntimeConfig {
 }
 
 export interface RuntimeConfigApi {
-  // biome-ignore lint/plugin/no-manual-effect-channels: service contracts expose typed method effects
   readonly get: (dir: string) => Effect.Effect<RuntimeConfig>
 }
 
@@ -246,10 +245,9 @@ export const RuntimeConfigLive = Layer.effect(
       const config = yield* loadFiles(projectConfigFiles(dir)).pipe(
         Effect.map((projectConfig) => mergeConfig(globalConfig, projectConfig)),
         Effect.catchCause((cause) =>
-          // biome-ignore lint/plugin: fallback logs the project config failure before returning global config
           Effect.logError('Failed to load project runtime config', {
-              dir,
-              cause,
+            dir,
+            cause,
           }).pipe(Effect.map(() => globalConfig))
         )
       )

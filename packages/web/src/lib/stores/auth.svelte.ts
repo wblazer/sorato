@@ -50,7 +50,8 @@ function createAuthStore() {
     } catch (err) {
       if (id !== requestId) return
       providers = []
-      error = err instanceof Error ? err.message : 'Failed to load provider auth'
+      error =
+        err instanceof Error ? err.message : 'Failed to load provider auth'
       loadedConnectionId = connectionId
     } finally {
       if (id === requestId) loading = false

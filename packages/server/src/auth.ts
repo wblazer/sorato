@@ -39,7 +39,9 @@ const authStatus = Effect.fn('Auth.status')(function* () {
 
   return new AuthStatusResponse({
     providers,
-    hasAuthenticatedProvider: providers.some((provider) => provider.authenticated),
+    hasAuthenticatedProvider: providers.some(
+      (provider) => provider.authenticated
+    ),
   })
 })
 
@@ -72,8 +74,9 @@ export const AuthLive = HttpApiBuilder.group(Api, 'auth', (handlers) =>
         )
       )
     )
-    .handle('oauthAuthorize', ({ params }) =>
-      (
+    .handle(
+      'oauthAuthorize',
+      ({ params }) =>
         [
           Effect.fail(
             new AuthError({ message: 'OAuth is only supported for OpenAI' })
@@ -94,6 +97,5 @@ export const AuthLive = HttpApiBuilder.group(Api, 'auth', (handlers) =>
         Effect.fail(
           new AuthError({ message: 'OAuth is only supported for OpenAI' })
         )
-      )
     )
 )

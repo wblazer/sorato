@@ -174,7 +174,6 @@ function createRunWorker(sessionId: string) {
 
     while (true) {
       const stopRequested = shouldStop(sessionId)
-      // biome-ignore lint/plugin: the worker loop exits early on explicit stop requests
       if (stopRequested) {
         yield* Effect.logInfo('Session run worker stopping before next run')
         break
@@ -378,12 +377,11 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
                 model: payload.model,
                 modelOptions: modelOptions(payload.modelOptions),
               })
-              // biome-ignore lint/plugin: enqueue side effect chooses the response after structured logging
               return Effect.logInfo('Session run request enqueued', {
-                  sessionId: params.id,
-                  status,
-                  queuedRunCount: getQueuedRunCount(params.id),
-                }).pipe(Effect.andThen(selectRunResponse(params.id, status)))
+                sessionId: params.id,
+                status,
+                queuedRunCount: getQueuedRunCount(params.id),
+              }).pipe(Effect.andThen(selectRunResponse(params.id, status)))
             })
           )
         )

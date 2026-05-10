@@ -8,4 +8,3 @@ Shared Svelte UI building blocks.
 - Prefer `phosphor-svelte` for icons
 - Trust component styling, only override classes when necessary
 - `session/` owns chat/session interaction surfaces.
-
