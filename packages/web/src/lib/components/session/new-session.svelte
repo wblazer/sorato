@@ -25,13 +25,9 @@
           if (!session) return
 
           // Prepare the messages store for this session BEFORE Svelte
-          // transitions to SessionView. This sets currentSessionId and
-          // marks the store as loaded, so when SessionView mounts and
-          // calls loadMessages, it sees the session is already set up
-          // and does a background refresh — preserving the optimistic
-          // message instead of hiding it behind "Loading messages...".
+          // transitions to SessionView. No optimistic message is added;
+          // the message area stays empty until persisted messages arrive.
           messagesStore.prepareSession(session.id)
-          messagesStore.addOptimisticUserMessage(session.id, input)
 
           // Fire-and-forget — events stream via global SSE
           await sessionStore.runAgent(

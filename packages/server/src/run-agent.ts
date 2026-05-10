@@ -88,8 +88,6 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       ),
       Effect.when(shouldSetTitle)
     )
-    yield* maybeSetTitle
-
     const preamble: Array<Prompt.MessageEncoded> = Match.value(
       isFirstMessage
     ).pipe(
@@ -109,6 +107,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     publish({ _tag: 'MessagesAppended', sessionId })
     startEventReplay(sessionId, runId)
     publish({ _tag: 'RunStart', sessionId, runId })
+    yield* Effect.forkDetach(maybeSetTitle)
     yield* Effect.logInfo('Agent run published lifecycle start', { runId })
 
     const conversation = yield* storage.conversation(sessionId)

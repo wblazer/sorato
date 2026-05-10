@@ -190,11 +190,9 @@ function createMessagesStore() {
    * Prepare the store for a new session without fetching.
    *
    * Sets `currentSessionId` so SSE events flow, marks the store as
-   * loaded so the UI renders immediately. Used by the new-session
-   * flow: the caller adds an optimistic message after this, and
-   * SSE events drive all subsequent updates. SessionView's
-   * `loadMessages` sees the session is already set up and does a
-   * background refresh instead of a full load.
+   * loaded so the UI renders immediately. SessionView's `loadMessages`
+   * sees the session is already set up and does a background refresh
+   * instead of a full load.
    */
   function prepareSession(sessionId: string) {
     messages = []
@@ -243,9 +241,7 @@ function createMessagesStore() {
       const serverMessages: MessageNode[] = await messagesRes.json()
 
       // During a background refresh, the server might not have caught
-      // up yet (e.g. the run's Phase 1 hasn't persisted the user
-      // message). Keep existing messages (including optimistic ones)
-      // until the server has real data.
+      // up yet. Keep existing messages until the server has real data.
       if (hasExisting && serverMessages.length === 0) {
         // Server hasn't caught up — keep what we have
       } else {

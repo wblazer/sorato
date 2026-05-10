@@ -203,12 +203,6 @@
         >
           <span class="text-sm text-danger">{messagesStore.error}</span>
         </div>
-      {:else if messagesStore.loaded && messagesStore.messages.length === 0 && !isRunning}
-        <div
-          class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
-        >
-          <span class="text-sm text-muted-foreground">No messages yet</span>
-        </div>
       {:else if messagesStore.loaded || isRunning}
         <div
           bind:this={messagesContent}
