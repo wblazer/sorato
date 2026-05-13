@@ -195,7 +195,10 @@ const liveSessionStream = (
     })
   )
 
-const heartbeatStream = Stream.tick('15 seconds').pipe(
+// Keep this comfortably below the HTTP server/proxy idle timeout. If the
+// stream is quiet for too long, browsers report the closed chunked response as
+// ERR_INCOMPLETE_CHUNKED_ENCODING and EventSource reconnects in a tight loop.
+const heartbeatStream = Stream.tick('5 seconds').pipe(
   Stream.map(() => ':heartbeat\n\n')
 )
 
