@@ -50,7 +50,7 @@ bun run server
 
 1. Run `bun run effect-solutions list` to see available guides
 2. Run `bun run effect-solutions show <topic>...` for relevant patterns (supports multiple topics)
-3. Search `.reference/effect-v4/` for real implementations (run `bun run effect-solutions setup` first)
+3. Search `.reference/effect-v4/` for real implementations. Start in `.reference/effect-v4/LLMs.md`
 
 Topics: quick-start, project-setup, tsconfig, basics, services-and-layers, data-modeling, error-handling, config, testing, cli.
 
