@@ -3,6 +3,7 @@ import { hotkeyStore } from './hotkeys.svelte.js'
 
 export type ActionId =
   | 'app.command-palette'
+  | 'app.toggle-tool-output-display-mode'
   | 'connection.add'
   | 'directory.open'
   | 'provider.connect'

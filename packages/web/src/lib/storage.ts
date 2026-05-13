@@ -6,6 +6,8 @@
  * Future: swap to electron-store when Electron arrives.
  */
 
+import { Schema } from 'effect'
+
 const STORAGE_PREFIX = 'sorato:'
 
 export interface Storage {
@@ -81,6 +83,34 @@ export function getJson<T>(key: string, defaultValue: T): T {
 
 export function setJson<T>(key: string, value: T): void {
   storage.set(key, JSON.stringify(value))
+}
+
+/** Decode a persisted JSON value with an Effect Schema. */
+export function getJsonWithSchema<T>(
+  key: string,
+  schema: Schema.Codec<T, unknown, never, never>,
+  defaultValue: T
+): T {
+  const raw = storage.get(key)
+  if (!raw) return defaultValue
+  try {
+    return Schema.decodeUnknownSync(schema)(JSON.parse(raw))
+  } catch {
+    return defaultValue
+  }
+}
+
+/** Encode a value with an Effect Schema before persisting it as JSON. */
+export function setJsonWithSchema<T>(
+  key: string,
+  schema: Schema.Codec<T, unknown, never, never>,
+  value: T
+): void {
+  try {
+    storage.set(key, JSON.stringify(Schema.encodeUnknownSync(schema)(value)))
+  } catch {
+    // Ignore invalid/unencodable values.
+  }
 }
 
 export function storageKey(...parts: ReadonlyArray<string | null | undefined>) {

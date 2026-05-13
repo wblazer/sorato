@@ -2,6 +2,7 @@
   import GlobalCommandPalette from './global-command-palette.svelte'
       import ConnectProviderDialog from './connect-provider-dialog.svelte'
       import { actionStore } from '$lib/stores/actions.svelte.js'
+      import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
       import { connectionsStore } from '$lib/stores/connections.svelte.js'
       import { onMount } from 'svelte'
 
@@ -31,6 +32,16 @@
             palette: 'never',
             run: () => {
               open = true
+            },
+          }),
+          actionStore.register({
+            id: 'app.toggle-tool-output-display-mode',
+            title: 'Toggle Tool Output Display Mode',
+            category: 'Application',
+            description: 'Switch tool results between pretty display and raw model-visible text.',
+            keywords: ['tool', 'output', 'result', 'pretty', 'raw'],
+            run: () => {
+              clientSettingsStore.toggleToolOutputDisplayMode()
             },
           }),
         ]
