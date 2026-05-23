@@ -17,7 +17,7 @@
 {:else if part.type === 'reasoning'}
   <div class="text-muted-foreground">
     <div
-      class="whitespace-pre-wrap break-words border-l-2 border-muted pl-3 leading-relaxed"
+      class="whitespace-pre-wrap break-words border-l-3 border-muted pl-3 leading-relaxed"
     >
       {part.text}
     </div>
