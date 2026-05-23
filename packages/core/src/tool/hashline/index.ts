@@ -1,8 +1,8 @@
 /**
- * Hashline tool bundle — ReadFile + EditFile sharing content-hash anchors.
+ * Hashline tool bundle — Read + Edit sharing content-hash anchors.
  *
  * Import the pair together since they form a protocol:
- *   import { ReadFile, EditFile, ... } from './hashline'
+ *   import { Read, Edit, ... } from './hashline'
  */
 export {
   encode,
@@ -13,8 +13,8 @@ export {
 } from './encoding.ts'
 export type { Anchor } from './encoding.ts'
 export {
-  ReadFile,
-  ReadFileHandler,
-  EditFile,
-  EditFileHandler,
+  Read,
+  ReadHandler,
+  Edit,
+  EditHandler,
 } from './tools.ts'

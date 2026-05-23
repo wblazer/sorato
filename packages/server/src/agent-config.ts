@@ -2,18 +2,18 @@ import { Layer } from 'effect'
 import {
   Bash,
   BashHandler,
-  EditFile,
-  EditFileHandler,
+  Edit,
+  EditHandler,
   Glob,
   GlobHandler,
   Grep,
   GrepHandler,
   LocalSandboxLive,
-  ReadFile,
-  ReadFileHandler,
+  Read,
+  ReadHandler,
   Toolkit,
-  WriteFile,
-  WriteFileHandler,
+  Write,
+  WriteHandler,
 } from '@sorato/core'
 
 export const SYSTEM_PROMPT = `You are a helpful coding agent. You have access to tools for reading, editing, writing, and searching files, as well as running shell commands. Use them as needed to help the user.
@@ -26,18 +26,18 @@ When the user asks you to do something:
 Be concise and direct.`
 
 export const AllTools = Toolkit.make(
-  ReadFile,
-  EditFile,
-  WriteFile,
+  Read,
+  Edit,
+  Write,
   Bash,
   Glob,
   Grep
 )
 
 export const AllToolsLayer = AllTools.toLayer({
-  ...ReadFileHandler,
-  ...EditFileHandler,
-  ...WriteFileHandler,
+  ...ReadHandler,
+  ...EditHandler,
+  ...WriteHandler,
   ...BashHandler,
   ...GlobHandler,
   ...GrepHandler,

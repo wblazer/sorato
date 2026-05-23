@@ -252,8 +252,8 @@ describe('SessionStorage', () => {
         yield* storage.append(session.id, [
           systemMsg('You have tools.'),
           userMsg('Read foo.ts'),
-          toolCallMsg('tc_1', 'ReadFile', { path: 'foo.ts' }),
-          toolResultMsg('tc_1', 'ReadFile', 'contents of foo.ts'),
+          toolCallMsg('tc_1', 'Read', { path: 'foo.ts' }),
+          toolResultMsg('tc_1', 'Read', 'contents of foo.ts'),
           assistantMsg('Here are the contents.'),
         ])
 

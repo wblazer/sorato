@@ -1,12 +1,12 @@
 /**
- * WriteFile tool — create or overwrite files through the sandbox.
+ * Write tool — create or overwrite files through the sandbox.
  *
  * The simplest tool in the fleet: takes a path and content, writes the file.
  * Parent directory creation is a sandbox concern — the tool just calls
  * `files.writeFile()` and formats the result for the LLM.
  *
- * Distinct from EditFile: this is for creating new files or wholesale
- * replacement. EditFile is for surgical changes to existing files using
+ * Distinct from Edit: this is for creating new files or wholesale
+ * replacement. Edit is for surgical changes to existing files using
  * hashline anchors. The two serve different purposes and models should
  * reach for the right one.
  */
@@ -19,12 +19,12 @@ import {
 } from './tool-output.ts'
 
 // ---------------------------------------------------------------------------
-// WriteFile — tool declaration
+// Write — tool declaration
 // ---------------------------------------------------------------------------
 
-export const WriteFile = Tool.make('WriteFile', {
+export const Write = Tool.make('Write', {
   description:
-    'Create or overwrite a file. Parent directories are created automatically. Use this to create new files — for editing existing files, prefer EditFile instead.',
+    'Create or overwrite a file. Parent directories are created automatically. Use this to create new files — for editing existing files, prefer Edit instead.',
   parameters: Schema.Struct({
     path: Schema.String.annotate({
       description:
@@ -41,11 +41,11 @@ export const WriteFile = Tool.make('WriteFile', {
 })
 
 // ---------------------------------------------------------------------------
-// WriteFile — handler
+// Write — handler
 // ---------------------------------------------------------------------------
 
-export const WriteFileHandler = {
-  WriteFile: ({
+export const WriteHandler = {
+  Write: ({
     path,
     content,
   }: {
@@ -58,7 +58,7 @@ export const WriteFileHandler = {
       const oldContent = yield* files
         .readFile(path)
         .pipe(Effect.catch(() => Effect.succeed('')))
-      yield* Effect.logInfo('WriteFile tool writing file', {
+      yield* Effect.logInfo('Write tool writing file', {
         path,
         bytes: Buffer.byteLength(content, 'utf8'),
         lines: content.split('\n').length,
@@ -67,10 +67,10 @@ export const WriteFileHandler = {
 
       const bytes = Buffer.byteLength(content, 'utf8')
       const lines = content.split('\n').length
-      yield* Effect.logInfo('WriteFile tool wrote file', { path, bytes, lines })
+      yield* Effect.logInfo('Write tool wrote file', { path, bytes, lines })
       const result = `Wrote ${path} (${lines} lines, ${bytes} bytes)`
       recordFileDiffPresentation(toolOutputRegistry, {
-        toolName: 'WriteFile',
+        toolName: 'Write',
         path,
         oldContent,
         newContent: content,
@@ -81,8 +81,8 @@ export const WriteFileHandler = {
       Effect.annotateLogs({
         package: 'core',
         subsystem: 'tool',
-        tool: 'WriteFile',
+        tool: 'Write',
       }),
-      Effect.withLogSpan('tool.WriteFile')
+      Effect.withLogSpan('tool.Write')
     ),
 }

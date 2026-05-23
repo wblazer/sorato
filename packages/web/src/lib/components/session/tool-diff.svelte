@@ -15,7 +15,7 @@
     diffStyle: 'unified' as const,
     disableFileHeader: true,
     hunkSeparators: 'line-info-basic' as const,
-    diffIndicators: 'classic' as const,
+    diffIndicators: 'bars' as const,
     overflow: 'scroll' as const,
     theme: {
       dark: 'pierre-dark' as const,

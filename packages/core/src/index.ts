@@ -44,17 +44,17 @@ export type {
 // Tool — hashline bundle (content-hash anchored read + edit)
 export { Toolkit } from 'effect/unstable/ai'
 export {
-  ReadFile,
-  ReadFileHandler,
-  EditFile,
-  EditFileHandler,
+  Read,
+  ReadHandler,
+  Edit,
+  EditHandler,
 } from './tool/hashline/index.ts'
 
 // Tool — bash (shell command execution)
 export { Bash, BashHandler } from './tool/bash.ts'
 
 // Tool — write (file creation)
-export { WriteFile, WriteFileHandler } from './tool/write.ts'
+export { Write, WriteHandler } from './tool/write.ts'
 
 // Tool — glob (file pattern matching)
 export { Glob, GlobHandler } from './tool/glob.ts'

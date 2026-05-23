@@ -1,10 +1,10 @@
 /**
- * Hashline tool pair — ReadFile + EditFile that share the hashline protocol.
+ * Hashline tool pair — Read + Edit that share the hashline protocol.
  *
- * ReadFile returns lines annotated with content hashes:
+ * Read returns lines annotated with content hashes:
  *   `<line>:<hash>|<content>`
  *
- * EditFile accepts edits that reference lines by `<line>:<hash>` anchors.
+ * Edit accepts edits that reference lines by `<line>:<hash>` anchors.
  * If a hash doesn't match the current file content, the edit is rejected —
  * the model must re-read to get fresh anchors.
  *
@@ -27,7 +27,7 @@ import {
 } from './encoding.ts'
 
 // ---------------------------------------------------------------------------
-// ReadFile — constants
+// Read — constants
 // ---------------------------------------------------------------------------
 
 /** Default max lines returned per read. */
@@ -118,12 +118,12 @@ const extOf = (path: string): string => {
 }
 
 // ---------------------------------------------------------------------------
-// ReadFile — tool declaration
+// Read — tool declaration
 // ---------------------------------------------------------------------------
 
-export const ReadFile = Tool.make('ReadFile', {
+export const Read = Tool.make('Read', {
   description:
-    'Read a file. Returns lines annotated with content-hash anchors in the format `<line>:<hash>|<content>`. Use these `<line>:<hash>` anchors when calling EditFile. Supports reading specific line ranges via offset/limit.',
+    'Read a file. Returns lines annotated with content-hash anchors in the format `<line>:<hash>|<content>`. Use these `<line>:<hash>` anchors when calling Edit. Supports reading specific line ranges via offset/limit.',
   parameters: Schema.Struct({
     path: Schema.String.annotate({
       description: 'Absolute or relative path to the file',
@@ -142,8 +142,8 @@ export const ReadFile = Tool.make('ReadFile', {
   dependencies: [CurrentFiles],
 })
 
-export const ReadFileHandler = {
-  ReadFile: ({
+export const ReadHandler = {
+  Read: ({
     path,
     offset,
     limit,
@@ -161,7 +161,7 @@ export const ReadFileHandler = {
         (currentPath) => !BINARY_EXTENSIONS.has(extOf(currentPath)),
         (currentPath) =>
           new SandboxError({
-            operation: 'ReadFile',
+              operation: 'Read',
             message: `Cannot read binary file: ${currentPath}`,
           })
       )
@@ -174,7 +174,7 @@ export const ReadFileHandler = {
         (rawContent) => !isBinaryContent(rawContent),
         () =>
           new SandboxError({
-            operation: 'ReadFile',
+              operation: 'Read',
             message: `Cannot read binary file: ${path}`,
           })
       )
@@ -184,7 +184,7 @@ export const ReadFileHandler = {
         (value) => value >= 1,
         () =>
           new SandboxError({
-            operation: 'ReadFile',
+              operation: 'Read',
             message: 'offset must be greater than or equal to 1',
           })
       )
@@ -196,7 +196,7 @@ export const ReadFileHandler = {
         maxBytes: MAX_BYTES,
       })
 
-      yield* Effect.logDebug('ReadFile tool encoded file', {
+      yield* Effect.logDebug('Read tool encoded file', {
         path,
         offset: effectiveOffset,
         limit: limit ?? DEFAULT_LIMIT,
@@ -211,7 +211,7 @@ export const ReadFileHandler = {
         (totalLines) => effectiveOffset <= totalLines,
         (totalLines) =>
           new SandboxError({
-            operation: 'ReadFile',
+              operation: 'Read',
             message: `Offset ${effectiveOffset} is out of range (file has ${totalLines} lines)`,
           })
       )
@@ -231,19 +231,19 @@ export const ReadFileHandler = {
       Effect.annotateLogs({
         package: 'core',
         subsystem: 'tool',
-        tool: 'ReadFile',
+        tool: 'Read',
       }),
-      Effect.withLogSpan('tool.ReadFile')
+      Effect.withLogSpan('tool.Read')
     ),
 }
 
 // ---------------------------------------------------------------------------
-// EditFile — schema types
+// Edit — schema types
 // ---------------------------------------------------------------------------
 
 const AnchorSchema = Schema.String.annotate({
   description:
-    'A line anchor in the format "<line>:<hash>" from the last ReadFile output, e.g. "3:0e"',
+    'A line anchor in the format "<line>:<hash>" from the last Read output, e.g. "3:0e"',
 })
 
 const ContentSchema = Schema.String.annotate({
@@ -291,19 +291,19 @@ const DeleteOp = Schema.Struct({
 const EditOp = Schema.Union([ReplaceOp, InsertOp, DeleteOp])
 
 // ---------------------------------------------------------------------------
-// EditFile — tool declaration
+// Edit — tool declaration
 // ---------------------------------------------------------------------------
 
-export const EditFile = Tool.make('EditFile', {
+export const Edit = Tool.make('Edit', {
   description:
-    'Edit a file using line anchors from the last ReadFile output. Each anchor is a `<line>:<hash>` pair that identifies a specific line. You must ReadFile before editing to obtain valid anchors. Edits must not overlap — no two operations can touch the same lines.',
+    'Edit a file using line anchors from the last Read output. Each anchor is a `<line>:<hash>` pair that identifies a specific line. You must Read before editing to obtain valid anchors. Edits must not overlap — no two operations can touch the same lines.',
   parameters: Schema.Struct({
     path: Schema.String.annotate({
-      description: 'Path to the file (same path used in ReadFile)',
+      description: 'Path to the file (same path used in Read)',
     }),
     edits: Schema.Array(EditOp).annotate({
       description:
-        'Array of edit operations. Each operation references lines by their `<line>:<hash>` anchors from the last ReadFile call. Edits must not overlap — no two operations can touch the same lines. Edits are automatically sorted by line position.',
+        'Array of edit operations. Each operation references lines by their `<line>:<hash>` anchors from the last Read call. Edits must not overlap — no two operations can touch the same lines. Edits are automatically sorted by line position.',
     }),
   }),
   success: Schema.String,
@@ -313,7 +313,7 @@ export const EditFile = Tool.make('EditFile', {
 })
 
 // ---------------------------------------------------------------------------
-// EditFile — handler internals
+// Edit — handler internals
 // ---------------------------------------------------------------------------
 
 type EditOpType = typeof EditOp.Type
@@ -561,11 +561,11 @@ const validateNoOverlap = (
 }
 
 // ---------------------------------------------------------------------------
-// EditFile — handler
+// Edit — handler
 // ---------------------------------------------------------------------------
 
-export const EditFileHandler = {
-  EditFile: ({
+export const EditHandler = {
+  Edit: ({
     path,
     edits,
   }: {
@@ -577,7 +577,7 @@ export const EditFileHandler = {
       const toolOutputRegistry = yield* ToolOutputRegistry
       const content = yield* files.readFile(path)
       const originalLines = content.split('\n')
-      yield* Effect.logInfo('EditFile tool resolving edits', {
+      yield* Effect.logInfo('Edit tool resolving edits', {
         path,
         editCount: edits.length,
         originalLines: originalLines.length,
@@ -592,7 +592,7 @@ export const EditFileHandler = {
             { error: Match.string },
             ({ error }) =>
               new SandboxError({
-                operation: 'EditFile',
+                  operation: 'Edit',
                 message: error,
               })
           ),
@@ -618,7 +618,7 @@ export const EditFileHandler = {
           onSome: (message) =>
             Effect.fail(
               new SandboxError({
-                operation: 'EditFile',
+                  operation: 'Edit',
                 message,
               })
             ),
@@ -654,7 +654,7 @@ export const EditFileHandler = {
       const newContent = lines.join('\n')
       yield* files.writeFile(path, newContent)
 
-      yield* Effect.logInfo('EditFile tool applied edits', {
+      yield* Effect.logInfo('Edit tool applied edits', {
         path,
         editCount: edits.length,
         originalLines: originalLines.length,
@@ -663,7 +663,7 @@ export const EditFileHandler = {
 
       const result = `Successfully applied ${edits.length} edit(s) to ${path}`
       recordFileDiffPresentation(toolOutputRegistry, {
-        toolName: 'EditFile',
+        toolName: 'Edit',
         path,
         oldContent: content,
         newContent,
@@ -674,8 +674,8 @@ export const EditFileHandler = {
       Effect.annotateLogs({
         package: 'core',
         subsystem: 'tool',
-        tool: 'EditFile',
+        tool: 'Edit',
       }),
-      Effect.withLogSpan('tool.EditFile')
+      Effect.withLogSpan('tool.Edit')
     ),
 }

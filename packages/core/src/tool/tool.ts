@@ -6,10 +6,10 @@
 
 // Hashline protocol — content-hash anchored read + edit
 export {
-  ReadFile,
-  ReadFileHandler,
-  EditFile,
-  EditFileHandler,
+  Read,
+  ReadHandler,
+  Edit,
+  EditHandler,
   encode,
   hashLine,
   HASH_LENGTH,
@@ -21,8 +21,8 @@ export type { Anchor } from './hashline/index.ts'
 // Bash — shell command execution
 export { Bash, BashHandler } from './bash.ts'
 
-// WriteFile — file creation/overwrite
-export { WriteFile, WriteFileHandler } from './write.ts'
+// Write — file creation/overwrite
+export { Write, WriteHandler } from './write.ts'
 
 // Glob — file pattern matching
 export { Glob, GlobHandler } from './glob.ts'

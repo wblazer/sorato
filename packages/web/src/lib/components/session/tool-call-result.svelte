@@ -20,8 +20,7 @@
     >
       <span class="font-semibold">{title}</span>
       {#if subtitle}
-        <span class="text-muted-foreground">—</span>
-        <span class="min-w-0 truncate font-mono text-xs text-muted-foreground">
+        <span class="min-w-0 truncate font-mono text-muted-foreground">
           {subtitle}
         </span>
       {/if}

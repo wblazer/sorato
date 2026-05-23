@@ -3,7 +3,7 @@
  *
  * The tool handles LLM-facing concerns: output truncation (so a `find /`
  * doesn't blow the context window), spillover to a sandbox file (so the
- * full output is still accessible via ReadFile), and timeout messaging.
+ * full output is still accessible via Read), and timeout messaging.
  *
  * Security and process management are sandbox concerns — the tool just
  * calls `session.exec()` and formats the result.
@@ -179,7 +179,7 @@ export const BashHandler = {
       })
 
       // If truncated, spill the full output to a sandbox file so the LLM
-      // can access it via ReadFile
+      // can access it via Read
       const spilloverCandidate = `${SPILLOVER_DIR}/${Date.now().toString(36)}.txt`
       const spilloverPath = Match.value(truncation.truncated).pipe(
         Match.when(true, () => spilloverCandidate),
@@ -228,7 +228,7 @@ export const BashHandler = {
       truncation.truncated &&
         spilloverPath !== undefined &&
         parts.push(
-          `\n[Output truncated — showing last ${keptLines} of ${truncation.totalLines} lines (${truncation.totalBytes} bytes total). Full output: ReadFile path="${spilloverPath}"]`
+          `\n[Output truncated — showing last ${keptLines} of ${truncation.totalLines} lines (${truncation.totalBytes} bytes total). Full output: Read path="${spilloverPath}"]`
         )
 
       return parts.join('\n')
