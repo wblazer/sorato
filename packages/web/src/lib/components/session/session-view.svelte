@@ -19,8 +19,6 @@
       let isAtBottom = $state(true)
       let shouldAutoScroll = $state(true)
       let autoScrollTop: number | undefined
-      let canScrollUp = $state(false)
-      let canScrollDown = $state(false)
       let resizeObserver: ResizeObserver | undefined
 
       const bottomThreshold = 8
@@ -46,8 +44,6 @@
           messagesContainer.clientHeight
 
         isAtBottom = distanceFromBottom <= bottomThreshold
-        canScrollUp = messagesContainer.scrollTop > bottomThreshold
-        canScrollDown = distanceFromBottom > bottomThreshold
       }
 
       function handleScroll() {
@@ -194,7 +190,7 @@
   <div class="relative min-h-0 flex-1 overflow-hidden">
     <div
       bind:this={messagesContainer}
-      class="h-full overflow-y-auto"
+      class="scroll-mask-y scroll-mask-y-from-98% h-full overflow-y-auto"
       onscroll={handleScroll}
       onwheel={handleWheel}
     >
@@ -235,18 +231,6 @@
         </div>
       {/if}
     </div>
-
-    {#if canScrollUp}
-      <div
-        class="pointer-events-none absolute inset-x-0 top-0 z-10 h-6 bg-gradient-to-b from-background/35 to-transparent backdrop-blur-[0.5px]"
-      ></div>
-    {/if}
-
-    {#if canScrollDown}
-      <div
-        class="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-8 bg-gradient-to-t from-background/35 to-transparent backdrop-blur-[0.5px]"
-      ></div>
-    {/if}
 
     {#if !isAtBottom && (isRunning || messagesStore.streamingParts.length > 0)}
       <div class="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center">
