@@ -16,10 +16,7 @@
  */
 import type { LanguageModel, Prompt, Tool } from 'effect/unstable/ai'
 import type { Effect } from 'effect/Effect'
-import type {
-  ToolCallDisplay,
-  ToolResultDisplay,
-} from '../tool/tool-output.ts'
+import type { ToolCallDisplay, ToolResultDisplay } from '../tool/tool-output.ts'
 
 // ---------------------------------------------------------------------------
 // Hooks

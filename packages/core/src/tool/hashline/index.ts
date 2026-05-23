@@ -12,9 +12,4 @@ export {
   resolveAnchor,
 } from './encoding.ts'
 export type { Anchor } from './encoding.ts'
-export {
-  Read,
-  ReadHandler,
-  Edit,
-  EditHandler,
-} from './tools.ts'
+export { Read, ReadHandler, Edit, EditHandler } from './tools.ts'

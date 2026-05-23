@@ -25,14 +25,7 @@ When the user asks you to do something:
 
 Be concise and direct.`
 
-export const AllTools = Toolkit.make(
-  Read,
-  Edit,
-  Write,
-  Bash,
-  Glob,
-  Grep
-)
+export const AllTools = Toolkit.make(Read, Edit, Write, Bash, Glob, Grep)
 
 export const AllToolsLayer = AllTools.toLayer({
   ...ReadHandler,

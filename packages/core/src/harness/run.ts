@@ -27,10 +27,7 @@ import type { AiError, Response, Tool } from 'effect/unstable/ai'
 import type { Effect as EffectType } from 'effect/Effect'
 import type { LanguageModel } from 'effect/unstable/ai'
 import type { HarnessConfig, HarnessEvent, HarnessResult } from './harness.ts'
-import type {
-  ToolCallDisplay,
-  ToolResultDisplay,
-} from '../tool/tool-output.ts'
+import type { ToolCallDisplay, ToolResultDisplay } from '../tool/tool-output.ts'
 
 import { Cause, Effect, Exit, Ref, Stream } from 'effect'
 import { Chat, Prompt } from 'effect/unstable/ai'

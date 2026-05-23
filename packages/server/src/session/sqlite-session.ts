@@ -119,7 +119,9 @@ const restoreToolDisplayFields = (
           if (part.type === 'tool-call' && isRecord(rawPart)) {
             return {
               ...part,
-              ...(isRecord(rawPart.display) ? { display: rawPart.display } : {}),
+              ...(isRecord(rawPart.display)
+                ? { display: rawPart.display }
+                : {}),
             }
           }
           if (part.type !== 'tool-result' || !isRecord(rawPart)) return part

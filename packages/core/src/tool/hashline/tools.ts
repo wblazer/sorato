@@ -161,7 +161,7 @@ export const ReadHandler = {
         (currentPath) => !BINARY_EXTENSIONS.has(extOf(currentPath)),
         (currentPath) =>
           new SandboxError({
-              operation: 'Read',
+            operation: 'Read',
             message: `Cannot read binary file: ${currentPath}`,
           })
       )
@@ -174,7 +174,7 @@ export const ReadHandler = {
         (rawContent) => !isBinaryContent(rawContent),
         () =>
           new SandboxError({
-              operation: 'Read',
+            operation: 'Read',
             message: `Cannot read binary file: ${path}`,
           })
       )
@@ -184,7 +184,7 @@ export const ReadHandler = {
         (value) => value >= 1,
         () =>
           new SandboxError({
-              operation: 'Read',
+            operation: 'Read',
             message: 'offset must be greater than or equal to 1',
           })
       )
@@ -211,7 +211,7 @@ export const ReadHandler = {
         (totalLines) => effectiveOffset <= totalLines,
         (totalLines) =>
           new SandboxError({
-              operation: 'Read',
+            operation: 'Read',
             message: `Offset ${effectiveOffset} is out of range (file has ${totalLines} lines)`,
           })
       )
@@ -592,7 +592,7 @@ export const EditHandler = {
             { error: Match.string },
             ({ error }) =>
               new SandboxError({
-                  operation: 'Edit',
+                operation: 'Edit',
                 message: error,
               })
           ),
@@ -618,7 +618,7 @@ export const EditHandler = {
           onSome: (message) =>
             Effect.fail(
               new SandboxError({
-                  operation: 'Edit',
+                operation: 'Edit',
                 message,
               })
             ),

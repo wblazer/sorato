@@ -43,12 +43,7 @@ export type {
 
 // Tool — hashline bundle (content-hash anchored read + edit)
 export { Toolkit } from 'effect/unstable/ai'
-export {
-  Read,
-  ReadHandler,
-  Edit,
-  EditHandler,
-} from './tool/hashline/index.ts'
+export { Read, ReadHandler, Edit, EditHandler } from './tool/hashline/index.ts'
 
 // Tool — bash (shell command execution)
 export { Bash, BashHandler } from './tool/bash.ts'

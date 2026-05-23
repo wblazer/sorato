@@ -30,7 +30,9 @@ export type TranscriptItem =
       resultSource?: TranscriptSource | undefined
     }
 
-export const messageParts = (message: MessageNode): ReadonlyArray<MessagePart> => {
+export const messageParts = (
+  message: MessageNode
+): ReadonlyArray<MessagePart> => {
   const content = message.encoded.content
   if (typeof content === 'string') return [{ type: 'text', text: content }]
   if (Array.isArray(content)) return content as MessagePart[]
@@ -61,7 +63,10 @@ export const projectTranscript = (
     }))
   }
 
-  const results = new Map<string, { part: ToolResultPart; source: TranscriptSource }>()
+  const results = new Map<
+    string,
+    { part: ToolResultPart; source: TranscriptSource }
+  >()
   for (const source of sources) {
     if (source.part.type === 'tool-result') {
       results.set(source.part.id, { part: source.part, source })
