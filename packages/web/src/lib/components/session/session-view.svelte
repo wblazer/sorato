@@ -89,6 +89,17 @@
         scrollToBottom()
       }
 
+      function scrollToLatestAfterRender() {
+        shouldAutoScroll = true
+
+        tick().then(() =>
+          requestAnimationFrame(() => {
+            scrollToBottom()
+            updateScrollState()
+          })
+        )
+      }
+
       $effect(() => {
         if (!messagesContent || typeof ResizeObserver === 'undefined') return
 
@@ -123,6 +134,8 @@
       function handleSend(input: string) {
         const model = modelsStore.selectedModel
         if (!model) return
+
+        scrollToLatestAfterRender()
 
         if (!sessionStore.isRunning(sessionId)) {
           // Show the user's message immediately — don't wait for the server
