@@ -1,3 +1,10 @@
+import type { FileContents } from '@pierre/diffs'
+
+export interface ToolCallDisplay {
+  title?: string
+  subtitle?: string
+}
+
 export interface Session {
   id: string
   directory: string
@@ -110,6 +117,7 @@ export interface ToolCallPart {
   id: string
   name: string
   params: unknown
+  display?: ToolCallDisplay
 }
 
 export interface ToolResultPart {
@@ -117,7 +125,24 @@ export interface ToolResultPart {
   id: string
   name: string
   isFailure: boolean
-  result: unknown
+  /** Exact text fed back to the model. */
+  result: string
+  /** Optional structured human-facing display payload. */
+  display?: ToolResultDisplay
+}
+
+/** Structured display payloads for tool results. Absence means render result raw. */
+export type ToolResultDisplay = {
+  type: 'diff'
+  /** Previous file contents, matching @pierre/diffs FileContents. */
+  oldFile: FileContents
+  /** New file contents, matching @pierre/diffs FileContents. */
+  newFile: FileContents
+  /** Precomputed result summary for the combined tool header. */
+  summary: {
+    additions: number
+    deletions: number
+  }
 }
 
 /** Union of all part types for pattern matching. */
@@ -165,6 +190,7 @@ export type ServerEvent =
       id: string
       name: string
       params: unknown
+      display?: ToolCallDisplay
       eventId: number
     }
   | {
@@ -173,7 +199,8 @@ export type ServerEvent =
       runId: string
       id: string
       name: string
-      result: unknown
+      result: string
+      display?: ToolResultDisplay
       isFailure: boolean
       eventId: number
     }

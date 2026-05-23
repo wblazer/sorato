@@ -1,6 +1,6 @@
 import { Prompt } from 'effect/unstable/ai'
 import { Effect, Match, Schema } from 'effect'
-import type { HarnessEvent, HarnessHook } from '@sorato/core'
+import type { HarnessEvent, HarnessHook, HarnessResult } from '@sorato/core'
 import {
   SessionStorage,
   StorageError,
@@ -12,6 +12,65 @@ const stoppedSystemMessage = {
   role: 'system' as const,
   content:
     '[The user stopped the previous response. The assistant message above may be incomplete.]',
+}
+
+const addToolDisplays = (
+  messages: ReadonlyArray<Prompt.MessageEncoded>,
+  callDisplays: HarnessResult['toolCallDisplays'],
+  resultDisplays: HarnessResult['toolResultDisplays']
+): ReadonlyArray<Prompt.MessageEncoded> => {
+  const addDisplayToCallPart = (
+    part: Prompt.ToolCallPartEncoded
+  ): Prompt.ToolCallPartEncoded => {
+    const presentation = callDisplays.get(part.id)
+    if (!presentation) return part
+
+    return {
+      ...part,
+      ...(presentation.display !== undefined
+        ? { display: presentation.display }
+        : {}),
+    }
+  }
+
+  const addDisplayToPart = (
+    part: Prompt.ToolResultPartEncoded
+  ): Prompt.ToolResultPartEncoded => {
+    const presentation = resultDisplays.get(part.id)
+    if (!presentation) return part
+
+    return {
+      ...part,
+      ...(presentation.display !== undefined
+        ? { display: presentation.display }
+        : {}),
+    }
+  }
+
+  return messages.map((message) => {
+    switch (message.role) {
+      case 'assistant':
+        if (typeof message.content === 'string') return message
+        return {
+          ...message,
+          content: message.content.map((part) => {
+            if (part.type === 'tool-call') return addDisplayToCallPart(part)
+            if (part.type === 'tool-result') return addDisplayToPart(part)
+            return part
+          }),
+        }
+      case 'tool':
+        return {
+          ...message,
+          content: message.content.map((part) =>
+            part.type === 'tool-result' ? addDisplayToPart(part) : part
+          ),
+        }
+      case 'system':
+      case 'user':
+        return message
+    }
+  })
 }
 
 export const createPersistenceHook = (
@@ -33,12 +92,15 @@ export const createPersistenceHook = (
           }),
       })
 
+      const encodedNewMessages = encoded.content.slice(messageCountBeforeRun)
+      const displayMessages = addToolDisplays(
+        encodedNewMessages,
+        event.result.toolCallDisplays,
+        event.result.toolResultDisplays
+      )
       const newMessages = Match.value(event.interrupted).pipe(
-        Match.when(true, () => [
-          ...encoded.content.slice(messageCountBeforeRun),
-          stoppedSystemMessage,
-        ]),
-        Match.orElse(() => encoded.content.slice(messageCountBeforeRun))
+        Match.when(true, () => [...displayMessages, stoppedSystemMessage]),
+        Match.orElse(() => displayMessages)
       )
       if (newMessages.length === 0) return
 

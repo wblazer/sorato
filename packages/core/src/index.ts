@@ -31,6 +31,16 @@ export type {
 } from './harness/harness.ts'
 export { run } from './harness/run.ts'
 
+// Tool display metadata
+export { ToolOutputRegistry } from './tool/tool-output.ts'
+export type {
+  ToolCallDisplay,
+  ToolDisplayFileContents,
+  ToolResultDisplay,
+  ToolResultPresentation,
+  ToolOutputRegistryApi,
+} from './tool/tool-output.ts'
+
 // Tool — hashline bundle (content-hash anchored read + edit)
 export { Toolkit } from 'effect/unstable/ai'
 export {

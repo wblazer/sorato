@@ -13,6 +13,7 @@
     "format": "oxfmt . --write"
   },
   "dependencies": {
+    "@pierre/diffs": "^1.1.22",
     "@tanstack/hotkeys": "^0.4.0",
     "effect": "4.0.0-beta.60"
   },

@@ -18,7 +18,12 @@
  */
 import { EventEmitter } from 'node:events'
 import { Effect } from 'effect'
-import type { HarnessEvent, HarnessHook } from '@sorato/core'
+import type {
+  HarnessEvent,
+  HarnessHook,
+  ToolCallDisplay,
+  ToolResultDisplay,
+} from '@sorato/core'
 import { appendReplayEvent } from './event-replay.ts'
 
 // ---------------------------------------------------------------------------
@@ -49,6 +54,7 @@ export type ServerEvent =
       readonly id: string
       readonly name: string
       readonly params: unknown
+      readonly display?: ToolCallDisplay | undefined
       readonly eventId: number
     }
   | {
@@ -57,7 +63,8 @@ export type ServerEvent =
       readonly runId: string
       readonly id: string
       readonly name: string
-      readonly result: unknown
+      readonly result: string
+      readonly display?: ToolResultDisplay | undefined
       readonly isFailure: boolean
       readonly eventId: number
     }
@@ -175,6 +182,7 @@ export const createBusHook = (
               id: event.id,
               name: event.name,
               params: event.params,
+              display: event.display,
             })
           )
           break
@@ -187,6 +195,7 @@ export const createBusHook = (
               id: event.id,
               name: event.name,
               result: event.result,
+              display: event.display,
               isFailure: event.isFailure,
             })
           )

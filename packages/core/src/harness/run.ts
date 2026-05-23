@@ -27,9 +27,14 @@ import type { AiError, Response, Tool } from 'effect/unstable/ai'
 import type { Effect as EffectType } from 'effect/Effect'
 import type { LanguageModel } from 'effect/unstable/ai'
 import type { HarnessConfig, HarnessEvent, HarnessResult } from './harness.ts'
+import type {
+  ToolCallDisplay,
+  ToolResultDisplay,
+} from '../tool/tool-output.ts'
 
 import { Cause, Effect, Exit, Ref, Stream } from 'effect'
 import { Chat, Prompt } from 'effect/unstable/ai'
+import { ToolOutputRegistry, toolCallDisplay } from '../tool/tool-output.ts'
 
 /** Maximum agent loop iterations to prevent runaway tool-call cycles. */
 const MAX_TURNS = 25
@@ -81,6 +86,19 @@ export const run = <
 > =>
   Effect.gen(function* () {
     const chat = yield* Chat.fromPrompt(conversation)
+    const toolOutputRegistry = yield* ToolOutputRegistry
+    const toolCallDisplays = new Map<
+      string,
+      {
+        readonly display?: ToolCallDisplay | undefined
+      }
+    >()
+    const toolResultDisplays = new Map<
+      string,
+      {
+        readonly display?: ToolResultDisplay | undefined
+      }
+    >()
 
     const state: RunState = {
       outputText: '',
@@ -128,8 +146,10 @@ export const run = <
             })
 
           case 'tool-call':
+            const display = toolCallDisplay(part.name, part.params)
             return Effect.sync(() => {
               hadToolCalls = true
+              toolCallDisplays.set(part.id, { display })
             }).pipe(
               Effect.flatMap(() =>
                 Effect.logInfo('Harness tool call received', {
@@ -144,6 +164,7 @@ export const run = <
                   id: part.id,
                   name: part.name,
                   params: part.params,
+                  display,
                 })
               )
             )
@@ -152,6 +173,16 @@ export const run = <
             const logToolResult = part.isFailure
               ? Effect.logWarning
               : Effect.logDebug
+            const resultText =
+              typeof part.result === 'string'
+                ? part.result
+                : (JSON.stringify(part.result) ?? String(part.result))
+            const presentation = toolOutputRegistry.take(part.name, resultText)
+            if (presentation?.display) {
+              toolResultDisplays.set(part.id, {
+                display: presentation.display,
+              })
+            }
             return logToolResult('Harness tool result received', {
               turn,
               toolCallId: part.id,
@@ -163,7 +194,8 @@ export const run = <
                   _tag: 'ToolResult',
                   id: part.id,
                   name: part.name,
-                  result: part.result,
+                  result: resultText,
+                  display: presentation?.display,
                   isFailure: part.isFailure,
                 })
               )
@@ -265,6 +297,8 @@ export const run = <
 
       const result = {
         conversation: fullConversation,
+        toolCallDisplays,
+        toolResultDisplays,
         text: state.outputText,
         usage: state.usage,
       } satisfies HarnessResult

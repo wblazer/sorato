@@ -13,6 +13,10 @@
 import { Tool } from 'effect/unstable/ai'
 import { Effect, Schema } from 'effect'
 import { CurrentFiles, SandboxError } from '../sandbox/sandbox.ts'
+import {
+  recordFileDiffPresentation,
+  ToolOutputRegistry,
+} from './tool-output.ts'
 
 // ---------------------------------------------------------------------------
 // WriteFile — tool declaration
@@ -50,6 +54,10 @@ export const WriteFileHandler = {
   }) =>
     Effect.gen(function* () {
       const files = yield* CurrentFiles
+      const toolOutputRegistry = yield* ToolOutputRegistry
+      const oldContent = yield* files
+        .readFile(path)
+        .pipe(Effect.catch(() => Effect.succeed('')))
       yield* Effect.logInfo('WriteFile tool writing file', {
         path,
         bytes: Buffer.byteLength(content, 'utf8'),
@@ -60,7 +68,15 @@ export const WriteFileHandler = {
       const bytes = Buffer.byteLength(content, 'utf8')
       const lines = content.split('\n').length
       yield* Effect.logInfo('WriteFile tool wrote file', { path, bytes, lines })
-      return `Wrote ${path} (${lines} lines, ${bytes} bytes)`
+      const result = `Wrote ${path} (${lines} lines, ${bytes} bytes)`
+      recordFileDiffPresentation(toolOutputRegistry, {
+        toolName: 'WriteFile',
+        path,
+        oldContent,
+        newContent: content,
+        result,
+      })
+      return result
     }).pipe(
       Effect.annotateLogs({
         package: 'core',

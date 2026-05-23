@@ -15,6 +15,10 @@ import { Tool } from 'effect/unstable/ai'
 import { Effect, Match, Option, Schema } from 'effect'
 import { CurrentFiles, SandboxError } from '../../sandbox/sandbox.ts'
 import {
+  recordFileDiffPresentation,
+  ToolOutputRegistry,
+} from '../tool-output.ts'
+import {
   encode,
   hashLine,
   HASH_LENGTH,
@@ -570,6 +574,7 @@ export const EditFileHandler = {
   }) =>
     Effect.gen(function* () {
       const files = yield* CurrentFiles
+      const toolOutputRegistry = yield* ToolOutputRegistry
       const content = yield* files.readFile(path)
       const originalLines = content.split('\n')
       yield* Effect.logInfo('EditFile tool resolving edits', {
@@ -656,7 +661,15 @@ export const EditFileHandler = {
         newLines: lines.length,
       })
 
-      return `Successfully applied ${edits.length} edit(s) to ${path}`
+      const result = `Successfully applied ${edits.length} edit(s) to ${path}`
+      recordFileDiffPresentation(toolOutputRegistry, {
+        toolName: 'EditFile',
+        path,
+        oldContent: content,
+        newContent,
+        result,
+      })
+      return result
     }).pipe(
       Effect.annotateLogs({
         package: 'core',

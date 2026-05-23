@@ -46,16 +46,17 @@ type ModelServiceLayer = Layer.Layer<
 
 const CodexRequestBody = Schema.Struct({
   instructions: Schema.optional(Schema.String),
-  input: Schema.optional(
-    Schema.Array(
-      Schema.Struct({
-        role: Schema.optional(Schema.String),
-        content: Schema.Unknown,
-      })
-    )
-  ),
 })
 const CodexRequestRecord = Schema.Record(Schema.String, Schema.Unknown)
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+
+const removeEmptyRole = (item: unknown): unknown => {
+  if (!isRecord(item) || item.role !== '') return item
+  const { role: _role, ...rest } = item
+  return rest
+}
 
 const modelIds = (provider: ProviderId): ReadonlySet<string> =>
   new Set<string>(
@@ -136,15 +137,21 @@ const withCodexInstructions = (
   const parsed = JSON.parse(new TextDecoder().decode(request.body.body))
   const rawBody = Schema.decodeUnknownSync(CodexRequestRecord)(parsed)
   const body = Schema.decodeUnknownSync(CodexRequestBody)(parsed)
-  const input = body.input ?? []
+  const input = Array.isArray(rawBody.input) ? rawBody.input : []
   const instructionIndex = input.findIndex(
     (item) =>
+      isRecord(item) &&
       (item.role === 'system' || item.role === 'developer') &&
       typeof item.content === 'string' &&
       item.content.trim()
   )
   const inputInstructions = Match.value(instructionIndex >= 0).pipe(
-    Match.when(true, () => input[instructionIndex]?.content),
+    Match.when(true, () => {
+      const item = input[instructionIndex]
+      return isRecord(item) && typeof item.content === 'string'
+        ? item.content
+        : undefined
+    }),
     Match.orElse(() => undefined)
   )
   const instructions = body.instructions ?? inputInstructions
@@ -156,7 +163,9 @@ const withCodexInstructions = (
       ...rawBody,
       instructions,
       store: false,
-      input: input.filter((_, index) => index !== instructionIndex),
+      input: input
+        .filter((_, index) => index !== instructionIndex)
+        .map(removeEmptyRole),
     })
   )
 }

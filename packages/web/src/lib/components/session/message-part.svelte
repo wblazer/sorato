@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { MessagePart } from '$lib/types.js'
+  import ToolResult from './tool-result.svelte'
 
-      let { part, monospace = false }: { part: MessagePart; monospace?: boolean } =
-        $props()
-
+  let { part, monospace = false }: { part: MessagePart; monospace?: boolean } =
+    $props()
 </script>
 
 {#if part.type === 'text'}
@@ -37,26 +37,7 @@
     {/if}
   </div>
 {:else if part.type === 'tool-result'}
-  <div
-    class="overflow-hidden rounded-md border {part.isFailure
-      ? 'border-danger bg-inset'
-      : 'border-border bg-inset'}"
-  >
-    <div
-      class="border-b px-2.5 py-2 text-sm {part.isFailure
-        ? 'border-danger text-danger'
-        : 'border-border text-foreground'}"
-    >
-      <span class="font-semibold">{part.name} Result</span>
-    </div>
-    {#if part.result != null}
-      <pre
-        class="max-h-64 overflow-auto px-2.5 py-3 text-sm leading-relaxed">{typeof part.result ===
-        'string'
-          ? part.result
-          : JSON.stringify(part.result, null, 2)}</pre>
-    {/if}
-  </div>
+  <ToolResult {part} />
 {:else if part.type === 'file'}
   <div class="flex items-center gap-2">
     <span class="inline-block h-1.5 w-1.5 rounded-full bg-inset"></span>

@@ -3,6 +3,8 @@
       import { messagesStore } from '$lib/stores/messages.svelte.js'
       import { modelsStore } from '$lib/stores/models.svelte.js'
       import { sessionStore } from '$lib/stores/sessions.svelte.js'
+      import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
+      import { persistedSources, projectTranscript } from '$lib/transcript.js'
       import MessageBubble from './message-bubble.svelte'
       import QueuedMessageBubble from './queued-message-bubble.svelte'
       import StreamingIndicator from './streaming-indicator.svelte'
@@ -29,6 +31,11 @@
       const isStopping = $derived(sessionStore.isStopping(sessionId))
       const queuedMessages = $derived(sessionStore.queuedMessagesFor(sessionId))
       const sessionError = $derived(sessionStore.sessionError(sessionId))
+      const persistedTranscriptItems = $derived.by(() =>
+        projectTranscript(persistedSources(messagesStore.messages), {
+          pretty: clientSettingsStore.prettyToolOutput,
+        })
+      )
 
       function updateScrollState() {
         if (!messagesContainer) return
@@ -209,7 +216,15 @@
           class="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-5 sm:px-6"
         >
           {#each messagesStore.messages as message (message.id)}
-            <MessageBubble {message} />
+            <MessageBubble
+              {message}
+              transcriptItems={persistedTranscriptItems.filter(
+                (item) => {
+                  const source = item.type === 'message' ? item.source : item.callSource
+                  return source.type === 'persisted' && source.message === message
+                }
+              )}
+            />
           {/each}
 
           <StreamingIndicator parts={messagesStore.streamingParts} {isRunning} />

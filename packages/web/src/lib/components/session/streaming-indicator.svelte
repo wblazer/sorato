@@ -1,22 +1,35 @@
 <script lang="ts">
   import type { MessagePart } from '$lib/types.js'
-      import MessagePartComponent from './message-part.svelte'
+  import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
+  import { projectTranscript, streamingSources } from '$lib/transcript.js'
+  import MessagePartComponent from './message-part.svelte'
+  import ToolCallResult from './tool-call-result.svelte'
 
-      let { parts, isRunning }: { parts: MessagePart[]; isRunning: boolean } =
-        $props()
+  let { parts, isRunning }: { parts: MessagePart[]; isRunning: boolean } =
+    $props()
 
-      // Show this component when the run is active OR when there's still
-      // streaming content waiting to be replaced by persisted messages.
-      // This prevents the flash on RunEnd: the content stays visible until
-      // refreshMessages lands and clears streamingParts.
-      const visible = $derived(isRunning || parts.length > 0)
+  // Show this component when the run is active OR when there's still
+  // streaming content waiting to be replaced by persisted messages.
+  // This prevents the flash on RunEnd: the content stays visible until
+  // refreshMessages lands and clears streamingParts.
+  const visible = $derived(isRunning || parts.length > 0)
+
+  const renderParts = $derived.by(() =>
+    projectTranscript(streamingSources(parts), {
+      pretty: clientSettingsStore.prettyToolOutput,
+    })
+  )
 </script>
 
 {#if visible}
   <div class="flex flex-col gap-3 py-1">
-    {#if parts.length > 0}
-      {#each parts as part}
-        <MessagePartComponent {part} monospace={false} />
+    {#if renderParts.length > 0}
+      {#each renderParts as item}
+        {#if item.type === 'combined-tool'}
+          <ToolCallResult call={item.call} result={item.result} />
+        {:else}
+          <MessagePartComponent part={item.part} monospace={false} />
+        {/if}
       {/each}
     {:else if isRunning}
       <div class="flex items-center gap-1.5">

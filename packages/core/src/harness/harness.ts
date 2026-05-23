@@ -16,6 +16,10 @@
  */
 import type { LanguageModel, Prompt, Tool } from 'effect/unstable/ai'
 import type { Effect } from 'effect/Effect'
+import type {
+  ToolCallDisplay,
+  ToolResultDisplay,
+} from '../tool/tool-output.ts'
 
 // ---------------------------------------------------------------------------
 // Hooks
@@ -34,12 +38,14 @@ export type HarnessEvent =
       readonly id: string
       readonly name: string
       readonly params: unknown
+      readonly display?: ToolCallDisplay | undefined
     }
   | {
       readonly _tag: 'ToolResult'
       readonly id: string
       readonly name: string
-      readonly result: unknown
+      readonly result: string
+      readonly display?: ToolResultDisplay | undefined
       readonly isFailure: boolean
     }
   | {
@@ -105,6 +111,20 @@ export interface HarnessConfig<
 export interface HarnessResult {
   /** The complete conversation (system + user + all assistant/tool messages). */
   readonly conversation: Prompt.Prompt
+  /** Human-facing display metadata keyed by tool call id. */
+  readonly toolCallDisplays: ReadonlyMap<
+    string,
+    {
+      readonly display?: ToolCallDisplay | undefined
+    }
+  >
+  /** Human-facing display metadata keyed by tool call id. */
+  readonly toolResultDisplays: ReadonlyMap<
+    string,
+    {
+      readonly display?: ToolResultDisplay | undefined
+    }
+  >
   /** The concatenated text from all assistant messages across all turns. */
   readonly text: string
   /** Aggregate token usage across the session. */

@@ -97,11 +97,71 @@ const toSession = (row: SessionRow): Session => ({
   updatedAt: row.updated_at,
 })
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+
+const restoreToolDisplayFields = (
+  decoded: Prompt.MessageEncoded,
+  raw: unknown
+): Prompt.MessageEncoded => {
+  if (!isRecord(raw)) return decoded
+
+  switch (decoded.role) {
+    case 'assistant': {
+      const rawContent = raw.content
+      if (typeof decoded.content === 'string' || !Array.isArray(rawContent)) {
+        return decoded
+      }
+      return {
+        ...decoded,
+        content: decoded.content.map((part, index) => {
+          const rawPart = rawContent[index]
+          if (part.type === 'tool-call' && isRecord(rawPart)) {
+            return {
+              ...part,
+              ...(isRecord(rawPart.display) ? { display: rawPart.display } : {}),
+            }
+          }
+          if (part.type !== 'tool-result' || !isRecord(rawPart)) return part
+          return {
+            ...part,
+            ...(isRecord(rawPart.display) ? { display: rawPart.display } : {}),
+          }
+        }),
+      }
+    }
+    case 'tool': {
+      const rawContent = raw.content
+      if (!Array.isArray(rawContent)) return decoded
+      return {
+        ...decoded,
+        content: decoded.content.map((part, index) => {
+          const rawPart = rawContent[index]
+          if (part.type !== 'tool-result' || !isRecord(rawPart)) return part
+          return {
+            ...part,
+            ...(isRecord(rawPart.display) ? { display: rawPart.display } : {}),
+          }
+        }),
+      }
+    }
+    case 'system':
+    case 'user':
+      return decoded
+  }
+}
+
+const decodeMessageNode = (encoded: string): Prompt.MessageEncoded => {
+  const raw = JSON.parse(encoded)
+  const decoded = Schema.decodeUnknownSync(Prompt.Message)(raw)
+  return restoreToolDisplayFields(decoded, raw)
+}
+
 const toMessageNode = (row: MessageRow): MessageNode => ({
   id: row.id,
   sessionId: row.session_id,
   parentId: row.parent_id,
-  encoded: Schema.decodeUnknownSync(Prompt.Message)(JSON.parse(row.encoded)),
+  encoded: decodeMessageNode(row.encoded),
   createdAt: row.created_at,
 })
 

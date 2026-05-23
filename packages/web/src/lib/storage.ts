@@ -11,7 +11,7 @@ import { Schema } from 'effect'
 const STORAGE_PREFIX = 'sorato:'
 
 export interface Storage {
-  get(key: string): string | null
+  get(key: string): string | undefined
   set(key: string, value: string): void
   remove(key: string): void
   clear(): void
@@ -19,12 +19,12 @@ export interface Storage {
 
 function createLocalStorage(): Storage {
   return {
-    get(key: string): string | null {
-      if (typeof window === 'undefined') return null
+    get(key: string): string | undefined {
+      if (typeof window === 'undefined') return undefined
       try {
-        return localStorage.getItem(STORAGE_PREFIX + key)
+        return localStorage.getItem(STORAGE_PREFIX + key) ?? undefined
       } catch {
-        return null
+        return undefined
       }
     },
 

@@ -1,41 +1,56 @@
 <script lang="ts">
-  import type { MessageNode, MessagePart } from '$lib/types.js'
-      import MessagePartComponent from './message-part.svelte'
+  import type { MessageNode } from '$lib/types.js'
+  import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
+  import {
+    messageParts,
+    persistedSources,
+    projectTranscript,
+    type TranscriptItem,
+  } from '$lib/transcript.js'
+  import MessagePartComponent from './message-part.svelte'
+  import ToolCallResult from './tool-call-result.svelte'
 
-      let { message }: { message: MessageNode } = $props()
+  let {
+    message,
+    transcriptItems,
+  }: { message: MessageNode; transcriptItems?: ReadonlyArray<TranscriptItem> } =
+    $props()
 
-      const role = $derived(message.encoded.role)
+  const role = $derived(message.encoded.role)
 
-      /** Normalize content to an array of parts for uniform rendering. */
-      const parts = $derived.by((): MessagePart[] => {
-        const content = message.encoded.content
-        if (typeof content === 'string') {
-          return [{ type: 'text', text: content }]
-        }
-        if (Array.isArray(content)) {
-          return content as MessagePart[]
-        }
-        return []
-      })
+  /** Normalize content to an array of parts for uniform rendering. */
+  const parts = $derived(messageParts(message))
 
-      const isUser = $derived(role === 'user')
-      const isSystem = $derived(role === 'system')
+  const renderParts = $derived.by((): ReadonlyArray<TranscriptItem> =>
+    transcriptItems ??
+    projectTranscript(persistedSources([message]), {
+      pretty: clientSettingsStore.prettyToolOutput,
+    })
+  )
+
+  const isUser = $derived(role === 'user')
+  const isSystem = $derived(role === 'system')
 </script>
 
-<div class="flex flex-col gap-2 py-2.5">
-  {#if parts.length === 0}
+{#if renderParts.length > 0}
+  <div class="flex flex-col gap-2 py-2.5">
+    {#if parts.length === 0}
     <span class="text-xs italic text-muted-foreground">(empty)</span>
-  {:else if isUser}
+    {:else if isUser}
     <div
       class="ml-auto w-fit max-w-[min(42rem,85%)] rounded-lg border border-accent bg-accent text-accent-foreground shadow-sm shadow-shadow/30"
     >
       <div class="flex flex-col gap-3 px-3 py-3">
-        {#each parts as part}
-          <MessagePartComponent {part} monospace={false} />
+        {#each renderParts as item}
+          {#if item.type === 'combined-tool'}
+            <ToolCallResult call={item.call} result={item.result} />
+          {:else}
+            <MessagePartComponent part={item.part} monospace={false} />
+          {/if}
         {/each}
       </div>
     </div>
-  {:else if isSystem}
+    {:else if isSystem}
     <div
       class="w-full overflow-hidden rounded-lg border border-border bg-surface text-foreground shadow-sm shadow-shadow/30"
     >
@@ -45,16 +60,25 @@
         System
       </div>
       <div class="flex flex-col gap-3 px-3 py-3">
-        {#each parts as part}
-          <MessagePartComponent {part} monospace={true} />
+        {#each renderParts as item}
+          {#if item.type === 'combined-tool'}
+            <ToolCallResult call={item.call} result={item.result} />
+          {:else}
+            <MessagePartComponent part={item.part} monospace={true} />
+          {/if}
         {/each}
       </div>
     </div>
-  {:else}
+    {:else}
     <div class="flex flex-col gap-3">
-      {#each parts as part}
-        <MessagePartComponent {part} monospace={false} />
+      {#each renderParts as item}
+        {#if item.type === 'combined-tool'}
+          <ToolCallResult call={item.call} result={item.result} />
+        {:else}
+          <MessagePartComponent part={item.part} monospace={false} />
+        {/if}
       {/each}
     </div>
-  {/if}
-</div>
+    {/if}
+  </div>
+{/if}
