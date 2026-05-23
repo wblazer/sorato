@@ -84,7 +84,7 @@
     <PopoverTrigger>
       <button
         type="button"
-        class="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-base-hover hover:text-foreground transition-colors"
+        class="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-base-hover hover:text-foreground"
       >
         <span class="relative flex h-2 w-2">
           {#if connectionsStore.activeConnection}

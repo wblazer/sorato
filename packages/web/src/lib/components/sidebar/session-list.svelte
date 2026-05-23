@@ -26,7 +26,7 @@
 
       function sessionButtonClass(isSelected: boolean) {
         return cn(
-          'flex w-full flex-col rounded-md px-3 py-2 text-left transition-colors',
+          'flex w-full flex-col rounded-md px-3 py-2 text-left',
           isSelected ? 'bg-selected text-foreground' : 'hover:bg-base-hover'
         )
       }

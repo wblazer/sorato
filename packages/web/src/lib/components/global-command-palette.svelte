@@ -100,7 +100,7 @@
         type="button"
         data-selected={index === selectedIndex}
         class={cn(
-          'flex w-full items-start gap-3 rounded-md px-3 py-2 text-left transition-colors',
+          'flex w-full items-start gap-3 rounded-md px-3 py-2 text-left',
           index === selectedIndex
             ? 'bg-selected text-foreground'
             : 'hover:bg-base-hover'

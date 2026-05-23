@@ -153,7 +153,7 @@
             placeholder="http://localhost:3100"
             bind:value={url}
             onblur={handleUrlBlur}
-            class="flex h-9 w-full rounded-md border border-border bg-surface px-3 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed"
+            class="flex h-9 w-full rounded-md border border-border bg-surface px-3 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed"
           />
           <div
             class="absolute right-3 top-1/2 -translate-y-1/2 {checkStatus === 'success'
@@ -190,7 +190,7 @@
           type="text"
           placeholder="My Local Server"
           bind:value={name}
-          class="flex h-9 w-full rounded-md border border-border bg-surface px-3 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed"
+          class="flex h-9 w-full rounded-md border border-border bg-surface px-3 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed"
         />
       </div>
     </div>
