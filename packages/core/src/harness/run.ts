@@ -44,8 +44,22 @@ interface RunUsage {
 
 interface RunState {
   outputText: string
-  currentTurnText: string
+  currentTurnParts: Array<Prompt.TextPart | Prompt.ReasoningPart>
   usage: RunUsage
+}
+
+const appendCurrentTurnPart = (
+  state: RunState,
+  type: 'text' | 'reasoning',
+  delta: string
+) => {
+  const last = state.currentTurnParts[state.currentTurnParts.length - 1]
+  if (last?.type === type) {
+    state.currentTurnParts[state.currentTurnParts.length - 1] =
+      Prompt.makePart(type, { text: last.text + delta })
+  } else {
+    state.currentTurnParts.push(Prompt.makePart(type, { text: delta }))
+  }
 }
 
 const fireHooks = <Tools extends Record<string, Tool.Any>, HookE, HookR>(
@@ -99,21 +113,21 @@ export const run = <
 
     const state: RunState = {
       outputText: '',
-      currentTurnText: '',
+      currentTurnParts: [],
       usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
     }
 
-    // state.currentTurnText is accumulated in the CURRENT turn only. Reset at
-    // the start of each turn. Used to recover partial text on interrupt —
-    // @effect/ai's Prompt.fromResponseParts only flushes text on `text-end`,
-    // which never fires when the stream is interrupted mid-text.
+    // state.currentTurnParts is accumulated in the CURRENT turn only. Reset at
+    // the start of each turn. Used to recover partial content on interrupt —
+    // @effect/ai's Prompt.fromResponseParts only flushes text/reasoning on
+    // their end parts, which never fire when the stream is interrupted mid-block.
 
     const runTurn = Effect.fn('Harness.runTurn')(function* (
       turn: number,
       prompt: Prompt.RawInput
     ) {
       let hadToolCalls = false
-      state.currentTurnText = ''
+      state.currentTurnParts = []
       yield* Effect.logDebug('Harness turn starting', { turn })
 
       const stream = chat.streamText({
@@ -126,7 +140,7 @@ export const run = <
           case 'text-delta':
             return Effect.sync(() => {
               state.outputText += part.delta
-              state.currentTurnText += part.delta
+              appendCurrentTurnPart(state, 'text', part.delta)
             }).pipe(
               Effect.flatMap(() =>
                 fireHooks(config, {
@@ -137,10 +151,16 @@ export const run = <
             )
 
           case 'reasoning-delta':
-            return fireHooks(config, {
-              _tag: 'ReasoningDelta',
-              delta: part.delta,
-            })
+            return Effect.sync(() => {
+              appendCurrentTurnPart(state, 'reasoning', part.delta)
+            }).pipe(
+              Effect.flatMap(() =>
+                fireHooks(config, {
+                  _tag: 'ReasoningDelta',
+                  delta: part.delta,
+                })
+              )
+            )
 
           case 'tool-call':
             const display = toolCallDisplay(part.name, part.params)
@@ -203,9 +223,9 @@ export const run = <
             const inputTokens = part.usage.inputTokens.total ?? 0
             const outputTokens = part.usage.outputTokens.total ?? 0
             return Effect.sync(() => {
-              // Turn completed normally — clear currentTurnText so the
+              // Turn completed normally — clear currentTurnParts so the
               // interrupt path knows there's nothing to recover.
-              state.currentTurnText = ''
+              state.currentTurnParts = []
               state.usage.inputTokens += inputTokens
               state.usage.outputTokens += outputTokens
               state.usage.totalTokens += inputTokens + outputTokens
@@ -242,7 +262,7 @@ export const run = <
         })
 
         // Turn completed — reset for next turn
-        state.currentTurnText = ''
+        state.currentTurnParts = []
         prompt = [] as Array<Prompt.MessageEncoded>
       }
     })
@@ -261,23 +281,21 @@ export const run = <
       let fullConversation = yield* Ref.get(chat.history)
 
       // On interrupt, @effect/ai's Prompt.fromResponseParts drops in-flight
-      // text (it only flushes on `text-end`, which never arrives). If there's
-      // partial text from the interrupted turn, append a synthetic assistant
-      // message so it gets persisted.
+      // text/reasoning (it only flushes on block end parts, which never arrive).
+      // If there's partial content from the interrupted turn, append a synthetic
+      // assistant message so it gets persisted.
       const wasInterrupted =
         Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)
 
-      if (wasInterrupted && state.currentTurnText.length > 0) {
-        yield* Effect.logInfo('Harness recovering interrupted text', {
-          recoveredLength: state.currentTurnText.length,
+      if (wasInterrupted && state.currentTurnParts.length > 0) {
+        yield* Effect.logInfo('Harness recovering interrupted content', {
+          recoveredPartCount: state.currentTurnParts.length,
         })
         fullConversation = Prompt.fromMessages([
           ...fullConversation.content,
           {
             ...Prompt.makeMessage('assistant', {
-              content: [
-                Prompt.makePart('text', { text: state.currentTurnText }),
-              ],
+              content: state.currentTurnParts,
             }),
           },
         ])
