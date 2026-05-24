@@ -19,12 +19,14 @@ import { SqlClient } from 'effect/unstable/sql/SqlClient'
 import { Effect, Layer, Match, Option, Schema } from 'effect'
 import {
   SessionStorage,
+  StoredMessage,
   StorageError,
   type SessionId,
   type MessageId,
   type Session,
   type MessageNode,
   type SessionStorageApi,
+  type StoredMessageEncoded,
 } from './session.ts'
 
 // ---------------------------------------------------------------------------
@@ -97,66 +99,20 @@ const toSession = (row: SessionRow): Session => ({
   updatedAt: row.updated_at,
 })
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null
-
-const restoreToolDisplayFields = (
-  decoded: Prompt.MessageEncoded,
-  raw: unknown
-): Prompt.MessageEncoded => {
-  if (!isRecord(raw)) return decoded
-
-  switch (decoded.role) {
-    case 'assistant': {
-      const rawContent = raw.content
-      if (typeof decoded.content === 'string' || !Array.isArray(rawContent)) {
-        return decoded
-      }
-      return {
-        ...decoded,
-        content: decoded.content.map((part, index) => {
-          const rawPart = rawContent[index]
-          if (part.type === 'tool-call' && isRecord(rawPart)) {
-            return {
-              ...part,
-              ...(isRecord(rawPart.display)
-                ? { display: rawPart.display }
-                : {}),
-            }
-          }
-          if (part.type !== 'tool-result' || !isRecord(rawPart)) return part
-          return {
-            ...part,
-            ...(isRecord(rawPart.display) ? { display: rawPart.display } : {}),
-          }
-        }),
-      }
-    }
-    case 'tool': {
-      const rawContent = raw.content
-      if (!Array.isArray(rawContent)) return decoded
-      return {
-        ...decoded,
-        content: decoded.content.map((part, index) => {
-          const rawPart = rawContent[index]
-          if (part.type !== 'tool-result' || !isRecord(rawPart)) return part
-          return {
-            ...part,
-            ...(isRecord(rawPart.display) ? { display: rawPart.display } : {}),
-          }
-        }),
-      }
-    }
-    case 'system':
-    case 'user':
-      return decoded
-  }
+const decodeMessageNode = (encoded: string): StoredMessageEncoded => {
+  return Schema.decodeUnknownSync(StoredMessage)(JSON.parse(encoded))
 }
 
-const decodeMessageNode = (encoded: string): Prompt.MessageEncoded => {
-  const raw = JSON.parse(encoded)
-  const decoded = Schema.decodeUnknownSync(Prompt.Message)(raw)
-  return restoreToolDisplayFields(decoded, raw)
+const decodePromptMessageOption = (
+  encoded: string
+): Option.Option<Prompt.MessageEncoded> => {
+  try {
+    return Option.some(
+      Schema.decodeUnknownSync(Prompt.Message)(JSON.parse(encoded))
+    )
+  } catch {
+    return Option.none()
+  }
 }
 
 const toMessageNode = (row: MessageRow): MessageNode => ({
@@ -185,7 +141,7 @@ const sqlFailure = (operation: string, message: string) => (error: unknown) =>
 const messageInsertRows = (
   sessionId: SessionId,
   parentId: string | null,
-  messages: ReadonlyArray<Prompt.MessageEncoded>,
+  messages: ReadonlyArray<StoredMessageEncoded>,
   createdAt: number
 ): ReadonlyArray<MessageInsertRow> => {
   const rows: Array<MessageInsertRow> = []
@@ -351,11 +307,10 @@ export const SqliteSession = (options: { readonly path: string }) =>
           })
         )
         return Schema.decodeUnknownSync(Prompt.Prompt)({
-          content: [...rows]
-            .reverse()
-            .map((row) =>
-              Schema.decodeUnknownSync(Prompt.Message)(JSON.parse(row.encoded))
-            ),
+          content: [...rows].reverse().flatMap((row) => {
+            const decoded = decodePromptMessageOption(row.encoded)
+            return Option.isNone(decoded) ? [] : [decoded.value]
+          }),
         })
       })
 
@@ -390,7 +345,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
 
       const append = Effect.fn('SessionStorage.append')(function* (
         sessionId: SessionId,
-        messages: ReadonlyArray<Prompt.MessageEncoded>
+        messages: ReadonlyArray<StoredMessageEncoded>
       ) {
         if (messages.length === 0) return
 

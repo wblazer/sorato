@@ -7,8 +7,8 @@
  *   - Persists the conversation to SessionStorage after completion
  *   - Runs as a daemon fiber (fire-and-forget from the HTTP handler)
  */
-import type { Prompt } from 'effect/unstable/ai'
 import { Cause, Effect, Layer, Match, Option } from 'effect'
+import type { Prompt } from 'effect/unstable/ai'
 import { CurrentFiles, CurrentShell, run, Sandbox } from '@sorato/core'
 import { SessionStorage, type SessionId } from './session/session.ts'
 import { AllTools, SYSTEM_PROMPT } from './agent-config.ts'
@@ -92,7 +92,11 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       isFirstMessage
     ).pipe(
       Match.when(true, () => [
-        { role: 'system' as const, content: SYSTEM_PROMPT },
+        {
+          role: 'system' as const,
+          content: SYSTEM_PROMPT,
+          source: 'system-prompt' as const,
+        },
         { role: 'user' as const, content: request.input },
       ]),
       Match.orElse(() => [{ role: 'user' as const, content: request.input }])

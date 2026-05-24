@@ -27,6 +27,12 @@
       {#each renderParts as item}
         {#if item.type === 'combined-tool'}
           <ToolCallResult call={item.call} result={item.result} />
+        {:else if item.type === 'interruption'}
+          <div class="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <div class="h-px flex-1 bg-border"></div>
+            <span>Interrupted</span>
+            <div class="h-px flex-1 bg-border"></div>
+          </div>
         {:else}
           <MessagePartComponent part={item.part} monospace={false} />
         {/if}

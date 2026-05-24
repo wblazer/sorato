@@ -229,7 +229,8 @@
               {message}
               transcriptItems={persistedTranscriptItems.filter(
                 (item) => {
-                  const source = item.type === 'message' ? item.source : item.callSource
+                  const source =
+                    item.type === 'combined-tool' ? item.callSource : item.source
                   return source.type === 'persisted' && source.message === message
                 }
               )}

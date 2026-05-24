@@ -30,11 +30,20 @@
 
   const isUser = $derived(role === 'user')
   const isSystem = $derived(role === 'system')
+  const isInterruption = $derived(
+    renderParts.length === 1 && renderParts[0]?.type === 'interruption'
+  )
 </script>
 
 {#if renderParts.length > 0}
   <div class="flex flex-col gap-2 py-2.5">
-    {#if parts.length === 0}
+    {#if isInterruption}
+    <div class="flex items-center gap-3 py-1 text-sm font-medium text-muted-foreground">
+      <div class="h-px flex-1 bg-border"></div>
+      <span>Interrupted</span>
+      <div class="h-px flex-1 bg-border"></div>
+    </div>
+    {:else if parts.length === 0}
     <span class="text-xs italic text-muted-foreground">(empty)</span>
     {:else if isUser}
     <div
@@ -44,6 +53,12 @@
         {#each renderParts as item}
           {#if item.type === 'combined-tool'}
             <ToolCallResult call={item.call} result={item.result} />
+          {:else if item.type === 'interruption'}
+            <div class="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <div class="h-px flex-1 bg-border"></div>
+              <span>Interrupted</span>
+              <div class="h-px flex-1 bg-border"></div>
+            </div>
           {:else}
             <MessagePartComponent part={item.part} monospace={false} />
           {/if}
@@ -63,6 +78,12 @@
         {#each renderParts as item}
           {#if item.type === 'combined-tool'}
             <ToolCallResult call={item.call} result={item.result} />
+          {:else if item.type === 'interruption'}
+            <div class="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <div class="h-px flex-1 bg-border"></div>
+              <span>Interrupted</span>
+              <div class="h-px flex-1 bg-border"></div>
+            </div>
           {:else}
             <MessagePartComponent part={item.part} monospace={true} />
           {/if}
@@ -74,6 +95,12 @@
       {#each renderParts as item}
         {#if item.type === 'combined-tool'}
           <ToolCallResult call={item.call} result={item.result} />
+        {:else if item.type === 'interruption'}
+          <div class="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <div class="h-px flex-1 bg-border"></div>
+            <span>Interrupted</span>
+            <div class="h-px flex-1 bg-border"></div>
+          </div>
         {:else}
           <MessagePartComponent part={item.part} monospace={false} />
         {/if}

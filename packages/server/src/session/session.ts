@@ -24,6 +24,7 @@
 import { Context, Schema } from 'effect'
 import type { Effect } from 'effect/Effect'
 import type { Prompt } from 'effect/unstable/ai'
+import { Prompt as PromptSchemas } from 'effect/unstable/ai'
 
 // ---------------------------------------------------------------------------
 // Branded IDs
@@ -70,9 +71,67 @@ export interface MessageNode {
   readonly sessionId: SessionId
   readonly parentId: MessageId | null
   /** The full encoded message — role, content/parts, options. */
-  readonly encoded: Prompt.MessageEncoded
+  readonly encoded: StoredMessageEncoded
   readonly createdAt: number
 }
+
+export const SystemMessageSource = Schema.Literals([
+  'system-prompt',
+  'agents-md',
+  'interruption',
+])
+
+export const StoredToolCallPart = Schema.Struct({
+  ...PromptSchemas.ToolCallPart.fields,
+  display: Schema.optionalKey(Schema.Unknown),
+})
+
+export const StoredToolResultPart = Schema.Struct({
+  ...PromptSchemas.ToolResultPart.fields,
+  display: Schema.optionalKey(Schema.Unknown),
+})
+
+export const StoredPart = Schema.Union([
+  PromptSchemas.TextPart,
+  PromptSchemas.FilePart,
+  PromptSchemas.ReasoningPart,
+  StoredToolCallPart,
+  StoredToolResultPart,
+  PromptSchemas.ToolApprovalRequestPart,
+  PromptSchemas.ToolApprovalResponsePart,
+])
+
+export const StoredSystemMessage = Schema.Struct({
+  ...PromptSchemas.SystemMessage.fields,
+  content: Schema.optionalKey(Schema.String),
+  source: Schema.optionalKey(SystemMessageSource),
+})
+
+export const StoredUserMessage = Schema.Struct({
+  ...PromptSchemas.UserMessage.fields,
+  content: Schema.Union([Schema.String, Schema.Array(StoredPart)]),
+})
+
+export const StoredAssistantMessage = Schema.Struct({
+  ...PromptSchemas.AssistantMessage.fields,
+  content: Schema.Union([Schema.String, Schema.Array(StoredPart)]),
+})
+
+export const StoredToolMessage = Schema.Struct({
+  ...PromptSchemas.ToolMessage.fields,
+  content: Schema.Array(
+    Schema.Union([StoredToolResultPart, PromptSchemas.ToolApprovalResponsePart])
+  ),
+})
+
+export const StoredMessage = Schema.Union([
+  StoredSystemMessage,
+  StoredUserMessage,
+  StoredAssistantMessage,
+  StoredToolMessage,
+])
+
+export type StoredMessageEncoded = typeof StoredMessage.Encoded
 
 // ---------------------------------------------------------------------------
 // Service interface
@@ -135,7 +194,7 @@ export interface SessionStorageApi {
    */
   readonly append: (
     sessionId: SessionId,
-    messages: ReadonlyArray<Prompt.MessageEncoded>
+    messages: ReadonlyArray<StoredMessageEncoded>
   ) => Effect<void, StorageError>
 
   /**

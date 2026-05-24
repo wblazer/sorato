@@ -10,6 +10,7 @@ import { publish } from './event-bus.ts'
 
 const stoppedSystemMessage = {
   role: 'system' as const,
+  source: 'interruption' as const,
   content:
     '[The user stopped the previous response. The assistant message above may be incomplete.]',
 }

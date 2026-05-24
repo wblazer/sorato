@@ -63,6 +63,7 @@ export interface MessageNode {
 /** Discriminated union of message roles. */
 export type MessageEncoded =
   | SystemMessage
+  | SystemUiMessage
   | UserMessage
   | AssistantMessage
   | ToolMessage
@@ -70,6 +71,13 @@ export type MessageEncoded =
 export interface SystemMessage {
   role: 'system'
   content: string
+  source?: 'system-prompt' | 'agents-md' | 'interruption'
+}
+
+export interface SystemUiMessage {
+  role: 'system'
+  source?: 'system-prompt' | 'agents-md' | 'interruption'
+  content?: string
 }
 
 export interface UserMessage {

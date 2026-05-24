@@ -29,11 +29,21 @@ export type TranscriptItem =
       callSource: TranscriptSource
       resultSource?: TranscriptSource | undefined
     }
+  | {
+      type: 'interruption'
+      source: TranscriptSource
+    }
+
+const isStoppedSystemMessage = (source: TranscriptSource): boolean =>
+  source.type === 'persisted' &&
+  source.message.encoded.role === 'system' &&
+  source.message.encoded.source === 'interruption'
 
 export const messageParts = (
   message: MessageNode
 ): ReadonlyArray<MessagePart> => {
   const content = message.encoded.content
+  if (content === undefined) return []
   if (typeof content === 'string') return [{ type: 'text', text: content }]
   if (Array.isArray(content)) return content as MessagePart[]
   return []
@@ -75,6 +85,9 @@ export const projectTranscript = (
 
   return sources.flatMap((source): TranscriptItem[] => {
     const part = source.part
+    if (isStoppedSystemMessage(source)) {
+      return [{ type: 'interruption', source }]
+    }
     if (part.type === 'tool-call') {
       const result = results.get(part.id)
       return [
