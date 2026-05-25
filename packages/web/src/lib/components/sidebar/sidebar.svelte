@@ -40,7 +40,7 @@
     </button>
   </div>
 
-  <div class="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-2">
+  <div class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-2 pb-2">
     {#each tabStore.tabs as tab (tab.id)}
       <div
         class={cn(
@@ -54,7 +54,7 @@
           type="button"
           title={tabTitle(tab)}
           class={cn(
-            'flex size-full min-w-0 items-center gap-2 rounded-lg px-2 text-left group-hover:pr-9',
+            'hit-area-y-0.5 flex size-full min-w-0 items-center gap-2 rounded-lg px-2 text-left group-hover:pr-9',
             tab.id === tabStore.activeTabId && 'pr-9'
           )}
           onclick={() => tabStore.setActiveTab(tab.id)}
@@ -75,12 +75,15 @@
             type="button"
             aria-label="Close tab"
             class={cn(
-              'absolute top-1/2 right-1.5 size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground opacity-80 hover:text-foreground hover:opacity-100',
+              'absolute top-1/2 right-1.5 z-10 size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground opacity-80 hover:text-foreground hover:opacity-100',
               tab.id === tabStore.activeTabId
                 ? 'flex hover:bg-selected'
                 : 'hidden hover:bg-base-hover group-hover:flex'
             )}
-            onclick={() => tabStore.closeTab(tab.id)}
+            onclick={(event) => {
+              event.stopPropagation()
+              tabStore.closeTab(tab.id)
+            }}
           >
             <XIcon class="size-3.5" />
           </button>
