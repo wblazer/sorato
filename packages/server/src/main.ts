@@ -19,11 +19,13 @@ import { AuthLive } from './auth.ts'
 import { DirectoriesLive } from './directories.ts'
 import { LoggingLive, resolveLogFile, resolveLogLevel } from './logging.ts'
 import { ModelsLive } from './models.ts'
+import { ProjectsLive } from './projects.ts'
 import { RuntimeConfigLive } from './runtime-config.ts'
 import { SessionsLive } from './sessions.ts'
 import { SseLive } from './sse.ts'
 import { dataDir } from './data-dir.ts'
 import { SqliteProviderAuthStore } from './provider-auth.ts'
+import { SqliteProject } from './project/sqlite-project.ts'
 import { SqliteSession } from './session/sqlite-session.ts'
 
 import { HandshakeResponse } from './api.ts'
@@ -39,6 +41,7 @@ const HandshakeLive = HttpApiBuilder.group(Api, 'handshake', (handlers) =>
 )
 
 const ApiLive = HttpApiBuilder.layer(Api).pipe(
+  Layer.provide(ProjectsLive),
   Layer.provide(SessionsLive),
   Layer.provide(DirectoriesLive),
   Layer.provide(ModelsLive),
@@ -58,7 +61,9 @@ const SqliteClientLive = (filename: string) =>
     })
   )
 
-const StorageLive = SqliteSession({ path: sessionsDbPath }).pipe(
+const SessionStorageLive = SqliteSession({ path: sessionsDbPath })
+const ProjectStorageLive = SqliteProject
+const StorageLive = Layer.merge(SessionStorageLive, ProjectStorageLive).pipe(
   Layer.provide(SqliteClientLive(sessionsDbPath))
 )
 const ProviderAuthLive = SqliteProviderAuthStore({

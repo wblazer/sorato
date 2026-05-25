@@ -105,7 +105,7 @@ describe('SessionStorage', () => {
         const session = yield* storage.create(TEST_DIR, 'test session')
 
         expect(session.id).toBeTruthy()
-        expect(session.directory).toBe(TEST_DIR)
+        expect(session.projectId).toBe(TEST_DIR)
         expect(session.title).toBe('test session')
         expect(session.headId).toBeNull()
       }).pipe(Effect.provide(testLayer()))

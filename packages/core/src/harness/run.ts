@@ -55,8 +55,10 @@ const appendCurrentTurnPart = (
 ) => {
   const last = state.currentTurnParts[state.currentTurnParts.length - 1]
   if (last?.type === type) {
-    state.currentTurnParts[state.currentTurnParts.length - 1] =
-      Prompt.makePart(type, { text: last.text + delta })
+    state.currentTurnParts[state.currentTurnParts.length - 1] = Prompt.makePart(
+      type,
+      { text: last.text + delta }
+    )
   } else {
     state.currentTurnParts.push(Prompt.makePart(type, { text: delta }))
   }

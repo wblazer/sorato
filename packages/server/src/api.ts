@@ -11,6 +11,7 @@ import {
   HttpApiSchema,
 } from 'effect/unstable/httpapi'
 import { Effect, Schema } from 'effect'
+import { ProjectError, ProjectId } from './project/project.ts'
 import { SessionId, StorageError } from './session/session.ts'
 
 // ── Schemas ─────────────────────────────────────────────────────────
@@ -19,7 +20,7 @@ export class SessionResponse extends Schema.Class<SessionResponse>(
   'SessionResponse'
 )({
   id: Schema.String,
-  directory: Schema.String,
+  projectId: Schema.String,
   title: Schema.NullOr(Schema.String),
   headId: Schema.NullOr(Schema.String),
   /** Ephemeral run status — 'running' if an agent run is active. */
@@ -44,6 +45,18 @@ export class RunResponse extends Schema.Class<RunResponse>('RunResponse')({
 
 export class StopResponse extends Schema.Class<StopResponse>('StopResponse')({
   status: Schema.Literals(['stopped', 'not_running']),
+}) {}
+
+export class ProjectResponse extends Schema.Class<ProjectResponse>(
+  'ProjectResponse'
+)({
+  id: Schema.String,
+  name: Schema.String,
+  kind: Schema.Literal('local-directory'),
+  path: Schema.String,
+  createdAt: Schema.Number,
+  updatedAt: Schema.Number,
+  lastOpenedAt: Schema.NullOr(Schema.Number),
 }) {}
 
 export class RunError extends Schema.TaggedErrorClass<RunError>()('RunError', {
@@ -165,11 +178,14 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
   .add(
     HttpApiEndpoint.post('create', '/', {
       payload: Schema.Struct({
-        directory: Schema.String,
+        projectId: Schema.String,
         title: Schema.optional(Schema.String),
       }),
       success: SessionResponse,
-      error: StorageError.pipe(HttpApiSchema.status(500)),
+      error: [
+        StorageError.pipe(HttpApiSchema.status(500)),
+        ProjectError.pipe(HttpApiSchema.status(500)),
+      ],
     })
   )
   .add(
@@ -225,6 +241,7 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
       success: RunResponse,
       error: [
         StorageError.pipe(HttpApiSchema.status(500)),
+        ProjectError.pipe(HttpApiSchema.status(500)),
         ModelError.pipe(HttpApiSchema.status(500)),
         RunError.pipe(HttpApiSchema.status(500)),
       ],
@@ -238,6 +255,42 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
     })
   )
   .prefix('/sessions') {}
+
+// ── Projects Group ─────────────────────────────────────────────────
+
+export class ProjectsGroup extends HttpApiGroup.make('projects')
+  .add(
+    HttpApiEndpoint.get('list', '/', {
+      success: Schema.Array(ProjectResponse),
+      error: ProjectError.pipe(HttpApiSchema.status(500)),
+    })
+  )
+  .add(
+    HttpApiEndpoint.post('create', '/', {
+      payload: Schema.Struct({
+        kind: Schema.Literal('local-directory'),
+        path: Schema.String,
+        name: Schema.optional(Schema.String),
+      }),
+      success: ProjectResponse,
+      error: ProjectError.pipe(HttpApiSchema.status(500)),
+    })
+  )
+  .add(
+    HttpApiEndpoint.get('get', '/:id', {
+      params: { id: ProjectId },
+      success: ProjectResponse,
+      error: ProjectError.pipe(HttpApiSchema.status(500)),
+    })
+  )
+  .add(
+    HttpApiEndpoint.delete('delete', '/:id', {
+      params: { id: ProjectId },
+      success: Schema.Void,
+      error: ProjectError.pipe(HttpApiSchema.status(500)),
+    })
+  )
+  .prefix('/projects') {}
 
 // ── Directories Group ───────────────────────────────────────────────
 
@@ -267,10 +320,13 @@ export class ModelsGroup extends HttpApiGroup.make('models')
   .add(
     HttpApiEndpoint.get('list', '/', {
       query: {
-        directory: Schema.String,
+        projectId: Schema.String,
       },
       success: ModelsResponse,
-      error: ModelError.pipe(HttpApiSchema.status(500)),
+      error: [
+        ModelError.pipe(HttpApiSchema.status(500)),
+        ProjectError.pipe(HttpApiSchema.status(500)),
+      ],
     })
   )
   .prefix('/models') {}
@@ -304,6 +360,7 @@ export class AuthGroup extends HttpApiGroup.make('auth')
 // ── Root API ────────────────────────────────────────────────────────
 
 export class Api extends HttpApi.make('sorato')
+  .add(ProjectsGroup)
   .add(SessionsGroup)
   .add(DirectoriesGroup)
   .add(ModelsGroup)

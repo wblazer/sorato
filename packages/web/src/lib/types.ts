@@ -5,9 +5,29 @@ export interface ToolCallDisplay {
   subtitle?: string
 }
 
+export interface Project {
+  id: string
+  name: string
+  kind: 'local-directory'
+  path: string
+  createdAt: number
+  updatedAt: number
+  lastOpenedAt: number | null
+}
+
+export interface AppTab {
+  id: string
+  sessionId: string | null
+  projectId: string | null
+  title: string | null
+  kind: 'new' | 'session'
+  createdAt: number
+  updatedAt: number
+}
+
 export interface Session {
   id: string
-  directory: string
+  projectId: string
   title: string | null
   headId: string | null
   /** Ephemeral run status — 'running' if an agent run is active. */

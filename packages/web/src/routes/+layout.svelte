@@ -10,7 +10,7 @@
       import { authStore } from '$lib/stores/auth.svelte.js'
       import AppLoading from '$lib/components/app-loading.svelte'
       import NoConnections from '$lib/components/no-connections.svelte'
-      import ProviderRequired from '$lib/components/provider-required.svelte'
+      import { projectStore } from '$lib/stores/projects.svelte.js'
       import * as Tooltip from '$lib/components/ui/tooltip/index.js'
 
       let { children } = $props()
@@ -24,6 +24,7 @@
           // Must connect before fetchSessions so that RunStart/RunEnd events
           // from any in-flight runs are captured from the start.
           sseStore.connect()
+          projectStore.fetchProjects()
           sessionStore.fetchSessions()
 
           return () => {
@@ -49,15 +50,13 @@
   {#if connectionsStore.hasConnections}
     {#if !authStore.loadedForActiveConnection}
       <AppLoading />
-    {:else if authStore.hasAuthenticatedProvider}
+    {:else}
       <div class="flex h-screen overflow-hidden">
         <Sidebar />
         <main class="flex-1 overflow-y-auto">
           {@render children()}
         </main>
       </div>
-    {:else}
-      <ProviderRequired />
     {/if}
   {:else}
     <NoConnections />

@@ -79,12 +79,12 @@
       })
 </script>
 
-<div class="flex items-center gap-2 px-2 py-1.5">
+<div class="flex w-full min-w-0 items-center gap-2">
   <Popover bind:open={popoverOpen}>
     <PopoverTrigger>
       <button
         type="button"
-        class="flex items-center gap-2 rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-base-hover hover:text-foreground"
+        class="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-base-hover hover:text-foreground"
       >
         <span class="relative flex h-2 w-2">
           {#if connectionsStore.activeConnection}
@@ -95,7 +95,7 @@
             ></span>
           {/if}
         </span>
-        <span class="truncate max-w-[160px]">
+        <span class="min-w-0 flex-1 truncate">
           {#if connectionsStore.activeConnection}
             {displayName(connectionsStore.activeConnection)}
           {:else}

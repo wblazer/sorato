@@ -3,7 +3,9 @@ import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
 import { messagesStore } from './messages.svelte.js'
 import { modelsStore } from './models.svelte.js'
+import { projectStore } from './projects.svelte.js'
 import { onSessionRefreshRequest } from './session-refresh-bus.js'
+import { tabStore } from './tabs.svelte.js'
 
 export interface QueuedMessageDraft {
   id: string
@@ -23,23 +25,13 @@ function createSessionStore() {
    */
   let composing = $state(true)
 
-  // Directories the user has explicitly opened (may not have sessions yet)
-  let openedDirectories = $state<string[]>([])
-
-  // Merge session-derived directories with explicitly opened ones
-  const directories = $derived(
-    [
-      ...new Set([...openedDirectories, ...sessions.map((s) => s.directory)]),
-    ].sort()
-  )
-
-  let selectedDirectory = $state('')
-
-  const filteredSessions = $derived(
-    sessions
-      .filter((s) => s.directory === selectedDirectory)
+  const filteredSessions = $derived.by(() => {
+    const projectId =
+      tabStore.activeTab?.projectId ?? projectStore.selectedProjectId
+    return sessions
+      .filter((s) => s.projectId === projectId)
       .sort((a, b) => b.updatedAt - a.updatedAt)
-  )
+  })
 
   // ── Running / stopping state from SSE ───────────────────────────────
   //
@@ -120,6 +112,7 @@ function createSessionStore() {
       if (!res.ok) return
       const fresh: Session = await res.json()
       sessions = sessions.map((s) => (s.id === sessionId ? fresh : s))
+      tabStore.updateSessionTitle(fresh.id, fresh.title)
 
       if (fresh.status === 'idle') {
         const nextQueued = new Map(queuedMessages)
@@ -145,11 +138,9 @@ function createSessionStore() {
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
       sessions = await res.json()
 
-      // Auto-select first directory if none selected
-      if (!selectedDirectory && directories.length > 0) {
-        selectedDirectory = directories[0] ?? ''
-      }
-      if (selectedDirectory) void modelsStore.load(selectedDirectory)
+      const projectId =
+        tabStore.activeTab?.projectId ?? projectStore.selectedProjectId
+      if (projectId) void modelsStore.load(projectId)
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to fetch sessions'
     } finally {
@@ -158,18 +149,21 @@ function createSessionStore() {
   }
 
   /**
-   * Create a new session in the currently selected directory.
+   * Create a new session in the selected project.
    * Returns the new session, or null on error.
    */
-  async function createSession(directory?: string): Promise<Session | null> {
-    const dir = directory ?? selectedDirectory
-    if (!dir) return null
+  async function createSession(projectId?: string): Promise<Session | null> {
+    const resolvedProjectId =
+      projectId ??
+      tabStore.activeTab?.projectId ??
+      projectStore.selectedProjectId
+    if (!resolvedProjectId) return null
 
     try {
       const res = await fetch(`${connectionsStore.getApiBase()}/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ directory: dir }),
+        body: JSON.stringify({ projectId: resolvedProjectId }),
       })
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
 
@@ -177,6 +171,8 @@ function createSessionStore() {
       sessions = [session, ...sessions]
       selectedSessionId = session.id
       composing = false
+      if (tabStore.activeTab)
+        tabStore.attachSession(tabStore.activeTab.id, session)
       return session
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to create session'
@@ -321,12 +317,6 @@ function createSessionStore() {
     get sessions() {
       return sessions
     },
-    get directories() {
-      return directories
-    },
-    get selectedDirectory() {
-      return selectedDirectory
-    },
     get filteredSessions() {
       return filteredSessions
     },
@@ -342,27 +332,21 @@ function createSessionStore() {
     get error() {
       return error
     },
-    selectDirectory(dir: string) {
-      selectedDirectory = dir
+    selectProject(projectId: string) {
+      projectStore.selectProject(projectId)
+      if (tabStore.activeTab)
+        tabStore.setDraftProject(tabStore.activeTab.id, projectId)
       selectedSessionId = null
-      composing = false
+      composing = true
       messagesStore.clear()
-      void modelsStore.load(dir)
-    },
-    /** Open a directory — adds it to the known list and selects it */
-    openDirectory(dir: string) {
-      if (!openedDirectories.includes(dir)) {
-        openedDirectories = [...openedDirectories, dir]
-      }
-      selectedDirectory = dir
-      selectedSessionId = null
-      composing = false
-      messagesStore.clear()
-      void modelsStore.load(dir)
+      void modelsStore.load(projectId)
     },
     selectSession(id: string) {
       selectedSessionId = id
       composing = false
+      const session = sessions.find((item) => item.id === id)
+      if (session && tabStore.activeTab)
+        tabStore.attachSession(tabStore.activeTab.id, session)
       void messagesStore.loadMessages(id)
     },
     isRunning,

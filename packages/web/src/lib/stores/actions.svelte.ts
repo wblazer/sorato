@@ -6,6 +6,7 @@ export type ActionId =
   | 'app.toggle-tool-output-display-mode'
   | 'connection.add'
   | 'directory.open'
+  | 'project.open'
   | 'provider.connect'
   | 'session.new'
 

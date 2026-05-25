@@ -11,6 +11,7 @@ export {
   ModelError,
   ModelOption,
   ModelsResponse,
+  ProjectResponse,
   RunError,
   RunResponse,
   SessionResponse,
@@ -25,6 +26,9 @@ export type {
   ModelSelection,
   ThinkingLevel,
 } from './model-catalog.ts'
+export { ProjectId, ProjectStorage, ProjectError } from './project/project.ts'
+export type { Project, ProjectStorageApi } from './project/project.ts'
+export { SqliteProject } from './project/sqlite-project.ts'
 export { getRunningSessionIds, isRunning } from './run-registry.ts'
 export {
   MessageId,

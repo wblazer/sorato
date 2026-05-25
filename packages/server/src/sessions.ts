@@ -6,6 +6,7 @@
  */
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { Cause, Effect, Fiber, Match } from 'effect'
+import { ProjectStorage } from './project/project.ts'
 import { SessionStorage, type SessionStorageApi } from './session/session.ts'
 import {
   Api,
@@ -35,7 +36,7 @@ import { publish } from './event-bus.ts'
 
 const toSessionResponse = (s: {
   readonly id: string
-  readonly directory: string
+  readonly projectId: string
   readonly title: string | null
   readonly headId: string | null
   readonly createdAt: number
@@ -48,7 +49,7 @@ const toSessionResponse = (s: {
 
   return new SessionResponse({
     id: s.id,
-    directory: s.directory,
+    projectId: s.projectId,
     title: s.title,
     headId: s.headId,
     status,
@@ -321,6 +322,7 @@ const queuedRunResponse = Effect.succeed(
 export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
   Effect.gen(function* () {
     const storage = yield* SessionStorage
+    const projects = yield* ProjectStorage
 
     return handlers
       .handle('list', () =>
@@ -329,9 +331,13 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
           .pipe(Effect.map((sessions) => sessions.map(toSessionResponse)))
       )
       .handle('create', ({ payload }) =>
-        storage
-          .create(payload.directory, payload.title)
-          .pipe(Effect.map(toSessionResponse))
+        projects
+          .get(payload.projectId)
+          .pipe(
+            Effect.andThen(projects.touch(payload.projectId)),
+            Effect.andThen(storage.create(payload.projectId, payload.title)),
+            Effect.map(toSessionResponse)
+          )
       )
       .handle('get', ({ params }) =>
         storage.get(params.id).pipe(Effect.map(toSessionResponse))
@@ -358,10 +364,15 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
             })
           ),
           Effect.flatMap((session) =>
-            ensureModel(
-              session.directory,
-              payload.model,
-              modelOptions(payload.modelOptions)
+            projects.resolvePath(session.projectId).pipe(
+              Effect.tap(() => projects.touch(session.projectId)),
+              Effect.flatMap((projectPath) =>
+                ensureModel(
+                  projectPath,
+                  payload.model,
+                  modelOptions(payload.modelOptions)
+                )
+              )
             )
           ),
           Effect.tap(() =>

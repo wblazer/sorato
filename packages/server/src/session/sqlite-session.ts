@@ -36,7 +36,7 @@ import {
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS sessions (
     id          TEXT PRIMARY KEY,
-    directory   TEXT NOT NULL,
+    project_id  TEXT NOT NULL,
     title       TEXT,
     head_id     TEXT,
     created_at  INTEGER NOT NULL,
@@ -63,7 +63,7 @@ const SCHEMA = [
 
 interface SessionRow {
   id: string
-  directory: string
+  project_id: string
   title: string | null
   head_id: string | null
   created_at: number
@@ -92,7 +92,7 @@ interface MessageInsertRow extends Record<string, unknown> {
 
 const toSession = (row: SessionRow): Session => ({
   id: row.id,
-  directory: row.directory,
+  projectId: row.project_id,
   title: row.title,
   headId: row.head_id,
   createdAt: row.created_at,
@@ -197,28 +197,28 @@ export const SqliteSession = (options: { readonly path: string }) =>
       // -- Service methods --------------------------------------------------
 
       const create = Effect.fn('SessionStorage.create')(function* (
-        directory: string,
+        projectId: string,
         title?: string
       ) {
         const id = crypto.randomUUID()
         const now = Date.now()
 
         yield* sql`
-          INSERT INTO sessions (id, directory, title, created_at, updated_at)
-          VALUES (${id}, ${directory}, ${title ?? null}, ${now}, ${now})
+          INSERT INTO sessions (id, project_id, title, created_at, updated_at)
+          VALUES (${id}, ${projectId}, ${title ?? null}, ${now}, ${now})
         `.pipe(
           Effect.mapError(sqlFailure('create', 'Failed to create session'))
         )
 
         yield* Effect.logInfo('Session created', {
           sessionId: id,
-          directory,
+          projectId,
           hasTitle: title !== undefined,
         })
 
         return {
           id,
-          directory,
+          projectId,
           title: title ?? null,
           headId: null,
           createdAt: now,

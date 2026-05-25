@@ -10,6 +10,7 @@
 import { Cause, Effect, Layer, Match, Option } from 'effect'
 import type { Prompt } from 'effect/unstable/ai'
 import { CurrentFiles, CurrentShell, run, Sandbox } from '@sorato/core'
+import { ProjectStorage } from './project/project.ts'
 import { SessionStorage, type SessionId } from './session/session.ts'
 import { AllTools, SYSTEM_PROMPT } from './agent-config.ts'
 import { createBusHook, publish } from './event-bus.ts'
@@ -37,12 +38,15 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     })
 
     const storage = yield* SessionStorage
+    const projects = yield* ProjectStorage
     const sandbox = yield* Sandbox
 
     const session = yield* storage.get(sessionId)
+    const projectPath = yield* projects.resolvePath(session.projectId)
     yield* Effect.logInfo('Agent run loaded session', {
       runId,
-      directory: session.directory,
+      projectId: session.projectId,
+      projectPath,
       headId: session.headId,
     })
 
@@ -73,10 +77,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     const publishSessionUpdated = Effect.sync(() =>
       publish({ _tag: 'SessionUpdated', sessionId })
     )
-    const maybeSetTitle = generateSessionTitle(
-      session.directory,
-      request.input
-    ).pipe(
+    const maybeSetTitle = generateSessionTitle(projectPath, request.input).pipe(
       Effect.flatMap((title) =>
         Option.match(title, {
           onNone: () => Effect.void,
@@ -121,11 +122,11 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       messageCountBeforeRun,
     })
 
-    yield* sandbox.acquire(session.directory).pipe(
+    yield* sandbox.acquire(projectPath).pipe(
       Effect.tap(() =>
         Effect.logInfo('Agent run acquired sandbox', {
           runId,
-          directory: session.directory,
+          projectPath,
         })
       ),
       Effect.flatMap(({ shell, files }) =>

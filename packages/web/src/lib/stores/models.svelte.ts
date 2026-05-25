@@ -15,7 +15,7 @@ function createModelsStore() {
   let defaultModel = $state<string | null>(null)
   let loading = $state(false)
   let error = $state<string | null>(null)
-  let directory = $state<string | null>(null)
+  let projectId = $state<string | null>(null)
   let selectedModel = $state<string | null>(null)
   let selectedOptions = $state<ModelOptions>({})
   let req = 0
@@ -26,7 +26,7 @@ function createModelsStore() {
     defaultModel = null
     loading = false
     error = null
-    directory = null
+    projectId = null
     selectedModel = null
     selectedOptions = {}
   }
@@ -59,7 +59,7 @@ function createModelsStore() {
     return models[0]?.id ?? null
   }
 
-  async function load(dir: string) {
+  async function load(nextProjectId: string) {
     const api = connectionsStore.getApiBase()
     if (!api) {
       clear()
@@ -67,12 +67,12 @@ function createModelsStore() {
     }
 
     const id = ++req
-    directory = dir
+    projectId = nextProjectId
     loading = true
     error = null
 
     try {
-      const query = new URLSearchParams({ directory: dir })
+      const query = new URLSearchParams({ projectId: nextProjectId })
       const res = await fetch(`${api}/models?${query.toString()}`)
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
 
@@ -115,8 +115,8 @@ function createModelsStore() {
     get error() {
       return error
     },
-    get directory() {
-      return directory
+    get projectId() {
+      return projectId
     },
     get selectedModel() {
       return selectedModel

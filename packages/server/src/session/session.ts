@@ -56,8 +56,8 @@ export class StorageError extends Schema.TaggedErrorClass<StorageError>()(
 /** A session — a container for a tree of messages. */
 export interface Session {
   readonly id: SessionId
-  /** The working directory this session operates in. */
-  readonly directory: string
+  /** The project this session operates in. */
+  readonly projectId: string
   readonly title: string | null
   /** Points to the current active leaf. Null when the session is empty. */
   readonly headId: MessageId | null
@@ -145,7 +145,7 @@ export type StoredMessageEncoded = typeof StoredMessage.Encoded
 export interface SessionStorageApi {
   /** Create a new empty session. */
   readonly create: (
-    directory: string,
+    projectId: string,
     title?: string
   ) => Effect<Session, StorageError>
 

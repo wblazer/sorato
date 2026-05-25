@@ -20,11 +20,17 @@
       </Empty.Media>
       <Empty.Title class="text-lg">Add a project</Empty.Title>
       <Empty.Description class="text-sm">
-        Sessions are scoped to a project so tools and model context have a concrete workspace.
+        Projects are durable server workspaces. For now, a project is a local directory.
       </Empty.Description>
     </Empty.Header>
 
-    <Empty.Content>
+    <Empty.Content class="gap-3">
+      {#if projectStore.loading}
+        <p class="text-sm text-muted-foreground">Loading projects…</p>
+      {:else if projectStore.error}
+        <p class="text-sm text-danger">{projectStore.error}</p>
+      {/if}
+
       <Button size="lg" onclick={() => (pickerOpen = true)}>
         <FolderOpenIcon class="size-4" />
         Open Project

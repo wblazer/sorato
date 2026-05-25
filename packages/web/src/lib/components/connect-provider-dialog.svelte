@@ -57,7 +57,7 @@
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
       await authStore.load()
       open = false
-      if (modelsStore.directory) void modelsStore.load(modelsStore.directory)
+      if (modelsStore.projectId) void modelsStore.load(modelsStore.projectId)
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to connect provider'
     } finally {
@@ -80,7 +80,7 @@
       window.open(body.url, '_blank', 'noopener,noreferrer')
       window.setTimeout(() => {
         void authStore.load()
-        if (modelsStore.directory) void modelsStore.load(modelsStore.directory)
+        if (modelsStore.projectId) void modelsStore.load(modelsStore.projectId)
       }, 2500)
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to start ChatGPT sign-in'
