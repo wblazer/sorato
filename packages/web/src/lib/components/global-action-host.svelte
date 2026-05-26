@@ -3,11 +3,13 @@
       import ArchiveProjectDialog from './archive-project-dialog.svelte'
       import ConnectProviderDialog from './connect-provider-dialog.svelte'
       import DirectoryPicker from './directory-picker.svelte'
+      import SessionSearchDialog from './session/session-search-dialog.svelte'
       import { actionStore } from '$lib/stores/actions.svelte.js'
       import { authStore } from '$lib/stores/auth.svelte.js'
       import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
       import { connectionsStore } from '$lib/stores/connections.svelte.js'
       import { projectStore } from '$lib/stores/projects.svelte.js'
+      import { sessionStore } from '$lib/stores/sessions.svelte.js'
       import { tabStore } from '$lib/stores/tabs.svelte.js'
       import { onMount } from 'svelte'
 
@@ -15,6 +17,7 @@
       let connectOpen = $state(false)
       let projectPickerOpen = $state(false)
       let archiveProjectOpen = $state(false)
+      let sessionSearchOpen = $state(false)
 
       async function handleProjectPath(path: string) {
         const project = await projectStore.createLocalProject(path)
@@ -58,6 +61,17 @@
             enabled: () => projectStore.projects.length > 0,
             run: () => {
               archiveProjectOpen = true
+            },
+          }),
+          actionStore.register({
+            id: 'session.open',
+            title: 'Open Session',
+            category: 'Sessions',
+            description: 'Search recent sessions and open one in the current tab.',
+            keywords: ['resume', 'search', 'conversation'],
+            enabled: () => sessionStore.sessions.length > 0,
+            run: () => {
+              sessionSearchOpen = true
             },
           }),
           actionStore.register({
@@ -106,4 +120,8 @@
 
 {#if archiveProjectOpen}
   <ArchiveProjectDialog bind:open={archiveProjectOpen} />
+{/if}
+
+{#if sessionSearchOpen}
+  <SessionSearchDialog bind:open={sessionSearchOpen} />
 {/if}

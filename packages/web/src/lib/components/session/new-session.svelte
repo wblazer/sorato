@@ -1,5 +1,5 @@
 <script lang="ts">
-  import * as Command from '$lib/components/ui/command/index.js'
+  import Button from '$lib/components/ui/button/button.svelte'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { messagesStore } from '$lib/stores/messages.svelte.js'
   import { modelsStore } from '$lib/stores/models.svelte.js'
@@ -7,12 +7,11 @@
   import { tabStore } from '$lib/stores/tabs.svelte.js'
   import Composer from './composer.svelte'
   import ProjectSelector from './project-selector.svelte'
+  import SessionSearchDialog from './session-search-dialog.svelte'
   import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon'
 
   let sending = $state(false)
   let sessionSearchOpen = $state(false)
-  let sessionSearchRef: HTMLDivElement | null = $state(null)
-  let sessionSearchInputRef: HTMLInputElement | null = $state(null)
 
   const activeProjectId = $derived(
     tabStore.activeTab?.projectId ?? projectStore.selectedProjectId
@@ -60,19 +59,6 @@
     sessionSearchOpen = false
   }
 
-  function handleWindowPointerDown(event: PointerEvent) {
-    if (!sessionSearchOpen) return
-    if (sessionSearchRef?.contains(event.target as Node)) return
-    sessionSearchOpen = false
-  }
-
-  function handleSessionSearchKeydown(event: KeyboardEvent) {
-    if (event.key !== 'Escape') return
-    event.preventDefault()
-    sessionSearchOpen = false
-    sessionSearchInputRef?.blur()
-  }
-
   function handleAttach() {}
 
   async function handleSend(input: string) {
@@ -98,60 +84,27 @@
   }
 </script>
 
-<svelte:window onpointerdown={handleWindowPointerDown} />
+<SessionSearchDialog bind:open={sessionSearchOpen} />
 
 <div class="flex h-full flex-col">
   <div class="mx-auto flex min-h-0 w-full max-w-6xl flex-1 items-center justify-center px-6 py-6">
     <div class="flex w-full flex-col items-center gap-10">
-      <div class="w-full max-w-xl space-y-2">
+      <div class="w-full max-w-md space-y-2">
         <div class="text-center text-sm font-medium text-muted-foreground">
           Resume a session
         </div>
 
         <div class="space-y-5">
-          <div bind:this={sessionSearchRef} class="relative">
-            <Command.Root class="overflow-visible rounded-none bg-transparent p-0">
-              <Command.Input
-                bind:ref={sessionSearchInputRef}
-                placeholder="Search sessions..."
-                onfocus={() => (sessionSearchOpen = true)}
-                onkeydown={handleSessionSearchKeydown}
-              />
-
-              {#if sessionSearchOpen}
-                <div
-                  class="absolute top-full right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg bg-popover p-1.5 shadow-md shadow-shadow/40 ring-1 ring-border"
-                >
-                  <Command.List class="max-h-72 px-1 pt-1.5 pb-1">
-                    {#if sessionStore.loading && sessionStore.sessions.length === 0}
-                      <div class="px-3 py-6 text-center text-sm text-muted-foreground">
-                        Loading sessions...
-                      </div>
-                    {:else}
-                      <Command.Empty>No sessions found.</Command.Empty>
-                      {#each sessionOptions as item (item.session.id)}
-                        <Command.Item
-                          class="[&_.cn-command-item-indicator]:hidden"
-                          value={`${item.title} ${item.project?.name ?? ''} ${item.project?.path ?? ''}`}
-                          keywords={[item.project?.name ?? '', item.project?.path ?? '']}
-                          onSelect={() => openSession(item.session.id)}
-                        >
-                          <span class="min-w-0 flex-1">
-                            <span class="block truncate text-sm">{item.title}</span>
-                            <span class="block truncate text-xs text-muted-foreground">
-                              {item.project?.name ?? 'Unknown project'}
-                            </span>
-                          </span>
-                          <span class="ml-3 shrink-0 text-xs text-muted-foreground">
-                            {formatRelativeTime(item.timestamp)}
-                          </span>
-                        </Command.Item>
-                      {/each}
-                    {/if}
-                  </Command.List>
-                </div>
-              {/if}
-            </Command.Root>
+          <div class="flex justify-center">
+            <Button
+              variant="outline"
+              size="lg"
+              class="gap-2 text-sm"
+              onclick={() => (sessionSearchOpen = true)}
+            >
+              <MagnifyingGlassIcon class="size-4" />
+              Search sessions
+            </Button>
           </div>
 
           <div class="space-y-1">

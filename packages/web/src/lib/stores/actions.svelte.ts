@@ -11,6 +11,7 @@ export type ActionId =
   | 'project.open'
   | 'provider.connect'
   | 'session.new'
+  | 'session.open'
 
 export type ActionContext = 'global' | string
 export type ActionPaletteVisibility = 'auto' | 'never'
