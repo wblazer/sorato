@@ -98,12 +98,12 @@
   </Popover.Trigger>
 
   <Popover.Content
-    class="w-[min(22rem,calc(100vw-2rem))] gap-0 overflow-hidden p-1.5"
+    class="w-[min(22rem,calc(100vw-2rem))] gap-0 overflow-hidden p-0"
     align="center"
   >
-    <Command.Root class="rounded-lg p-0" filter={filterProject}>
+    <Command.Root class="rounded-lg p-1" filter={filterProject}>
       <Command.Input placeholder="Search projects..." />
-      <Command.List id={listboxId} class="h-60 px-1 pt-1.5 pb-1">
+      <Command.List id={listboxId} class="h-60 px-1 py-1.5">
         {#if loading}
           <div class="px-3 py-6 text-center text-sm text-muted-foreground">
             Loading projects...
@@ -128,7 +128,7 @@
           {/each}
         {/if}
       </Command.List>
-      <div class="border-t px-1 pt-1">
+      <div class="-mx-1 border-t px-1.5 pt-1.5 pb-1">
         <Command.Item value="new add project local folder" onSelect={addProject}>
           <PlusIcon class="text-muted-foreground" />
           <span class="truncate">New Project</span>

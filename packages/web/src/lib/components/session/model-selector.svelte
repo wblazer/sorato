@@ -115,12 +115,12 @@
   </Popover.Trigger>
 
   <Popover.Content
-    class="w-[min(24rem,calc(100vw-2rem))] gap-0 overflow-hidden p-1.5"
+    class="w-[min(24rem,calc(100vw-2rem))] gap-0 overflow-hidden p-0"
     align="start"
   >
-    <Command.Root class="rounded-lg p-0" filter={filterModel}>
+    <Command.Root class="rounded-lg p-1" filter={filterModel}>
       <Command.Input placeholder="Search models..." />
-      <Command.List id={listboxId} class="h-60 px-1 pb-1">
+      <Command.List id={listboxId} class="h-60 py-1.5">
         {#if loading}
           <div class="px-3 py-6 text-center text-sm text-muted-foreground">
             Loading models...
@@ -154,7 +154,7 @@
           {/each}
         {/if}
       </Command.List>
-      <div class="border-t px-1 pt-1">
+      <div class="-mx-1 border-t px-1.5 pt-1.5 pb-1">
         <Command.Item value="connect provider api key" onSelect={connectProvider}>
           <PlugIcon class="text-muted-foreground" />
           <span class="truncate">Connect provider</span>
