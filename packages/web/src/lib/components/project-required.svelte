@@ -1,15 +1,9 @@
 <script lang="ts">
-  import DirectoryPicker from '$lib/components/directory-picker.svelte'
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Empty from '$lib/components/ui/empty/index.js'
+  import { actionStore } from '$lib/stores/actions.svelte.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
   import FolderOpenIcon from 'phosphor-svelte/lib/FolderOpenIcon'
-
-  let pickerOpen = $state(false)
-
-  function handlePickerSelect(path: string) {
-    void projectStore.createLocalProject(path)
-  }
 </script>
 
 <main class="flex h-full items-center justify-center px-6 py-10">
@@ -31,14 +25,10 @@
         <p class="text-sm text-danger">{projectStore.error}</p>
       {/if}
 
-      <Button size="lg" onclick={() => (pickerOpen = true)}>
+      <Button size="lg" onclick={() => actionStore.trigger('project.add')}>
         <FolderOpenIcon class="size-4" />
-        Open Project
+        Add Project
       </Button>
     </Empty.Content>
   </Empty.Root>
 </main>
-
-{#if pickerOpen}
-  <DirectoryPicker bind:open={pickerOpen} onSelect={handlePickerSelect} />
-{/if}

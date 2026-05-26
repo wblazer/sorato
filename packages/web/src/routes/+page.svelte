@@ -13,7 +13,9 @@
   )
 </script>
 
-{#if !authStore.hasAuthenticatedProvider}
+{#if !activeTab}
+  <div class="h-full"></div>
+{:else if !authStore.hasAuthenticatedProvider}
   <ProviderRequired />
 {:else if projectStore.projects.length === 0}
   <ProjectRequired />

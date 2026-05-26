@@ -8,8 +8,8 @@ export interface ToolCallDisplay {
 export interface Project {
   id: string
   name: string
-  kind: 'local-directory'
   path: string
+  archivedAt: number | null
   createdAt: number
   updatedAt: number
   lastOpenedAt: number | null
@@ -32,6 +32,8 @@ export interface Session {
   headId: string | null
   /** Ephemeral run status — 'running' if an agent run is active. */
   status: 'idle' | 'running'
+  archivedAt: number | null
+  lastUserMessageAt: number | null
   createdAt: number
   updatedAt: number
 }

@@ -31,7 +31,7 @@ function createProjectStore() {
       const res = await fetch(`${connectionsStore.getApiBase()}/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind: 'local-directory', path }),
+        body: JSON.stringify({ path }),
       })
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
       const project: Project = await res.json()
@@ -47,6 +47,32 @@ function createProjectStore() {
   function selectProject(id: string | null) {
     selectedProjectId = id
     if (id) void modelsStore.load(id)
+  }
+
+  async function archiveProject(
+    id: string,
+    archiveSessions: boolean
+  ): Promise<boolean> {
+    try {
+      const res = await fetch(
+        `${connectionsStore.getApiBase()}/projects/${id}/archive`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ archiveSessions }),
+        }
+      )
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+      projects = projects.filter((project) => project.id !== id)
+      if (selectedProjectId === id) {
+        const nextProject = projects[0] ?? null
+        selectProject(nextProject?.id ?? null)
+      }
+      return true
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Failed to archive project'
+      return false
+    }
   }
 
   function getProject(id: string | null): Project | null {
@@ -72,6 +98,7 @@ function createProjectStore() {
     },
     fetchProjects,
     createLocalProject,
+    archiveProject,
     selectProject,
     getProject,
   }

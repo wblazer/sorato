@@ -22,8 +22,8 @@
 
   onMount(() => {
     return actionStore.register({
-      id: 'project.open',
-      title: 'Open Project...',
+      id: 'project.add',
+      title: 'Add Project...',
       category: 'Projects',
       description: 'Browse for a local directory and add it as a project.',
       keywords: ['folder', 'directory', 'workspace'],
@@ -88,7 +88,7 @@
         }}
       >
         <FolderOpenIcon class="size-4" />
-        Open Project…
+        Add Project…
       </button>
     </div>
   {/if}

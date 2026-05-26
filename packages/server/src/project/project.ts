@@ -4,17 +4,6 @@ import type { Effect } from 'effect/Effect'
 export const ProjectId = Schema.String
 export type ProjectId = string
 
-export const ProjectKind = Schema.Literal('local-directory')
-export type ProjectKind = typeof ProjectKind.Type
-
-export const LocalDirectoryLocator = Schema.Struct({
-  path: Schema.String,
-})
-export type LocalDirectoryLocator = typeof LocalDirectoryLocator.Type
-
-export const ProjectLocator = LocalDirectoryLocator
-export type ProjectLocator = LocalDirectoryLocator
-
 export class ProjectError extends Schema.TaggedErrorClass<ProjectError>()(
   'ProjectError',
   {
@@ -27,11 +16,11 @@ export class ProjectError extends Schema.TaggedErrorClass<ProjectError>()(
 export interface Project {
   readonly id: ProjectId
   readonly name: string
-  readonly kind: ProjectKind
-  readonly locator: ProjectLocator
+  readonly path: string
   readonly createdAt: number
   readonly updatedAt: number
   readonly lastOpenedAt: number | null
+  readonly archivedAt: number | null
 }
 
 export interface ProjectStorageApi {
@@ -42,7 +31,7 @@ export interface ProjectStorageApi {
   readonly get: (id: ProjectId) => Effect<Project, ProjectError>
   readonly list: () => Effect<ReadonlyArray<Project>, ProjectError>
   readonly touch: (id: ProjectId) => Effect<void, ProjectError>
-  readonly delete: (id: ProjectId) => Effect<void, ProjectError>
+  readonly archive: (id: ProjectId) => Effect<void, ProjectError>
   readonly resolvePath: (id: ProjectId) => Effect<string, ProjectError>
 }
 

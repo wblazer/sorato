@@ -16,10 +16,10 @@ const newTab = (): AppTab => {
 
 function createTabStore() {
   let tabs = $state<AppTab[]>([newTab()])
-  let activeTabId = $state(tabs[0]?.id ?? '')
+  let activeTabId = $state<string | null>(tabs[0]?.id ?? null)
 
   const activeTab = $derived(
-    tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null
+    activeTabId ? (tabs.find((tab) => tab.id === activeTabId) ?? null) : null
   )
 
   function setActiveTab(id: string) {
@@ -31,7 +31,7 @@ function createTabStore() {
 
   function openNewTab() {
     const tab = newTab()
-    tabs = [...tabs, tab]
+    tabs = [tab, ...tabs]
     activeTabId = tab.id
     messagesStore.clear()
   }
@@ -39,17 +39,32 @@ function createTabStore() {
   function closeTab(id: string) {
     const index = tabs.findIndex((tab) => tab.id === id)
     if (index < 0) return
+
     const next = tabs.filter((tab) => tab.id !== id)
-    tabs = next.length > 0 ? next : [newTab()]
+    tabs = next
+
     if (activeTabId === id) {
-      const replacement = tabs[Math.max(0, index - 1)] ?? tabs[0]
-      if (replacement) setActiveTab(replacement.id)
+      const replacement = next[Math.max(0, index - 1)] ?? next[0] ?? null
+      if (replacement) {
+        setActiveTab(replacement.id)
+      } else {
+        activeTabId = null
+        messagesStore.clear()
+      }
     }
   }
 
   function setDraftProject(tabId: string, projectId: string | null) {
     tabs = tabs.map((tab) =>
       tab.id === tabId ? { ...tab, projectId, updatedAt: Date.now() } : tab
+    )
+  }
+
+  function clearProject(projectId: string) {
+    tabs = tabs.map((tab) =>
+      tab.projectId === projectId && tab.sessionId === null
+        ? { ...tab, projectId: null, updatedAt: Date.now() }
+        : tab
     )
   }
 
@@ -90,6 +105,7 @@ function createTabStore() {
     openNewTab,
     closeTab,
     setDraftProject,
+    clearProject,
     attachSession,
     updateSessionTitle,
   }

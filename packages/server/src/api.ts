@@ -25,6 +25,8 @@ export class SessionResponse extends Schema.Class<SessionResponse>(
   headId: Schema.NullOr(Schema.String),
   /** Ephemeral run status — 'running' if an agent run is active. */
   status: Schema.Literals(['idle', 'running']),
+  archivedAt: Schema.NullOr(Schema.Number),
+  lastUserMessageAt: Schema.NullOr(Schema.Number),
   createdAt: Schema.Number,
   updatedAt: Schema.Number,
 }) {}
@@ -52,8 +54,8 @@ export class ProjectResponse extends Schema.Class<ProjectResponse>(
 )({
   id: Schema.String,
   name: Schema.String,
-  kind: Schema.Literal('local-directory'),
   path: Schema.String,
+  archivedAt: Schema.NullOr(Schema.Number),
   createdAt: Schema.Number,
   updatedAt: Schema.Number,
   lastOpenedAt: Schema.NullOr(Schema.Number),
@@ -268,7 +270,6 @@ export class ProjectsGroup extends HttpApiGroup.make('projects')
   .add(
     HttpApiEndpoint.post('create', '/', {
       payload: Schema.Struct({
-        kind: Schema.Literal('local-directory'),
         path: Schema.String,
         name: Schema.optional(Schema.String),
       }),
@@ -284,10 +285,16 @@ export class ProjectsGroup extends HttpApiGroup.make('projects')
     })
   )
   .add(
-    HttpApiEndpoint.delete('delete', '/:id', {
+    HttpApiEndpoint.post('archive', '/:id/archive', {
       params: { id: ProjectId },
+      payload: Schema.Struct({
+        archiveSessions: Schema.optional(Schema.Boolean),
+      }),
       success: Schema.Void,
-      error: ProjectError.pipe(HttpApiSchema.status(500)),
+      error: [
+        ProjectError.pipe(HttpApiSchema.status(500)),
+        StorageError.pipe(HttpApiSchema.status(500)),
+      ],
     })
   )
   .prefix('/projects') {}

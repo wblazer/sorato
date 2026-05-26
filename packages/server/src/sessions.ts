@@ -41,6 +41,8 @@ const toSessionResponse = (s: {
   readonly headId: string | null
   readonly createdAt: number
   readonly updatedAt: number
+  readonly archivedAt: number | null
+  readonly lastUserMessageAt: number | null
 }) => {
   const status = Match.value(isRunning(s.id)).pipe(
     Match.when(true, () => 'running' as const),
@@ -53,6 +55,8 @@ const toSessionResponse = (s: {
     title: s.title,
     headId: s.headId,
     status,
+    archivedAt: s.archivedAt,
+    lastUserMessageAt: s.lastUserMessageAt,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
   })

@@ -1,24 +1,76 @@
 <script lang="ts">
+  import * as Command from '$lib/components/ui/command/index.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { messagesStore } from '$lib/stores/messages.svelte.js'
   import { modelsStore } from '$lib/stores/models.svelte.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
   import { tabStore } from '$lib/stores/tabs.svelte.js'
   import Composer from './composer.svelte'
+  import ProjectSelector from './project-selector.svelte'
+  import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon'
 
   let sending = $state(false)
+  let sessionSearchOpen = $state(false)
+  let sessionSearchRef: HTMLDivElement | null = $state(null)
+  let sessionSearchInputRef: HTMLInputElement | null = $state(null)
 
   const activeProjectId = $derived(
     tabStore.activeTab?.projectId ?? projectStore.selectedProjectId
   )
-  const activeProject = $derived(projectStore.getProject(activeProjectId))
-
   function handleModel(value: string, options = {}) {
     modelsStore.select(value, options)
   }
 
+  const sessionOptions = $derived.by(() =>
+    sessionStore.sessions
+      .map((session) => {
+        const project = projectStore.getProject(session.projectId)
+        const title = sessionStore.displayTitle(session)
+
+        return {
+          session,
+          project,
+          title,
+          timestamp: session.lastUserMessageAt ?? session.updatedAt,
+        }
+      })
+      .sort((a, b) => b.timestamp - a.timestamp)
+  )
+
+  const recentSessions = $derived(sessionOptions.slice(0, 6))
+
+  function formatRelativeTime(timestamp: number): string {
+    const seconds = Math.floor((Date.now() - timestamp) / 1000)
+    if (seconds < 60) return 'just now'
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m ago`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours}h ago`
+    const days = Math.floor(hours / 24)
+    if (days < 30) return `${days}d ago`
+    return `${Math.floor(days / 30)}mo ago`
+  }
+
   function handleProject(projectId: string) {
     sessionStore.selectProject(projectId)
+  }
+
+  function openSession(sessionId: string) {
+    sessionStore.selectSession(sessionId)
+    sessionSearchOpen = false
+  }
+
+  function handleWindowPointerDown(event: PointerEvent) {
+    if (!sessionSearchOpen) return
+    if (sessionSearchRef?.contains(event.target as Node)) return
+    sessionSearchOpen = false
+  }
+
+  function handleSessionSearchKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Escape') return
+    event.preventDefault()
+    sessionSearchOpen = false
+    sessionSearchInputRef?.blur()
   }
 
   function handleAttach() {}
@@ -46,52 +98,121 @@
   }
 </script>
 
+<svelte:window onpointerdown={handleWindowPointerDown} />
+
 <div class="flex h-full flex-col">
-  <div class="py-4">
-    <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
-      <div class="min-w-0 flex-1">
-        <h1 class="text-sm font-semibold text-foreground">New Tab</h1>
-        {#if activeProject}
-          <span class="text-xs text-muted-foreground">
-            {activeProject.name} — {activeProject.path}
-          </span>
-        {:else}
-          <span class="text-xs text-muted-foreground">Choose a project to start a session.</span>
+  <div class="mx-auto flex min-h-0 w-full max-w-6xl flex-1 items-center justify-center px-6 py-6">
+    <div class="flex w-full flex-col items-center gap-10">
+      <div class="w-full max-w-xl space-y-2">
+        <div class="text-center text-sm font-medium text-muted-foreground">
+          Resume a session
+        </div>
+
+        <div class="space-y-5">
+          <div bind:this={sessionSearchRef} class="relative">
+            <Command.Root class="overflow-visible rounded-none bg-transparent p-0">
+              <Command.Input
+                bind:ref={sessionSearchInputRef}
+                placeholder="Search sessions..."
+                onfocus={() => (sessionSearchOpen = true)}
+                onkeydown={handleSessionSearchKeydown}
+              />
+
+              {#if sessionSearchOpen}
+                <div
+                  class="absolute top-full right-0 left-0 z-50 mt-1 overflow-hidden rounded-lg bg-popover p-1.5 shadow-md shadow-shadow/40 ring-1 ring-border"
+                >
+                  <Command.List class="max-h-72 px-1 pt-1.5 pb-1">
+                    {#if sessionStore.loading && sessionStore.sessions.length === 0}
+                      <div class="px-3 py-6 text-center text-sm text-muted-foreground">
+                        Loading sessions...
+                      </div>
+                    {:else}
+                      <Command.Empty>No sessions found.</Command.Empty>
+                      {#each sessionOptions as item (item.session.id)}
+                        <Command.Item
+                          class="[&_.cn-command-item-indicator]:hidden"
+                          value={`${item.title} ${item.project?.name ?? ''} ${item.project?.path ?? ''}`}
+                          keywords={[item.project?.name ?? '', item.project?.path ?? '']}
+                          onSelect={() => openSession(item.session.id)}
+                        >
+                          <span class="min-w-0 flex-1">
+                            <span class="block truncate text-sm">{item.title}</span>
+                            <span class="block truncate text-xs text-muted-foreground">
+                              {item.project?.name ?? 'Unknown project'}
+                            </span>
+                          </span>
+                          <span class="ml-3 shrink-0 text-xs text-muted-foreground">
+                            {formatRelativeTime(item.timestamp)}
+                          </span>
+                        </Command.Item>
+                      {/each}
+                    {/if}
+                  </Command.List>
+                </div>
+              {/if}
+            </Command.Root>
+          </div>
+
+          <div class="space-y-1">
+            <div class="px-2 text-xs font-medium text-muted-foreground">
+              Recent Sessions
+            </div>
+
+            {#if sessionStore.loading && sessionStore.sessions.length === 0}
+              <div class="px-3 py-6 text-center text-sm text-muted-foreground">
+                Loading sessions...
+              </div>
+            {:else if recentSessions.length === 0}
+              <div class="px-3 py-6 text-center text-sm text-muted-foreground">
+                No recent sessions.
+              </div>
+            {:else}
+              {#each recentSessions as item (item.session.id)}
+                <button
+                  type="button"
+                  class="flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden select-none hover:bg-base-hover"
+                  onclick={() => openSession(item.session.id)}
+                >
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm">{item.title}</span>
+                    <span class="block truncate text-xs text-muted-foreground">
+                      {item.project?.name ?? 'Unknown project'}
+                    </span>
+                  </span>
+                  <span class="ml-3 shrink-0 text-xs text-muted-foreground">
+                    {formatRelativeTime(item.timestamp)}
+                  </span>
+                </button>
+              {/each}
+            {/if}
+          </div>
+        </div>
+      </div>
+
+      <div class="flex w-full max-w-sm items-center gap-3 text-xs font-medium text-muted-foreground">
+        <div class="h-px flex-1 bg-border"></div>
+        <span>or</span>
+        <div class="h-px flex-1 bg-border"></div>
+      </div>
+
+      <div class="w-full max-w-sm space-y-2 text-center">
+        <div class="text-sm font-medium text-muted-foreground">
+          Start session in
+        </div>
+        <ProjectSelector
+          projects={projectStore.projects}
+          value={activeProjectId}
+          loading={projectStore.loading}
+          onChange={handleProject}
+        />
+
+        {#if modelsStore.error}
+          <p class="text-xs text-danger">{modelsStore.error}</p>
+        {:else if activeProjectId && !modelsStore.loading && modelsStore.models.length === 0}
+          <p class="text-xs text-danger">No models available for this project.</p>
         {/if}
       </div>
-    </div>
-  </div>
-
-  <div
-    class="mx-auto flex w-full max-w-6xl flex-1 flex-col items-center justify-center gap-4 px-6 py-8 text-center"
-  >
-    {#if projectStore.projects.length > 0}
-      <div class="w-full max-w-md space-y-2 text-left">
-        <div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Project
-        </div>
-        <div class="space-y-1">
-          {#each projectStore.projects.slice(0, 5) as project (project.id)}
-            <button
-              type="button"
-              class="flex w-full flex-col rounded-md px-3 py-2 text-left hover:bg-base-hover data-[selected=true]:bg-selected"
-              data-selected={project.id === activeProjectId}
-              onclick={() => handleProject(project.id)}
-            >
-              <span class="truncate text-sm font-medium">{project.name}</span>
-              <span class="truncate text-xs text-muted-foreground">{project.path}</span>
-            </button>
-          {/each}
-        </div>
-      </div>
-    {/if}
-
-    <div>
-      {#if modelsStore.error}
-        <p class="text-xs text-danger">{modelsStore.error}</p>
-      {:else if activeProjectId && !modelsStore.loading && modelsStore.models.length === 0}
-        <p class="text-xs text-danger">No models available for this project.</p>
-      {/if}
     </div>
   </div>
 
@@ -105,6 +226,8 @@
     modelLoading={modelsStore.loading}
     modelDisabled={sending || !activeProjectId}
     disabled={sending || modelsStore.loading || !modelsStore.selectedModel || !activeProjectId}
+    autoFocus
+    focusKey={tabStore.activeTabId}
     placeholder={activeProjectId ? (sending ? 'Creating session...' : 'What would you like to do?') : 'Choose a project to start'}
   />
 </div>

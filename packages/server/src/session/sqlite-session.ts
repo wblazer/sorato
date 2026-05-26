@@ -39,8 +39,10 @@ const SCHEMA = [
     project_id  TEXT NOT NULL,
     title       TEXT,
     head_id     TEXT,
+    archived_at INTEGER,
     created_at  INTEGER NOT NULL,
-    updated_at  INTEGER NOT NULL
+    updated_at  INTEGER NOT NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT
   )`,
 
   `CREATE TABLE IF NOT EXISTS messages (
@@ -66,6 +68,8 @@ interface SessionRow {
   project_id: string
   title: string | null
   head_id: string | null
+  archived_at: number | null
+  last_user_message_at: number | null
   created_at: number
   updated_at: number
 }
@@ -95,6 +99,8 @@ const toSession = (row: SessionRow): Session => ({
   projectId: row.project_id,
   title: row.title,
   headId: row.head_id,
+  archivedAt: row.archived_at,
+  lastUserMessageAt: row.last_user_message_at,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 })
@@ -221,6 +227,8 @@ export const SqliteSession = (options: { readonly path: string }) =>
           projectId,
           title: title ?? null,
           headId: null,
+          archivedAt: null,
+          lastUserMessageAt: null,
           createdAt: now,
           updatedAt: now,
         } satisfies Session
@@ -228,7 +236,15 @@ export const SqliteSession = (options: { readonly path: string }) =>
 
       const get = Effect.fn('SessionStorage.get')(function* (id: SessionId) {
         const rows = yield* sql<SessionRow>`
-          SELECT * FROM sessions WHERE id = ${id}
+          SELECT
+            sessions.*,
+            (
+              SELECT MAX(messages.created_at)
+              FROM messages
+              WHERE messages.session_id = sessions.id
+                AND json_extract(messages.encoded, '$.role') = 'user'
+            ) AS last_user_message_at
+          FROM sessions WHERE id = ${id}
         `.pipe(
           Effect.mapError(sqlFailure('get', `Failed to get session: ${id}`))
         )
@@ -248,7 +264,17 @@ export const SqliteSession = (options: { readonly path: string }) =>
 
       const list = Effect.fn('SessionStorage.list')(function* () {
         const rows = yield* sql<SessionRow>`
-          SELECT * FROM sessions ORDER BY updated_at DESC
+          SELECT
+            sessions.*,
+            (
+              SELECT MAX(messages.created_at)
+              FROM messages
+              WHERE messages.session_id = sessions.id
+                AND json_extract(messages.encoded, '$.role') = 'user'
+            ) AS last_user_message_at
+          FROM sessions
+          WHERE archived_at IS NULL
+          ORDER BY COALESCE(last_user_message_at, updated_at) DESC
         `.pipe(Effect.mapError(sqlFailure('list', 'Failed to list sessions')))
 
         return rows.map(toSession)
@@ -278,6 +304,25 @@ export const SqliteSession = (options: { readonly path: string }) =>
           )
         )
         yield* Effect.logInfo('Session deleted', { sessionId: id })
+      })
+
+      const archiveByProject: SessionStorageApi['archiveByProject'] = Effect.fn(
+        'SessionStorage.archiveByProject'
+      )(function* (projectId: string) {
+        const now = Date.now()
+        yield* sql`
+          UPDATE sessions
+          SET archived_at = ${now}, updated_at = ${now}
+          WHERE project_id = ${projectId} AND archived_at IS NULL
+        `.pipe(
+          Effect.mapError(
+            sqlFailure(
+              'archiveByProject',
+              `Failed to archive sessions for project: ${projectId}`
+            )
+          )
+        )
+        yield* Effect.logInfo('Project sessions archived', { projectId })
       })
 
       const conversation = Effect.fn('SessionStorage.conversation')(function* (
@@ -447,6 +492,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
         list,
         setTitle,
         delete: del,
+        archiveByProject,
         conversation,
         messages,
         append,

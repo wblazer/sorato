@@ -1,5 +1,5 @@
 import { basename } from 'node:path'
-import { Effect, Layer, Schema } from 'effect'
+import { Effect, Layer } from 'effect'
 import { SqlClient } from 'effect/unstable/sql/SqlClient'
 import {
   ProjectError,
@@ -10,40 +10,38 @@ import {
 } from './project.ts'
 
 const SCHEMA = [
+  'PRAGMA foreign_keys = ON',
   `CREATE TABLE IF NOT EXISTS projects (
     id             TEXT PRIMARY KEY,
-    kind           TEXT NOT NULL,
     name           TEXT NOT NULL,
-    locator_json   TEXT NOT NULL,
+    path           TEXT NOT NULL,
     created_at     INTEGER NOT NULL,
     updated_at     INTEGER NOT NULL,
-    last_opened_at INTEGER
+    last_opened_at INTEGER,
+    archived_at    INTEGER
   )`,
   'CREATE INDEX IF NOT EXISTS idx_projects_updated ON projects(updated_at)',
+  'CREATE INDEX IF NOT EXISTS idx_projects_archived ON projects(archived_at)',
 ]
 
 interface ProjectRow {
   id: string
-  kind: string
   name: string
-  locator_json: string
+  path: string
   created_at: number
   updated_at: number
   last_opened_at: number | null
+  archived_at: number | null
 }
-
-const LocalDirectoryLocator = Schema.Struct({ path: Schema.String })
 
 const toProject = (row: ProjectRow): Project => ({
   id: row.id,
-  kind: 'local-directory',
   name: row.name,
-  locator: Schema.decodeUnknownSync(LocalDirectoryLocator)(
-    JSON.parse(row.locator_json)
-  ),
+  path: row.path,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
   lastOpenedAt: row.last_opened_at,
+  archivedAt: row.archived_at,
 })
 
 const projectName = (path: string, name?: string) => {
@@ -70,11 +68,10 @@ export const SqliteProject = Layer.effect(ProjectStorage)(
         const id = crypto.randomUUID()
         const now = Date.now()
         const resolvedName = projectName(path, name)
-        const locator = { path }
 
         yield* sql`
-          INSERT INTO projects (id, kind, name, locator_json, created_at, updated_at, last_opened_at)
-          VALUES (${id}, ${'local-directory'}, ${resolvedName}, ${JSON.stringify(locator)}, ${now}, ${now}, ${now})
+          INSERT INTO projects (id, name, path, created_at, updated_at, last_opened_at)
+          VALUES (${id}, ${resolvedName}, ${path}, ${now}, ${now}, ${now})
         `.pipe(
           Effect.mapError(
             sqlFailure('createLocalDirectory', 'Failed to create project')
@@ -83,12 +80,12 @@ export const SqliteProject = Layer.effect(ProjectStorage)(
 
         return {
           id,
-          kind: 'local-directory',
           name: resolvedName,
-          locator,
+          path,
           createdAt: now,
           updatedAt: now,
           lastOpenedAt: now,
+          archivedAt: null,
         }
       })
 
@@ -112,7 +109,9 @@ export const SqliteProject = Layer.effect(ProjectStorage)(
 
     const list = Effect.fn('ProjectStorage.list')(function* () {
       const rows = yield* sql<ProjectRow>`
-        SELECT * FROM projects ORDER BY COALESCE(last_opened_at, updated_at) DESC
+        SELECT * FROM projects
+        WHERE archived_at IS NULL
+        ORDER BY COALESCE(last_opened_at, updated_at) DESC
       `.pipe(Effect.mapError(sqlFailure('list', 'Failed to list projects')))
       return rows.map(toProject)
     })
@@ -129,9 +128,17 @@ export const SqliteProject = Layer.effect(ProjectStorage)(
       )
     })
 
-    const del = Effect.fn('ProjectStorage.delete')(function* (id: ProjectId) {
-      yield* sql`DELETE FROM projects WHERE id = ${id}`.pipe(
-        Effect.mapError(sqlFailure('delete', `Failed to delete project: ${id}`))
+    const archive = Effect.fn('ProjectStorage.archive')(function* (
+      id: ProjectId
+    ) {
+      yield* get(id)
+      const now = Date.now()
+      yield* sql`
+        UPDATE projects SET archived_at = ${now}, updated_at = ${now} WHERE id = ${id}
+      `.pipe(
+        Effect.mapError(
+          sqlFailure('archive', `Failed to archive project: ${id}`)
+        )
       )
     })
 
@@ -139,7 +146,7 @@ export const SqliteProject = Layer.effect(ProjectStorage)(
       id: ProjectId
     ) {
       const project = yield* get(id)
-      return project.locator.path
+      return project.path
     })
 
     return ProjectStorage.of({
@@ -147,7 +154,7 @@ export const SqliteProject = Layer.effect(ProjectStorage)(
       get,
       list,
       touch,
-      delete: del,
+      archive,
       resolvePath,
     })
   })

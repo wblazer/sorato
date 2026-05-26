@@ -61,6 +61,8 @@ export interface Session {
   readonly title: string | null
   /** Points to the current active leaf. Null when the session is empty. */
   readonly headId: MessageId | null
+  readonly archivedAt: number | null
+  readonly lastUserMessageAt: number | null
   readonly createdAt: number
   readonly updatedAt: number
 }
@@ -163,6 +165,9 @@ export interface SessionStorageApi {
 
   /** Delete a session and all its messages. */
   readonly delete: (id: SessionId) => Effect<void, StorageError>
+
+  /** Archive all sessions in a project. Archived sessions are hidden from lists. */
+  readonly archiveByProject: (projectId: string) => Effect<void, StorageError>
 
   /**
    * Reconstruct the current branch as a `Prompt.Prompt`.
