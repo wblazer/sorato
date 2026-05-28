@@ -1,0 +1,26 @@
+{
+  "name": "@sorato/desktop",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "bun run --parallel dev:web dev:bundle dev:electron",
+    "dev:web": "bun run --filter @sorato/web dev --host 127.0.0.1 --port 5173",
+    "dev:bundle": "tsdown --watch",
+    "dev:electron": "node scripts/dev-electron.mjs",
+    "build": "tsdown",
+    "start": "node scripts/start-electron.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "echo 'no desktop tests yet'"
+  },
+  "dependencies": {
+    "electron": "^41.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsdown": "^0.16.7",
+    "typescript": "^6"
+  },
+  "productName": "Sorato"
+}

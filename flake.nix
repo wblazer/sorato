@@ -17,9 +17,12 @@
     devShells = forEachSupportedSystem ({pkgs}: {
       default = pkgs.mkShell {
         BIOME_BINARY = "${pkgs.biome}/bin/biome";
+        ELECTRON_BINARY = "${pkgs.electron}/bin/electron";
+        ELECTRON_OVERRIDE_DIST_PATH = "${pkgs.electron}/bin";
         packages = with pkgs; [
           biome
           bun
+          electron
           typescript
           typescript-language-server
           svelte-language-server

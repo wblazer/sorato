@@ -14,7 +14,9 @@
     "lint:fix": "oxlint . --fix",
     "effect-solutions": "bun node_modules/effect-solutions/dist/cli.js",
     "web": "bun run --filter @sorato/web dev",
-    "server": "bun run --filter @sorato/server dev"
+    "server": "bun run --filter @sorato/server dev",
+    "desktop": "bun run --filter @sorato/desktop dev",
+    "desktop:build": "bun run --filter @sorato/web build && bun run --filter @sorato/desktop build"
   },
   "devDependencies": {
     "@effect/language-service": "^0.85.1",
