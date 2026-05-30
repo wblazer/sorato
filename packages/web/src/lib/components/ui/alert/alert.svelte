@@ -6,7 +6,7 @@
 		variants: {
 			variant: {
 				default: "bg-surface text-foreground",
-				destructive: "text-danger bg-surface *:data-[slot=alert-description]:text-danger/90 *:[svg]:text-current",
+				destructive: "text-danger-muted-foreground bg-surface *:data-[slot=alert-description]:text-danger-muted-foreground/90 *:[svg]:text-current",
 			},
 		},
 		defaultVariants: {

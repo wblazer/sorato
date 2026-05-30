@@ -2,13 +2,13 @@
 	import { tv, type VariantProps } from "tailwind-variants";
 
 	export const itemVariants = tv({
-		base: "[a]:hover:bg-base-hover rounded-md border text-xs/relaxed group/item focus-visible:border-ring focus-visible:ring-ring/50 flex w-full flex-wrap items-center outline-none focus-visible:ring-[3px]",
+		base: "[a]:hover:bg-base-hover rounded-md border text-sm/relaxed group/item focus-visible:border-ring focus-visible:ring-ring/50 flex w-full flex-wrap items-center outline-none focus-visible:ring-[3px]",
 		variants: {
 			variant: {
 				default: "border-transparent",
 				outline: "border-border",
 				muted: "bg-surface border-transparent",
-				danger: "border-danger/30 bg-danger/10 text-danger",
+				danger: "border-danger-muted-foreground/30 bg-danger-muted text-danger-muted-foreground",
 			},
 			size: {
 				default: "gap-2.5 px-3 py-2.5",

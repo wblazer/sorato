@@ -90,7 +90,7 @@
   <div class="mx-auto flex min-h-0 w-full max-w-6xl flex-1 items-center justify-center px-6 py-6">
     <div class="flex w-full flex-col items-center gap-10">
       <div class="w-full max-w-md space-y-2">
-        <div class="text-center text-sm font-medium text-muted-foreground">
+        <div class="text-center text-base font-medium text-muted-foreground">
           Resume a session
         </div>
 
@@ -106,32 +106,32 @@
           </div>
 
           <div class="space-y-1">
-            <div class="px-2 text-xs font-medium text-muted-foreground">
+            <div class="px-2 text-sm font-medium text-muted-foreground">
               Recent Sessions
             </div>
 
             {#if sessionStore.loading && sessionStore.sessions.length === 0}
-              <div class="px-3 py-6 text-center text-sm text-muted-foreground">
+              <div class="px-3 py-6 text-center text-base text-muted-foreground">
                 Loading sessions...
               </div>
             {:else if recentSessions.length === 0}
-              <div class="px-3 py-6 text-center text-sm text-muted-foreground">
+              <div class="px-3 py-6 text-center text-base text-muted-foreground">
                 No recent sessions.
               </div>
             {:else}
               {#each recentSessions as item (item.session.id)}
                 <button
                   type="button"
-                  class="flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm outline-hidden select-none hover:bg-base-hover"
+                  class="flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-2 text-left text-base outline-hidden select-none hover:bg-base-hover"
                   onclick={() => openSession(item.session.id)}
                 >
                   <span class="min-w-0 flex-1">
-                    <span class="block truncate text-sm">{item.title}</span>
-                    <span class="block truncate text-xs text-muted-foreground">
+                    <span class="block truncate text-base">{item.title}</span>
+                    <span class="block truncate text-sm text-muted-foreground">
                       {item.project?.name ?? 'Unknown project'}
                     </span>
                   </span>
-                  <span class="ml-3 shrink-0 text-xs text-muted-foreground">
+                  <span class="ml-3 shrink-0 text-sm text-muted-foreground">
                     {formatRelativeTime(item.timestamp)}
                   </span>
                 </button>
@@ -141,14 +141,14 @@
         </div>
       </div>
 
-      <div class="flex w-full max-w-sm items-center gap-3 text-xs font-medium text-muted-foreground">
+      <div class="flex w-full max-w-sm items-center gap-3 text-sm font-medium text-muted-foreground">
         <div class="h-px flex-1 bg-border"></div>
         <span>or</span>
         <div class="h-px flex-1 bg-border"></div>
       </div>
 
       <div class="w-full max-w-sm space-y-2 text-center">
-        <div class="text-sm font-medium text-muted-foreground">
+        <div class="text-base font-medium text-muted-foreground">
           Start session in
         </div>
         <ProjectSelector
@@ -159,9 +159,9 @@
         />
 
         {#if modelsStore.error}
-          <p class="text-xs text-danger">{modelsStore.error}</p>
+          <p class="text-xs text-danger-muted-foreground">{modelsStore.error}</p>
         {:else if activeProjectId && !modelsStore.loading && modelsStore.models.length === 0}
-          <p class="text-xs text-danger">No models available for this project.</p>
+          <p class="text-xs text-danger-muted-foreground">No models available for this project.</p>
         {/if}
       </div>
     </div>

@@ -217,7 +217,7 @@
         <div
           class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
         >
-          <span class="text-sm text-danger">{messagesStore.error}</span>
+          <span class="text-sm text-danger-muted-foreground">{messagesStore.error}</span>
         </div>
       {:else if messagesStore.loaded || isRunning}
         <div

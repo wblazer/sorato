@@ -30,7 +30,7 @@
     <Accordion.Trigger
       level={4}
       class="flex w-full items-center gap-x-2 gap-y-1 border-0 border-b px-2.5 py-2 text-sm font-normal no-underline hover:bg-inset-hover hover:no-underline {part.isFailure
-        ? 'border-danger text-danger'
+        ? 'border-danger text-danger-muted-foreground'
         : 'border-border text-foreground'}"
     >
       <span class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
@@ -44,7 +44,7 @@
       {#if summary}
         <span class="flex shrink-0 items-center gap-1 font-mono text-xs">
           <span class="text-success-muted-foreground">+{summary.additions}</span>
-          <span class="text-danger">-{summary.deletions}</span>
+          <span class="text-danger-muted-foreground">-{summary.deletions}</span>
         </span>
       {/if}
     </Accordion.Trigger>

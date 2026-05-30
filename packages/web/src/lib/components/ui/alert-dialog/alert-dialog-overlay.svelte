@@ -12,6 +12,6 @@
 <AlertDialogPrimitive.Overlay
 	bind:ref
 	data-slot="alert-dialog-overlay"
-	class={cn("bg-black/80 fixed inset-0 z-50", className)}
+	class={cn("bg-black/80 fixed inset-0 z-[60]", className)}
 	{...restProps}
 />

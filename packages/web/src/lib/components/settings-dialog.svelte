@@ -5,6 +5,7 @@
   import * as Select from '$lib/components/ui/select/index.js'
   import { Switch } from '$lib/components/ui/switch/index.js'
   import * as Tabs from '$lib/components/ui/tabs/index.js'
+  import { confirmationStore } from '$lib/stores/confirmation.svelte.js'
   import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
   import { createTimedAction } from '$lib/timed-action.svelte.js'
   import CheckIcon from 'phosphor-svelte/lib/CheckIcon'
@@ -162,17 +163,36 @@
     })
   }
 
-  async function clearOverrides() {
-    queuedSaveValue = null
-    saving = true
-    error = null
-    try {
-      applyConfig(await Effect.runPromise(clientConfigService.setOverrides({})))
-    } catch (cause) {
-      error = describeError(cause, 'Failed to reset settings.')
-    } finally {
-      saving = false
-    }
+  function confirmClearOverrides() {
+    confirmationStore.openConfirmation({
+      title: resetLabel,
+      description: hasFileConfig
+        ? 'Discard all local changes and return to the values from your config file? This cannot be undone.'
+        : 'Discard all local changes and return to the default settings? This cannot be undone.',
+      action: {
+        label: (pending) => (pending ? 'Resetting…' : resetLabel),
+        variant: 'destructive',
+        run: async ({ close, setError, setPending }) => {
+          queuedSaveValue = null
+          saving = true
+          error = null
+          setError(null)
+          setPending(true)
+
+          try {
+            applyConfig(
+              await Effect.runPromise(clientConfigService.setOverrides({}))
+            )
+            close()
+          } catch (cause) {
+            setError(describeError(cause, 'Failed to reset settings.'))
+          } finally {
+            saving = false
+            setPending(false)
+          }
+        },
+      },
+    })
   }
 
   async function copyText(text: string) {
@@ -334,7 +354,7 @@
                       </div>
                       <Button
                         variant="outline-destructive"
-                        onclick={clearOverrides}
+                        onclick={confirmClearOverrides}
                         disabled={loading || saving}
                       >
                         {resetLabel}
@@ -357,7 +377,7 @@
         {/if}
 
         {#if error}
-          <div class="mt-6 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-base text-danger">
+          <div class="mt-6 rounded-md border border-danger-muted-foreground/40 bg-danger-muted px-3 py-2 text-base text-danger-muted-foreground">
             {error}
           </div>
         {/if}

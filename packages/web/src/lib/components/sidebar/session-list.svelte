@@ -45,7 +45,7 @@
     {#if sessionStore.loading && sessionStore.sessions.length === 0}
       <p class="px-3 py-4 text-center text-xs text-muted-foreground">Loading sessions…</p>
     {:else if sessionStore.error}
-      <p class="px-3 py-4 text-center text-xs text-danger">{sessionStore.error}</p>
+      <p class="px-3 py-4 text-center text-xs text-danger-muted-foreground">{sessionStore.error}</p>
     {:else if sessionStore.filteredSessions.length === 0}
       <p class="px-3 py-4 text-center text-xs text-muted-foreground">No sessions yet</p>
     {:else}

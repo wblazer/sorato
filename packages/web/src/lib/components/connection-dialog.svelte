@@ -144,7 +144,7 @@
     <div class="grid gap-4 py-4">
       <div class="grid gap-2">
         <label for="url" class="text-sm font-medium">
-          Server URL <span class="text-danger">*</span>
+          Server URL <span class="text-danger-muted-foreground">*</span>
         </label>
         <div class="relative">
           <input
@@ -159,7 +159,7 @@
             class="absolute right-3 top-1/2 -translate-y-1/2 {checkStatus === 'success'
               ? 'text-success-muted-foreground'
               : checkStatus === 'error'
-                ? 'text-danger'
+                ? 'text-danger-muted-foreground'
                 : checkStatus === 'loading'
                   ? 'text-warning'
                   : 'text-muted-foreground'}"
@@ -172,7 +172,7 @@
           </div>
         </div>
         {#if urlError}
-          <p class="text-xs text-danger">{urlError}</p>
+          <p class="text-xs text-danger-muted-foreground">{urlError}</p>
         {:else if checkStatus === 'success'}
           <p class="text-xs text-success-muted-foreground">Server connected successfully</p>
         {/if}

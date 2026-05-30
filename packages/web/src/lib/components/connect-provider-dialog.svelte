@@ -158,7 +158,7 @@
         </div>
 
         {#if error}
-          <p class="text-sm text-danger">{error}</p>
+          <p class="text-sm text-danger-muted-foreground">{error}</p>
         {/if}
 
         <Dialog.DialogFooter>

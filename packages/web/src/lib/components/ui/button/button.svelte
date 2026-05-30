@@ -14,12 +14,12 @@
             outline:
               'border-border bg-surface text-foreground hover:bg-surface-hover aria-expanded:bg-selected aria-expanded:text-foreground',
             'outline-destructive':
-              'border-border bg-surface text-danger hover:bg-danger/15 aria-expanded:bg-danger/15',
+              'border-border bg-surface text-danger-muted-foreground hover:bg-danger-muted aria-expanded:bg-danger-muted',
             ghost:
               'hover:bg-base-hover hover:text-foreground aria-expanded:bg-selected aria-expanded:text-foreground',
             destructive:
               'border-danger bg-danger text-danger-foreground hover:bg-danger-hover focus-visible:border-danger focus-visible:ring-danger',
-            'ghost-destructive': 'text-danger hover:bg-danger/15 aria-expanded:bg-danger/15',
+            'ghost-destructive': 'text-danger-muted-foreground hover:bg-danger-muted aria-expanded:bg-danger-muted',
           },
           size: {
             default:

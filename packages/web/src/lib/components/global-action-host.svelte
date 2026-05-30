@@ -1,5 +1,6 @@
 <script lang="ts">
   import GlobalCommandPalette from './global-command-palette.svelte'
+      import ConfirmationDialog from './confirmation-dialog.svelte'
       import ArchiveProjectDialog from './archive-project-dialog.svelte'
       import SettingsDialog from './settings-dialog.svelte'
       import ConnectProviderDialog from './connect-provider-dialog.svelte'
@@ -142,3 +143,5 @@
 {#if settingsOpen}
   <SettingsDialog bind:open={settingsOpen} />
 {/if}
+
+<ConfirmationDialog />

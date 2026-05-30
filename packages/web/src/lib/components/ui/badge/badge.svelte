@@ -7,7 +7,7 @@
 			variant: {
 				default: "bg-accent text-accent-foreground [a]:hover:bg-accent/80",
 				secondary: "bg-surface text-foreground [a]:hover:bg-surface/80",
-				destructive: "bg-danger/15 [a]:hover:bg-danger/20 focus-visible:ring-danger/30 text-danger",
+				destructive: "bg-danger-muted [a]:hover:bg-danger-muted-hover focus-visible:ring-danger/30 text-danger-muted-foreground",
 				outline: "border-border text-foreground [a]:hover:bg-base-hover [a]:hover:text-muted-foreground bg-surface",
 				ghost: "hover:bg-base-hover hover:text-foreground",
 				link: "text-accent underline-offset-4 hover:underline",

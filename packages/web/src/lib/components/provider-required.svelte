@@ -28,7 +28,7 @@
       {#if authStore.loading}
         <p class="text-sm text-muted-foreground">Checking provider credentials…</p>
       {:else if authStore.error}
-        <p class="text-sm text-danger">{authStore.error}</p>
+        <p class="text-sm text-danger-muted-foreground">{authStore.error}</p>
       {/if}
 
       <Button size="lg" onclick={openDialog}>

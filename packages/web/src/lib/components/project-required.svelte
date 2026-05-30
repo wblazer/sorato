@@ -22,7 +22,7 @@
       {#if projectStore.loading}
         <p class="text-sm text-muted-foreground">Loading projects…</p>
       {:else if projectStore.error}
-        <p class="text-sm text-danger">{projectStore.error}</p>
+        <p class="text-sm text-danger-muted-foreground">{projectStore.error}</p>
       {/if}
 
       <Button size="lg" onclick={() => actionStore.trigger('project.add')}>

@@ -113,7 +113,7 @@
           {/each}
         </Command.List>
         {#if error || projectStore.error}
-          <p class="text-sm text-danger">{error ?? projectStore.error}</p>
+          <p class="text-sm text-danger-muted-foreground">{error ?? projectStore.error}</p>
         {/if}
       </Command.Root>
     {:else}
@@ -140,7 +140,7 @@
         </label>
 
         {#if error || projectStore.error}
-          <p class="text-sm text-danger">{error ?? projectStore.error}</p>
+          <p class="text-sm text-danger-muted-foreground">{error ?? projectStore.error}</p>
         {/if}
       </div>
 
