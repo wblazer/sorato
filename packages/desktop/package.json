@@ -15,6 +15,7 @@
     "test": "echo 'no desktop tests yet'"
   },
   "dependencies": {
+    "effect": "4.0.0-beta.60",
     "electron": "^41.5.0"
   },
   "devDependencies": {

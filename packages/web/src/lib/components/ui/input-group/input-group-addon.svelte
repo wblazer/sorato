@@ -1,13 +1,13 @@
 <script lang="ts" module>
   import { tv, type VariantProps } from 'tailwind-variants'
       export const inputGroupAddonVariants = tv({
-        base: "flex h-auto cursor-text select-none items-center justify-center gap-1 py-2 text-xs/relaxed font-medium text-muted-foreground group-data-[disabled=true]/input-group:text-muted-foreground **:data-[slot=kbd]:rounded-[calc(var(--radius-sm)-2px)] **:data-[slot=kbd]:bg-inset **:data-[slot=kbd]:px-1 **:data-[slot=kbd]:text-[0.625rem] [&>svg:not([class*='size-'])]:size-3.5",
+        base: "flex h-auto cursor-text select-none items-center justify-center gap-1.5 py-2 text-sm/relaxed font-medium text-muted-foreground group-data-[disabled=true]/input-group:text-muted-foreground **:data-[slot=kbd]:rounded-[calc(var(--radius-sm)-2px)] **:data-[slot=kbd]:bg-inset **:data-[slot=kbd]:px-1 **:data-[slot=kbd]:text-xs [&>svg:not([class*='size-'])]:size-4",
         variants: {
           align: {
             'inline-start':
-              'pl-2 has-[>button]:ml-[-0.275rem] has-[>kbd]:ml-[-0.275rem] order-first',
+              'pl-2.5 has-[>button]:ml-[-0.275rem] has-[>kbd]:ml-[-0.275rem] order-first',
             'inline-end':
-              'pr-2 has-[>button]:mr-[-0.275rem] has-[>kbd]:mr-[-0.275rem] order-last',
+              'pr-2.5 has-[>button]:mr-[-0.275rem] has-[>kbd]:mr-[-0.275rem] order-last',
             'block-start':
               'px-2 pt-2 group-has-[>input]/input-group:pt-2 [.border-b]:pb-2 order-first w-full justify-start',
             'block-end':

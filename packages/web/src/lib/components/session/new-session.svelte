@@ -98,11 +98,9 @@
           <div class="flex justify-center">
             <Button
               variant="outline"
-              size="lg"
-              class="gap-2 text-sm"
               onclick={() => (sessionSearchOpen = true)}
             >
-              <MagnifyingGlassIcon class="size-4" />
+              <MagnifyingGlassIcon />
               Search sessions
             </Button>
           </div>

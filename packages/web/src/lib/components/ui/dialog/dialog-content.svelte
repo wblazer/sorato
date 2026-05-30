@@ -27,7 +27,7 @@
     bind:ref
     data-slot="dialog-content"
     class={cn(
-      'bg-surface ring-border fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl p-5 text-sm/relaxed shadow-lg shadow-shadow/40 ring-1 outline-none sm:max-w-sm [&_[data-slot=button]:not([data-slot=dialog-close])]:h-8 [&_[data-slot=button]:not([data-slot=dialog-close])]:px-3 [&_[data-slot=button]:not([data-slot=dialog-close])]:text-sm [&_[data-slot=input]]:h-8 [&_[data-slot=input]]:text-sm [&_[data-slot=input-group]]:h-8',
+      'bg-background ring-border fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl p-5 text-sm/relaxed shadow-lg shadow-shadow/40 ring-1 outline-none sm:max-w-sm',
       className
     )}
     {...restProps}

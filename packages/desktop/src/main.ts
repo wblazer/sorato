@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
-import { existsSync } from 'node:fs'
+import { access } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { registerIpcHandlers } from './ipc.ts'
 
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL)
 const appName = isDevelopment ? 'Sorato (Dev)' : 'Sorato'
@@ -23,7 +24,9 @@ async function loadMainWindow(window: BrowserWindow): Promise<void> {
   }
 
   const indexHtmlPath = getProductionIndexHtmlPath()
-  if (!existsSync(indexHtmlPath)) {
+  try {
+    await access(indexHtmlPath)
+  } catch {
     throw new Error(
       `Web build not found at ${indexHtmlPath}. Run bun run --filter @sorato/web build first.`
     )
@@ -80,6 +83,8 @@ if (!gotSingleInstanceLock) {
     window.show()
     window.focus()
   })
+
+  registerIpcHandlers()
 
   app.whenReady().then(() => {
     createMainWindow()

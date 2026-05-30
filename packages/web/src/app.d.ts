@@ -7,6 +7,26 @@ declare global {
         readonly serverUrl: string
         readonly platform: NodeJS.Platform
       }
+      getClientConfig: () => Promise<ResolvedClientConfig>
+      setClientConfigOverrides: (
+        overrides: ClientConfig
+      ) => Promise<ResolvedClientConfig>
+    }
+  }
+
+  interface ClientConfig {
+    readonly expand_tool_blocks_by_default?: boolean
+    readonly tool_output_format?: 'pretty' | 'raw'
+  }
+
+  interface ResolvedClientConfig {
+    readonly defaults: Required<ClientConfig>
+    readonly file: ClientConfig
+    readonly overrides: ClientConfig
+    readonly resolved: Required<ClientConfig>
+    readonly paths: {
+      readonly file?: string
+      readonly overrides?: string
     }
   }
 

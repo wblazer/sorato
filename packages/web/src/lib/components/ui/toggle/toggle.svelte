@@ -2,16 +2,16 @@
 	import { type VariantProps, tv } from "tailwind-variants";
 
 	export const toggleVariants = tv({
-		base: "hover:text-foreground aria-pressed:bg-selected focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-danger/30 aria-invalid:border-danger data-[state=on]:bg-selected gap-1 rounded-md text-xs font-medium [&_svg:not([class*='size-'])]:size-4 group/toggle hover:bg-base-hover inline-flex items-center justify-center whitespace-nowrap outline-none focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+		base: "hover:text-foreground aria-pressed:bg-selected focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-danger/30 aria-invalid:border-danger data-[state=on]:bg-selected gap-1.5 rounded-md text-sm font-medium [&_svg:not([class*='size-'])]:size-4 group/toggle hover:bg-base-hover inline-flex items-center justify-center whitespace-nowrap outline-none focus-visible:ring-[3px] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
 		variants: {
 			variant: {
 				default: "bg-transparent",
 				outline: "border-border hover:bg-base-hover border bg-transparent",
 			},
 			size: {
-				default: "h-7 min-w-7 px-2 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5",
-				sm: "h-6 min-w-6 rounded-[min(var(--radius-md),8px)] px-2 text-[0.625rem] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
-				lg: "h-8 min-w-8 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+				default: "h-8 min-w-8 px-2.5 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5",
+				sm: "h-7 min-w-7 rounded-[min(var(--radius-md),8px)] px-2 text-xs has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
+				lg: "h-9 min-w-9 gap-2 px-3 text-base has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-4.5",
 			},
 		},
 		defaultVariants: {

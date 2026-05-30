@@ -1,6 +1,7 @@
 <script lang="ts">
   import GlobalCommandPalette from './global-command-palette.svelte'
       import ArchiveProjectDialog from './archive-project-dialog.svelte'
+      import SettingsDialog from './settings-dialog.svelte'
       import ConnectProviderDialog from './connect-provider-dialog.svelte'
       import DirectoryPicker from './directory-picker.svelte'
       import SessionSearchDialog from './session/session-search-dialog.svelte'
@@ -18,6 +19,7 @@
       let projectPickerOpen = $state(false)
       let archiveProjectOpen = $state(false)
       let sessionSearchOpen = $state(false)
+      let settingsOpen = $state(false)
 
       async function handleProjectPath(path: string) {
         const project = await projectStore.createLocalProject(path)
@@ -87,6 +89,17 @@
             },
           }),
           actionStore.register({
+            id: 'app.settings',
+            title: 'Open Settings',
+            category: 'Application',
+            description: 'Configure client-side settings and overrides.',
+            keywords: ['settings', 'preferences', 'config', 'configuration'],
+            defaultShortcut: 'Control+,',
+            run: () => {
+              settingsOpen = true
+            },
+          }),
+          actionStore.register({
             id: 'app.toggle-tool-output-display-mode',
             title: 'Toggle Tool Output Display Mode',
             category: 'Application',
@@ -124,4 +137,8 @@
 
 {#if sessionSearchOpen}
   <SessionSearchDialog bind:open={sessionSearchOpen} />
+{/if}
+
+{#if settingsOpen}
+  <SettingsDialog bind:open={settingsOpen} />
 {/if}

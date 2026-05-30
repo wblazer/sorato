@@ -25,7 +25,7 @@
       bind:value
     />
     <InputGroup.Addon>
-      <MagnifyingGlassIcon class="size-3.5 shrink-0 text-muted-foreground" />
+      <MagnifyingGlassIcon class="size-4 shrink-0 text-muted-foreground" />
     </InputGroup.Addon>
   </InputGroup.Root>
 </div>

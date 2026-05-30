@@ -31,7 +31,7 @@
     bind:this={ref}
     data-slot={dataSlot}
     class={cn(
-      'h-7 w-full min-w-0 rounded-md border border-border bg-surface px-2 py-0.5 text-sm placeholder:text-muted-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-danger aria-invalid:ring-2 aria-invalid:ring-danger disabled:pointer-events-none disabled:cursor-not-allowed file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-xs/relaxed file:font-medium file:text-foreground md:text-xs/relaxed',
+      'h-8 w-full min-w-0 rounded-md border border-border bg-surface px-2.5 py-1 text-sm placeholder:text-muted-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-danger aria-invalid:ring-2 aria-invalid:ring-danger disabled:pointer-events-none disabled:cursor-not-allowed file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm/relaxed file:font-medium file:text-foreground',
       className
     )}
     type="file"
@@ -44,7 +44,7 @@
     bind:this={ref}
     data-slot={dataSlot}
     class={cn(
-      'h-7 w-full min-w-0 rounded-md border border-border bg-surface px-2 py-0.5 text-sm placeholder:text-muted-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-danger aria-invalid:ring-2 aria-invalid:ring-danger disabled:pointer-events-none disabled:cursor-not-allowed file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-xs/relaxed file:font-medium file:text-foreground md:text-xs/relaxed',
+      'h-8 w-full min-w-0 rounded-md border border-border bg-surface px-2.5 py-1 text-sm placeholder:text-muted-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-danger aria-invalid:ring-2 aria-invalid:ring-danger disabled:pointer-events-none disabled:cursor-not-allowed file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm/relaxed file:font-medium file:text-foreground',
       className
     )}
     {type}

@@ -13,6 +13,8 @@
             default: 'bg-accent text-accent-foreground hover:bg-accent-hover',
             outline:
               'border-border bg-surface text-foreground hover:bg-surface-hover aria-expanded:bg-selected aria-expanded:text-foreground',
+            'outline-destructive':
+              'border-border bg-surface text-danger hover:bg-danger/15 aria-expanded:bg-danger/15',
             ghost:
               'hover:bg-base-hover hover:text-foreground aria-expanded:bg-selected aria-expanded:text-foreground',
             destructive:
@@ -21,14 +23,13 @@
           },
           size: {
             default:
-              "h-7 gap-1 px-2 text-xs/relaxed has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
-            xs: "h-5 gap-1 rounded-sm px-2 text-[0.625rem] has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-2.5",
-            sm: "h-6 gap-1 px-2 text-xs/relaxed has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
-            lg: "h-8 gap-1 px-2.5 text-xs/relaxed has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-4",
-            icon: "size-7 [&_svg:not([class*='size-'])]:size-3.5",
-            'icon-xs': "size-5 rounded-sm [&_svg:not([class*='size-'])]:size-2.5",
-            'icon-sm': "size-6 [&_svg:not([class*='size-'])]:size-3",
-            'icon-lg': "size-8 [&_svg:not([class*='size-'])]:size-4",
+              "h-8 gap-1.5 px-2.5 text-sm/relaxed has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-4",
+            sm: "h-7 gap-1.5 px-2 text-xs/relaxed has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3.5",
+            lg: "h-9 gap-2 px-3 text-base/relaxed has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg:not([class*='size-'])]:size-4.5",
+            icon: "size-8 [&_svg:not([class*='size-'])]:size-4",
+            'icon-xs': "size-6 rounded-sm [&_svg:not([class*='size-'])]:size-3",
+            'icon-sm': "size-7 [&_svg:not([class*='size-'])]:size-3.5",
+            'icon-lg': "size-9 [&_svg:not([class*='size-'])]:size-4.5",
           },
         },
         defaultVariants: {

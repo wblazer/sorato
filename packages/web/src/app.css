@@ -12,8 +12,8 @@
   --foreground: oklch(0.91 0.008 80);
   --base-hover: oklch(0.285 0.003 0);
   --selected: oklch(0.31 0.003 0);
-  --surface: oklch(0.26 0.003 0);
-  --surface-hover: oklch(0.28 0.003 0);
+  --surface: oklch(0.25 0.002 0);
+  --surface-hover: oklch(0.27 0.003 0);
   --popover: oklch(0.235 0.003 0);
   --inset: oklch(0.21 0.002 0);
   --inset-hover: oklch(0.225 0.002 0);

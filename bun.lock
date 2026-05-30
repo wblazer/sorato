@@ -26,6 +26,7 @@
       "name": "@sorato/desktop",
       "version": "0.0.1",
       "dependencies": {
+        "effect": "4.0.0-beta.60",
         "electron": "^41.5.0",
       },
       "devDependencies": {
