@@ -1,3 +1,4 @@
+import { requestJson } from '$lib/api-errors.js'
 import { connectionsStore } from './connections.svelte.js'
 
 export interface AuthProviderStatus {
@@ -39,23 +40,23 @@ function createAuthStore() {
     loadedConnectionId = null
     error = null
 
-    try {
-      const res = await fetch(`${api}/auth`)
-      if (id !== requestId) return
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-      const data: AuthStatusResponse = await res.json()
-      if (id !== requestId) return
-      providers = data.providers
+    const result = await requestJson<AuthStatusResponse>(
+      `${api}/auth`,
+      undefined,
+      'Failed to check provider credentials'
+    )
+
+    if (id !== requestId) return
+    if (result.ok) {
+      providers = result.value.providers
       loadedConnectionId = connectionId
-    } catch (err) {
-      if (id !== requestId) return
+    } else {
       providers = []
-      error =
-        err instanceof Error ? err.message : 'Failed to load provider auth'
+      error = result.error.message
       loadedConnectionId = connectionId
-    } finally {
-      if (id === requestId) loading = false
     }
+
+    if (id === requestId) loading = false
   }
 
   return {

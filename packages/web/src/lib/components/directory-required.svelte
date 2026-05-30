@@ -13,13 +13,13 @@
 </script>
 
 <main class="flex h-full items-center justify-center px-6 py-10">
-  <Empty.Root class="max-w-2xl gap-6 border-0 p-8 sm:p-12">
-    <Empty.Header class="max-w-lg gap-2">
-      <Empty.Media variant="icon" class="mb-3 size-12 [&_svg:not([class*='size-'])]:size-6">
-        <FolderOpenIcon class="size-6" />
+  <Empty.Root>
+    <Empty.Header>
+      <Empty.Media variant="icon">
+        <FolderOpenIcon />
       </Empty.Media>
-      <Empty.Title class="text-lg">Add a project</Empty.Title>
-      <Empty.Description class="text-sm">
+      <Empty.Title>Add a project</Empty.Title>
+      <Empty.Description>
         Sessions are scoped to a project so tools and model context have a concrete workspace.
       </Empty.Description>
     </Empty.Header>

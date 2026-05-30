@@ -1,3 +1,4 @@
+import { requestJson } from '$lib/api-errors.js'
 import type { AvailableModelsResponse, ModelOptions } from '$lib/types.js'
 import { connectionsStore } from './connections.svelte.js'
 import { getJson, setJson, storageKey } from '$lib/storage.js'
@@ -67,20 +68,23 @@ function createModelsStore() {
     }
 
     const id = ++req
+    const hasExistingForProject =
+      projectId === nextProjectId && models.length > 0
     projectId = nextProjectId
     loading = true
     error = null
 
-    try {
-      const query = new URLSearchParams({ projectId: nextProjectId })
-      const res = await fetch(`${api}/models?${query.toString()}`)
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+    const query = new URLSearchParams({ projectId: nextProjectId })
+    const result = await requestJson<AvailableModelsResponse>(
+      `${api}/models?${query.toString()}`,
+      undefined,
+      'Failed to load models'
+    )
 
-      const data: AvailableModelsResponse = await res.json()
-      if (id !== req) return
-
-      models = data.models
-      defaultModel = data.defaultModel ?? null
+    if (id !== req) return
+    if (result.ok) {
+      models = result.value.models
+      defaultModel = result.value.defaultModel ?? null
       const ids = new Set(models.map((item) => item.id))
       if (!selectedModel || !ids.has(selectedModel)) {
         const stored = recent()
@@ -92,14 +96,15 @@ function createModelsStore() {
           selectedOptions = {}
         }
       }
-    } catch (err) {
-      if (id !== req) return
-      models = []
-      defaultModel = null
-      error = err instanceof Error ? err.message : 'Failed to load models'
-    } finally {
-      if (id === req) loading = false
+    } else {
+      if (!hasExistingForProject) {
+        models = []
+        defaultModel = null
+      }
+      error = result.error.message
     }
+
+    if (id === req) loading = false
   }
 
   return {

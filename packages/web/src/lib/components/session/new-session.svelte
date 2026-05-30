@@ -6,9 +6,11 @@
   import { projectStore } from '$lib/stores/projects.svelte.js'
   import { tabStore } from '$lib/stores/tabs.svelte.js'
   import Composer from './composer.svelte'
+  import * as Item from '$lib/components/ui/item/index.js'
   import ProjectSelector from './project-selector.svelte'
   import SessionSearchDialog from './session-search-dialog.svelte'
   import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon'
+  import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
 
   let sending = $state(false)
   let sessionSearchOpen = $state(false)
@@ -60,6 +62,10 @@
   }
 
   function handleAttach() {}
+
+  function retryModels() {
+    if (activeProjectId) void modelsStore.load(activeProjectId)
+  }
 
   async function handleSend(input: string) {
     const model = modelsStore.selectedModel
@@ -114,6 +120,21 @@
               <div class="px-3 py-6 text-center text-base text-muted-foreground">
                 Loading sessions...
               </div>
+            {:else if sessionStore.error && sessionStore.sessions.length === 0}
+              <Item.Root variant="danger" size="sm" class="text-left">
+                <Item.Media variant="icon">
+                  <WarningCircleIcon />
+                </Item.Media>
+                <Item.Content>
+                  <Item.Title>Sessions failed to load</Item.Title>
+                  <Item.Description>{sessionStore.error}</Item.Description>
+                </Item.Content>
+                <Item.Actions>
+                  <Button variant="outline" onclick={() => void sessionStore.fetchSessions()}>
+                    Retry
+                  </Button>
+                </Item.Actions>
+              </Item.Root>
             {:else if recentSessions.length === 0}
               <div class="px-3 py-6 text-center text-base text-muted-foreground">
                 No recent sessions.
@@ -159,9 +180,28 @@
         />
 
         {#if modelsStore.error}
-          <p class="text-xs text-danger-muted-foreground">{modelsStore.error}</p>
+          <Item.Root variant="danger" size="sm" class="text-left">
+            <Item.Media variant="icon">
+              <WarningCircleIcon />
+            </Item.Media>
+            <Item.Content>
+              <Item.Title>Models failed to load</Item.Title>
+              <Item.Description>{modelsStore.error}</Item.Description>
+            </Item.Content>
+            <Item.Actions>
+              <Button variant="outline" onclick={retryModels}>Retry</Button>
+            </Item.Actions>
+          </Item.Root>
         {:else if activeProjectId && !modelsStore.loading && modelsStore.models.length === 0}
-          <p class="text-xs text-danger-muted-foreground">No models available for this project.</p>
+          <Item.Root variant="danger" size="sm" class="text-left">
+            <Item.Media variant="icon">
+              <WarningCircleIcon />
+            </Item.Media>
+            <Item.Content>
+              <Item.Title>No models available</Item.Title>
+              <Item.Description>Connect provider credentials or choose a different project.</Item.Description>
+            </Item.Content>
+          </Item.Root>
         {/if}
       </div>
     </div>

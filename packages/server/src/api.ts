@@ -61,21 +61,100 @@ export class ProjectResponse extends Schema.Class<ProjectResponse>(
   lastOpenedAt: Schema.NullOr(Schema.Number),
 }) {}
 
-export class RunError extends Schema.TaggedErrorClass<RunError>()('RunError', {
-  message: Schema.String,
-}) {}
+const ErrorCode = Schema.String
 
-export class ModelError extends Schema.TaggedErrorClass<ModelError>()(
-  'ModelError',
+export class StorageUnavailable extends Schema.TaggedErrorClass<StorageUnavailable>()(
+  'StorageUnavailable',
   {
+    code: ErrorCode,
+    operation: Schema.String,
     message: Schema.String,
+    retryable: Schema.Boolean,
+  }
+) {
+  static fromStorage(error: StorageError) {
+    return new StorageUnavailable({
+      code: 'storage.unavailable',
+      operation: error.operation,
+      message: `${error.operation}: ${error.message}`,
+      retryable: true,
+    })
+  }
+}
+
+export class ProjectOperationFailed extends Schema.TaggedErrorClass<ProjectOperationFailed>()(
+  'ProjectOperationFailed',
+  {
+    code: ErrorCode,
+    operation: Schema.String,
+    message: Schema.String,
+    retryable: Schema.Boolean,
+  }
+) {
+  static fromProject(error: ProjectError) {
+    return new ProjectOperationFailed({
+      code: 'project.operation_failed',
+      operation: error.operation,
+      message: `${error.operation}: ${error.message}`,
+      retryable: false,
+    })
+  }
+}
+
+export class ProviderCredentialsUnavailable extends Schema.TaggedErrorClass<ProviderCredentialsUnavailable>()(
+  'ProviderCredentialsUnavailable',
+  {
+    code: ErrorCode,
+    operation: Schema.String,
+    message: Schema.String,
+    retryable: Schema.Boolean,
   }
 ) {}
 
-export class AuthError extends Schema.TaggedErrorClass<AuthError>()(
-  'AuthError',
+export class ProviderAuthUnsupported extends Schema.TaggedErrorClass<ProviderAuthUnsupported>()(
+  'ProviderAuthUnsupported',
   {
+    code: ErrorCode,
+    provider: Schema.String,
     message: Schema.String,
+    retryable: Schema.Boolean,
+  }
+) {}
+
+export class ProviderNotConfigured extends Schema.TaggedErrorClass<ProviderNotConfigured>()(
+  'ProviderNotConfigured',
+  {
+    code: ErrorCode,
+    message: Schema.String,
+    retryable: Schema.Boolean,
+  }
+) {}
+
+export class ModelCatalogUnavailable extends Schema.TaggedErrorClass<ModelCatalogUnavailable>()(
+  'ModelCatalogUnavailable',
+  {
+    code: ErrorCode,
+    message: Schema.String,
+    retryable: Schema.Boolean,
+  }
+) {}
+
+export class ModelUnavailable extends Schema.TaggedErrorClass<ModelUnavailable>()(
+  'ModelUnavailable',
+  {
+    code: ErrorCode,
+    model: Schema.String,
+    message: Schema.String,
+    retryable: Schema.Boolean,
+  }
+) {}
+
+export class RunRejected extends Schema.TaggedErrorClass<RunRejected>()(
+  'RunRejected',
+  {
+    code: ErrorCode,
+    message: Schema.String,
+    retryable: Schema.Boolean,
   }
 ) {}
 
@@ -174,7 +253,7 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
   .add(
     HttpApiEndpoint.get('list', '/', {
       success: Schema.Array(SessionResponse),
-      error: StorageError.pipe(HttpApiSchema.status(500)),
+      error: StorageUnavailable.pipe(HttpApiSchema.status(503)),
     })
   )
   .add(
@@ -185,8 +264,8 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
       }),
       success: SessionResponse,
       error: [
-        StorageError.pipe(HttpApiSchema.status(500)),
-        ProjectError.pipe(HttpApiSchema.status(500)),
+        StorageUnavailable.pipe(HttpApiSchema.status(503)),
+        ProjectOperationFailed.pipe(HttpApiSchema.status(500)),
       ],
     })
   )
@@ -194,28 +273,28 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
     HttpApiEndpoint.get('get', '/:id', {
       params: { id: SessionId },
       success: SessionResponse,
-      error: StorageError.pipe(HttpApiSchema.status(500)),
+      error: StorageUnavailable.pipe(HttpApiSchema.status(503)),
     })
   )
   .add(
     HttpApiEndpoint.delete('delete', '/:id', {
       params: { id: SessionId },
       success: Schema.Void,
-      error: StorageError.pipe(HttpApiSchema.status(500)),
+      error: StorageUnavailable.pipe(HttpApiSchema.status(503)),
     })
   )
   .add(
     HttpApiEndpoint.get('leaves', '/:id/leaves', {
       params: { id: SessionId },
       success: Schema.Array(MessageNodeResponse),
-      error: StorageError.pipe(HttpApiSchema.status(500)),
+      error: StorageUnavailable.pipe(HttpApiSchema.status(503)),
     })
   )
   .add(
     HttpApiEndpoint.get('messages', '/:id/messages', {
       params: { id: SessionId },
       success: Schema.Array(MessageNodeResponse),
-      error: StorageError.pipe(HttpApiSchema.status(500)),
+      error: StorageUnavailable.pipe(HttpApiSchema.status(503)),
     })
   )
   .add(
@@ -242,10 +321,13 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
       }),
       success: RunResponse,
       error: [
-        StorageError.pipe(HttpApiSchema.status(500)),
-        ProjectError.pipe(HttpApiSchema.status(500)),
-        ModelError.pipe(HttpApiSchema.status(500)),
-        RunError.pipe(HttpApiSchema.status(500)),
+        StorageUnavailable.pipe(HttpApiSchema.status(503)),
+        ProjectOperationFailed.pipe(HttpApiSchema.status(500)),
+        ProviderCredentialsUnavailable.pipe(HttpApiSchema.status(503)),
+        ProviderNotConfigured.pipe(HttpApiSchema.status(412)),
+        ModelCatalogUnavailable.pipe(HttpApiSchema.status(503)),
+        ModelUnavailable.pipe(HttpApiSchema.status(422)),
+        RunRejected.pipe(HttpApiSchema.status(409)),
       ],
     })
   )
@@ -253,7 +335,7 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
     HttpApiEndpoint.post('stop', '/:id/stop', {
       params: { id: SessionId },
       success: StopResponse,
-      error: StorageError.pipe(HttpApiSchema.status(500)),
+      error: StorageUnavailable.pipe(HttpApiSchema.status(503)),
     })
   )
   .prefix('/sessions') {}
@@ -264,7 +346,7 @@ export class ProjectsGroup extends HttpApiGroup.make('projects')
   .add(
     HttpApiEndpoint.get('list', '/', {
       success: Schema.Array(ProjectResponse),
-      error: ProjectError.pipe(HttpApiSchema.status(500)),
+      error: ProjectOperationFailed.pipe(HttpApiSchema.status(500)),
     })
   )
   .add(
@@ -274,14 +356,14 @@ export class ProjectsGroup extends HttpApiGroup.make('projects')
         name: Schema.optional(Schema.String),
       }),
       success: ProjectResponse,
-      error: ProjectError.pipe(HttpApiSchema.status(500)),
+      error: ProjectOperationFailed.pipe(HttpApiSchema.status(500)),
     })
   )
   .add(
     HttpApiEndpoint.get('get', '/:id', {
       params: { id: ProjectId },
       success: ProjectResponse,
-      error: ProjectError.pipe(HttpApiSchema.status(500)),
+      error: ProjectOperationFailed.pipe(HttpApiSchema.status(500)),
     })
   )
   .add(
@@ -292,8 +374,8 @@ export class ProjectsGroup extends HttpApiGroup.make('projects')
       }),
       success: Schema.Void,
       error: [
-        ProjectError.pipe(HttpApiSchema.status(500)),
-        StorageError.pipe(HttpApiSchema.status(500)),
+        ProjectOperationFailed.pipe(HttpApiSchema.status(500)),
+        StorageUnavailable.pipe(HttpApiSchema.status(503)),
       ],
     })
   )
@@ -331,8 +413,10 @@ export class ModelsGroup extends HttpApiGroup.make('models')
       },
       success: ModelsResponse,
       error: [
-        ModelError.pipe(HttpApiSchema.status(500)),
-        ProjectError.pipe(HttpApiSchema.status(500)),
+        ProviderCredentialsUnavailable.pipe(HttpApiSchema.status(503)),
+        ProviderNotConfigured.pipe(HttpApiSchema.status(412)),
+        ModelCatalogUnavailable.pipe(HttpApiSchema.status(503)),
+        ProjectOperationFailed.pipe(HttpApiSchema.status(500)),
       ],
     })
   )
@@ -344,7 +428,7 @@ export class AuthGroup extends HttpApiGroup.make('auth')
   .add(
     HttpApiEndpoint.get('status', '/', {
       success: AuthStatusResponse,
-      error: AuthError.pipe(HttpApiSchema.status(500)),
+      error: ProviderCredentialsUnavailable.pipe(HttpApiSchema.status(503)),
     })
   )
   .add(
@@ -352,14 +436,17 @@ export class AuthGroup extends HttpApiGroup.make('auth')
       params: { provider: Schema.String },
       payload: Schema.Struct({ key: Schema.String }),
       success: AuthSetResponse,
-      error: AuthError.pipe(HttpApiSchema.status(500)),
+      error: ProviderCredentialsUnavailable.pipe(HttpApiSchema.status(503)),
     })
   )
   .add(
     HttpApiEndpoint.post('oauthAuthorize', '/:provider/oauth/authorize', {
       params: { provider: Schema.String },
       success: AuthOauthAuthorizeResponse,
-      error: AuthError.pipe(HttpApiSchema.status(500)),
+      error: [
+        ProviderCredentialsUnavailable.pipe(HttpApiSchema.status(503)),
+        ProviderAuthUnsupported.pipe(HttpApiSchema.status(400)),
+      ],
     })
   )
   .prefix('/auth') {}

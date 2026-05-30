@@ -11,9 +11,11 @@ import { SessionStorage, type SessionStorageApi } from './session/session.ts'
 import {
   Api,
   MessageNodeResponse,
+  ProjectOperationFailed,
   RunResponse,
   SessionResponse,
   StopResponse,
+  StorageUnavailable,
 } from './api.ts'
 import { ensureModel } from './model-catalog.ts'
 import type { ModelOptions } from './model-catalog.ts'
@@ -323,6 +325,9 @@ const queuedRunResponse = Effect.succeed(
   new RunResponse({ status: 'queued' as const })
 )
 
+const mapStorageError = StorageUnavailable.fromStorage
+const mapProjectError = ProjectOperationFailed.fromProject
+
 export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
   Effect.gen(function* () {
     const storage = yield* SessionStorage
@@ -330,35 +335,52 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
 
     return handlers
       .handle('list', () =>
-        storage
-          .list()
-          .pipe(Effect.map((sessions) => sessions.map(toSessionResponse)))
+        storage.list().pipe(
+          Effect.map((sessions) => sessions.map(toSessionResponse)),
+          Effect.mapError(mapStorageError)
+        )
       )
       .handle('create', ({ payload }) =>
         projects
           .get(payload.projectId)
           .pipe(
-            Effect.andThen(projects.touch(payload.projectId)),
-            Effect.andThen(storage.create(payload.projectId, payload.title)),
+            Effect.mapError(mapProjectError),
+            Effect.andThen(
+              projects
+                .touch(payload.projectId)
+                .pipe(Effect.mapError(mapProjectError))
+            ),
+            Effect.andThen(
+              storage
+                .create(payload.projectId, payload.title)
+                .pipe(Effect.mapError(mapStorageError))
+            ),
             Effect.map(toSessionResponse)
           )
       )
       .handle('get', ({ params }) =>
-        storage.get(params.id).pipe(Effect.map(toSessionResponse))
-      )
-      .handle('delete', ({ params }) => storage.delete(params.id))
-      .handle('leaves', ({ params }) =>
         storage
-          .leaves(params.id)
-          .pipe(Effect.map((nodes) => nodes.map(toMessageNodeResponse)))
+          .get(params.id)
+          .pipe(Effect.map(toSessionResponse), Effect.mapError(mapStorageError))
+      )
+      .handle('delete', ({ params }) =>
+        storage.delete(params.id).pipe(Effect.mapError(mapStorageError))
+      )
+      .handle('leaves', ({ params }) =>
+        storage.leaves(params.id).pipe(
+          Effect.map((nodes) => nodes.map(toMessageNodeResponse)),
+          Effect.mapError(mapStorageError)
+        )
       )
       .handle('messages', ({ params }) =>
-        storage
-          .messages(params.id)
-          .pipe(Effect.map((nodes) => nodes.map(toMessageNodeResponse)))
+        storage.messages(params.id).pipe(
+          Effect.map((nodes) => nodes.map(toMessageNodeResponse)),
+          Effect.mapError(mapStorageError)
+        )
       )
       .handle('run', ({ params, payload }) =>
         storage.get(params.id).pipe(
+          Effect.mapError(mapStorageError),
           Effect.tap(() =>
             Effect.logInfo('Session run request received', {
               sessionId: params.id,
@@ -369,7 +391,12 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
           ),
           Effect.flatMap((session) =>
             projects.resolvePath(session.projectId).pipe(
-              Effect.tap(() => projects.touch(session.projectId)),
+              Effect.mapError(mapProjectError),
+              Effect.tap(() =>
+                projects
+                  .touch(session.projectId)
+                  .pipe(Effect.mapError(mapProjectError))
+              ),
               Effect.flatMap((projectPath) =>
                 ensureModel(
                   projectPath,
@@ -401,6 +428,8 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
           )
         )
       )
-      .handle('stop', ({ params }) => stopSession(storage, params.id))
+      .handle('stop', ({ params }) =>
+        stopSession(storage, params.id).pipe(Effect.mapError(mapStorageError))
+      )
   })
 )

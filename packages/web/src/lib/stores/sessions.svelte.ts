@@ -1,3 +1,4 @@
+import { httpErrorMessage, requestErrorMessage } from '$lib/api-errors.js'
 import type { ModelOptions, Session } from '$lib/types.js'
 import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
@@ -135,14 +136,14 @@ function createSessionStore() {
     error = null
     try {
       const res = await fetch(`${connectionsStore.getApiBase()}/sessions`)
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+      if (!res.ok) throw new Error(await httpErrorMessage(res))
       sessions = await res.json()
 
       const projectId =
         tabStore.activeTab?.projectId ?? projectStore.selectedProjectId
       if (projectId) void modelsStore.load(projectId)
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to fetch sessions'
+      error = requestErrorMessage(e, 'Failed to load sessions')
     } finally {
       loading = false
     }
@@ -165,7 +166,7 @@ function createSessionStore() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId: resolvedProjectId }),
       })
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+      if (!res.ok) throw new Error(await httpErrorMessage(res))
 
       const session: Session = await res.json()
       sessions = [session, ...sessions]
@@ -175,7 +176,7 @@ function createSessionStore() {
         tabStore.attachSession(tabStore.activeTab.id, session)
       return session
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to create session'
+      error = requestErrorMessage(e, 'Failed to create session')
       return null
     }
   }
@@ -199,7 +200,7 @@ function createSessionStore() {
           body: JSON.stringify({ input, model, modelOptions }),
         }
       )
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+      if (!res.ok) throw new Error(await httpErrorMessage(res))
 
       const data: { status: 'started' | 'queued' } = await res.json()
 
@@ -226,7 +227,11 @@ function createSessionStore() {
 
       return true
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to start agent run'
+      const message = requestErrorMessage(e, 'Failed to start agent run')
+      error = message
+      const next = new Map(sessionErrors)
+      next.set(sessionId, message)
+      sessionErrors = next
       return false
     }
   }
@@ -255,7 +260,7 @@ function createSessionStore() {
           method: 'POST',
         }
       )
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+      if (!res.ok) throw new Error(await httpErrorMessage(res))
       const data: { status: 'stopped' | 'not_running' } = await res.json()
       // If the server says it wasn't running, clear stopping state
       // immediately (no RunEnd will arrive).
@@ -270,7 +275,7 @@ function createSessionStore() {
       const next = new Set(stoppingSessions)
       next.delete(sessionId)
       stoppingSessions = next
-      error = e instanceof Error ? e.message : 'Failed to stop agent run'
+      error = requestErrorMessage(e, 'Failed to stop agent run')
       return 'error'
     }
   }

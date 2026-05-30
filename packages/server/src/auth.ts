@@ -2,8 +2,9 @@ import { Effect, Match } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import {
   Api,
-  AuthError,
   AuthOauthAuthorizeResponse,
+  ProviderAuthUnsupported,
+  ProviderCredentialsUnavailable,
   AuthProviderStatus,
   AuthSetResponse,
   AuthStatusResponse,
@@ -20,6 +21,15 @@ const authErrorMessage = (error: unknown, fallback: string) =>
     ),
     Match.orElse(() => fallback)
   )
+
+const credentialsUnavailable =
+  (operation: string, fallback: string) => (error: unknown) =>
+    new ProviderCredentialsUnavailable({
+      code: 'provider.credentials_unavailable',
+      operation,
+      message: authErrorMessage(error, fallback),
+      retryable: true,
+    })
 
 const authStatus = Effect.fn('Auth.status')(function* () {
   const providers = yield* Effect.all(
@@ -50,13 +60,10 @@ export const AuthLive = HttpApiBuilder.group(Api, 'auth', (handlers) =>
     .handle('status', () =>
       authStatus().pipe(
         Effect.mapError(
-          (error) =>
-            new AuthError({
-              message: authErrorMessage(
-                error,
-                'Failed to read provider credentials'
-              ),
-            })
+          credentialsUnavailable(
+            'Read provider credentials',
+            'Failed to read provider credentials'
+          )
         )
       )
     )
@@ -64,13 +71,10 @@ export const AuthLive = HttpApiBuilder.group(Api, 'auth', (handlers) =>
       setApiKey(params.provider, payload.key.trim()).pipe(
         Effect.map(() => new AuthSetResponse({ ok: true })),
         Effect.mapError(
-          (error) =>
-            new AuthError({
-              message: authErrorMessage(
-                error,
-                'Failed to save provider credentials'
-              ),
-            })
+          credentialsUnavailable(
+            'Save provider credentials',
+            'Failed to save provider credentials'
+          )
         )
       )
     )
@@ -79,23 +83,30 @@ export const AuthLive = HttpApiBuilder.group(Api, 'auth', (handlers) =>
       ({ params }) =>
         [
           Effect.fail(
-            new AuthError({ message: 'OAuth is only supported for OpenAI' })
+            new ProviderAuthUnsupported({
+              code: 'provider.oauth_unsupported',
+              provider: params.provider,
+              message: 'OAuth is only supported for OpenAI',
+              retryable: false,
+            })
           ),
           startOpenAiOauth().pipe(
             Effect.map((result) => new AuthOauthAuthorizeResponse(result)),
             Effect.mapError(
-              (error) =>
-                new AuthError({
-                  message: authErrorMessage(
-                    error,
-                    'Failed to start ChatGPT sign-in'
-                  ),
-                })
+              credentialsUnavailable(
+                'Start ChatGPT sign-in',
+                'Failed to start ChatGPT sign-in'
+              )
             )
           ),
         ][Number(params.provider === 'openai')] ??
         Effect.fail(
-          new AuthError({ message: 'OAuth is only supported for OpenAI' })
+          new ProviderAuthUnsupported({
+            code: 'provider.oauth_unsupported',
+            provider: params.provider,
+            message: 'OAuth is only supported for OpenAI',
+            retryable: false,
+          })
         )
     )
 )

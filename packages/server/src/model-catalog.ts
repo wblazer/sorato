@@ -1,5 +1,11 @@
 import { Effect, Match, Option } from 'effect'
-import { ModelError, ModelOption, ModelsResponse } from './api.ts'
+import {
+  ModelOption,
+  ModelsResponse,
+  ModelUnavailable,
+  ProviderCredentialsUnavailable,
+  ProviderNotConfigured,
+} from './api.ts'
 import { MODEL_PROVIDERS } from './models.generated.ts'
 import { PROVIDER_ADAPTERS } from './provider-adapters.ts'
 import { RuntimeConfigService } from './runtime-config.ts'
@@ -147,8 +153,11 @@ const availableEntries = () =>
   entries().pipe(
     Effect.mapError(
       (error) =>
-        new ModelError({
+        new ProviderCredentialsUnavailable({
+          code: 'provider.credentials_unavailable',
+          operation: 'Read provider credentials',
           message: providerCredentialMessage(error),
+          retryable: true,
         })
     )
   )
@@ -178,6 +187,15 @@ const listModelsEffect = Effect.fn('ModelCatalog.list')(function* (
         capabilities: item.capabilities,
       })
   )
+
+  if (items.length === 0) {
+    return yield* new ProviderNotConfigured({
+      code: 'provider.not_configured',
+      message:
+        'No configured model provider is available. Connect OpenAI or Anthropic credentials, or set a supported provider environment variable.',
+      retryable: false,
+    })
+  }
 
   const ids = new Set(items.map((item) => item.id))
   const defaultModel =
@@ -220,8 +238,11 @@ const ensureModelEffect = Effect.fn('ModelCatalog.ensure')(function* (
           model,
           options,
         })
-        return yield* new ModelError({
+        return yield* new ModelUnavailable({
+          code: 'model.unavailable',
+          model,
           message: `Model is not available for this server: ${model}`,
+          retryable: false,
         })
       })
     )

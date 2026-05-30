@@ -19,6 +19,7 @@
  * delivery on the same connection. No separate stream-state fetch means no
  * overlap/gap race at the replay/live boundary.
  */
+import { httpErrorMessage, requestErrorMessage } from '$lib/api-errors.js'
 import type { MessageNode, MessagePart, StreamCursor } from '$lib/types.js'
 import { connectSse, type SseConnection } from '$lib/sse.js'
 import { sseStore } from './sse.svelte.js'
@@ -237,8 +238,7 @@ function createMessagesStore() {
 
       if (currentSessionId !== sessionId) return
 
-      if (!messagesRes.ok)
-        throw new Error(`${messagesRes.status} ${messagesRes.statusText}`)
+      if (!messagesRes.ok) throw new Error(await httpErrorMessage(messagesRes))
 
       const serverMessages: MessageNode[] = await messagesRes.json()
 
@@ -251,8 +251,8 @@ function createMessagesStore() {
       }
     } catch (e) {
       if (currentSessionId !== sessionId) return
-      error = e instanceof Error ? e.message : 'Failed to fetch messages'
-      messages = []
+      error = requestErrorMessage(e, 'Failed to load messages')
+      if (!hasExisting) messages = []
     } finally {
       if (currentSessionId === sessionId) {
         loading = false

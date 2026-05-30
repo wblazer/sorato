@@ -1,6 +1,5 @@
 export { Api } from './api.ts'
 export {
-  AuthError,
   AuthOauthAuthorizeResponse,
   AuthSetResponse,
   DirectoryEntry,
@@ -8,14 +7,19 @@ export {
   DirectoryListResponse,
   HandshakeResponse,
   MessageNodeResponse,
-  ModelError,
+  ModelCatalogUnavailable,
   ModelOption,
   ModelsResponse,
+  ProjectOperationFailed,
   ProjectResponse,
-  RunError,
+  ProviderAuthUnsupported,
+  ProviderCredentialsUnavailable,
+  ProviderNotConfigured,
+  RunRejected,
   RunResponse,
   SessionResponse,
   StopResponse,
+  StorageUnavailable,
 } from './api.ts'
 export { publish, subscribe, createBusHook } from './event-bus.ts'
 export type { ContentEvent, ServerEvent } from './event-bus.ts'

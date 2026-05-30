@@ -3,6 +3,7 @@
   import Button from '$lib/components/ui/button/button.svelte'
   import * as Item from '$lib/components/ui/item/index.js'
   import { confirmationStore } from '$lib/stores/confirmation.svelte.js'
+  import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
   import XIcon from 'phosphor-svelte/lib/XIcon'
 
   const state = $derived(confirmationStore.state)
@@ -44,6 +45,9 @@
 
     {#if state.actionError}
       <Item.Root variant="danger">
+        <Item.Media variant="icon">
+          <WarningCircleIcon />
+        </Item.Media>
         <Item.Content>{state.actionError}</Item.Content>
         <Item.Actions>
           <Button

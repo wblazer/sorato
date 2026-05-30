@@ -3,10 +3,12 @@
   import * as Checkbox from '$lib/components/ui/checkbox/index.js'
   import * as Command from '$lib/components/ui/command/index.js'
   import * as Dialog from '$lib/components/ui/dialog/index.js'
+  import * as Item from '$lib/components/ui/item/index.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { tabStore } from '$lib/stores/tabs.svelte.js'
   import FolderOpenIcon from 'phosphor-svelte/lib/FolderOpenIcon'
+  import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
 
   interface Props {
     open: boolean
@@ -113,7 +115,15 @@
           {/each}
         </Command.List>
         {#if error || projectStore.error}
-          <p class="text-sm text-danger-muted-foreground">{error ?? projectStore.error}</p>
+          <Item.Root variant="danger" size="sm">
+            <Item.Media variant="icon">
+              <WarningCircleIcon />
+            </Item.Media>
+            <Item.Content>
+              <Item.Title>Archive failed</Item.Title>
+              <Item.Description>{error ?? projectStore.error}</Item.Description>
+            </Item.Content>
+          </Item.Root>
         {/if}
       </Command.Root>
     {:else}
@@ -140,7 +150,15 @@
         </label>
 
         {#if error || projectStore.error}
-          <p class="text-sm text-danger-muted-foreground">{error ?? projectStore.error}</p>
+          <Item.Root variant="danger" size="sm">
+            <Item.Media variant="icon">
+              <WarningCircleIcon />
+            </Item.Media>
+            <Item.Content>
+              <Item.Title>Archive failed</Item.Title>
+              <Item.Description>{error ?? projectStore.error}</Item.Description>
+            </Item.Content>
+          </Item.Root>
         {/if}
       </div>
 

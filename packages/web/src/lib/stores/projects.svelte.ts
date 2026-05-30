@@ -1,3 +1,4 @@
+import { httpErrorMessage, requestErrorMessage } from '$lib/api-errors.js'
 import type { Project } from '$lib/types.js'
 import { connectionsStore } from './connections.svelte.js'
 import { modelsStore } from './models.svelte.js'
@@ -13,14 +14,14 @@ function createProjectStore() {
     error = null
     try {
       const res = await fetch(`${connectionsStore.getApiBase()}/projects`)
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+      if (!res.ok) throw new Error(await httpErrorMessage(res))
       projects = await res.json()
       if (!selectedProjectId && projects.length > 0) {
         selectedProjectId = projects[0]?.id ?? null
       }
       if (selectedProjectId) void modelsStore.load(selectedProjectId)
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to fetch projects'
+      error = requestErrorMessage(e, 'Failed to load projects')
     } finally {
       loading = false
     }
@@ -33,13 +34,13 @@ function createProjectStore() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path }),
       })
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+      if (!res.ok) throw new Error(await httpErrorMessage(res))
       const project: Project = await res.json()
       projects = [project, ...projects]
       selectProject(project.id)
       return project
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to create project'
+      error = requestErrorMessage(e, 'Failed to create project')
       return null
     }
   }
@@ -62,7 +63,7 @@ function createProjectStore() {
           body: JSON.stringify({ archiveSessions }),
         }
       )
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+      if (!res.ok) throw new Error(await httpErrorMessage(res))
       projects = projects.filter((project) => project.id !== id)
       if (selectedProjectId === id) {
         const nextProject = projects[0] ?? null
@@ -70,7 +71,7 @@ function createProjectStore() {
       }
       return true
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to archive project'
+      error = requestErrorMessage(e, 'Failed to archive project')
       return false
     }
   }

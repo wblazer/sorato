@@ -1,13 +1,16 @@
 <script lang="ts">
+  import { httpErrorMessage, requestErrorMessage } from '$lib/api-errors.js'
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Command from '$lib/components/ui/command/index.js'
   import * as Dialog from '$lib/components/ui/dialog/index.js'
   import { Input } from '$lib/components/ui/input/index.js'
+  import * as Item from '$lib/components/ui/item/index.js'
   import { Label } from '$lib/components/ui/label/index.js'
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
   import { authStore } from '$lib/stores/auth.svelte.js'
   import { modelsStore } from '$lib/stores/models.svelte.js'
   import { useId } from 'bits-ui'
+  import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
 
   interface Props {
     open: boolean
@@ -54,12 +57,12 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ key: apiKey }),
       })
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+      if (!res.ok) throw new Error(await httpErrorMessage(res))
       await authStore.load()
       open = false
       if (modelsStore.projectId) void modelsStore.load(modelsStore.projectId)
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to connect provider'
+      error = requestErrorMessage(err, 'Failed to connect provider')
     } finally {
       saving = false
     }
@@ -75,15 +78,15 @@
       const res = await fetch(`${api}/auth/openai/oauth/authorize`, {
         method: 'POST',
       })
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-      const body = (await res.json()) as { url: string }
+      if (!res.ok) throw new Error(await httpErrorMessage(res))
+      const body: { url: string } = await res.json()
       window.open(body.url, '_blank', 'noopener,noreferrer')
       window.setTimeout(() => {
         void authStore.load()
         if (modelsStore.projectId) void modelsStore.load(modelsStore.projectId)
       }, 2500)
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Failed to start ChatGPT sign-in'
+      error = requestErrorMessage(err, 'Failed to start ChatGPT sign-in')
     } finally {
       oauthSaving = false
     }
@@ -158,7 +161,15 @@
         </div>
 
         {#if error}
-          <p class="text-sm text-danger-muted-foreground">{error}</p>
+          <Item.Root variant="danger" size="sm">
+            <Item.Media variant="icon">
+              <WarningCircleIcon />
+            </Item.Media>
+            <Item.Content>
+              <Item.Title>Connection failed</Item.Title>
+              <Item.Description>{error}</Item.Description>
+            </Item.Content>
+          </Item.Root>
         {/if}
 
         <Dialog.DialogFooter>

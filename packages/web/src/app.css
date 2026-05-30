@@ -26,9 +26,9 @@
   --danger: oklch(0.46 0.15 30);
   --danger-hover: oklch(0.49 0.16 30);
   --danger-foreground: oklch(0.98 0.015 75);
-  --danger-muted: oklch(0.25 0.035 30);
+  --danger-muted: oklch(0.25 0.02 30);
   --danger-muted-hover: oklch(0.3 0.05 30);
-  --danger-muted-foreground: oklch(0.8 0.3 30);
+  --danger-muted-foreground: oklch(0.88 0.3 30);
   --success: oklch(0.44 0.08 145);
   --success-hover: oklch(0.49 0.09 145);
   --success-foreground: var(--foreground);

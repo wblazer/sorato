@@ -10,6 +10,8 @@
       import StreamingIndicator from './streaming-indicator.svelte'
       import Composer from './composer.svelte'
       import { Button } from '$lib/components/ui/button/index.js'
+      import * as Item from '$lib/components/ui/item/index.js'
+      import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
 
       let { sessionId, title }: { sessionId: string; title: string | null } =
         $props()
@@ -164,6 +166,10 @@
       function handleDismissError() {
         sessionStore.clearSessionError(sessionId)
       }
+
+      function retryMessages() {
+        void messagesStore.loadMessages(sessionId)
+      }
 </script>
 
 <div class="flex h-full flex-col overflow-hidden">
@@ -217,7 +223,18 @@
         <div
           class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
         >
-          <span class="text-sm text-danger-muted-foreground">{messagesStore.error}</span>
+          <Item.Root variant="danger" class="max-w-xl">
+            <Item.Media variant="icon">
+              <WarningCircleIcon />
+            </Item.Media>
+            <Item.Content>
+              <Item.Title>Messages failed to load</Item.Title>
+              <Item.Description>{messagesStore.error}</Item.Description>
+            </Item.Content>
+            <Item.Actions>
+              <Button variant="outline" onclick={retryMessages}>Retry</Button>
+            </Item.Actions>
+          </Item.Root>
         </div>
       {:else if messagesStore.loaded || isRunning}
         <div

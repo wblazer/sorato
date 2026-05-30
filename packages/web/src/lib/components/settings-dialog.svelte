@@ -2,6 +2,7 @@
   import Button from '$lib/components/ui/button/button.svelte'
   import ButtonStableLabel from '$lib/components/ui/button/button-stable-label.svelte'
   import * as Dialog from '$lib/components/ui/dialog/index.js'
+  import * as Item from '$lib/components/ui/item/index.js'
   import * as Select from '$lib/components/ui/select/index.js'
   import { Switch } from '$lib/components/ui/switch/index.js'
   import * as Tabs from '$lib/components/ui/tabs/index.js'
@@ -13,6 +14,7 @@
   import GearIcon from 'phosphor-svelte/lib/GearIcon'
   import KeyboardIcon from 'phosphor-svelte/lib/KeyboardIcon'
   import XIcon from 'phosphor-svelte/lib/XIcon'
+  import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
   import {
     clientConfigService,
     diffClientConfig,
@@ -377,9 +379,15 @@
         {/if}
 
         {#if error}
-          <div class="mt-6 rounded-md border border-danger-muted-foreground/40 bg-danger-muted px-3 py-2 text-base text-danger-muted-foreground">
-            {error}
-          </div>
+          <Item.Root variant="danger" class="mt-6">
+            <Item.Media variant="icon">
+              <WarningCircleIcon />
+            </Item.Media>
+            <Item.Content>
+              <Item.Title>Settings error</Item.Title>
+              <Item.Description>{error}</Item.Description>
+            </Item.Content>
+          </Item.Root>
         {/if}
       </main>
     </Tabs.Root>

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js'
+  import * as Item from '$lib/components/ui/item/index.js'
   import { actionStore } from '$lib/stores/actions.svelte.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
@@ -7,6 +8,7 @@
   import { cn } from '$lib/utils.js'
   import { onMount } from 'svelte'
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
+  import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
 
   function formatRelativeTime(timestamp: number): string {
     const seconds = Math.floor((Date.now() - timestamp) / 1000)
@@ -45,7 +47,22 @@
     {#if sessionStore.loading && sessionStore.sessions.length === 0}
       <p class="px-3 py-4 text-center text-xs text-muted-foreground">Loading sessions…</p>
     {:else if sessionStore.error}
-      <p class="px-3 py-4 text-center text-xs text-danger-muted-foreground">{sessionStore.error}</p>
+      <div class="px-1 py-2">
+        <Item.Root variant="danger" size="xs">
+          <Item.Media variant="icon">
+            <WarningCircleIcon />
+          </Item.Media>
+          <Item.Content>
+            <Item.Title>Sessions failed to load</Item.Title>
+            <Item.Description>{sessionStore.error}</Item.Description>
+          </Item.Content>
+          <Item.Actions>
+            <Button variant="outline" onclick={() => void sessionStore.fetchSessions()}>
+              Retry
+            </Button>
+          </Item.Actions>
+        </Item.Root>
+      </div>
     {:else if sessionStore.filteredSessions.length === 0}
       <p class="px-3 py-4 text-center text-xs text-muted-foreground">No sessions yet</p>
     {:else}

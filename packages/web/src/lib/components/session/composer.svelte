@@ -10,6 +10,7 @@
       import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
       import StopIcon from 'phosphor-svelte/lib/StopIcon'
       import XIcon from 'phosphor-svelte/lib/XIcon'
+      import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
       import ModelSelector from './model-selector.svelte'
 
       let {
@@ -127,6 +128,11 @@
           size="xs"
           class="relative z-0 rounded-b-none border-border border-b-0 px-3 py-2 shadow-sm shadow-shadow/30"
         >
+          {#if status.variant === 'danger'}
+            <Item.Media variant="icon">
+              <WarningCircleIcon />
+            </Item.Media>
+          {/if}
           <Item.Content>
             <Item.Title>{status.title}</Item.Title>
             <Item.Description>{status.description}</Item.Description>
