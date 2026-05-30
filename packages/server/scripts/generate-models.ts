@@ -35,7 +35,7 @@ type ModelsDevResponse = Record<string, ModelsDevProvider>
 type CatalogModel = {
   readonly id: string
   readonly name: string
-  readonly releaseDate?: string
+  readonly releaseDate: string | undefined
   readonly capabilities: {
     readonly attachment: boolean
     readonly reasoning: boolean
@@ -43,7 +43,7 @@ type CatalogModel = {
     readonly toolCall: boolean
     readonly limits: {
       readonly context: number
-      readonly input?: number
+      readonly input: number | undefined
       readonly output: number
     }
     readonly modes: ReadonlyArray<string>
@@ -51,7 +51,7 @@ type CatalogModel = {
 }
 
 const here = dirname(fileURLToPath(import.meta.url))
-const out = join(here, '..', 'src', 'server', 'models.generated.ts')
+const out = join(here, '..', 'src', 'models.generated.ts')
 
 const response = await fetch('https://models.dev/api.json')
 if (!response.ok) {

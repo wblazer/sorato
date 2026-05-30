@@ -3,1061 +3,1093 @@
 
 export const MODEL_PROVIDERS = [
   {
-    id: 'anthropic',
-    name: 'Anthropic',
-    env: ['ANTHROPIC_API_KEY'],
-    models: [
-      {
-        id: 'claude-3-sonnet-20240229',
-        name: 'Claude Sonnet 3',
-        releaseDate: '2024-03-04',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 4096,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-haiku-4-5',
-        name: 'Claude Haiku 4.5 (latest)',
-        releaseDate: '2025-10-15',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 64000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-opus-4-5-20251101',
-        name: 'Claude Opus 4.5',
-        releaseDate: '2025-11-01',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 64000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-3-opus-20240229',
-        name: 'Claude Opus 3',
-        releaseDate: '2024-02-29',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 4096,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-3-5-haiku-20241022',
-        name: 'Claude Haiku 3.5',
-        releaseDate: '2024-10-22',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 8192,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-3-5-sonnet-20241022',
-        name: 'Claude Sonnet 3.5 v2',
-        releaseDate: '2024-10-22',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 8192,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-sonnet-4-6',
-        name: 'Claude Sonnet 4.6',
-        releaseDate: '2026-02-17',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 1000000,
-            output: 64000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-opus-4-0',
-        name: 'Claude Opus 4 (latest)',
-        releaseDate: '2025-05-22',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 32000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-opus-4-7',
-        name: 'Claude Opus 4.7',
-        releaseDate: '2026-04-16',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 1000000,
-            output: 128000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-3-haiku-20240307',
-        name: 'Claude Haiku 3',
-        releaseDate: '2024-03-13',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 4096,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-sonnet-4-5-20250929',
-        name: 'Claude Sonnet 4.5',
-        releaseDate: '2025-09-29',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 64000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-3-5-haiku-latest',
-        name: 'Claude Haiku 3.5 (latest)',
-        releaseDate: '2024-10-22',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 8192,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-opus-4-1',
-        name: 'Claude Opus 4.1 (latest)',
-        releaseDate: '2025-08-05',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 32000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-sonnet-4-0',
-        name: 'Claude Sonnet 4 (latest)',
-        releaseDate: '2025-05-22',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 64000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-3-5-sonnet-20240620',
-        name: 'Claude Sonnet 3.5',
-        releaseDate: '2024-06-20',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 8192,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-opus-4-5',
-        name: 'Claude Opus 4.5 (latest)',
-        releaseDate: '2025-11-24',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 64000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-opus-4-1-20250805',
-        name: 'Claude Opus 4.1',
-        releaseDate: '2025-08-05',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 32000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-haiku-4-5-20251001',
-        name: 'Claude Haiku 4.5',
-        releaseDate: '2025-10-15',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 64000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-sonnet-4-20250514',
-        name: 'Claude Sonnet 4',
-        releaseDate: '2025-05-22',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 64000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-opus-4-6',
-        name: 'Claude Opus 4.6',
-        releaseDate: '2026-02-05',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 1000000,
-            output: 128000,
-          },
-          modes: ['fast'],
-        },
-      },
-      {
-        id: 'claude-3-7-sonnet-20250219',
-        name: 'Claude Sonnet 3.7',
-        releaseDate: '2025-02-19',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 64000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-sonnet-4-5',
-        name: 'Claude Sonnet 4.5 (latest)',
-        releaseDate: '2025-09-29',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 64000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'claude-opus-4-20250514',
-        name: 'Claude Opus 4',
-        releaseDate: '2025-05-22',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 32000,
-          },
-          modes: [],
-        },
-      },
+    "id": "anthropic",
+    "name": "Anthropic",
+    "env": [
+      "ANTHROPIC_API_KEY"
     ],
+    "models": [
+      {
+        "id": "claude-opus-4-5",
+        "name": "Claude Opus 4.5 (latest)",
+        "releaseDate": "2025-11-24",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 64000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-sonnet-4-6",
+        "name": "Claude Sonnet 4.6",
+        "releaseDate": "2026-02-17",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 1000000,
+            "output": 64000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-haiku-4-5-20251001",
+        "name": "Claude Haiku 4.5",
+        "releaseDate": "2025-10-15",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 64000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-sonnet-4-0",
+        "name": "Claude Sonnet 4 (latest)",
+        "releaseDate": "2025-05-22",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 64000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-haiku-4-5",
+        "name": "Claude Haiku 4.5 (latest)",
+        "releaseDate": "2025-10-15",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 64000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-opus-4-20250514",
+        "name": "Claude Opus 4",
+        "releaseDate": "2025-05-22",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 32000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-opus-4-1",
+        "name": "Claude Opus 4.1 (latest)",
+        "releaseDate": "2025-08-05",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 32000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-3-opus-20240229",
+        "name": "Claude Opus 3",
+        "releaseDate": "2024-02-29",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 4096
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-3-5-haiku-latest",
+        "name": "Claude Haiku 3.5 (latest)",
+        "releaseDate": "2024-10-22",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 8192
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-sonnet-4-5-20250929",
+        "name": "Claude Sonnet 4.5",
+        "releaseDate": "2025-09-29",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 64000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-3-5-haiku-20241022",
+        "name": "Claude Haiku 3.5",
+        "releaseDate": "2024-10-22",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 8192
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-opus-4-1-20250805",
+        "name": "Claude Opus 4.1",
+        "releaseDate": "2025-08-05",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 32000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-3-7-sonnet-20250219",
+        "name": "Claude Sonnet 3.7",
+        "releaseDate": "2025-02-19",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 64000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-3-5-sonnet-20240620",
+        "name": "Claude Sonnet 3.5",
+        "releaseDate": "2024-06-20",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 8192
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-3-5-sonnet-20241022",
+        "name": "Claude Sonnet 3.5 v2",
+        "releaseDate": "2024-10-22",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 8192
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-opus-4-5-20251101",
+        "name": "Claude Opus 4.5",
+        "releaseDate": "2025-11-01",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 64000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-opus-4-8",
+        "name": "Claude Opus 4.8",
+        "releaseDate": "2026-05-28",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 1000000,
+            "output": 128000
+          },
+          "modes": [
+            "fast"
+          ]
+        }
+      },
+      {
+        "id": "claude-3-haiku-20240307",
+        "name": "Claude Haiku 3",
+        "releaseDate": "2024-03-13",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 4096
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-sonnet-4-20250514",
+        "name": "Claude Sonnet 4",
+        "releaseDate": "2025-05-22",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 64000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5 (latest)",
+        "releaseDate": "2025-09-29",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 64000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-opus-4-6",
+        "name": "Claude Opus 4.6",
+        "releaseDate": "2026-02-05",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 1000000,
+            "output": 128000
+          },
+          "modes": [
+            "fast"
+          ]
+        }
+      },
+      {
+        "id": "claude-opus-4-7",
+        "name": "Claude Opus 4.7",
+        "releaseDate": "2026-04-16",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 1000000,
+            "output": 128000
+          },
+          "modes": [
+            "fast"
+          ]
+        }
+      },
+      {
+        "id": "claude-3-sonnet-20240229",
+        "name": "Claude Sonnet 3",
+        "releaseDate": "2024-03-04",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 4096
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "claude-opus-4-0",
+        "name": "Claude Opus 4 (latest)",
+        "releaseDate": "2025-05-22",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 32000
+          },
+          "modes": []
+        }
+      }
+    ]
   },
   {
-    id: 'openai',
-    name: 'OpenAI',
-    env: ['OPENAI_API_KEY'],
-    models: [
-      {
-        id: 'gpt-5.1-codex-max',
-        name: 'GPT-5.1 Codex Max',
-        releaseDate: '2025-11-13',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 400000,
-            input: 272000,
-            output: 128000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-4o-2024-05-13',
-        name: 'GPT-4o (2024-05-13)',
-        releaseDate: '2024-05-13',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 128000,
-            output: 4096,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5.2-pro',
-        name: 'GPT-5.2 Pro',
-        releaseDate: '2025-12-11',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 400000,
-            input: 272000,
-            output: 128000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5.3-chat-latest',
-        name: 'GPT-5.3 Chat (latest)',
-        releaseDate: '2026-03-03',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 128000,
-            output: 16384,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5.5',
-        name: 'GPT-5.5',
-        releaseDate: '2026-04-23',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 1050000,
-            input: 922000,
-            output: 128000,
-          },
-          modes: ['fast'],
-        },
-      },
-      {
-        id: 'gpt-5-mini',
-        name: 'GPT-5 Mini',
-        releaseDate: '2025-08-07',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 400000,
-            input: 272000,
-            output: 128000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5-nano',
-        name: 'GPT-5 Nano',
-        releaseDate: '2025-08-07',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 400000,
-            input: 272000,
-            output: 128000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5.3-codex',
-        name: 'GPT-5.3 Codex',
-        releaseDate: '2026-02-05',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 400000,
-            input: 272000,
-            output: 128000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-4-turbo',
-        name: 'GPT-4 Turbo',
-        releaseDate: '2023-11-06',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 128000,
-            output: 4096,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5.2',
-        name: 'GPT-5.2',
-        releaseDate: '2025-12-11',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 400000,
-            input: 272000,
-            output: 128000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'o3-pro',
-        name: 'o3-pro',
-        releaseDate: '2025-06-10',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 100000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-4o-mini',
-        name: 'GPT-4o mini',
-        releaseDate: '2024-07-18',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 128000,
-            output: 16384,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'o4-mini-deep-research',
-        name: 'o4-mini-deep-research',
-        releaseDate: '2024-06-26',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 100000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5.4-mini',
-        name: 'GPT-5.4 mini',
-        releaseDate: '2026-03-17',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 400000,
-            input: 272000,
-            output: 128000,
-          },
-          modes: ['fast'],
-        },
-      },
-      {
-        id: 'o4-mini',
-        name: 'o4-mini',
-        releaseDate: '2025-04-16',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 100000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5.4-nano',
-        name: 'GPT-5.4 nano',
-        releaseDate: '2026-03-17',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 400000,
-            input: 272000,
-            output: 128000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5.2-codex',
-        name: 'GPT-5.2 Codex',
-        releaseDate: '2025-12-11',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 400000,
-            input: 272000,
-            output: 128000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5.2-chat-latest',
-        name: 'GPT-5.2 Chat',
-        releaseDate: '2025-12-11',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 128000,
-            output: 16384,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5.1-codex-mini',
-        name: 'GPT-5.1 Codex mini',
-        releaseDate: '2025-11-13',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 400000,
-            input: 272000,
-            output: 128000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-4o-2024-08-06',
-        name: 'GPT-4o (2024-08-06)',
-        releaseDate: '2024-08-06',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 128000,
-            output: 16384,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5.1',
-        name: 'GPT-5.1',
-        releaseDate: '2025-11-13',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 400000,
-            input: 272000,
-            output: 128000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'o1',
-        name: 'o1',
-        releaseDate: '2024-12-05',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 100000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5.4-pro',
-        name: 'GPT-5.4 Pro',
-        releaseDate: '2026-03-05',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 1050000,
-            input: 922000,
-            output: 128000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'o3-deep-research',
-        name: 'o3-deep-research',
-        releaseDate: '2024-06-26',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 100000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'o3-mini',
-        name: 'o3-mini',
-        releaseDate: '2024-12-20',
-        capabilities: {
-          attachment: false,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 100000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'o1-pro',
-        name: 'o1-pro',
-        releaseDate: '2025-03-19',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 100000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-4',
-        name: 'GPT-4',
-        releaseDate: '2023-11-06',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 8192,
-            output: 8192,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5-codex',
-        name: 'GPT-5-Codex',
-        releaseDate: '2025-09-15',
-        capabilities: {
-          attachment: false,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 400000,
-            input: 272000,
-            output: 128000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5.4',
-        name: 'GPT-5.4',
-        releaseDate: '2026-03-05',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 1050000,
-            input: 922000,
-            output: 128000,
-          },
-          modes: ['fast'],
-        },
-      },
-      {
-        id: 'gpt-5.1-chat-latest',
-        name: 'GPT-5.1 Chat',
-        releaseDate: '2025-11-13',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 128000,
-            output: 16384,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5.3-codex-spark',
-        name: 'GPT-5.3 Codex Spark',
-        releaseDate: '2026-02-05',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 128000,
-            input: 100000,
-            output: 32000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-4.1-nano',
-        name: 'GPT-4.1 nano',
-        releaseDate: '2025-04-14',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 1047576,
-            output: 32768,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'o3',
-        name: 'o3',
-        releaseDate: '2025-04-16',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 200000,
-            output: 100000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5-pro',
-        name: 'GPT-5 Pro',
-        releaseDate: '2025-10-06',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 400000,
-            input: 272000,
-            output: 272000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-4o',
-        name: 'GPT-4o',
-        releaseDate: '2024-05-13',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 128000,
-            output: 16384,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5',
-        name: 'GPT-5',
-        releaseDate: '2025-08-07',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 400000,
-            input: 272000,
-            output: 128000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5.5-pro',
-        name: 'GPT-5.5 Pro',
-        releaseDate: '2026-04-23',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 1050000,
-            input: 922000,
-            output: 128000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-4.1',
-        name: 'GPT-4.1',
-        releaseDate: '2025-04-14',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 1047576,
-            output: 32768,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-4.1-mini',
-        name: 'GPT-4.1 mini',
-        releaseDate: '2025-04-14',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 1047576,
-            output: 32768,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-5.1-codex',
-        name: 'GPT-5.1 Codex',
-        releaseDate: '2025-11-13',
-        capabilities: {
-          attachment: true,
-          reasoning: true,
-          temperature: false,
-          toolCall: true,
-          limits: {
-            context: 400000,
-            input: 272000,
-            output: 128000,
-          },
-          modes: [],
-        },
-      },
-      {
-        id: 'gpt-4o-2024-11-20',
-        name: 'GPT-4o (2024-11-20)',
-        releaseDate: '2024-11-20',
-        capabilities: {
-          attachment: true,
-          reasoning: false,
-          temperature: true,
-          toolCall: true,
-          limits: {
-            context: 128000,
-            output: 16384,
-          },
-          modes: [],
-        },
-      },
+    "id": "openai",
+    "name": "OpenAI",
+    "env": [
+      "OPENAI_API_KEY"
     ],
-  },
+    "models": [
+      {
+        "id": "gpt-4o-2024-08-06",
+        "name": "GPT-4o (2024-08-06)",
+        "releaseDate": "2024-08-06",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 128000,
+            "output": 16384
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5-pro",
+        "name": "GPT-5 Pro",
+        "releaseDate": "2025-10-06",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 400000,
+            "input": 272000,
+            "output": 272000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5-mini",
+        "name": "GPT-5 Mini",
+        "releaseDate": "2025-08-07",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 400000,
+            "input": 272000,
+            "output": 128000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-4o",
+        "name": "GPT-4o",
+        "releaseDate": "2024-05-13",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 128000,
+            "output": 16384
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.2",
+        "name": "GPT-5.2",
+        "releaseDate": "2025-12-11",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 400000,
+            "input": 272000,
+            "output": 128000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5-codex",
+        "name": "GPT-5-Codex",
+        "releaseDate": "2025-09-15",
+        "capabilities": {
+          "attachment": false,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 400000,
+            "input": 272000,
+            "output": 128000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "o3",
+        "name": "o3",
+        "releaseDate": "2025-04-16",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 100000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.3-chat-latest",
+        "name": "GPT-5.3 Chat (latest)",
+        "releaseDate": "2026-03-03",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 128000,
+            "output": 16384
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-4o-2024-11-20",
+        "name": "GPT-4o (2024-11-20)",
+        "releaseDate": "2024-11-20",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 128000,
+            "output": 16384
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5",
+        "name": "GPT-5",
+        "releaseDate": "2025-08-07",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 400000,
+            "input": 272000,
+            "output": 128000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.4-pro",
+        "name": "GPT-5.4 Pro",
+        "releaseDate": "2026-03-05",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 1050000,
+            "input": 922000,
+            "output": 128000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-4.1-mini",
+        "name": "GPT-4.1 mini",
+        "releaseDate": "2025-04-14",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 1047576,
+            "output": 32768
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.2-pro",
+        "name": "GPT-5.2 Pro",
+        "releaseDate": "2025-12-11",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 400000,
+            "input": 272000,
+            "output": 128000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "o3-pro",
+        "name": "o3-pro",
+        "releaseDate": "2025-06-10",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 100000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "o4-mini",
+        "name": "o4-mini",
+        "releaseDate": "2025-04-16",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 100000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.4",
+        "name": "GPT-5.4",
+        "releaseDate": "2026-03-05",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 1050000,
+            "input": 922000,
+            "output": 128000
+          },
+          "modes": [
+            "fast"
+          ]
+        }
+      },
+      {
+        "id": "o3-mini",
+        "name": "o3-mini",
+        "releaseDate": "2024-12-20",
+        "capabilities": {
+          "attachment": false,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 100000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.5",
+        "name": "GPT-5.5",
+        "releaseDate": "2026-04-23",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 1050000,
+            "input": 922000,
+            "output": 128000
+          },
+          "modes": [
+            "fast"
+          ]
+        }
+      },
+      {
+        "id": "gpt-5.2-chat-latest",
+        "name": "GPT-5.2 Chat",
+        "releaseDate": "2025-12-11",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 128000,
+            "output": 16384
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.1",
+        "name": "GPT-5.1",
+        "releaseDate": "2025-11-13",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 400000,
+            "input": 272000,
+            "output": 128000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5-nano",
+        "name": "GPT-5 Nano",
+        "releaseDate": "2025-08-07",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 400000,
+            "input": 272000,
+            "output": 128000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-4o-mini",
+        "name": "GPT-4o mini",
+        "releaseDate": "2024-07-18",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 128000,
+            "output": 16384
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.1-codex-max",
+        "name": "GPT-5.1 Codex Max",
+        "releaseDate": "2025-11-13",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 400000,
+            "input": 272000,
+            "output": 128000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.1-codex-mini",
+        "name": "GPT-5.1 Codex mini",
+        "releaseDate": "2025-11-13",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 400000,
+            "input": 272000,
+            "output": 128000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "o1-pro",
+        "name": "o1-pro",
+        "releaseDate": "2025-03-19",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 100000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "o3-deep-research",
+        "name": "o3-deep-research",
+        "releaseDate": "2024-06-26",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 100000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-4.1",
+        "name": "GPT-4.1",
+        "releaseDate": "2025-04-14",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 1047576,
+            "output": 32768
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.4-nano",
+        "name": "GPT-5.4 nano",
+        "releaseDate": "2026-03-17",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 400000,
+            "input": 272000,
+            "output": 128000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.3-codex",
+        "name": "GPT-5.3 Codex",
+        "releaseDate": "2026-02-05",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 400000,
+            "input": 272000,
+            "output": 128000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.3-codex-spark",
+        "name": "GPT-5.3 Codex Spark",
+        "releaseDate": "2026-02-05",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 128000,
+            "input": 100000,
+            "output": 32000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.5-pro",
+        "name": "GPT-5.5 Pro",
+        "releaseDate": "2026-04-23",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 1050000,
+            "input": 922000,
+            "output": 128000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "o4-mini-deep-research",
+        "name": "o4-mini-deep-research",
+        "releaseDate": "2024-06-26",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 100000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.2-codex",
+        "name": "GPT-5.2 Codex",
+        "releaseDate": "2025-12-11",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 400000,
+            "input": 272000,
+            "output": 128000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.1-codex",
+        "name": "GPT-5.1 Codex",
+        "releaseDate": "2025-11-13",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 400000,
+            "input": 272000,
+            "output": 128000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-4o-2024-05-13",
+        "name": "GPT-4o (2024-05-13)",
+        "releaseDate": "2024-05-13",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 128000,
+            "output": 4096
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.4-mini",
+        "name": "GPT-5.4 mini",
+        "releaseDate": "2026-03-17",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 400000,
+            "input": 272000,
+            "output": 128000
+          },
+          "modes": [
+            "fast"
+          ]
+        }
+      },
+      {
+        "id": "gpt-4-turbo",
+        "name": "GPT-4 Turbo",
+        "releaseDate": "2023-11-06",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 128000,
+            "output": 4096
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-5.1-chat-latest",
+        "name": "GPT-5.1 Chat",
+        "releaseDate": "2025-11-13",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 128000,
+            "output": 16384
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "o1",
+        "name": "o1",
+        "releaseDate": "2024-12-05",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": true,
+          "temperature": false,
+          "toolCall": true,
+          "limits": {
+            "context": 200000,
+            "output": 100000
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-4",
+        "name": "GPT-4",
+        "releaseDate": "2023-11-06",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 8192,
+            "output": 8192
+          },
+          "modes": []
+        }
+      },
+      {
+        "id": "gpt-4.1-nano",
+        "name": "GPT-4.1 nano",
+        "releaseDate": "2025-04-14",
+        "capabilities": {
+          "attachment": true,
+          "reasoning": false,
+          "temperature": true,
+          "toolCall": true,
+          "limits": {
+            "context": 1047576,
+            "output": 32768
+          },
+          "modes": []
+        }
+      }
+    ]
+  }
 ] as const
