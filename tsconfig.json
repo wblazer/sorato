@@ -25,5 +25,19 @@
 
     // Effect Language Service
     "plugins": [{ "name": "@effect/language-service" }]
-  }
+  },
+  "include": [
+    "packages/*/*.ts",
+    "packages/*/src",
+    "packages/*/tests",
+    "packages/*/scripts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".reference",
+    "packages/*/build",
+    "packages/*/dist",
+    "packages/*/dist-*",
+    "packages/*/.svelte-kit"
+  ]
 }

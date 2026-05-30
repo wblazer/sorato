@@ -26,6 +26,7 @@ bun run typecheck
 bun run test
 bun run lint
 bun run format
+bun run effect:diagnostics
 
 bun run web
 bun run server

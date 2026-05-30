@@ -23,6 +23,14 @@ const TokenResponse = Schema.Struct({
 type TokenResponse = typeof TokenResponse.Type
 const JwtClaims = Schema.Record(Schema.String, Schema.Unknown)
 
+class OpenAiChatGptAuthError extends Schema.TaggedErrorClass<OpenAiChatGptAuthError>()(
+  'OpenAiChatGptAuthError',
+  {
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect),
+  }
+) {}
+
 type Pending = {
   readonly store: ProviderAuthStoreApi
   readonly pkce: Pkce
@@ -59,7 +67,11 @@ const parseJwtClaims = (token: string): Record<string, unknown> | undefined => {
         Schema.decodeUnknownSync(JwtClaims)(
           JSON.parse(Buffer.from(payload, 'base64url').toString())
         ),
-      catch: (error) => error,
+      catch: (cause) =>
+        new OpenAiChatGptAuthError({
+          message: 'Failed to parse JWT claims',
+          cause,
+        }),
     }).pipe(Effect.option, Effect.map(Option.getOrUndefined))
   )
 }
@@ -205,15 +217,16 @@ const refreshOpenAiOauthWithStore = Effect.fn(
       return Schema.decodeUnknownSync(TokenResponse)(await response.json())
     },
     catch: (cause) =>
-      new Error(
-        Match.value(cause).pipe(
+      new OpenAiChatGptAuthError({
+        message: Match.value(cause).pipe(
           Match.when(
             (value: unknown): value is Error => value instanceof Error,
             (value) => value.message
           ),
           Match.orElse(() => 'Token refresh failed')
-        )
-      ),
+        ),
+        cause,
+      }),
   })
 
   const next = new ProviderOauthInfo({
@@ -241,7 +254,10 @@ export const currentOpenAiOauth = Effect.fn('OpenAiChatGptAuth.current')(
     )
     const current = yield* Effect.fromNullishOr(oauth).pipe(
       Effect.mapError(
-        () => new Error('OpenAI ChatGPT credentials are not available')
+        () =>
+          new OpenAiChatGptAuthError({
+            message: 'OpenAI ChatGPT credentials are not available',
+          })
       )
     )
     const fresh = Effect.succeed(current)
@@ -368,7 +384,10 @@ const listenOnPorts = (ports: ReadonlyArray<number>): Promise<number> => {
   return Match.value(port).pipe(
     Match.when(undefined, () =>
       Promise.reject(
-        new Error('Unable to start OAuth callback server on ports 1455 or 1457')
+        new OpenAiChatGptAuthError({
+          message:
+            'Unable to start OAuth callback server on ports 1455 or 1457',
+        })
       )
     ),
     Match.orElse((candidate) =>
@@ -382,13 +401,21 @@ const ensureServer = Effect.fn('OpenAiChatGptAuth.ensureServer')(function* () {
   return yield* Effect.tryPromise({
     try: () => listenOnPorts(PORTS),
     catch: (cause) =>
-      Match.value(cause).pipe(
-        Match.when(
-          (value: unknown): value is Error => value instanceof Error,
-          (value) => value
+      new OpenAiChatGptAuthError({
+        message: Match.value(cause).pipe(
+          Match.when(
+            (value: unknown): value is Error => value instanceof Error,
+            (value) => value.message
+          ),
+          Match.when(
+            (value: unknown): value is OpenAiChatGptAuthError =>
+              value instanceof OpenAiChatGptAuthError,
+            (value) => value.message
+          ),
+          Match.orElse(() => 'Unable to start OAuth callback server')
         ),
-        Match.orElse(() => new Error('Unable to start OAuth callback server'))
-      ),
+        cause,
+      }),
   })
 })
 

@@ -98,7 +98,7 @@ const server = Command.make('sorato-server', {}, () =>
       Option.getOrUndefined(cliLogLevel)
     )
 
-    yield* Effect.logInfo('Logging configured', {
+    return yield* Effect.logInfo('Logging configured', {
       logLevel: resolvedLogLevel,
       logFile: resolveLogFile(),
     }).pipe(

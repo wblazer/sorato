@@ -12,6 +12,7 @@
     "format:check": "oxfmt . --check",
     "lint": "oxlint .",
     "lint:fix": "oxlint . --fix",
+    "effect:diagnostics": "effect-language-service diagnostics --project tsconfig.json --format text --severity warning,error --strict",
     "effect-solutions": "bun node_modules/effect-solutions/dist/cli.js",
     "web": "bun run --filter @sorato/web dev",
     "server": "bun run --filter @sorato/server dev",

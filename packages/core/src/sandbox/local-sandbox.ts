@@ -14,6 +14,7 @@ import { BunServices } from '@effect/platform-bun'
 import {
   Sandbox,
   SandboxError,
+  type ExecCommand,
   type ExecResult,
   type Shell,
   type Files,
@@ -118,7 +119,7 @@ export const LocalSandbox = Layer.effect(Sandbox)(
 
       // -- Shell service --------------------------------------------------
 
-      const exec = Effect.fn('Shell.exec')(function* (input) {
+      const exec = Effect.fn('Shell.exec')(function* (input: ExecCommand) {
         const cwd = yield* Match.value(input.cwd).pipe(
           Match.when(undefined, () => Effect.succeed(rootDir)),
           Match.orElse((workingDirectory) =>
