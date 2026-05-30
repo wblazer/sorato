@@ -4,12 +4,13 @@ import {
   Generated as AnthropicGenerated,
 } from '@effect/ai-anthropic'
 import { OpenAiClient, OpenAiLanguageModel } from '@effect/ai-openai'
-import { Config, Effect, Layer, Match, Redacted, Schema } from 'effect'
+import { Config, Effect, Layer, Match, Redacted, Schema, Stream } from 'effect'
 import type { LanguageModel } from 'effect/unstable/ai'
 import {
   FetchHttpClient,
   HttpClient,
   HttpClientRequest,
+  HttpClientResponse,
 } from 'effect/unstable/http'
 import { MODEL_PROVIDERS } from './models.generated.ts'
 import type { ModelSelection } from './model-catalog.ts'
@@ -175,6 +176,48 @@ const withCodexInstructions = (
   )
 }
 
+const patchMissingCompletedOutput = (line: string) => {
+  if (!line.startsWith('data: ')) return line
+
+  const payload = line.slice('data: '.length)
+  if (
+    !payload.includes('"type":"response.completed"') ||
+    payload.includes('"output":')
+  ) {
+    return line
+  }
+
+  return `data: ${payload.replace(
+    '"response":{"id"',
+    '"response":{"output":[],"id"'
+  )}`
+}
+
+const withCodexResponseCompatibility = (
+  response: HttpClientResponse.HttpClientResponse
+) => {
+  const headers = new globalThis.Headers(response.headers)
+  headers.delete('content-length')
+
+  return HttpClientResponse.fromWeb(
+    response.request,
+    new Response(
+      Stream.toReadableStream(
+        response.stream.pipe(
+          Stream.decodeText(),
+          Stream.splitLines,
+          Stream.map((line) => `${patchMissingCompletedOutput(line)}\n`),
+          Stream.encodeText
+        )
+      ),
+      {
+        headers,
+        status: response.status,
+      }
+    )
+  )
+}
+
 export const PROVIDER_ADAPTERS = {
   anthropic: {
     available: any,
@@ -238,16 +281,9 @@ export const PROVIDER_ADAPTERS = {
               client.pipe(
                 HttpClient.mapRequestEffect((request) =>
                   Effect.gen(function* () {
-                    const currentRaw = currentOpenAiOauth(authStore)
-                    const currentMapped = Effect.mapError(
-                      currentRaw,
-                      (error) =>
-                        new Error(
-                          `Failed to refresh OpenAI ChatGPT credentials: ${error.message}`
-                        )
+                    const current = yield* currentOpenAiOauth(authStore).pipe(
+                      Effect.orDie
                     )
-                    const currentEffect = Effect.orDie(currentMapped)
-                    const current = yield* currentEffect
 
                     const url = new URL(request.url)
                     const target =
@@ -289,6 +325,9 @@ export const PROVIDER_ADAPTERS = {
                       setAccountId
                     )
                   })
+                ),
+                HttpClient.transformResponse(
+                  Effect.map(withCodexResponseCompatibility)
                 )
               ),
           })
