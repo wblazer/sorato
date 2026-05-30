@@ -1,4 +1,4 @@
-import { Effect, Match } from 'effect'
+import { Effect } from 'effect'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import {
   Api,
@@ -14,13 +14,7 @@ import { startOpenAiOauth } from './openai-chatgpt-auth.ts'
 import { hasProviderAuth, setApiKey } from './provider-auth.ts'
 
 const authErrorMessage = (error: unknown, fallback: string) =>
-  Match.value(error).pipe(
-    Match.when(
-      (value: unknown): value is Error => value instanceof Error,
-      (value) => value.message
-    ),
-    Match.orElse(() => fallback)
-  )
+  error instanceof Error ? error.message : fallback
 
 const credentialsUnavailable =
   (operation: string, fallback: string) => (error: unknown) =>

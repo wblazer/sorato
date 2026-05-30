@@ -163,13 +163,7 @@ const availableEntries = () =>
   )
 
 const providerCredentialMessage = (error: unknown) =>
-  Match.value(error).pipe(
-    Match.when(
-      (value: unknown): value is Error => value instanceof Error,
-      (value) => value.message
-    ),
-    Match.orElse(() => 'Failed to read provider credentials')
-  )
+  error instanceof Error ? error.message : 'Failed to read provider credentials'
 
 const listModelsEffect = Effect.fn('ModelCatalog.list')(function* (
   dir: string

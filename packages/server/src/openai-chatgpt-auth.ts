@@ -21,7 +21,16 @@ const TokenResponse = Schema.Struct({
   expires_in: Schema.optional(Schema.Number),
 })
 type TokenResponse = typeof TokenResponse.Type
-const JwtClaims = Schema.Record(Schema.String, Schema.Unknown)
+const JwtClaims = Schema.Struct({
+  chatgpt_account_id: Schema.optionalKey(Schema.String),
+  'https://api.openai.com/auth': Schema.optionalKey(
+    Schema.Struct({ chatgpt_account_id: Schema.String })
+  ),
+  organizations: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ id: Schema.String }))
+  ),
+})
+type JwtClaims = typeof JwtClaims.Type
 
 class OpenAiChatGptAuthError extends Schema.TaggedErrorClass<OpenAiChatGptAuthError>()(
   'OpenAiChatGptAuthError',
@@ -58,7 +67,7 @@ const pkce = async (): Promise<Pkce> => {
   return { verifier, challenge }
 }
 
-const parseJwtClaims = (token: string): Record<string, unknown> | undefined => {
+const parseJwtClaims = (token: string): JwtClaims | undefined => {
   const [, payload] = token.split('.')
   if (!payload) return
   return Effect.runSync(
@@ -76,38 +85,13 @@ const parseJwtClaims = (token: string): Record<string, unknown> | undefined => {
   )
 }
 
-const organizationAccountId = (claims: Record<string, unknown>) =>
-  Match.value(claims.organizations).pipe(
-    Match.when(
-      (value: unknown): value is Array<{ id: string }> =>
-        Array.isArray(value) &&
-        value[0] !== undefined &&
-        typeof value[0] === 'object' &&
-        value[0] !== null &&
-        'id' in value[0] &&
-        typeof value[0].id === 'string',
-      (value) => value[0]?.id
-    ),
-    Match.orElse(() => undefined)
-  )
+const organizationAccountId = (claims: JwtClaims) =>
+  claims.organizations?.[0]?.id
 
-const accountIdFromClaims = (claims: Record<string, unknown>) => {
-  if (typeof claims.chatgpt_account_id === 'string')
-    return claims.chatgpt_account_id
-  const auth = claims['https://api.openai.com/auth']
-  const authAccountId = Match.value(auth).pipe(
-    Match.when(
-      (value: unknown): value is { chatgpt_account_id: string } =>
-        value !== null &&
-        typeof value === 'object' &&
-        'chatgpt_account_id' in value &&
-        typeof value.chatgpt_account_id === 'string',
-      (value) => value.chatgpt_account_id
-    ),
-    Match.orElse(() => undefined)
-  )
-  return authAccountId ?? organizationAccountId(claims)
-}
+const accountIdFromClaims = (claims: JwtClaims) =>
+  claims.chatgpt_account_id ??
+  claims['https://api.openai.com/auth']?.chatgpt_account_id ??
+  organizationAccountId(claims)
 
 export const accountIdFromTokens = (tokens: TokenResponse) => {
   const idClaims = Match.value(tokens.id_token).pipe(
@@ -218,13 +202,8 @@ const refreshOpenAiOauthWithStore = Effect.fn(
     },
     catch: (cause) =>
       new OpenAiChatGptAuthError({
-        message: Match.value(cause).pipe(
-          Match.when(
-            (value: unknown): value is Error => value instanceof Error,
-            (value) => value.message
-          ),
-          Match.orElse(() => 'Token refresh failed')
-        ),
+        message:
+          cause instanceof Error ? cause.message : 'Token refresh failed',
         cause,
       }),
   })
@@ -244,14 +223,7 @@ const refreshOpenAiOauthWithStore = Effect.fn(
 export const currentOpenAiOauth = Effect.fn('OpenAiChatGptAuth.current')(
   function* (store: ProviderAuthStoreApi) {
     const stored = yield* store.getAuth('openai')
-    const oauth = Match.value(stored).pipe(
-      Match.when(
-        (value: unknown): value is ProviderOauthInfo =>
-          value instanceof ProviderOauthInfo,
-        (value) => value
-      ),
-      Match.orElse(() => undefined)
-    )
+    const oauth = stored instanceof ProviderOauthInfo ? stored : undefined
     const current = yield* Effect.fromNullishOr(oauth).pipe(
       Effect.mapError(
         () =>
@@ -357,13 +329,8 @@ const listen = (candidate: number) =>
           )
         })
         .catch((error) => {
-          const message = Match.value(error).pipe(
-            Match.when(
-              (value: unknown): value is Error => value instanceof Error,
-              (value) => value.message
-            ),
-            Match.orElse(() => 'Sign-in failed')
-          )
+          const message =
+            error instanceof Error ? error.message : 'Sign-in failed'
           response.writeHead(500, {
             'Content-Type': 'text/html; charset=utf-8',
           })
@@ -402,18 +369,10 @@ const ensureServer = Effect.fn('OpenAiChatGptAuth.ensureServer')(function* () {
     try: () => listenOnPorts(PORTS),
     catch: (cause) =>
       new OpenAiChatGptAuthError({
-        message: Match.value(cause).pipe(
-          Match.when(
-            (value: unknown): value is Error => value instanceof Error,
-            (value) => value.message
-          ),
-          Match.when(
-            (value: unknown): value is OpenAiChatGptAuthError =>
-              value instanceof OpenAiChatGptAuthError,
-            (value) => value.message
-          ),
-          Match.orElse(() => 'Unable to start OAuth callback server')
-        ),
+        message:
+          cause instanceof Error
+            ? cause.message
+            : 'Unable to start OAuth callback server',
         cause,
       }),
   })

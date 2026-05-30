@@ -1,4 +1,4 @@
-import { Context } from 'effect'
+import { Context, Option, Schema } from 'effect'
 
 export interface ToolDisplayFileContents {
   readonly name: string
@@ -90,16 +90,17 @@ export const diffStats = (oldContent: string, newContent: string) => {
   }
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null
+const ToolCallDisplayParams = Schema.Struct({
+  path: Schema.optionalKey(Schema.String),
+  filePath: Schema.optionalKey(Schema.String),
+})
 
 const displaySubtitle = (params: unknown): string | undefined => {
-  if (!isRecord(params)) return undefined
-  const path = params.path
-  if (typeof path === 'string') return path
-  const filePath = params.filePath
-  if (typeof filePath === 'string') return filePath
-  return undefined
+  const parsed = Schema.decodeUnknownOption(ToolCallDisplayParams)(params)
+  return Option.match(parsed, {
+    onNone: () => undefined,
+    onSome: ({ path, filePath }) => path ?? filePath,
+  })
 }
 
 export const toolCallDisplay = (

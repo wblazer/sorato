@@ -4,7 +4,16 @@ import {
   Generated as AnthropicGenerated,
 } from '@effect/ai-anthropic'
 import { OpenAiClient, OpenAiLanguageModel } from '@effect/ai-openai'
-import { Config, Effect, Layer, Match, Redacted, Schema, Stream } from 'effect'
+import {
+  Config,
+  Effect,
+  Layer,
+  Match,
+  Option,
+  Redacted,
+  Schema,
+  Stream,
+} from 'effect'
 import type { LanguageModel } from 'effect/unstable/ai'
 import {
   FetchHttpClient,
@@ -53,14 +62,22 @@ const CodexRequestBody = Schema.Struct({
   instructions: Schema.optional(Schema.String),
 })
 const CodexRequestRecord = Schema.Record(Schema.String, Schema.Unknown)
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null
+const CodexInputItem = Schema.Record(Schema.String, Schema.Unknown)
+const CodexInstructionItem = Schema.Struct({
+  role: Schema.Literals(['system', 'developer']),
+  content: Schema.String,
+})
 
 const removeEmptyRole = (item: unknown): unknown => {
-  if (!isRecord(item) || item.role !== '') return item
-  const { role: _role, ...rest } = item
-  return rest
+  const inputItem = Schema.decodeUnknownOption(CodexInputItem)(item)
+  return Option.match(inputItem, {
+    onNone: () => item,
+    onSome: (record) => {
+      if (record.role !== '') return record
+      const { role: _role, ...rest } = record
+      return rest
+    },
+  })
 }
 
 const modelIds = (provider: ProviderId): ReadonlySet<string> =>
@@ -146,17 +163,12 @@ const withCodexInstructions = (
   const input = Array.isArray(rawBody.input) ? rawBody.input : []
   const instructionIndex = input.findIndex(
     (item) =>
-      isRecord(item) &&
-      (item.role === 'system' || item.role === 'developer') &&
-      typeof item.content === 'string' &&
-      item.content.trim()
+      Schema.is(CodexInstructionItem)(item) && item.content.trim().length > 0
   )
   const inputInstructions = Match.value(instructionIndex >= 0).pipe(
     Match.when(true, () => {
       const item = input[instructionIndex]
-      return isRecord(item) && typeof item.content === 'string'
-        ? item.content
-        : undefined
+      return Schema.is(CodexInstructionItem)(item) ? item.content : undefined
     }),
     Match.orElse(() => undefined)
   )

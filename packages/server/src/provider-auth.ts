@@ -98,30 +98,19 @@ const toAuth = (row: ProviderAuthRow | null): ProviderAuth | undefined => {
     Match.when(null, () => undefined),
     Match.orElse((key) => new ProviderAuthInfo({ type: 'api', key }))
   )
-  const oauthAuth = Match.value(row).pipe(
-    Match.when(
-      (
-        value
-      ): value is ProviderAuthRow & {
-        access_token: string
-        refresh_token: string
-        expires_at: number
-      } =>
-        value.access_token !== null &&
-        value.refresh_token !== null &&
-        value.expires_at !== null,
-      (value) =>
-        new ProviderOauthInfo({
+  const oauthAuth =
+    row.access_token !== null &&
+    row.refresh_token !== null &&
+    row.expires_at !== null
+      ? new ProviderOauthInfo({
           type: 'oauth',
-          access: value.access_token,
-          refresh: value.refresh_token,
-          expires: value.expires_at,
-          lastRefresh: value.last_refresh_at ?? undefined,
-          accountId: value.account_id ?? undefined,
+          access: row.access_token,
+          refresh: row.refresh_token,
+          expires: row.expires_at,
+          lastRefresh: row.last_refresh_at ?? undefined,
+          accountId: row.account_id ?? undefined,
         })
-    ),
-    Match.orElse(() => undefined)
-  )
+      : undefined
   return Match.value(row.type).pipe(
     Match.when('api', () => apiAuth),
     Match.orElse(() => oauthAuth)
