@@ -15,15 +15,15 @@
     "start": "bun --env-file=../../.env run src/main.ts"
   },
   "dependencies": {
-    "@effect/ai-anthropic": "4.0.0-beta.60",
-    "@effect/ai-openai": "4.0.0-beta.60",
-    "@effect/platform-bun": "4.0.0-beta.60",
-    "@effect/sql-sqlite-bun": "4.0.0-beta.60",
+    "@effect/ai-anthropic": "4.0.0-beta.74",
+    "@effect/ai-openai": "4.0.0-beta.74",
+    "@effect/platform-bun": "4.0.0-beta.74",
+    "@effect/sql-sqlite-bun": "4.0.0-beta.74",
     "@sorato/core": "workspace:*",
-    "effect": "4.0.0-beta.60"
+    "effect": "4.0.0-beta.74"
   },
   "devDependencies": {
-    "@effect/vitest": "4.0.0-beta.60",
-    "vitest": "^4.0.18"
+    "@effect/vitest": "4.0.0-beta.74",
+    "vitest": "^4.1.7"
   }
 }

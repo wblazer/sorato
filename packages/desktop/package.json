@@ -15,12 +15,12 @@
     "test": "echo 'no desktop tests yet'"
   },
   "dependencies": {
-    "effect": "4.0.0-beta.60",
-    "electron": "^41.5.0"
+    "effect": "4.0.0-beta.74",
+    "electron": "^42.3.0"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
-    "tsdown": "^0.16.7",
+    "@types/node": "^25.9.1",
+    "tsdown": "^0.22.1",
     "typescript": "^6"
   },
   "productName": "Sorato"

@@ -20,13 +20,13 @@
     "desktop:build": "bun run --filter @sorato/web build && bun run --filter @sorato/desktop build"
   },
   "devDependencies": {
-    "@effect/language-service": "^0.85.1",
-    "@oxlint/plugins": "^1.63.0",
-    "@types/bun": "latest",
-    "@typescript/native-preview": "beta",
-    "effect-solutions": "^0.4.13",
-    "oxfmt": "^0.48.0",
-    "oxlint": "^1.63.0",
+    "@effect/language-service": "^0.86.2",
+    "@oxlint/plugins": "^1.67.0",
+    "@types/bun": "^1.3.14",
+    "@typescript/native-preview": "7.0.0-dev.20260527.2",
+    "effect-solutions": "^0.5.3",
+    "oxfmt": "^0.52.0",
+    "oxlint": "^1.67.0",
     "typescript": "^6"
   }
 }
