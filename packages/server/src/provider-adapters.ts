@@ -1,4 +1,8 @@
-import { AnthropicClient, AnthropicLanguageModel } from '@effect/ai-anthropic'
+import {
+  AnthropicClient,
+  AnthropicLanguageModel,
+  Generated as AnthropicGenerated,
+} from '@effect/ai-anthropic'
 import { OpenAiClient, OpenAiLanguageModel } from '@effect/ai-openai'
 import { Config, Effect, Layer, Match, Redacted, Schema } from 'effect'
 import type { LanguageModel } from 'effect/unstable/ai'
@@ -65,7 +69,8 @@ const modelIds = (provider: ProviderId): ReadonlySet<string> =>
     ) ?? []
   )
 
-const anthropicModels = modelIds('anthropic')
+const anthropicCatalogModels = modelIds('anthropic')
+const isAnthropicRuntimeModel = Schema.is(AnthropicGenerated.Model)
 const openAiModels = modelIds('openai')
 
 const supportsAnthropicAdaptiveThinking = (modelId: string) =>
@@ -173,7 +178,8 @@ const withCodexInstructions = (
 export const PROVIDER_ADAPTERS = {
   anthropic: {
     available: any,
-    supportsModel: (model: string) => anthropicModels.has(model),
+    supportsModel: (model: string) =>
+      anthropicCatalogModels.has(model) && isAnthropicRuntimeModel(model),
     layer: (_dataDir: string, selection: ModelSelection) => {
       return AnthropicLanguageModel.layer({
         model: selection.id as AnthropicLanguageModel.Model,

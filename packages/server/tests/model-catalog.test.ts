@@ -90,7 +90,12 @@ describe('ModelCatalog', () => {
         )
         expect(models.models[0]?.id).toBe('openai/gpt-5.5-pro')
         expect(models.models[1]?.id).toBe('openai/gpt-5.5')
-        expect(models.models[2]?.id).toBe('anthropic/claude-opus-4-7')
+        expect(
+          models.models.find((item) => item.id.startsWith('anthropic/'))?.id
+        ).toBe('anthropic/claude-sonnet-4-6')
+        expect(
+          models.models.some((item) => item.id === 'anthropic/claude-opus-4-8')
+        ).toBe(false)
         expect(models.defaultModel).toBe(`openai/${openai.models[0]?.id}`)
 
         restoreEnv('XDG_CONFIG_HOME', prevXdg)
