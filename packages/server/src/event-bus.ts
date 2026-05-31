@@ -21,7 +21,7 @@ import { Effect } from 'effect'
 import type {
   HarnessEvent,
   HarnessHook,
-  ToolCallDisplay,
+  MessageHeaderDisplay,
   ToolResultDisplay,
 } from '@sorato/core'
 import { appendReplayEvent } from './event-replay.ts'
@@ -54,7 +54,7 @@ export type ServerEvent =
       readonly id: string
       readonly name: string
       readonly params: unknown
-      readonly display?: ToolCallDisplay | undefined
+      readonly display?: MessageHeaderDisplay | undefined
       readonly eventId: number
     }
   | {

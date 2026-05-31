@@ -25,6 +25,10 @@ import { Context, Schema } from 'effect'
 import type { Effect } from 'effect/Effect'
 import type { Prompt } from 'effect/unstable/ai'
 import { Prompt as PromptSchemas } from 'effect/unstable/ai'
+import {
+  MessageHeaderDisplaySchema,
+  ToolResultDisplaySchema,
+} from '@sorato/core'
 
 // ---------------------------------------------------------------------------
 // Branded IDs
@@ -85,12 +89,12 @@ export const SystemMessageSource = Schema.Literals([
 
 export const StoredToolCallPart = Schema.Struct({
   ...PromptSchemas.ToolCallPart.fields,
-  display: Schema.optionalKey(Schema.Unknown),
+  display: Schema.optionalKey(MessageHeaderDisplaySchema),
 })
 
 export const StoredToolResultPart = Schema.Struct({
   ...PromptSchemas.ToolResultPart.fields,
-  display: Schema.optionalKey(Schema.Unknown),
+  display: Schema.optionalKey(ToolResultDisplaySchema),
 })
 
 export const StoredPart = Schema.Union([
@@ -107,6 +111,7 @@ export const StoredSystemMessage = Schema.Struct({
   ...PromptSchemas.SystemMessage.fields,
   content: Schema.optionalKey(Schema.String),
   source: Schema.optionalKey(SystemMessageSource),
+  display: Schema.optionalKey(MessageHeaderDisplaySchema),
 })
 
 export const StoredUserMessage = Schema.Struct({

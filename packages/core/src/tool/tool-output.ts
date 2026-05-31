@@ -1,27 +1,30 @@
 import { Context, Option, Schema } from 'effect'
 
-export interface ToolDisplayFileContents {
-  readonly name: string
-  readonly contents: string
-  readonly lang?: string | undefined
-  readonly header?: string | undefined
-  readonly cacheKey?: string | undefined
-}
+export const ToolDisplayFileContentsSchema = Schema.Struct({
+  name: Schema.String,
+  contents: Schema.String,
+  lang: Schema.optionalKey(Schema.String),
+  header: Schema.optionalKey(Schema.String),
+  cacheKey: Schema.optionalKey(Schema.String),
+})
+export type ToolDisplayFileContents = typeof ToolDisplayFileContentsSchema.Type
 
-export interface ToolCallDisplay {
-  readonly title?: string | undefined
-  readonly subtitle?: string | undefined
-}
+export const MessageHeaderDisplaySchema = Schema.Struct({
+  title: Schema.optionalKey(Schema.String),
+  subtitle: Schema.optionalKey(Schema.String),
+})
+export type MessageHeaderDisplay = typeof MessageHeaderDisplaySchema.Type
 
-export type ToolResultDisplay = {
-  readonly type: 'diff'
-  readonly oldFile: ToolDisplayFileContents
-  readonly newFile: ToolDisplayFileContents
-  readonly summary: {
-    readonly additions: number
-    readonly deletions: number
-  }
-}
+export const ToolResultDisplaySchema = Schema.Struct({
+  type: Schema.Literal('diff'),
+  oldFile: ToolDisplayFileContentsSchema,
+  newFile: ToolDisplayFileContentsSchema,
+  summary: Schema.Struct({
+    additions: Schema.Number,
+    deletions: Schema.Number,
+  }),
+})
+export type ToolResultDisplay = typeof ToolResultDisplaySchema.Type
 
 export interface ToolResultPresentation {
   readonly toolName: string
@@ -90,13 +93,13 @@ export const diffStats = (oldContent: string, newContent: string) => {
   }
 }
 
-const ToolCallDisplayParams = Schema.Struct({
+const ToolCallHeaderParams = Schema.Struct({
   path: Schema.optionalKey(Schema.String),
   filePath: Schema.optionalKey(Schema.String),
 })
 
 const displaySubtitle = (params: unknown): string | undefined => {
-  const parsed = Schema.decodeUnknownOption(ToolCallDisplayParams)(params)
+  const parsed = Schema.decodeUnknownOption(ToolCallHeaderParams)(params)
   return Option.match(parsed, {
     onNone: () => undefined,
     onSome: ({ path, filePath }) => path ?? filePath,
@@ -106,10 +109,13 @@ const displaySubtitle = (params: unknown): string | undefined => {
 export const toolCallDisplay = (
   toolName: string,
   params: unknown
-): ToolCallDisplay => ({
-  title: toolName,
-  subtitle: displaySubtitle(params),
-})
+): MessageHeaderDisplay => {
+  const subtitle = displaySubtitle(params)
+  return {
+    title: toolName,
+    ...(subtitle !== undefined ? { subtitle } : {}),
+  }
+}
 
 export const recordFileDiffPresentation = (
   registry: ToolOutputRegistryApi,

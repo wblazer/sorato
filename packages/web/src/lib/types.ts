@@ -1,6 +1,6 @@
 import type { FileContents } from '@pierre/diffs'
 
-export interface ToolCallDisplay {
+export interface MessageHeaderDisplay {
   title?: string
   subtitle?: string
 }
@@ -94,12 +94,14 @@ export interface SystemMessage {
   role: 'system'
   content: string
   source?: 'system-prompt' | 'agents-md' | 'interruption'
+  display?: MessageHeaderDisplay
 }
 
 export interface SystemUiMessage {
   role: 'system'
   source?: 'system-prompt' | 'agents-md' | 'interruption'
   content?: string
+  display?: MessageHeaderDisplay
 }
 
 export interface UserMessage {
@@ -147,7 +149,7 @@ export interface ToolCallPart {
   id: string
   name: string
   params: unknown
-  display?: ToolCallDisplay
+  display?: MessageHeaderDisplay
 }
 
 export interface ToolResultPart {
@@ -220,7 +222,7 @@ export type ServerEvent =
       id: string
       name: string
       params: unknown
-      display?: ToolCallDisplay
+      display?: MessageHeaderDisplay
       eventId: number
     }
   | {

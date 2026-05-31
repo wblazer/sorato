@@ -32,9 +32,14 @@ export type {
 export { run } from './harness/run.ts'
 
 // Tool display metadata
-export { ToolOutputRegistry } from './tool/tool-output.ts'
+export {
+  MessageHeaderDisplaySchema,
+  ToolDisplayFileContentsSchema,
+  ToolOutputRegistry,
+  ToolResultDisplaySchema,
+} from './tool/tool-output.ts'
 export type {
-  ToolCallDisplay,
+  MessageHeaderDisplay,
   ToolDisplayFileContents,
   ToolResultDisplay,
   ToolResultPresentation,

@@ -97,6 +97,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
           role: 'system' as const,
           content: SYSTEM_PROMPT,
           source: 'system-prompt' as const,
+          display: { title: 'System Prompt' },
         },
         { role: 'user' as const, content: request.input },
       ]),
