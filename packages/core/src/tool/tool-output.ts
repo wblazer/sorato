@@ -109,13 +109,78 @@ export const diffStats = (oldContent: string, newContent: string) => {
 const ToolCallHeaderParams = Schema.Struct({
   path: Schema.optionalKey(Schema.String),
   filePath: Schema.optionalKey(Schema.String),
+  command: Schema.optionalKey(Schema.String),
+  description: Schema.optionalKey(Schema.String),
+  pattern: Schema.optionalKey(Schema.String),
+  include: Schema.optionalKey(Schema.String),
+  cwd: Schema.optionalKey(Schema.String),
 })
 
-const displaySubtitle = (params: unknown): string | undefined => {
+type ToolCallHeaderParams = typeof ToolCallHeaderParams.Type
+
+const trimToUndefined = (value: string | undefined): string | undefined => {
+  const trimmed = value?.trim()
+  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed
+}
+
+const compactOneLine = (value: string): string =>
+  value
+    .split('\n')
+    .find((line) => line.trim().length > 0)
+    ?.trim() ?? value.trim()
+
+const preview = (value: string, maxLength = 96): string => {
+  const oneLine = compactOneLine(value).replace(/\s+/g, ' ')
+  if (oneLine.length <= maxLength) return oneLine
+  return `${oneLine.slice(0, maxLength - 1).trimEnd()}…`
+}
+
+const fileSubtitle = ({ path, filePath }: ToolCallHeaderParams) =>
+  trimToUndefined(path) ?? trimToUndefined(filePath)
+
+const bashSubtitle = ({ command }: ToolCallHeaderParams) => {
+  const trimmed = trimToUndefined(command)
+  return trimmed === undefined ? undefined : preview(trimmed)
+}
+
+const globSubtitle = ({ path, pattern }: ToolCallHeaderParams) => {
+  const trimmedPattern = trimToUndefined(pattern)
+  if (trimmedPattern === undefined) return trimToUndefined(path)
+  const trimmedPath = trimToUndefined(path)
+  return trimmedPath === undefined
+    ? preview(trimmedPattern)
+    : preview(`${trimmedPath.replace(/\/+$/, '')}/${trimmedPattern}`)
+}
+
+const grepSubtitle = ({ path, pattern, include }: ToolCallHeaderParams) => {
+  const trimmedPath = trimToUndefined(path)
+  const parts = [
+    trimToUndefined(pattern),
+    trimToUndefined(include),
+    trimmedPath === undefined ? undefined : `in ${trimmedPath}`,
+  ].filter((part): part is string => part !== undefined)
+  return parts.length === 0 ? undefined : preview(parts.join(' · '))
+}
+
+const displaySubtitle = (
+  toolName: string,
+  params: unknown
+): string | undefined => {
   const parsed = Schema.decodeUnknownOption(ToolCallHeaderParams)(params)
   return Option.match(parsed, {
     onNone: () => undefined,
-    onSome: ({ path, filePath }) => path ?? filePath,
+    onSome: (params) => {
+      switch (toolName.toLowerCase()) {
+        case 'bash':
+          return bashSubtitle(params)
+        case 'glob':
+          return globSubtitle(params)
+        case 'grep':
+          return grepSubtitle(params)
+        default:
+          return fileSubtitle(params)
+      }
+    },
   })
 }
 
@@ -140,7 +205,7 @@ export const toolCallHeader = (
   toolName: string,
   params: unknown
 ): MessageHeaderDisplay => {
-  const subtitle = displaySubtitle(params)
+  const subtitle = displaySubtitle(toolName, params)
   const icon = toolIcon(toolName)
   return {
     title: toolName,
