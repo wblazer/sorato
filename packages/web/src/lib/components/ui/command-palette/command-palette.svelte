@@ -8,7 +8,6 @@
        * (fetching, selection, extra keybindings) through props.
        */
       import * as Dialog from '$lib/components/ui/dialog/index.js'
-      import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
       import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
       import { cn } from '$lib/utils.js'
       import type { Snippet } from 'svelte'
@@ -150,22 +149,23 @@
     </div>
 
     <!-- List area -->
-    <ScrollArea
-      bind:viewportRef={listEl}
-      class="max-h-72"
-      viewportClass="overscroll-contain p-1"
+    <div
+      bind:this={listEl}
+      class="no-scrollbar max-h-72 scroll-py-1 overflow-y-auto overscroll-contain"
     >
-      {#if itemCount > 0}
-        {@render items()}
-      {:else if !loading}
-        {#if empty}
-          {@render empty()}
-        {:else}
-          <div class="px-3 py-6 text-center text-sm text-muted-foreground">
-            No results found
-          </div>
+      <div class="p-1">
+        {#if itemCount > 0}
+          {@render items()}
+        {:else if !loading}
+          {#if empty}
+            {@render empty()}
+          {:else}
+            <div class="px-3 py-6 text-center text-sm text-muted-foreground">
+              No results found
+            </div>
+          {/if}
         {/if}
-      {/if}
-    </ScrollArea>
+      </div>
+    </div>
   </Dialog.DialogContent>
 </Dialog.Dialog>
