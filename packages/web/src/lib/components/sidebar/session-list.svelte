@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Item from '$lib/components/ui/item/index.js'
+  import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import { actionStore } from '$lib/stores/actions.svelte.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
@@ -43,7 +44,7 @@
     </Button>
   </div>
 
-  <div class="flex-1 overflow-y-auto px-2 pb-2">
+  <ScrollArea class="min-h-0 flex-1" viewportClass="px-2 pb-2">
     {#if sessionStore.loading && sessionStore.sessions.length === 0}
       <p class="px-3 py-4 text-center text-xs text-muted-foreground">Loading sessions…</p>
     {:else if sessionStore.error}
@@ -87,5 +88,5 @@
         </button>
       {/each}
     {/if}
-  </div>
+  </ScrollArea>
 </div>

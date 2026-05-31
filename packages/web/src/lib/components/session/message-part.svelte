@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { MessagePart } from '$lib/types.js'
+  import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import MessageIcon from './message-icon.svelte'
   import ToolResult from './tool-result.svelte'
 
@@ -37,12 +38,17 @@
       {/if}
     </div>
     {#if part.params != null}
-      <pre
-        class="max-h-48 overflow-auto px-2.5 py-3 text-sm leading-relaxed">{JSON.stringify(
+      <ScrollArea
+        orientation="both"
+        class="max-h-48"
+        viewportClass="max-h-48 rounded-none"
+      >
+        <pre class="min-w-max px-2.5 py-3 text-sm leading-relaxed">{JSON.stringify(
           part.params,
           null,
           2
         )}</pre>
+      </ScrollArea>
     {/if}
   </div>
 {:else if part.type === 'tool-result'}

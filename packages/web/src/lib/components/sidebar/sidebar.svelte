@@ -1,6 +1,7 @@
 <script lang="ts">
   import ConnectionManager from '../connection-manager.svelte'
   import { Button } from '$lib/components/ui/button/index.js'
+  import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { tabStore } from '$lib/stores/tabs.svelte.js'
   import { cn } from '$lib/utils.js'
@@ -27,7 +28,8 @@
   class="flex h-screen w-72 min-w-72 shrink-0 flex-col border-r border-border bg-background"
   data-slot="sidebar"
 >
-  <div class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-2 pt-2 pb-2">
+  <ScrollArea class="min-h-0 flex-1" viewportClass="px-2 pt-2 pb-2">
+    <div class="flex flex-col gap-1">
     <div class="sticky top-0 z-20 bg-background pb-1">
       <Button
         type="button"
@@ -87,7 +89,8 @@
         </button>
       </div>
     {/each}
-  </div>
+    </div>
+  </ScrollArea>
 
   <div class="mt-auto w-full border-t border-border p-2">
     <ConnectionManager />

@@ -23,7 +23,7 @@
 		{sideOffset}
 		{align}
 		class={cn(
-			"ring-border bg-popover text-foreground min-w-32 rounded-lg p-1 shadow-md ring-1 z-50 w-(--bits-dropdown-menu-anchor-width) overflow-x-hidden overflow-y-auto outline-none data-closed:overflow-hidden",
+			"no-scrollbar ring-border bg-popover text-foreground min-w-32 rounded-lg p-1 shadow-md ring-1 z-50 w-(--bits-dropdown-menu-anchor-width) overflow-x-hidden overflow-y-auto outline-none data-closed:overflow-hidden",
 			className
 		)}
 		{...restProps}

@@ -167,7 +167,7 @@
         {disabled}
         {placeholder}
         rows={1}
-        class={`relative z-10 min-h-[32px] w-full max-h-[220px] scroll-pb-4 overflow-y-auto border border-border bg-surface px-4 py-4 shadow-sm shadow-shadow/30 outline-none focus-visible:border-ring focus-visible:ring-0 md:text-sm ${status ? 'rounded-b-lg rounded-t-none' : 'rounded-lg'}`}
+        class={`no-scrollbar relative z-10 min-h-[32px] w-full max-h-[220px] scroll-pb-4 overflow-y-auto border border-border bg-surface px-4 py-4 shadow-sm shadow-shadow/30 outline-none focus-visible:border-ring focus-visible:ring-0 md:text-sm ${status ? 'rounded-b-lg rounded-t-none' : 'rounded-lg'}`}
       />
 
       <div

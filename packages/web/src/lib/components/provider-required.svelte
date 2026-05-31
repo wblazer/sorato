@@ -3,6 +3,7 @@
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Empty from '$lib/components/ui/empty/index.js'
   import * as Item from '$lib/components/ui/item/index.js'
+  import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import { authStore } from '$lib/stores/auth.svelte.js'
   import KeyIcon from 'phosphor-svelte/lib/KeyIcon'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
@@ -17,7 +18,8 @@
   }
 </script>
 
-<main class="flex h-screen items-center justify-center overflow-y-auto px-6 py-10">
+<ScrollArea class="h-full">
+<main class="flex min-h-full items-center justify-center px-6 py-10">
   <Empty.Root>
     <Empty.Header>
       <Empty.Media variant="icon">
@@ -63,6 +65,7 @@
     </Empty.Content>
   </Empty.Root>
 </main>
+</ScrollArea>
 
 {#if open}
   <ConnectProviderDialog bind:open />

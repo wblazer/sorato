@@ -20,7 +20,7 @@
 		bind:ref
 		data-slot="context-menu-content"
 		class={cn(
-			"ring-border bg-popover text-foreground min-w-32 rounded-lg p-1 shadow-md ring-1 z-50 overflow-x-hidden overflow-y-auto outline-none",
+			"no-scrollbar ring-border bg-popover text-foreground min-w-32 rounded-lg p-1 shadow-md ring-1 z-50 overflow-x-hidden overflow-y-auto outline-none",
 			className
 		)}
 		{...restProps}

@@ -6,6 +6,7 @@
   import * as Select from '$lib/components/ui/select/index.js'
   import { Switch } from '$lib/components/ui/switch/index.js'
   import * as Tabs from '$lib/components/ui/tabs/index.js'
+  import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import { confirmationStore } from '$lib/stores/confirmation.svelte.js'
   import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
   import { createTimedAction } from '$lib/timed-action.svelte.js'
@@ -274,7 +275,8 @@
         </Tabs.List>
       </aside>
 
-      <main class="relative min-h-0 overflow-y-auto p-6 pr-14">
+      <main class="relative min-h-0 overflow-hidden">
+        <ScrollArea class="h-full" viewportClass="p-6 pr-14">
         <Button
           variant="ghost"
           size="icon"
@@ -409,6 +411,7 @@
             </Item.Content>
           </Item.Root>
         {/if}
+        </ScrollArea>
       </main>
     </Tabs.Root>
   </Dialog.Content>

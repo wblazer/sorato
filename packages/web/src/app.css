@@ -94,28 +94,51 @@
   }
 
   * {
-    scrollbar-color: color-mix(
-        in oklch,
-        var(--muted-foreground) 75%,
-        transparent
-      )
-      var(--muted);
+    --scrollbar-thumb: color-mix(
+      in oklch,
+      var(--muted-foreground) 75%,
+      transparent
+    );
+    --scrollbar-thumb-hover: color-mix(
+      in oklch,
+      var(--muted-foreground) 92%,
+      transparent
+    );
+    --scrollbar-track: transparent;
+    scrollbar-color: transparent transparent;
+    scrollbar-width: thin;
+  }
+
+  *:hover {
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
 
   *::-webkit-scrollbar {
-    background: var(--muted);
+    width: 1rem;
+    height: 1rem;
+    background: transparent;
   }
 
-  *::-webkit-scrollbar-track {
-    background: var(--muted);
+  *::-webkit-scrollbar-track,
+  *::-webkit-scrollbar-corner {
+    background: transparent;
   }
 
   *::-webkit-scrollbar-thumb {
-    background: color-mix(in oklch, var(--muted-foreground) 75%, transparent);
+    min-width: 2rem;
+    min-height: 2rem;
+    border: 0.25rem solid transparent;
+    border-radius: 9999px;
+    background-color: transparent;
+    background-clip: padding-box;
+  }
+
+  *:hover::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
   }
 
   *::-webkit-scrollbar-thumb:hover {
-    background: var(--muted-foreground);
+    background-color: var(--scrollbar-thumb-hover);
   }
 
   html {

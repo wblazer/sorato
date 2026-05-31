@@ -2,6 +2,7 @@
   import type { ToolCallPart, ToolResultPart } from '$lib/types.js'
   import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
   import * as Accordion from '$lib/components/ui/accordion/index.js'
+  import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import { diffDisplaySummary } from '$lib/tool-output.js'
   import MessageIcon from './message-icon.svelte'
   import ToolDiff from './tool-diff.svelte'
@@ -56,9 +57,15 @@
       {#if shouldRenderPretty && part.bodyDisplay?.type === 'diff'}
         <ToolDiff display={part.bodyDisplay} />
       {:else}
-        <pre class="max-h-64 overflow-auto px-2.5 py-3 text-sm leading-relaxed"
-          >{part.result}</pre
+        <ScrollArea
+          orientation="both"
+          class="max-h-64"
+          viewportClass="max-h-64 rounded-none"
         >
+          <pre class="min-w-max px-2.5 py-3 text-sm leading-relaxed"
+            >{part.result}</pre
+          >
+        </ScrollArea>
       {/if}
     </Accordion.Content>
   </Accordion.Item>

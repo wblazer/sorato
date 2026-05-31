@@ -11,12 +11,13 @@
       import Composer from './composer.svelte'
       import { Button } from '$lib/components/ui/button/index.js'
       import * as Item from '$lib/components/ui/item/index.js'
+      import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
       import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
 
       let { sessionId, title }: { sessionId: string; title: string | null } =
         $props()
 
-      let messagesContainer: HTMLDivElement | undefined = $state()
+      let messagesContainer: HTMLElement | null = $state(null)
       let messagesContent: HTMLDivElement | undefined = $state()
       let isAtBottom = $state(true)
       let shouldAutoScroll = $state(true)
@@ -207,11 +208,12 @@
 
   <!-- Messages -->
   <div class="relative min-h-0 flex-1 overflow-hidden">
-    <div
-      bind:this={messagesContainer}
-      class="scroll-mask-y scroll-mask-y-from-98% h-full overflow-y-auto"
-      onscroll={handleScroll}
-      onwheel={handleWheel}
+    <ScrollArea
+      bind:viewportRef={messagesContainer}
+      class="h-full"
+      viewportClass="scroll-mask-y scroll-mask-y-from-98%"
+      onViewportScroll={handleScroll}
+      onViewportWheel={handleWheel}
     >
       {#if messagesStore.loading}
         <div
@@ -261,9 +263,9 @@
           {/each}
         </div>
       {/if}
-    </div>
+    </ScrollArea>
 
-    {#if !isAtBottom && (isRunning || messagesStore.streamingParts.length > 0)}
+    {#if !isAtBottom}
       <div class="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center">
         <Button
           class="pointer-events-auto shadow-md shadow-shadow/30"

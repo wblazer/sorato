@@ -25,6 +25,8 @@
     unsafeCSS: `
       :host {
         --diffs-gap-block: 0px;
+        --diffs-scrollbar-gutter-override: 0px;
+        --diffs-overflow-override: auto;
         --diffs-dark-bg: var(--inset);
         --diffs-light-bg: var(--inset);
         --diffs-dark-addition-color: var(--success-muted-foreground);
@@ -39,6 +41,17 @@
 
       [data-line-type="change-deletion"] {
         background: color-mix(in oklch, var(--diffs-dark-deletion-color) 18%, transparent);
+      }
+
+      [data-code] {
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+
+      [data-code]::-webkit-scrollbar {
+        display: none;
+        width: 0;
+        height: 0;
       }
 
       [data-diff-span] {
