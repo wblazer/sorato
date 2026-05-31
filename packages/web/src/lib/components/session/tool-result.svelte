@@ -3,6 +3,7 @@
   import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
   import * as Accordion from '$lib/components/ui/accordion/index.js'
   import { diffDisplaySummary } from '$lib/tool-output.js'
+  import MessageIcon from './message-icon.svelte'
   import ToolDiff from './tool-diff.svelte'
 
   let {
@@ -35,6 +36,7 @@
         : 'border-border text-foreground'}"
     >
       <span class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+        <MessageIcon name={header?.icon} />
         <span class="font-semibold">{title}</span>
         {#if subtitle}
           <span class="min-w-0 truncate font-mono text-muted-foreground">

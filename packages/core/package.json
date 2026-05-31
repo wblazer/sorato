@@ -6,6 +6,7 @@
     ".": "./src/index.ts",
     "./sandbox": "./src/sandbox/sandbox.ts",
     "./harness": "./src/harness/harness.ts",
+    "./presentation": "./src/presentation.ts",
     "./tool": "./src/tool/tool.ts"
   },
   "scripts": {

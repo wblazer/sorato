@@ -212,6 +212,9 @@ export const run = <
               ...(callHeader?.subtitle !== undefined
                 ? { subtitle: callHeader.subtitle }
                 : {}),
+              ...(callHeader?.icon !== undefined
+                ? { icon: callHeader.icon }
+                : {}),
             }
             toolResultHeaders.set(part.id, { header: resultHeader })
             if (presentation?.bodyDisplay) {

@@ -9,9 +9,22 @@ export const ToolDisplayFileContentsSchema = Schema.Struct({
 })
 export type ToolDisplayFileContents = typeof ToolDisplayFileContentsSchema.Type
 
+export const MessageIconNameSchema = Schema.Literals([
+  'tool',
+  'tool-result',
+  'file-text',
+  'file-plus',
+  'search',
+  'file-search',
+  'edit',
+  'terminal',
+])
+export type MessageIconName = typeof MessageIconNameSchema.Type
+
 export const MessageHeaderDisplaySchema = Schema.Struct({
   title: Schema.optionalKey(Schema.String),
   subtitle: Schema.optionalKey(Schema.String),
+  icon: Schema.optionalKey(MessageIconNameSchema),
 })
 export type MessageHeaderDisplay = typeof MessageHeaderDisplaySchema.Type
 
@@ -106,13 +119,32 @@ const displaySubtitle = (params: unknown): string | undefined => {
   })
 }
 
+const toolIcon = (toolName: string): MessageIconName | undefined => {
+  switch (toolName.toLowerCase()) {
+    case 'read':
+      return 'file-text'
+    case 'write':
+      return 'file-plus'
+    case 'edit':
+      return 'edit'
+    case 'bash':
+      return 'terminal'
+    case 'glob':
+      return 'file-search'
+    case 'grep':
+      return 'search'
+  }
+}
+
 export const toolCallHeader = (
   toolName: string,
   params: unknown
 ): MessageHeaderDisplay => {
   const subtitle = displaySubtitle(params)
+  const icon = toolIcon(toolName)
   return {
     title: toolName,
+    ...(icon !== undefined ? { icon } : {}),
     ...(subtitle !== undefined ? { subtitle } : {}),
   }
 }

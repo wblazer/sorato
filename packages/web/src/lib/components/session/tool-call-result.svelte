@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ToolCallPart, ToolResultPart } from '$lib/types.js'
+  import MessageIcon from './message-icon.svelte'
   import ToolResult from './tool-result.svelte'
 
   let {
@@ -18,6 +19,7 @@
     <div
       class="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-2.5 py-2 text-sm text-foreground"
     >
+      <MessageIcon name={call.header?.icon} />
       <span class="font-semibold">{title}</span>
       {#if subtitle}
         <span class="min-w-0 truncate font-mono text-muted-foreground">

@@ -1,8 +1,10 @@
 import type { FileContents } from '@pierre/diffs'
+import type { MessageIconName } from '@sorato/core/presentation'
 
 export interface MessageHeaderDisplay {
   title?: string
   subtitle?: string
+  icon?: MessageIconName
 }
 
 export interface Project {

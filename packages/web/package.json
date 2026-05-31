@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@pierre/diffs": "^1.2.4",
+    "@sorato/core": "workspace:*",
     "@tanstack/hotkeys": "^0.8.0",
     "effect": "4.0.0-beta.74"
   },
