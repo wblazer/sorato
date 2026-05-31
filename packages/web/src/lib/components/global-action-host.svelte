@@ -30,6 +30,8 @@
       }
 
       onMount(() => {
+        void clientSettingsStore.loadFromClientConfig()
+
         const unregister = [
           actionStore.register({
             id: 'provider.connect',
@@ -101,13 +103,13 @@
             },
           }),
           actionStore.register({
-            id: 'app.toggle-tool-output-display-mode',
-            title: 'Toggle Tool Output Display Mode',
+            id: 'app.toggle-transcript-display-mode',
+            title: 'Toggle Transcript Display Mode',
             category: 'Application',
-            description: 'Switch tool results between pretty display and raw model-visible text.',
-            keywords: ['tool', 'output', 'result', 'pretty', 'raw'],
+            description: 'Switch between rich rendering and the raw model-visible transcript.',
+            keywords: ['transcript', 'display', 'tool', 'output', 'result', 'rendered', 'raw'],
             run: () => {
-              clientSettingsStore.toggleToolOutputDisplayMode()
+              void clientSettingsStore.toggleAndSaveTranscriptDisplayMode()
             },
           }),
         ]

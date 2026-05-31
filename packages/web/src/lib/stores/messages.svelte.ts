@@ -111,7 +111,7 @@ function createMessagesStore() {
                 id: event.id,
                 name: event.name,
                 params: event.params,
-                display: event.display,
+                header: event.header,
               },
             ]
             break
@@ -125,7 +125,8 @@ function createMessagesStore() {
                 id: event.id,
                 name: event.name,
                 result: event.result,
-                display: event.display,
+                header: event.header,
+                bodyDisplay: event.bodyDisplay,
                 isFailure: event.isFailure,
               },
             ]

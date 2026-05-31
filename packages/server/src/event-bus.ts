@@ -54,7 +54,7 @@ export type ServerEvent =
       readonly id: string
       readonly name: string
       readonly params: unknown
-      readonly display?: MessageHeaderDisplay | undefined
+      readonly header?: MessageHeaderDisplay | undefined
       readonly eventId: number
     }
   | {
@@ -64,7 +64,8 @@ export type ServerEvent =
       readonly id: string
       readonly name: string
       readonly result: string
-      readonly display?: ToolResultDisplay | undefined
+      readonly header?: MessageHeaderDisplay | undefined
+      readonly bodyDisplay?: ToolResultDisplay | undefined
       readonly isFailure: boolean
       readonly eventId: number
     }
@@ -182,7 +183,7 @@ export const createBusHook = (
               id: event.id,
               name: event.name,
               params: event.params,
-              display: event.display,
+              header: event.header,
             })
           )
           break
@@ -195,7 +196,8 @@ export const createBusHook = (
               id: event.id,
               name: event.name,
               result: event.result,
-              display: event.display,
+              header: event.header,
+              bodyDisplay: event.bodyDisplay,
               isFailure: event.isFailure,
             })
           )

@@ -10,12 +10,13 @@
     part,
   }: { call?: ToolCallPart | undefined; part: ToolResultPart } = $props()
 
-  const summary = $derived(diffDisplaySummary(part.display))
+  const summary = $derived(diffDisplaySummary(part.bodyDisplay))
   const shouldRenderPretty = $derived(
-    clientSettingsStore.prettyToolOutput && part.display !== undefined
+    clientSettingsStore.prettyTranscript && part.bodyDisplay !== undefined
   )
-  const title = $derived(call?.display?.title ?? call?.name ?? part.name)
-  const subtitle = $derived(call?.display?.subtitle ?? summary?.fileName)
+  const header = $derived(call?.header ?? part.header)
+  const title = $derived(header?.title ?? call?.name ?? `${part.name} Result`)
+  const subtitle = $derived(header?.subtitle ?? summary?.fileName)
   let openItems = $state(['content'])
 </script>
 
@@ -50,8 +51,8 @@
     </Accordion.Trigger>
 
     <Accordion.Content>
-      {#if shouldRenderPretty && part.display?.type === 'diff'}
-        <ToolDiff display={part.display} />
+      {#if shouldRenderPretty && part.bodyDisplay?.type === 'diff'}
+        <ToolDiff display={part.bodyDisplay} />
       {:else}
         <pre class="max-h-64 overflow-auto px-2.5 py-3 text-sm leading-relaxed"
           >{part.result}</pre

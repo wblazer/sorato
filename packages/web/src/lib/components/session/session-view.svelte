@@ -33,7 +33,7 @@
       const sessionError = $derived(sessionStore.sessionError(sessionId))
       const persistedTranscriptItems = $derived.by(() =>
         projectTranscript(persistedSources(messagesStore.messages), {
-          pretty: clientSettingsStore.prettyToolOutput,
+          pretty: clientSettingsStore.prettyTranscript,
         })
       )
 

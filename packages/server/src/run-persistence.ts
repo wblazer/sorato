@@ -18,19 +18,20 @@ const stoppedSystemMessage = {
 
 const addToolDisplays = (
   messages: ReadonlyArray<Prompt.MessageEncoded>,
-  callDisplays: HarnessResult['toolCallDisplays'],
-  resultDisplays: HarnessResult['toolResultDisplays']
+  callHeaders: HarnessResult['toolCallHeaders'],
+  resultHeaders: HarnessResult['toolResultHeaders'],
+  resultBodyDisplays: HarnessResult['toolResultBodyDisplays']
 ): ReadonlyArray<Prompt.MessageEncoded> => {
   const addDisplayToCallPart = (
     part: Prompt.ToolCallPartEncoded
   ): Prompt.ToolCallPartEncoded => {
-    const presentation = callDisplays.get(part.id)
+    const presentation = callHeaders.get(part.id)
     if (!presentation) return part
 
     return {
       ...part,
-      ...(presentation.display !== undefined
-        ? { display: presentation.display }
+      ...(presentation.header !== undefined
+        ? { header: presentation.header }
         : {}),
     }
   }
@@ -38,13 +39,16 @@ const addToolDisplays = (
   const addDisplayToPart = (
     part: Prompt.ToolResultPartEncoded
   ): Prompt.ToolResultPartEncoded => {
-    const presentation = resultDisplays.get(part.id)
-    if (!presentation) return part
+    const headerPresentation = resultHeaders.get(part.id)
+    const bodyPresentation = resultBodyDisplays.get(part.id)
 
     return {
       ...part,
-      ...(presentation.display !== undefined
-        ? { display: presentation.display }
+      ...(headerPresentation?.header !== undefined
+        ? { header: headerPresentation.header }
+        : {}),
+      ...(bodyPresentation?.bodyDisplay !== undefined
+        ? { bodyDisplay: bodyPresentation.bodyDisplay }
         : {}),
     }
   }
@@ -97,8 +101,9 @@ export const createPersistenceHook = (
       const encodedNewMessages = encoded.content.slice(messageCountBeforeRun)
       const displayMessages = addToolDisplays(
         encodedNewMessages,
-        event.result.toolCallDisplays,
-        event.result.toolResultDisplays
+        event.result.toolCallHeaders,
+        event.result.toolResultHeaders,
+        event.result.toolResultBodyDisplays
       )
       const newMessages = Match.value(event.interrupted).pipe(
         Match.when(true, () => [...displayMessages, stoppedSystemMessage]),

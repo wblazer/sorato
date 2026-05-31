@@ -6,30 +6,35 @@
  * A future Electron shell can provide a different storage backend without
  * changing the store's public API.
  */
-import { Schema } from 'effect'
+import { Effect, Schema } from 'effect'
+import {
+  clientConfigService,
+  diffClientConfig,
+  mergeClientConfig,
+} from '$lib/client-config/index.js'
 import { getJsonWithSchema, setJsonWithSchema } from '$lib/storage.js'
 
-export const ToolOutputDisplayModeSchema = Schema.Literals(['pretty', 'raw'])
-export type ToolOutputDisplayMode = typeof ToolOutputDisplayModeSchema.Type
+export const TranscriptDisplayModeSchema = Schema.Literals(['pretty', 'raw'])
+export type TranscriptDisplayMode = typeof TranscriptDisplayModeSchema.Type
 
 export const ClientSettingsSchema = Schema.Struct({
   /**
-   * pretty: render structured tool display payloads when available.
-   * raw: render the exact tool result text that is fed back to the model.
+   * pretty: render rich transcript projections and body display metadata.
+   * raw: render separate model-visible transcript bodies while keeping UI headers.
    */
-  toolOutputDisplayMode: ToolOutputDisplayModeSchema,
+  transcriptDisplayMode: TranscriptDisplayModeSchema,
 })
 export type ClientSettings = typeof ClientSettingsSchema.Type
 
 const PersistedClientSettingsSchema = Schema.Struct({
-  toolOutputDisplayMode: Schema.optionalKey(ToolOutputDisplayModeSchema),
+  transcriptDisplayMode: Schema.optionalKey(TranscriptDisplayModeSchema),
 })
 type PersistedClientSettings = typeof PersistedClientSettingsSchema.Type
 
 const STORAGE_KEY = 'client-settings'
 
 const DEFAULT_SETTINGS: ClientSettings = {
-  toolOutputDisplayMode: 'pretty',
+  transcriptDisplayMode: 'pretty',
 }
 
 function loadSettings(): ClientSettings {
@@ -53,13 +58,34 @@ function createClientSettingsStore() {
     persist()
   }
 
-  function setToolOutputDisplayMode(mode: ToolOutputDisplayMode) {
-    update({ toolOutputDisplayMode: mode })
+  function setTranscriptDisplayMode(mode: TranscriptDisplayMode) {
+    update({ transcriptDisplayMode: mode })
   }
 
-  function toggleToolOutputDisplayMode() {
-    setToolOutputDisplayMode(
-      settings.toolOutputDisplayMode === 'pretty' ? 'raw' : 'pretty'
+  async function loadFromClientConfig() {
+    const config = await Effect.runPromise(clientConfigService.getResolved)
+    setTranscriptDisplayMode(config.resolved.transcript_display_mode)
+  }
+
+  async function saveTranscriptDisplayMode(mode: TranscriptDisplayMode) {
+    setTranscriptDisplayMode(mode)
+    const config = await Effect.runPromise(clientConfigService.getResolved)
+    const base = mergeClientConfig(config.defaults, config.file)
+    const resolved = { ...config.resolved, transcript_display_mode: mode }
+    await Effect.runPromise(
+      clientConfigService.setOverrides(diffClientConfig(base, resolved))
+    )
+  }
+
+  async function toggleAndSaveTranscriptDisplayMode() {
+    await saveTranscriptDisplayMode(
+      settings.transcriptDisplayMode === 'pretty' ? 'raw' : 'pretty'
+    )
+  }
+
+  function toggleTranscriptDisplayMode() {
+    setTranscriptDisplayMode(
+      settings.transcriptDisplayMode === 'pretty' ? 'raw' : 'pretty'
     )
   }
 
@@ -72,15 +98,18 @@ function createClientSettingsStore() {
     get settings() {
       return settings
     },
-    get toolOutputDisplayMode() {
-      return settings.toolOutputDisplayMode
+    get transcriptDisplayMode() {
+      return settings.transcriptDisplayMode
     },
-    get prettyToolOutput() {
-      return settings.toolOutputDisplayMode === 'pretty'
+    get prettyTranscript() {
+      return settings.transcriptDisplayMode === 'pretty'
     },
     update,
-    setToolOutputDisplayMode,
-    toggleToolOutputDisplayMode,
+    setTranscriptDisplayMode,
+    loadFromClientConfig,
+    saveTranscriptDisplayMode,
+    toggleTranscriptDisplayMode,
+    toggleAndSaveTranscriptDisplayMode,
     reset,
   }
 }

@@ -89,12 +89,13 @@ export const SystemMessageSource = Schema.Literals([
 
 export const StoredToolCallPart = Schema.Struct({
   ...PromptSchemas.ToolCallPart.fields,
-  display: Schema.optionalKey(MessageHeaderDisplaySchema),
+  header: Schema.optionalKey(MessageHeaderDisplaySchema),
 })
 
 export const StoredToolResultPart = Schema.Struct({
   ...PromptSchemas.ToolResultPart.fields,
-  display: Schema.optionalKey(ToolResultDisplaySchema),
+  header: Schema.optionalKey(MessageHeaderDisplaySchema),
+  bodyDisplay: Schema.optionalKey(ToolResultDisplaySchema),
 })
 
 export const StoredPart = Schema.Union([

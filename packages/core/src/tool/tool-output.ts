@@ -29,7 +29,7 @@ export type ToolResultDisplay = typeof ToolResultDisplaySchema.Type
 export interface ToolResultPresentation {
   readonly toolName: string
   readonly result: string
-  readonly display?: ToolResultDisplay | undefined
+  readonly bodyDisplay?: ToolResultDisplay | undefined
 }
 
 export interface ToolOutputRegistryApi {
@@ -106,7 +106,7 @@ const displaySubtitle = (params: unknown): string | undefined => {
   })
 }
 
-export const toolCallDisplay = (
+export const toolCallHeader = (
   toolName: string,
   params: unknown
 ): MessageHeaderDisplay => {
@@ -131,7 +131,7 @@ export const recordFileDiffPresentation = (
   registry.push({
     toolName: options.toolName,
     result: options.result,
-    display: {
+    bodyDisplay: {
       type: 'diff',
       oldFile: {
         name: options.path,

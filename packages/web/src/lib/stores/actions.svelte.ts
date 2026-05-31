@@ -4,7 +4,7 @@ import { hotkeyStore } from './hotkeys.svelte.js'
 export type ActionId =
   | 'app.command-palette'
   | 'app.settings'
-  | 'app.toggle-tool-output-display-mode'
+  | 'app.toggle-transcript-display-mode'
   | 'connection.add'
   | 'directory.open'
   | 'project.add'

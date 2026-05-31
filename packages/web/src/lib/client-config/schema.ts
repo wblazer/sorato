@@ -1,11 +1,11 @@
 import { Schema } from 'effect'
 
-export const ToolOutputFormatSchema = Schema.Literals(['pretty', 'raw'])
-export type ToolOutputFormat = typeof ToolOutputFormatSchema.Type
+export const TranscriptDisplayModeSchema = Schema.Literals(['pretty', 'raw'])
+export type TranscriptDisplayMode = typeof TranscriptDisplayModeSchema.Type
 
 export const ClientConfigSchema = Schema.Struct({
   expand_tool_blocks_by_default: Schema.optional(Schema.Boolean),
-  tool_output_format: Schema.optional(ToolOutputFormatSchema),
+  transcript_display_mode: Schema.optional(TranscriptDisplayModeSchema),
 })
 
 export type ClientConfig = typeof ClientConfigSchema.Type
@@ -23,7 +23,7 @@ export interface ResolvedClientConfig {
 
 export const defaultClientConfig = (): Required<ClientConfig> => ({
   expand_tool_blocks_by_default: false,
-  tool_output_format: 'pretty',
+  transcript_display_mode: 'pretty',
 })
 
 export const mergeClientConfig = <TBase extends ClientConfig>(
@@ -36,9 +36,9 @@ export const mergeClientConfig = <TBase extends ClientConfig>(
     : {
         expand_tool_blocks_by_default: override.expand_tool_blocks_by_default,
       }),
-  ...(override.tool_output_format === undefined
+  ...(override.transcript_display_mode === undefined
     ? {}
-    : { tool_output_format: override.tool_output_format }),
+    : { transcript_display_mode: override.transcript_display_mode }),
 })
 
 export const diffClientConfig = (
@@ -50,9 +50,9 @@ export const diffClientConfig = (
     : {
         expand_tool_blocks_by_default: value.expand_tool_blocks_by_default,
       }),
-  ...(value.tool_output_format === base.tool_output_format
+  ...(value.transcript_display_mode === base.transcript_display_mode
     ? {}
-    : { tool_output_format: value.tool_output_format }),
+    : { transcript_display_mode: value.transcript_display_mode }),
 })
 
 export const encodeClientConfig = (config: ClientConfig): string =>

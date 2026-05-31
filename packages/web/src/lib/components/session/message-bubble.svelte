@@ -25,7 +25,7 @@
   const renderParts = $derived.by((): ReadonlyArray<TranscriptItem> =>
     transcriptItems ??
     projectTranscript(persistedSources([message]), {
-      pretty: clientSettingsStore.prettyToolOutput,
+      pretty: clientSettingsStore.prettyTranscript,
     })
   )
 

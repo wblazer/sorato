@@ -16,7 +16,7 @@
 
   const renderParts = $derived.by(() =>
     projectTranscript(streamingSources(parts), {
-      pretty: clientSettingsStore.prettyToolOutput,
+      pretty: clientSettingsStore.prettyTranscript,
     })
   )
 </script>

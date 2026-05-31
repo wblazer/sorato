@@ -149,7 +149,7 @@ export interface ToolCallPart {
   id: string
   name: string
   params: unknown
-  display?: MessageHeaderDisplay
+  header?: MessageHeaderDisplay
 }
 
 export interface ToolResultPart {
@@ -159,8 +159,9 @@ export interface ToolResultPart {
   isFailure: boolean
   /** Exact text fed back to the model. */
   result: string
-  /** Optional structured human-facing display payload. */
-  display?: ToolResultDisplay
+  header?: MessageHeaderDisplay
+  /** Optional structured human-facing body display payload. */
+  bodyDisplay?: ToolResultDisplay
 }
 
 /** Structured display payloads for tool results. Absence means render result raw. */
@@ -222,7 +223,7 @@ export type ServerEvent =
       id: string
       name: string
       params: unknown
-      display?: MessageHeaderDisplay
+      header?: MessageHeaderDisplay
       eventId: number
     }
   | {
@@ -232,7 +233,8 @@ export type ServerEvent =
       id: string
       name: string
       result: string
-      display?: ToolResultDisplay
+      header?: MessageHeaderDisplay
+      bodyDisplay?: ToolResultDisplay
       isFailure: boolean
       eventId: number
     }

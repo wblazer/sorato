@@ -24,8 +24,15 @@
   </div>
 {:else if part.type === 'tool-call'}
   <div class="overflow-hidden rounded-md border border-border bg-inset">
-    <div class="border-b border-border px-2.5 py-2 text-sm text-foreground">
-      <span class="font-semibold">{part.name}</span>
+    <div
+      class="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-2.5 py-2 text-sm text-foreground"
+    >
+      <span class="font-semibold">{part.header?.title ?? part.name}</span>
+      {#if part.header?.subtitle}
+        <span class="min-w-0 truncate font-mono text-muted-foreground">
+          {part.header.subtitle}
+        </span>
+      {/if}
     </div>
     {#if part.params != null}
       <pre

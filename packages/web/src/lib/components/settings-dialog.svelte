@@ -22,8 +22,9 @@
     mergeClientConfig,
     type ClientConfig,
     type ResolvedClientConfig,
-    type ToolOutputFormat,
+    type TranscriptDisplayMode,
   } from '$lib/client-config/index.js'
+  import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
   import { Effect } from 'effect'
   import { untrack } from 'svelte'
 
@@ -38,7 +39,7 @@
   let activeTab = $state<SettingsTab>('general')
   let config = $state<ResolvedClientConfig | null>(null)
   let expandToolBlocksByDefault = $state(false)
-  let toolOutputFormat = $state<ToolOutputFormat>('pretty')
+  let transcriptDisplayMode = $state<TranscriptDisplayMode>('pretty')
   let error = $state<string | null>(null)
   let loading = $state(false)
   let saving = $state(false)
@@ -63,6 +64,20 @@
     hasFileConfig ? 'Reset to config file' : 'Reset to defaults'
   )
 
+  const transcriptDisplayModeOptions: ReadonlyArray<{
+    readonly value: TranscriptDisplayMode
+    readonly label: string
+  }> = [
+    { value: 'pretty', label: 'Pretty' },
+    { value: 'raw', label: 'Raw' },
+  ]
+
+  const transcriptDisplayModeLabel = $derived(
+    transcriptDisplayModeOptions.find(
+      (option) => option.value === transcriptDisplayMode
+    )?.label ?? transcriptDisplayMode
+  )
+
   const copySettingsAction = createTimedAction({ run: copyChangedSettings })
 
   $effect(() => {
@@ -83,7 +98,10 @@
   function applyConfig(nextConfig: ResolvedClientConfig) {
     config = nextConfig
     expandToolBlocksByDefault = nextConfig.resolved.expand_tool_blocks_by_default
-    toolOutputFormat = nextConfig.resolved.tool_output_format
+    transcriptDisplayMode = nextConfig.resolved.transcript_display_mode
+    clientSettingsStore.setTranscriptDisplayMode(
+      nextConfig.resolved.transcript_display_mode
+    )
   }
 
   async function loadConfig() {
@@ -152,16 +170,17 @@
     expandToolBlocksByDefault = value
     saveResolvedValue({
       expand_tool_blocks_by_default: value,
-      tool_output_format: toolOutputFormat,
+      transcript_display_mode: transcriptDisplayMode,
     })
   }
 
-  function setToolOutputFormat(value: string) {
+  function setTranscriptDisplayMode(value: string) {
     if (value !== 'pretty' && value !== 'raw') return
-    toolOutputFormat = value
+    transcriptDisplayMode = value
+    clientSettingsStore.setTranscriptDisplayMode(value)
     saveResolvedValue({
       expand_tool_blocks_by_default: expandToolBlocksByDefault,
-      tool_output_format: value,
+      transcript_display_mode: value,
     })
   }
 
@@ -289,23 +308,24 @@
 
                 <div class="flex items-center justify-between gap-8 py-4">
                   <div class="min-w-0">
-                    <div class="text-base font-medium">Tool output format</div>
+                    <div class="text-base font-medium">Transcript display mode</div>
                     <div class="mt-0.5 text-base text-muted-foreground">
-                      Choose how tool results appear in the conversation.
+                      Choose between rich rendering and the raw model-visible transcript.
                     </div>
                   </div>
                   <Select.Root
                     type="single"
-                    value={toolOutputFormat}
-                    onValueChange={setToolOutputFormat}
+                    value={transcriptDisplayMode}
+                    onValueChange={setTranscriptDisplayMode}
                     disabled={loading || config === null}
                   >
-                    <Select.Trigger class="w-32 capitalize">
-                      {toolOutputFormat}
+                    <Select.Trigger class="w-32">
+                      {transcriptDisplayModeLabel}
                     </Select.Trigger>
                     <Select.Content class="w-40" align="end">
-                      <Select.Item value="pretty" label="Pretty" />
-                      <Select.Item value="raw" label="Raw" />
+                      {#each transcriptDisplayModeOptions as option}
+                        <Select.Item value={option.value} label={option.label} />
+                      {/each}
                     </Select.Content>
                   </Select.Root>
                 </div>

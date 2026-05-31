@@ -34,7 +34,7 @@ import type {
 
 import { Cause, Effect, Exit, Ref, Stream } from 'effect'
 import { Chat, Prompt } from 'effect/unstable/ai'
-import { ToolOutputRegistry, toolCallDisplay } from '../tool/tool-output.ts'
+import { ToolOutputRegistry, toolCallHeader } from '../tool/tool-output.ts'
 
 /** Maximum agent loop iterations to prevent runaway tool-call cycles. */
 const MAX_TURNS = 25
@@ -103,16 +103,22 @@ export const run = <
   Effect.gen(function* () {
     const chat = yield* Chat.fromPrompt(conversation)
     const toolOutputRegistry = yield* ToolOutputRegistry
-    const toolCallDisplays = new Map<
+    const toolCallHeaders = new Map<
       string,
       {
-        readonly display?: MessageHeaderDisplay | undefined
+        readonly header?: MessageHeaderDisplay | undefined
       }
     >()
-    const toolResultDisplays = new Map<
+    const toolResultHeaders = new Map<
       string,
       {
-        readonly display?: ToolResultDisplay | undefined
+        readonly header?: MessageHeaderDisplay | undefined
+      }
+    >()
+    const toolResultBodyDisplays = new Map<
+      string,
+      {
+        readonly bodyDisplay?: ToolResultDisplay | undefined
       }
     >()
 
@@ -168,10 +174,10 @@ export const run = <
             )
 
           case 'tool-call':
-            const display = toolCallDisplay(part.name, part.params)
+            const header = toolCallHeader(part.name, part.params)
             return Effect.sync(() => {
               hadToolCalls = true
-              toolCallDisplays.set(part.id, { display })
+              toolCallHeaders.set(part.id, { header })
             }).pipe(
               Effect.flatMap(() =>
                 Effect.logInfo('Harness tool call received', {
@@ -186,7 +192,7 @@ export const run = <
                   id: part.id,
                   name: part.name,
                   params: part.params,
-                  display,
+                  header,
                 })
               )
             )
@@ -200,9 +206,17 @@ export const run = <
                 ? part.result
                 : (JSON.stringify(part.result) ?? String(part.result))
             const presentation = toolOutputRegistry.take(part.name, resultText)
-            if (presentation?.display) {
-              toolResultDisplays.set(part.id, {
-                display: presentation.display,
+            const callHeader = toolCallHeaders.get(part.id)?.header
+            const resultHeader = {
+              title: `${callHeader?.title ?? part.name} Result`,
+              ...(callHeader?.subtitle !== undefined
+                ? { subtitle: callHeader.subtitle }
+                : {}),
+            }
+            toolResultHeaders.set(part.id, { header: resultHeader })
+            if (presentation?.bodyDisplay) {
+              toolResultBodyDisplays.set(part.id, {
+                bodyDisplay: presentation.bodyDisplay,
               })
             }
             return logToolResult('Harness tool result received', {
@@ -217,7 +231,8 @@ export const run = <
                   id: part.id,
                   name: part.name,
                   result: resultText,
-                  display: presentation?.display,
+                  header: resultHeader,
+                  bodyDisplay: presentation?.bodyDisplay,
                   isFailure: part.isFailure,
                 })
               )
@@ -317,8 +332,9 @@ export const run = <
 
       const result = {
         conversation: fullConversation,
-        toolCallDisplays,
-        toolResultDisplays,
+        toolCallHeaders,
+        toolResultHeaders,
+        toolResultBodyDisplays,
         text: state.outputText,
         usage: state.usage,
       } satisfies HarnessResult

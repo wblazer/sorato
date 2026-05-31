@@ -7,8 +7,8 @@
     result,
   }: { call: ToolCallPart; result?: ToolResultPart | undefined } = $props()
 
-  const title = $derived(call.display?.title ?? call.name)
-  const subtitle = $derived(call.display?.subtitle)
+  const title = $derived(call.header?.title ?? call.name)
+  const subtitle = $derived(call.header?.subtitle)
 </script>
 
 {#if result}

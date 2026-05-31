@@ -38,14 +38,15 @@ export type HarnessEvent =
       readonly id: string
       readonly name: string
       readonly params: unknown
-      readonly display?: MessageHeaderDisplay | undefined
+      readonly header?: MessageHeaderDisplay | undefined
     }
   | {
       readonly _tag: 'ToolResult'
       readonly id: string
       readonly name: string
       readonly result: string
-      readonly display?: ToolResultDisplay | undefined
+      readonly header?: MessageHeaderDisplay | undefined
+      readonly bodyDisplay?: ToolResultDisplay | undefined
       readonly isFailure: boolean
     }
   | {
@@ -111,18 +112,25 @@ export interface HarnessConfig<
 export interface HarnessResult {
   /** The complete conversation (system + user + all assistant/tool messages). */
   readonly conversation: Prompt.Prompt
-  /** Human-facing display metadata keyed by tool call id. */
-  readonly toolCallDisplays: ReadonlyMap<
+  /** Human-facing header metadata keyed by tool call id. */
+  readonly toolCallHeaders: ReadonlyMap<
     string,
     {
-      readonly display?: MessageHeaderDisplay | undefined
+      readonly header?: MessageHeaderDisplay | undefined
     }
   >
-  /** Human-facing display metadata keyed by tool call id. */
-  readonly toolResultDisplays: ReadonlyMap<
+  /** Human-facing header metadata keyed by tool call id. */
+  readonly toolResultHeaders: ReadonlyMap<
     string,
     {
-      readonly display?: ToolResultDisplay | undefined
+      readonly header?: MessageHeaderDisplay | undefined
+    }
+  >
+  /** Human-facing body display metadata keyed by tool call id. */
+  readonly toolResultBodyDisplays: ReadonlyMap<
+    string,
+    {
+      readonly bodyDisplay?: ToolResultDisplay | undefined
     }
   >
   /** The concatenated text from all assistant messages across all turns. */

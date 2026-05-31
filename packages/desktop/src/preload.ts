@@ -11,7 +11,7 @@ export interface SoratoDesktopBootstrap {
 
 interface ClientConfig {
   readonly expand_tool_blocks_by_default?: boolean
-  readonly tool_output_format?: 'pretty' | 'raw'
+  readonly transcript_display_mode?: 'pretty' | 'raw'
 }
 
 contextBridge.exposeInMainWorld('soratoDesktop', {
