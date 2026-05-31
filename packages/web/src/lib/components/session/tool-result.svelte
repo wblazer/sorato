@@ -62,7 +62,7 @@
           class="max-h-64"
           viewportClass="max-h-64 rounded-none"
         >
-          <pre class="min-w-max px-2.5 py-3 text-sm leading-relaxed"
+          <pre class="min-w-max px-2.5 py-3 text-sm"
             >{part.result}</pre
           >
         </ScrollArea>

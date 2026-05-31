@@ -43,6 +43,16 @@
     message.encoded.role === 'system' ? message.encoded.display?.subtitle : undefined
   )
   let systemOpenItems = $state(['content'])
+
+  const transcriptItemKind = (item: TranscriptItem): string => {
+    if (item.type === 'combined-tool') return 'tool'
+    if (item.type === 'message') {
+      return item.part.type === 'tool-call' || item.part.type === 'tool-result'
+        ? 'tool'
+        : item.part.type
+    }
+    return item.type
+  }
 </script>
 
 {#if renderParts.length > 0}
@@ -116,21 +126,41 @@
       </Accordion.Item>
     </Accordion.Root>
     {:else}
-    <div class="flex flex-col gap-3">
+    <div>
       {#each renderParts as item}
-        {#if item.type === 'combined-tool'}
-          <ToolCallResult call={item.call} result={item.result} />
-        {:else if item.type === 'interruption'}
-          <div class="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            <div class="h-px flex-1 bg-border"></div>
-            <span>Interrupted</span>
-            <div class="h-px flex-1 bg-border"></div>
-          </div>
-        {:else}
-          <MessagePartComponent part={item.part} monospace={false} />
-        {/if}
+        <div class="assistant-transcript-item" data-transcript-kind={transcriptItemKind(item)}>
+          {#if item.type === 'combined-tool'}
+            <ToolCallResult call={item.call} result={item.result} />
+          {:else if item.type === 'interruption'}
+            <div class="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <div class="h-px flex-1 bg-border"></div>
+              <span>Interrupted</span>
+              <div class="h-px flex-1 bg-border"></div>
+            </div>
+          {:else}
+            <MessagePartComponent part={item.part} monospace={false} />
+          {/if}
+        </div>
       {/each}
     </div>
     {/if}
   </div>
 {/if}
+
+<style>
+  .assistant-transcript-item + .assistant-transcript-item {
+    margin-top: 0.75rem;
+  }
+
+  .assistant-transcript-item[data-transcript-kind='tool']
+    + .assistant-transcript-item[data-transcript-kind='tool'] {
+    margin-top: 0.5rem;
+  }
+
+  .assistant-transcript-item[data-transcript-kind='tool']
+    + .assistant-transcript-item:not([data-transcript-kind='tool']),
+  .assistant-transcript-item:not([data-transcript-kind='tool'])
+    + .assistant-transcript-item[data-transcript-kind='tool'] {
+    margin-top: 1.25rem;
+  }
+</style>

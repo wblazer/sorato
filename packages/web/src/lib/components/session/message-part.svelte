@@ -13,7 +13,7 @@
 
 {#if part.type === 'text'}
   <div
-    class="whitespace-pre-wrap break-words leading-relaxed"
+    class="whitespace-pre-wrap break-words"
     class:text-sm={monospace}
     class:font-mono={monospace}
   >
@@ -22,7 +22,7 @@
 {:else if part.type === 'reasoning'}
   <div class="text-muted-foreground">
     <div
-      class="whitespace-pre-wrap break-words border-l-3 border-muted pl-3 leading-relaxed"
+      class="whitespace-pre-wrap break-words border-l-3 border-muted pl-3"
     >
       {part.text}
     </div>
@@ -56,7 +56,7 @@
             class="max-h-48"
             viewportClass="max-h-48 rounded-none"
           >
-            <pre class="min-w-max px-2.5 py-3 text-sm leading-relaxed">{JSON.stringify(
+            <pre class="min-w-max px-2.5 py-3 text-sm">{JSON.stringify(
               part.params,
               null,
               2

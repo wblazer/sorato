@@ -4,7 +4,12 @@
       import { modelsStore } from '$lib/stores/models.svelte.js'
       import { sessionStore } from '$lib/stores/sessions.svelte.js'
       import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
-      import { persistedSources, projectTranscript } from '$lib/transcript.js'
+      import type { MessageNode } from '$lib/types.js'
+      import {
+        persistedSources,
+        projectTranscript,
+        type TranscriptItem,
+      } from '$lib/transcript.js'
       import MessageBubble from './message-bubble.svelte'
       import QueuedMessageBubble from './queued-message-bubble.svelte'
       import StreamingIndicator from './streaming-indicator.svelte'
@@ -37,6 +42,65 @@
           pretty: clientSettingsStore.prettyTranscript,
         })
       )
+
+      type MessageRenderBlock = {
+        readonly key: string
+        readonly message: MessageNode
+        readonly items: ReadonlyArray<TranscriptItem>
+      }
+
+      const transcriptSourceMessage = (
+        item: TranscriptItem
+      ): MessageNode | null => {
+        const source = item.type === 'combined-tool' ? item.callSource : item.source
+        return source.type === 'persisted' ? source.message : null
+      }
+
+      const transcriptItemsForMessages = (
+        messages: ReadonlyArray<MessageNode>
+      ): ReadonlyArray<TranscriptItem> =>
+        persistedTranscriptItems.filter((item) => {
+          const message = transcriptSourceMessage(item)
+          return message !== null && messages.includes(message)
+        })
+
+      const messageBlocks = $derived.by((): ReadonlyArray<MessageRenderBlock> => {
+        const blocks: MessageRenderBlock[] = []
+        const messages = messagesStore.messages
+
+        for (let index = 0; index < messages.length; index++) {
+          const message = messages[index]
+
+          if (message.encoded.role === 'assistant') {
+            const group = [message]
+            let cursor = index + 1
+            while (
+              cursor < messages.length &&
+              (messages[cursor].encoded.role === 'assistant' ||
+                messages[cursor].encoded.role === 'tool')
+            ) {
+              group.push(messages[cursor])
+              cursor++
+            }
+
+            blocks.push({
+              key: group.map((groupMessage) => groupMessage.id).join(':'),
+              message,
+              items: transcriptItemsForMessages(group),
+            })
+            index = cursor - 1
+            continue
+          }
+
+          blocks.push({
+            key: message.id,
+            message,
+            items: transcriptItemsForMessages([message]),
+          })
+        }
+
+        return blocks
+      })
 
       function updateScrollState() {
         if (!messagesContainer) return
@@ -243,16 +307,10 @@
           bind:this={messagesContent}
           class="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-5 sm:px-6"
         >
-          {#each messagesStore.messages as message (message.id)}
+          {#each messageBlocks as block (block.key)}
             <MessageBubble
-              {message}
-              transcriptItems={persistedTranscriptItems.filter(
-                (item) => {
-                  const source =
-                    item.type === 'combined-tool' ? item.callSource : item.source
-                  return source.type === 'persisted' && source.message === message
-                }
-              )}
+              message={block.message}
+              transcriptItems={block.items}
             />
           {/each}
 
