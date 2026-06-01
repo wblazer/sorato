@@ -74,9 +74,63 @@
             category: 'Sessions',
             description: 'Search recent sessions and open one in the current tab.',
             keywords: ['resume', 'search', 'conversation'],
+            defaultShortcut: 'Control+O',
             enabled: () => sessionStore.sessions.length > 0,
             run: () => {
               sessionSearchOpen = true
+            },
+          }),
+          actionStore.register({
+            id: 'tab.new',
+            title: 'New Tab',
+            category: 'Tabs',
+            description: 'Open a new tab.',
+            keywords: ['new', 'tab'],
+            defaultShortcut: 'Control+T',
+            run: tabStore.openNewTab,
+          }),
+          actionStore.register({
+            id: 'tab.close',
+            title: 'Close Tab',
+            category: 'Tabs',
+            description: 'Close the current tab.',
+            keywords: ['close', 'tab'],
+            defaultShortcut: 'Control+W',
+            enabled: () => !!tabStore.activeTab,
+            run: () => {
+              if (tabStore.activeTab) tabStore.closeTab(tabStore.activeTab.id)
+            },
+          }),
+          actionStore.register({
+            id: 'tab.next',
+            title: 'Next Tab',
+            category: 'Tabs',
+            description: 'Switch to the next tab.',
+            keywords: ['next', 'tab', 'switch'],
+            defaultShortcut: 'Control+Tab',
+            enabled: () => tabStore.tabs.length > 1,
+            run: tabStore.activateNextTab,
+          }),
+          actionStore.register({
+            id: 'tab.previous',
+            title: 'Previous Tab',
+            category: 'Tabs',
+            description: 'Switch to the previous tab.',
+            keywords: ['previous', 'prev', 'tab', 'switch'],
+            defaultShortcut: 'Control+Shift+Tab',
+            enabled: () => tabStore.tabs.length > 1,
+            run: tabStore.activatePreviousTab,
+          }),
+          actionStore.register({
+            id: 'session.new',
+            title: 'New Session',
+            category: 'Sessions',
+            description: 'Show the new session composer in the current tab.',
+            keywords: ['chat', 'compose', 'conversation'],
+            defaultShortcut: 'Control+N',
+            run: () => {
+              tabStore.resetActiveTabToNewSession()
+              sessionStore.startComposing()
             },
           }),
           actionStore.register({
@@ -100,16 +154,6 @@
             defaultShortcut: 'Control+,',
             run: () => {
               settingsOpen = true
-            },
-          }),
-          actionStore.register({
-            id: 'app.toggle-transcript-display-mode',
-            title: 'Toggle Transcript Display Mode',
-            category: 'Application',
-            description: 'Switch between rich rendering and the raw model-visible transcript.',
-            keywords: ['transcript', 'display', 'tool', 'output', 'result', 'rendered', 'raw'],
-            run: () => {
-              void clientSettingsStore.toggleAndSaveTranscriptDisplayMode()
             },
           }),
         ]

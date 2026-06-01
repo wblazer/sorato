@@ -1,12 +1,9 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Item from '$lib/components/ui/item/index.js'
-  import { actionStore } from '$lib/stores/actions.svelte.js'
-  import { projectStore } from '$lib/stores/projects.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { tabStore } from '$lib/stores/tabs.svelte.js'
   import { cn } from '$lib/utils.js'
-  import { onMount } from 'svelte'
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
 
@@ -21,18 +18,6 @@
     if (days < 30) return `${days}d ago`
     return `${Math.floor(days / 30)}mo ago`
   }
-
-  onMount(() => {
-    return actionStore.register({
-      id: 'session.new',
-      title: 'New Tab',
-      category: 'Sessions',
-      description: 'Open a new tab to start a session.',
-      keywords: ['chat', 'compose', 'conversation', 'tab'],
-      enabled: () => projectStore.projects.length > 0,
-      run: tabStore.openNewTab,
-    })
-  })
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col" data-slot="session-list">

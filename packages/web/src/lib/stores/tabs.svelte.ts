@@ -54,10 +54,47 @@ function createTabStore() {
     }
   }
 
+  function activateAdjacentTab(direction: 1 | -1) {
+    if (tabs.length < 2) return
+    const index = tabs.findIndex((tab) => tab.id === activeTabId)
+    if (index < 0) return
+
+    const nextIndex = (index + direction + tabs.length) % tabs.length
+    setActiveTab(tabs[nextIndex].id)
+  }
+
+  function activateNextTab() {
+    activateAdjacentTab(1)
+  }
+
+  function activatePreviousTab() {
+    activateAdjacentTab(-1)
+  }
+
   function setDraftProject(tabId: string, projectId: string | null) {
     tabs = tabs.map((tab) =>
       tab.id === tabId ? { ...tab, projectId, updatedAt: Date.now() } : tab
     )
+  }
+
+  function resetActiveTabToNewSession() {
+    if (!activeTabId) {
+      openNewTab()
+      return
+    }
+
+    tabs = tabs.map((tab) =>
+      tab.id === activeTabId
+        ? {
+            ...tab,
+            sessionId: null,
+            title: null,
+            kind: 'new' as const,
+            updatedAt: Date.now(),
+          }
+        : tab
+    )
+    messagesStore.clear()
   }
 
   function clearProject(projectId: string) {
@@ -104,6 +141,9 @@ function createTabStore() {
     setActiveTab,
     openNewTab,
     closeTab,
+    activateNextTab,
+    activatePreviousTab,
+    resetActiveTabToNewSession,
     setDraftProject,
     clearProject,
     attachSession,

@@ -2,6 +2,7 @@
       import { tick } from 'svelte'
       import { messagesStore } from '$lib/stores/messages.svelte.js'
       import { modelsStore } from '$lib/stores/models.svelte.js'
+      import { projectStore } from '$lib/stores/projects.svelte.js'
       import { sessionStore } from '$lib/stores/sessions.svelte.js'
       import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
       import type { MessageNode } from '$lib/types.js'
@@ -37,6 +38,11 @@
       const isStopping = $derived(sessionStore.isStopping(sessionId))
       const queuedMessages = $derived(sessionStore.queuedMessagesFor(sessionId))
       const sessionError = $derived(sessionStore.sessionError(sessionId))
+      const projectName = $derived.by(() => {
+        const session = sessionStore.sessions.find((item) => item.id === sessionId)
+        const project = projectStore.getProject(session?.projectId ?? null)
+        return project?.name ?? null
+      })
       const persistedTranscriptItems = $derived.by(() =>
         projectTranscript(persistedSources(messagesStore.messages), {
           pretty: clientSettingsStore.prettyTranscript,
@@ -239,13 +245,15 @@
 
 <div class="flex h-full flex-col overflow-hidden">
   <!-- Header -->
-  <div class="py-4">
-    <div class="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 sm:px-6">
-      <div class="min-w-0 flex-1">
-        <h1 class="text-sm font-semibold text-foreground">
+  <div class="border-b border-border py-3.5">
+    <div class="mx-auto flex w-full max-w-6xl items-center gap-2.5 px-4 sm:px-6">
+      <div class="flex min-w-0 flex-1 flex-col gap-1">
+        <h1 class="text-sm leading-tight font-semibold text-foreground">
           {title ?? 'New Session'}
         </h1>
-        <span class="text-xs text-muted-foreground">{sessionId.slice(0, 8)}</span>
+        {#if projectName}
+          <span class="text-sm leading-tight text-muted-foreground">{projectName}</span>
+        {/if}
       </div>
 
       {#if isStopping}

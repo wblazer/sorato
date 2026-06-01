@@ -4,7 +4,6 @@ import { hotkeyStore } from './hotkeys.svelte.js'
 export type ActionId =
   | 'app.command-palette'
   | 'app.settings'
-  | 'app.toggle-transcript-display-mode'
   | 'connection.add'
   | 'directory.open'
   | 'project.add'
@@ -13,6 +12,10 @@ export type ActionId =
   | 'provider.connect'
   | 'session.new'
   | 'session.open'
+  | 'tab.close'
+  | 'tab.next'
+  | 'tab.new'
+  | 'tab.previous'
 
 export type ActionContext = 'global' | string
 export type ActionPaletteVisibility = 'auto' | 'never'
