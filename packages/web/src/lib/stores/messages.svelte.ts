@@ -267,12 +267,34 @@ function createMessagesStore() {
    * Replaced by real data on the next refresh.
    */
   function addOptimisticUserMessage(sessionId: string, input: string) {
+    const now = Date.now()
+    const runId = `optimistic-run-${now}`
     const optimistic: MessageNode = {
-      id: `optimistic-${Date.now()}`,
+      id: `optimistic-${now}`,
       sessionId,
       parentId: messages.at(-1)?.id ?? null,
+      runId,
+      run: {
+        id: runId,
+        status: 'running',
+        providerId: '',
+        modelId: '',
+        billingMode: 'api-key',
+        usage: {
+          inputTokens: null,
+          outputTokens: null,
+          reasoningTokens: null,
+          cacheReadTokens: null,
+          cacheWriteTokens: null,
+          totalTokens: null,
+          actualCostMicrosUsd: null,
+          listPriceMicrosUsd: null,
+        },
+        createdAt: now,
+        completedAt: null,
+      },
       encoded: { role: 'user', content: input },
-      createdAt: Date.now(),
+      createdAt: now,
     }
     messages = [...messages, optimistic]
   }

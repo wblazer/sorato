@@ -4,9 +4,11 @@ import type { HarnessEvent, HarnessHook, HarnessResult } from '@sorato/core'
 import {
   SessionStorage,
   StorageError,
+  type BillingMode,
   type SessionId,
 } from './session/session.ts'
 import { publish } from './event-bus.ts'
+import { pricedUsage, type CostInfo } from './run-cost.ts'
 
 const stoppedSystemMessage = {
   role: 'system' as const,
@@ -81,14 +83,25 @@ const addToolDisplays = (
 
 export const createPersistenceHook = (
   sessionId: SessionId,
-  messageCountBeforeRun: number
+  runId: string,
+  messageCountBeforeRun: number,
+  pricing: {
+    readonly billingMode: BillingMode
+    readonly cost: CostInfo | undefined
+  }
 ): HarnessHook<StorageError, SessionStorage> => ({
   name: 'persist',
   handle: (event: HarnessEvent) =>
     Effect.gen(function* () {
-      if (event._tag !== 'RunResult') return
-
       const storage = yield* SessionStorage
+
+      if (event._tag === 'RunUsage') {
+        const usage = pricedUsage(event.usage, pricing.billingMode, pricing.cost)
+        if (usage) yield* storage.updateRunUsage(runId, usage)
+        return
+      }
+
+      if (event._tag !== 'RunResult') return
       const encoded = yield* Effect.try({
         try: () => Schema.encodeSync(Prompt.Prompt)(event.result.conversation),
         catch: (error) =>
@@ -109,15 +122,26 @@ export const createPersistenceHook = (
         Match.when(true, () => [...displayMessages, stoppedSystemMessage]),
         Match.orElse(() => displayMessages)
       )
+
+      yield* storage.completeRun({
+        id: runId,
+        status: event.interrupted ? 'interrupted' : 'completed',
+        usage: pricedUsage(
+          event.result.usage,
+          pricing.billingMode,
+          pricing.cost
+        ),
+      })
       if (newMessages.length === 0) return
 
       yield* Effect.logInfo('Persisting run messages', {
         sessionId,
+        runId,
         messageCount: newMessages.length,
         interrupted: event.interrupted,
       })
 
-      yield* storage.append(sessionId, newMessages)
+      yield* storage.append(sessionId, runId, newMessages)
       publish({ _tag: 'MessagesAppended', sessionId })
       publish({ _tag: 'SessionUpdated', sessionId })
     }).pipe(

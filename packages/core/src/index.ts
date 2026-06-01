@@ -28,6 +28,7 @@ export type {
   HarnessHook,
   HarnessConfig,
   HarnessResult,
+  HarnessUsage,
 } from './harness/harness.ts'
 export { run } from './harness/run.ts'
 

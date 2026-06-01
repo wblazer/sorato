@@ -15,11 +15,13 @@ import { SessionStorage, type SessionId } from './session/session.ts'
 import { AllTools, SYSTEM_PROMPT } from './agent-config.ts'
 import { createBusHook, publish } from './event-bus.ts'
 import { endEventReplay, startEventReplay } from './event-replay.ts'
-import { modelLayer } from './model-catalog.ts'
+import { modelLayer, resolveModel } from './model-catalog.ts'
 import { dataDir } from './data-dir.ts'
 import { createPersistenceHook } from './run-persistence.ts'
 import type { RunRequest } from './run-registry.ts'
 import { generateSessionTitle } from './session-title.ts'
+import { getAuth } from './provider-auth.ts'
+import type { BillingMode } from './session/session.ts'
 
 export const runAgent = (sessionId: SessionId, request: RunRequest) => {
   const runId = crypto.randomUUID()
@@ -48,6 +50,24 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       projectId: session.projectId,
       projectPath,
       headId: session.headId,
+    })
+
+    const resolvedModel = resolveModel(request.model)
+    if (!resolvedModel) {
+      return yield* Effect.die(
+        new Error(`Model is not supported by this server: ${request.model}`)
+      )
+    }
+    const auth = yield* getAuth(resolvedModel.providerId)
+    const billingMode: BillingMode =
+      auth?.type === 'oauth' ? 'subscription' : 'api-key'
+
+    yield* storage.createRun({
+      id: runId,
+      sessionId,
+      providerId: resolvedModel.providerId,
+      modelId: resolvedModel.modelId,
+      billingMode,
     })
 
     const modelServices = yield* modelLayer(dataDir, {
@@ -104,7 +124,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       Match.orElse(() => [{ role: 'user' as const, content: request.input }])
     )
 
-    yield* storage.append(sessionId, preamble)
+    yield* storage.append(sessionId, runId, preamble)
     yield* Effect.logInfo('Agent run appended user input', {
       runId,
       appendedMessages: preamble.length,
@@ -136,7 +156,10 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
             toolkit: AllTools,
             hooks: [
               createBusHook(sessionId, runId),
-              createPersistenceHook(sessionId, messageCountBeforeRun),
+              createPersistenceHook(sessionId, runId, messageCountBeforeRun, {
+                billingMode,
+                cost: resolvedModel.model.cost,
+              }),
             ],
           }),
           Layer.mergeAll(
@@ -157,6 +180,10 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
           yield* Effect.logInfo('Agent run interrupted', { runId })
         } else {
           runFailed = true
+          const storage = yield* SessionStorage
+          yield* storage
+            .completeRun({ id: runId, status: 'failed' })
+            .pipe(Effect.catch(() => Effect.void))
           yield* Effect.logError('Agent run failed', {
             runId,
             cause: Cause.pretty(cause),

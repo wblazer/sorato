@@ -202,6 +202,9 @@ export const createBusHook = (
             })
           )
           break
+        case 'RunUsage':
+          // Persistence-only event.
+          break
         case 'RunEnd':
           // See RunStart comment — lifecycle managed by run-agent.ts.
           break

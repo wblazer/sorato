@@ -1,9 +1,26 @@
 import type { ProviderId } from './provider-definitions.ts'
 
+type CatalogCost = {
+  readonly input?: number
+  readonly output?: number
+  readonly cacheRead?: number
+  readonly cacheWrite?: number
+  readonly tiers?: ReadonlyArray<
+    CatalogCost & {
+      readonly tier: {
+        readonly type: string
+        readonly size: number
+      }
+    }
+  >
+  readonly contextOver200K?: CatalogCost
+}
+
 type CatalogModel = {
   readonly id: string
   readonly name: string
   readonly releaseDate?: string
+  readonly cost?: CatalogCost
   readonly capabilities: {
     readonly attachment: boolean
     readonly reasoning: boolean

@@ -5,7 +5,11 @@ import { Prompt } from 'effect/unstable/ai'
 import { describe, expect, it } from '@effect/vitest'
 import { SqliteClient } from '@effect/sql-sqlite-bun'
 import { BunServices } from '@effect/platform-bun'
-import { SessionId, SessionStorage } from '../src/session/session.ts'
+import {
+  SessionId,
+  SessionStorage,
+  type SessionStorageApi,
+} from '../src/session/session.ts'
 import { SqliteSession } from '../src/session/sqlite-session.ts'
 
 // ---------------------------------------------------------------------------
@@ -21,6 +25,24 @@ const testLayer = () => {
 }
 
 const TEST_DIR = '/tmp/test-project'
+
+const append = (
+  storage: SessionStorageApi,
+  sessionId: string,
+  messages: ReadonlyArray<Prompt.MessageEncoded>
+) =>
+  Effect.gen(function* () {
+    const runId = crypto.randomUUID()
+    yield* storage.createRun({
+      id: runId,
+      sessionId,
+      providerId: 'test',
+      modelId: 'test-model',
+      billingMode: 'api-key',
+    })
+    yield* storage.append(sessionId, runId, messages)
+    yield* storage.completeRun({ id: runId, status: 'completed' })
+  })
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -162,7 +184,7 @@ describe('SessionStorage', () => {
         yield* storage.create(TEST_DIR, 'second')
 
         // Append to s1 so it gets a newer updated_at than s2
-        yield* storage.append(s1.id, [userMsg('bump')])
+        yield* append(storage, s1.id, [userMsg('bump')])
 
         const sessions = yield* storage.list()
         expect(sessions.length).toBe(2)
@@ -196,7 +218,7 @@ describe('SessionStorage', () => {
         const storage = yield* SessionStorage
         const session = yield* storage.create(TEST_DIR, 'chat')
 
-        yield* storage.append(session.id, [
+        yield* append(storage, session.id, [
           systemMsg('You are helpful.'),
           userMsg('Hello!'),
           assistantMsg('Hi there!'),
@@ -217,14 +239,14 @@ describe('SessionStorage', () => {
         const session = yield* storage.create(TEST_DIR, 'incremental')
 
         // First turn
-        yield* storage.append(session.id, [
+        yield* append(storage, session.id, [
           systemMsg('System prompt'),
           userMsg('First message'),
           assistantMsg('First response'),
         ])
 
         // Second turn
-        yield* storage.append(session.id, [
+        yield* append(storage, session.id, [
           userMsg('Second message'),
           assistantMsg('Second response'),
         ])
@@ -249,7 +271,7 @@ describe('SessionStorage', () => {
         const storage = yield* SessionStorage
         const session = yield* storage.create(TEST_DIR, 'tools')
 
-        yield* storage.append(session.id, [
+        yield* append(storage, session.id, [
           systemMsg('You have tools.'),
           userMsg('Read foo.ts'),
           toolCallMsg('tc_1', 'Read', { path: 'foo.ts' }),
@@ -271,7 +293,7 @@ describe('SessionStorage', () => {
       Effect.gen(function* () {
         const storage = yield* SessionStorage
         const session = yield* storage.create(TEST_DIR, 'noop')
-        yield* storage.append(session.id, [])
+        yield* append(storage, session.id, [])
 
         const fetched = yield* storage.get(session.id)
         expect(fetched.headId).toBeNull()
@@ -287,7 +309,7 @@ describe('SessionStorage', () => {
         const storage = yield* SessionStorage
         const session = yield* storage.create(TEST_DIR, 'linear')
 
-        yield* storage.append(session.id, [
+        yield* append(storage, session.id, [
           userMsg('Hello'),
           assistantMsg('Hi'),
         ])
@@ -303,7 +325,7 @@ describe('SessionStorage', () => {
         const session = yield* storage.create(TEST_DIR, 'fork-test')
 
         // Build initial conversation: system -> user1 -> assistant1
-        yield* storage.append(session.id, [
+        yield* append(storage, session.id, [
           systemMsg('System'),
           userMsg('First question'),
           assistantMsg('First answer'),
@@ -348,7 +370,7 @@ describe('SessionStorage', () => {
         expect(forked.content.map((m) => m.role)).toEqual(['system', 'user'])
 
         // Append a different assistant response on the new branch
-        yield* storage.append(session.id, [assistantMsg('Different answer!')])
+        yield* append(storage, session.id, [assistantMsg('Different answer!')])
 
         // New conversation has 3 messages, but with the new response
         const newBranch = yield* storage.conversation(session.id)
@@ -366,7 +388,7 @@ describe('SessionStorage', () => {
         const session = yield* storage.create(TEST_DIR, 'switch-test')
 
         // Branch A: system -> user -> assistantA
-        yield* storage.append(session.id, [
+        yield* append(storage, session.id, [
           systemMsg('System'),
           userMsg('Question'),
           assistantMsg('Answer A'),
@@ -384,7 +406,7 @@ describe('SessionStorage', () => {
         yield* storage.setHead(session.id, userMsgId)
 
         // Branch B: system -> user -> assistantB
-        yield* storage.append(session.id, [assistantMsg('Answer B')])
+        yield* append(storage, session.id, [assistantMsg('Answer B')])
 
         // We're on branch B now
         const branchB = yield* storage.conversation(session.id)
@@ -419,7 +441,7 @@ describe('SessionStorage', () => {
         const s1 = yield* storage.create(TEST_DIR, 'session 1')
         const s2 = yield* storage.create(TEST_DIR, 'session 2')
 
-        yield* storage.append(s1.id, [userMsg('Hello from s1')])
+        yield* append(storage, s1.id, [userMsg('Hello from s1')])
 
         const tips = yield* storage.leaves(s1.id)
         const s1MsgId = expectDefined(tips[0], 'expected session 1 leaf').id
@@ -450,12 +472,12 @@ describe('SessionStorage', () => {
         const storage = yield* SessionStorage
         const session = yield* storage.create(TEST_DIR, 'head-tracking')
 
-        yield* storage.append(session.id, [userMsg('msg1')])
+        yield* append(storage, session.id, [userMsg('msg1')])
         const after1 = yield* storage.get(session.id)
         expect(after1.headId).not.toBeNull()
         const head1 = after1.headId
 
-        yield* storage.append(session.id, [assistantMsg('msg2')])
+        yield* append(storage, session.id, [assistantMsg('msg2')])
         const after2 = yield* storage.get(session.id)
         expect(after2.headId).not.toBe(head1)
       }).pipe(Effect.provide(testLayer()))
@@ -469,7 +491,7 @@ describe('SessionStorage', () => {
 
         // Small delay to ensure timestamp differs (it.live uses real clock)
         yield* Effect.sleep(15)
-        yield* storage.append(session.id, [userMsg('Hello')])
+        yield* append(storage, session.id, [userMsg('Hello')])
 
         const after = yield* storage.get(session.id)
         expect(after.updatedAt).toBeGreaterThan(created)
@@ -485,7 +507,7 @@ describe('SessionStorage', () => {
         const storage = yield* SessionStorage
         const session = yield* storage.create(TEST_DIR, 'cascade')
 
-        yield* storage.append(session.id, [
+        yield* append(storage, session.id, [
           userMsg('Hello'),
           assistantMsg('Hi'),
           userMsg('Bye'),

@@ -4,6 +4,22 @@ import { fileURLToPath } from 'node:url'
 import { MODEL_CATALOG_OVERRIDES } from '../src/model-catalog-overrides.ts'
 import { SUPPORTED_PROVIDERS } from '../src/provider-definitions.ts'
 
+type ModelsDevCost = {
+  readonly input?: number
+  readonly output?: number
+  readonly cache_read?: number
+  readonly cache_write?: number
+  readonly tiers?: ReadonlyArray<
+    ModelsDevCost & {
+      readonly tier: {
+        readonly type: string
+        readonly size: number
+      }
+    }
+  >
+  readonly context_over_200k?: ModelsDevCost
+}
+
 type ModelsDevModel = {
   readonly id: string
   readonly name: string
@@ -17,6 +33,7 @@ type ModelsDevModel = {
     readonly input?: number
     readonly output: number
   }
+  readonly cost?: ModelsDevCost
   readonly experimental?: {
     readonly modes?: Record<string, unknown>
   }
@@ -32,10 +49,27 @@ type ModelsDevProvider = {
 
 type ModelsDevResponse = Record<string, ModelsDevProvider>
 
+type CatalogCost = {
+  readonly input?: number
+  readonly output?: number
+  readonly cacheRead?: number
+  readonly cacheWrite?: number
+  readonly tiers?: ReadonlyArray<
+    CatalogCost & {
+      readonly tier: {
+        readonly type: string
+        readonly size: number
+      }
+    }
+  >
+  readonly contextOver200K?: CatalogCost
+}
+
 type CatalogModel = {
   readonly id: string
   readonly name: string
   readonly releaseDate: string | undefined
+  readonly cost: CatalogCost | undefined
   readonly capabilities: {
     readonly attachment: boolean
     readonly reasoning: boolean
@@ -60,6 +94,32 @@ if (!response.ok) {
 
 const data = (await response.json()) as ModelsDevResponse
 
+const toCatalogCost = (
+  cost: ModelsDevCost | undefined
+): CatalogCost | undefined => {
+  if (!cost) return undefined
+
+  return {
+    ...(cost.input !== undefined ? { input: cost.input } : {}),
+    ...(cost.output !== undefined ? { output: cost.output } : {}),
+    ...(cost.cache_read !== undefined ? { cacheRead: cost.cache_read } : {}),
+    ...(cost.cache_write !== undefined ? { cacheWrite: cost.cache_write } : {}),
+    ...(cost.tiers !== undefined
+      ? {
+          tiers: cost.tiers.map((tier) => ({
+            ...toCatalogCost(tier),
+            tier: tier.tier,
+          })),
+        }
+      : {}),
+    ...(cost.context_over_200k !== undefined
+      ? {
+          contextOver200K: toCatalogCost(cost.context_over_200k) as CatalogCost,
+        }
+      : {}),
+  }
+}
+
 const toCatalogModel = ([id, model]: [
   string,
   ModelsDevModel,
@@ -72,6 +132,7 @@ const toCatalogModel = ([id, model]: [
     id,
     name: model.name,
     releaseDate: model.release_date,
+    cost: toCatalogCost(model.cost),
     capabilities: {
       attachment: model.attachment,
       reasoning: model.reasoning,

@@ -26,7 +26,12 @@
 import type { AiError, Response, Tool } from 'effect/unstable/ai'
 import type { Effect as EffectType } from 'effect/Effect'
 import type { LanguageModel } from 'effect/unstable/ai'
-import type { HarnessConfig, HarnessEvent, HarnessResult } from './harness.ts'
+import type {
+  HarnessConfig,
+  HarnessEvent,
+  HarnessResult,
+  HarnessUsage,
+} from './harness.ts'
 import type {
   MessageHeaderDisplay,
   ToolResultDisplay,
@@ -39,16 +44,65 @@ import { ToolOutputRegistry, toolCallHeader } from '../tool/tool-output.ts'
 /** Maximum agent loop iterations to prevent runaway tool-call cycles. */
 const MAX_TURNS = 25
 
-interface RunUsage {
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
+type RunUsage = HarnessUsage
+
+const hasUsage = (usage: Response.Usage): boolean =>
+  usage.inputTokens.uncached !== undefined ||
+  usage.inputTokens.total !== undefined ||
+  usage.inputTokens.cacheRead !== undefined ||
+  usage.inputTokens.cacheWrite !== undefined ||
+  usage.outputTokens.total !== undefined ||
+  usage.outputTokens.text !== undefined ||
+  usage.outputTokens.reasoning !== undefined
+
+const safeTokenCount = (value: number | undefined): number =>
+  value === undefined || !Number.isFinite(value) ? 0 : Math.max(0, value)
+
+const usageFromResponse = (usage: Response.Usage): RunUsage | undefined => {
+  if (!hasUsage(usage)) return undefined
+
+  const cacheReadTokens = safeTokenCount(usage.inputTokens.cacheRead)
+  const cacheWriteTokens = safeTokenCount(usage.inputTokens.cacheWrite)
+  const inputTotal = safeTokenCount(usage.inputTokens.total)
+  const inputTokens = safeTokenCount(
+    usage.inputTokens.uncached ??
+      inputTotal - cacheReadTokens - cacheWriteTokens
+  )
+  const reasoningTokens = safeTokenCount(usage.outputTokens.reasoning)
+  const outputTotal = safeTokenCount(usage.outputTokens.total)
+  const outputTokens = safeTokenCount(
+    usage.outputTokens.text ?? outputTotal - reasoningTokens
+  )
+
+  return {
+    inputTokens,
+    outputTokens,
+    reasoningTokens,
+    cacheReadTokens,
+    cacheWriteTokens,
+    totalTokens:
+      inputTotal + outputTotal ||
+      inputTokens +
+        outputTokens +
+        reasoningTokens +
+        cacheReadTokens +
+        cacheWriteTokens,
+  }
 }
+
+const addUsage = (left: RunUsage | undefined, right: RunUsage): RunUsage => ({
+  inputTokens: (left?.inputTokens ?? 0) + right.inputTokens,
+  outputTokens: (left?.outputTokens ?? 0) + right.outputTokens,
+  reasoningTokens: (left?.reasoningTokens ?? 0) + right.reasoningTokens,
+  cacheReadTokens: (left?.cacheReadTokens ?? 0) + right.cacheReadTokens,
+  cacheWriteTokens: (left?.cacheWriteTokens ?? 0) + right.cacheWriteTokens,
+  totalTokens: (left?.totalTokens ?? 0) + right.totalTokens,
+})
 
 interface RunState {
   outputText: string
   currentTurnParts: Array<Prompt.TextPart | Prompt.ReasoningPart>
-  usage: RunUsage
+  usage: RunUsage | undefined
 }
 
 const appendCurrentTurnPart = (
@@ -125,7 +179,7 @@ export const run = <
     const state: RunState = {
       outputText: '',
       currentTurnParts: [],
-      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      usage: undefined,
     }
 
     // state.currentTurnParts is accumulated in the CURRENT turn only. Reset at
@@ -243,22 +297,30 @@ export const run = <
           }
 
           case 'finish': {
-            const inputTokens = part.usage.inputTokens.total ?? 0
-            const outputTokens = part.usage.outputTokens.total ?? 0
+            const usage = usageFromResponse(part.usage)
             return Effect.sync(() => {
               // Turn completed normally — clear currentTurnParts so the
               // interrupt path knows there's nothing to recover.
               state.currentTurnParts = []
-              state.usage.inputTokens += inputTokens
-              state.usage.outputTokens += outputTokens
-              state.usage.totalTokens += inputTokens + outputTokens
+              if (usage) state.usage = addUsage(state.usage, usage)
             }).pipe(
               Effect.flatMap(() =>
                 Effect.logDebug('Harness turn finished', {
                   turn,
-                  inputTokens,
-                  outputTokens,
+                  inputTokens: usage?.inputTokens,
+                  outputTokens: usage?.outputTokens,
+                  reasoningTokens: usage?.reasoningTokens,
+                  cacheReadTokens: usage?.cacheReadTokens,
+                  cacheWriteTokens: usage?.cacheWriteTokens,
                 })
+              ),
+              Effect.flatMap(() =>
+                state.usage
+                  ? fireHooks(config, {
+                      _tag: 'RunUsage',
+                      usage: state.usage,
+                    })
+                  : Effect.void
               )
             )
           }
@@ -353,9 +415,9 @@ export const run = <
       yield* Effect.logInfo('Harness run completed', {
         interrupted: wasInterrupted,
         outputLength: state.outputText.length,
-        inputTokens: state.usage.inputTokens,
-        outputTokens: state.usage.outputTokens,
-        totalTokens: state.usage.totalTokens,
+        inputTokens: state.usage?.inputTokens,
+        outputTokens: state.usage?.outputTokens,
+        totalTokens: state.usage?.totalTokens,
       })
 
       return result

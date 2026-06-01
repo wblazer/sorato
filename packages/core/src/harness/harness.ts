@@ -29,6 +29,15 @@ import type {
  * Lifecycle events the harness emits. Hooks receive these in real-time
  * as the agent loop streams.
  */
+export interface HarnessUsage {
+  readonly inputTokens: number
+  readonly outputTokens: number
+  readonly reasoningTokens: number
+  readonly cacheReadTokens: number
+  readonly cacheWriteTokens: number
+  readonly totalTokens: number
+}
+
 export type HarnessEvent =
   | { readonly _tag: 'RunStart' }
   | { readonly _tag: 'TextDelta'; readonly delta: string }
@@ -50,13 +59,14 @@ export type HarnessEvent =
       readonly isFailure: boolean
     }
   | {
+      readonly _tag: 'RunUsage'
+      /** Aggregate provider-reported usage observed so far for this run. */
+      readonly usage: HarnessUsage
+    }
+  | {
       readonly _tag: 'RunEnd'
       readonly output: string
-      readonly usage: {
-        readonly inputTokens: number
-        readonly outputTokens: number
-        readonly totalTokens: number
-      }
+      readonly usage: HarnessUsage | undefined
     }
   | {
       readonly _tag: 'RunResult'
@@ -135,10 +145,6 @@ export interface HarnessResult {
   >
   /** The concatenated text from all assistant messages across all turns. */
   readonly text: string
-  /** Aggregate token usage across the session. */
-  readonly usage: {
-    readonly inputTokens: number
-    readonly outputTokens: number
-    readonly totalTokens: number
-  }
+  /** Aggregate provider-reported token usage across the run. */
+  readonly usage: HarnessUsage | undefined
 }

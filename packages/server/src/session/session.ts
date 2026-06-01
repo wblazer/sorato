@@ -40,6 +40,20 @@ export type SessionId = string
 export const MessageId = Schema.String
 export type MessageId = string
 
+export const RunId = Schema.String
+export type RunId = string
+
+export const RunStatus = Schema.Literals([
+  'running',
+  'completed',
+  'interrupted',
+  'failed',
+])
+export type RunStatus = typeof RunStatus.Type
+
+export const BillingMode = Schema.Literals(['api-key', 'subscription'])
+export type BillingMode = typeof BillingMode.Type
+
 // ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
@@ -56,6 +70,44 @@ export class StorageError extends Schema.TaggedErrorClass<StorageError>()(
 // ---------------------------------------------------------------------------
 // Data types
 // ---------------------------------------------------------------------------
+
+export interface RunUsage {
+  readonly inputTokens: number | null
+  readonly outputTokens: number | null
+  readonly reasoningTokens: number | null
+  readonly cacheReadTokens: number | null
+  readonly cacheWriteTokens: number | null
+  readonly totalTokens: number | null
+  readonly actualCostMicrosUsd: number | null
+  readonly listPriceMicrosUsd: number | null
+}
+
+export interface Run extends RunUsage {
+  readonly id: RunId
+  readonly sessionId: SessionId
+  readonly status: RunStatus
+  readonly providerId: string
+  readonly modelId: string
+  readonly billingMode: BillingMode
+  readonly createdAt: number
+  readonly completedAt: number | null
+}
+
+export interface CreateRunInput {
+  readonly id: RunId
+  readonly sessionId: SessionId
+  readonly providerId: string
+  readonly modelId: string
+  readonly billingMode: BillingMode
+  readonly createdAt?: number
+}
+
+export interface CompleteRunInput {
+  readonly id: RunId
+  readonly status: Exclude<RunStatus, 'running'>
+  readonly usage?: RunUsage | undefined
+  readonly completedAt?: number
+}
 
 /** A session — a container for a tree of messages. */
 export interface Session {
@@ -76,6 +128,8 @@ export interface MessageNode {
   readonly id: MessageId
   readonly sessionId: SessionId
   readonly parentId: MessageId | null
+  readonly runId: RunId
+  readonly run: Run
   /** The full encoded message — role, content/parts, options. */
   readonly encoded: StoredMessageEncoded
   readonly createdAt: number
@@ -163,6 +217,21 @@ export interface SessionStorageApi {
   /** List all sessions, most recently updated first. */
   readonly list: () => Effect<ReadonlyArray<Session>, StorageError>
 
+  /** Create a run envelope for messages and usage caused by one execution. */
+  readonly createRun: (input: CreateRunInput) => Effect<void, StorageError>
+
+  /** Persist provider-reported aggregate usage/cost for a still-running run. */
+  readonly updateRunUsage: (
+    id: RunId,
+    usage: RunUsage
+  ) => Effect<void, StorageError>
+
+  /** Complete a run and persist provider-reported aggregate usage/cost. */
+  readonly completeRun: (input: CompleteRunInput) => Effect<void, StorageError>
+
+  /** Get a persisted run. */
+  readonly getRun: (id: RunId) => Effect<Run, StorageError>
+
   /** Set or clear the session title. */
   readonly setTitle: (
     id: SessionId,
@@ -205,6 +274,7 @@ export interface SessionStorageApi {
    */
   readonly append: (
     sessionId: SessionId,
+    runId: RunId,
     messages: ReadonlyArray<StoredMessageEncoded>
   ) => Effect<void, StorageError>
 

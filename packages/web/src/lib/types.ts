@@ -76,10 +76,34 @@ export interface AvailableModelsResponse {
 // ---------------------------------------------------------------------------
 
 /** A node in the message tree, as returned by the server. */
+export interface RunUsage {
+  inputTokens: number | null
+  outputTokens: number | null
+  reasoningTokens: number | null
+  cacheReadTokens: number | null
+  cacheWriteTokens: number | null
+  totalTokens: number | null
+  actualCostMicrosUsd: number | null
+  listPriceMicrosUsd: number | null
+}
+
+export interface RunSummary {
+  id: string
+  status: 'running' | 'completed' | 'interrupted' | 'failed'
+  providerId: string
+  modelId: string
+  billingMode: 'api-key' | 'subscription'
+  usage: RunUsage
+  createdAt: number
+  completedAt: number | null
+}
+
 export interface MessageNode {
   id: string
   sessionId: string
   parentId: string | null
+  runId: string
+  run: RunSummary
   encoded: MessageEncoded
   createdAt: number
 }

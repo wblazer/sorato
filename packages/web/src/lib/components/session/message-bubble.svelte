@@ -53,6 +53,28 @@
     }
     return item.type
   }
+
+  const formatTokens = (tokens: number | null): string | null => {
+    if (tokens === null) return null
+    return Intl.NumberFormat(undefined, { notation: 'compact' }).format(tokens)
+  }
+
+  const formatCost = (micros: number | null): string | null => {
+    if (micros === null) return null
+    return Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: micros === 0 ? 0 : 4,
+    }).format(micros / 1_000_000)
+  }
+
+  const usageLine = $derived.by(() => {
+    if (!message.run || role !== 'assistant') return null
+    const total = formatTokens(message.run.usage.totalTokens)
+    const cost = formatCost(message.run.usage.actualCostMicrosUsd)
+    if (!total && !cost) return null
+    return [total ? `${total} tokens` : null, cost].filter(Boolean).join(' · ')
+  })
 </script>
 
 {#if renderParts.length > 0}
@@ -126,7 +148,7 @@
       </Accordion.Item>
     </Accordion.Root>
     {:else}
-    <div>
+    <div class="group/assistant">
       {#each renderParts as item}
         <div class="assistant-transcript-item" data-transcript-kind={transcriptItemKind(item)}>
           {#if item.type === 'combined-tool'}
@@ -142,6 +164,11 @@
           {/if}
         </div>
       {/each}
+      {#if usageLine}
+        <div class="mt-2 text-xs text-muted-foreground opacity-0 transition-opacity group-hover/assistant:opacity-100">
+          {usageLine}
+        </div>
+      {/if}
     </div>
     {/if}
   </div>

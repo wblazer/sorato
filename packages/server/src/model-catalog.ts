@@ -16,6 +16,18 @@ import {
   providerApiKey,
 } from './provider-auth.ts'
 
+type CatalogProvider = (typeof MODEL_PROVIDERS)[number]
+type CatalogModel = CatalogProvider['models'][number]
+
+export type ModelCost = NonNullable<CatalogModel['cost']>
+
+export type ResolvedModel = {
+  readonly providerId: string
+  readonly modelId: string
+  readonly model: CatalogModel
+  readonly provider: CatalogProvider
+}
+
 type Entry = {
   readonly id: string
   readonly name: string
@@ -83,6 +95,17 @@ const isOpenAiOauthModel = (modelId: string) => {
       onSome: (version) => Number.parseFloat(version) > 5.4,
     })
   )
+}
+
+export const resolveModel = (id: string): ResolvedModel | undefined => {
+  const parts = id.split('/')
+  const providerId = parts[0]
+  if (!providerId) return undefined
+  const modelId = parts.slice(1).join('/')
+  const provider = MODEL_PROVIDERS.find((item) => item.id === providerId)
+  const model = provider?.models.find((item) => item.id === modelId)
+  if (!provider || !model) return undefined
+  return { providerId, modelId, provider, model }
 }
 
 const validOptions = (

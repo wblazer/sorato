@@ -11,6 +11,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-opus-4-5',
         name: 'Claude Opus 4.5 (latest)',
         releaseDate: '2025-11-24',
+        cost: {
+          input: 5,
+          output: 25,
+          cacheRead: 0.5,
+          cacheWrite: 6.25,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -27,6 +33,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-sonnet-4-6',
         name: 'Claude Sonnet 4.6',
         releaseDate: '2026-02-17',
+        cost: {
+          input: 3,
+          output: 15,
+          cacheRead: 0.3,
+          cacheWrite: 3.75,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -43,6 +55,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-haiku-4-5-20251001',
         name: 'Claude Haiku 4.5',
         releaseDate: '2025-10-15',
+        cost: {
+          input: 1,
+          output: 5,
+          cacheRead: 0.1,
+          cacheWrite: 1.25,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -59,6 +77,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-sonnet-4-0',
         name: 'Claude Sonnet 4 (latest)',
         releaseDate: '2025-05-22',
+        cost: {
+          input: 3,
+          output: 15,
+          cacheRead: 0.3,
+          cacheWrite: 3.75,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -75,6 +99,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-haiku-4-5',
         name: 'Claude Haiku 4.5 (latest)',
         releaseDate: '2025-10-15',
+        cost: {
+          input: 1,
+          output: 5,
+          cacheRead: 0.1,
+          cacheWrite: 1.25,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -91,6 +121,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-opus-4-20250514',
         name: 'Claude Opus 4',
         releaseDate: '2025-05-22',
+        cost: {
+          input: 15,
+          output: 75,
+          cacheRead: 1.5,
+          cacheWrite: 18.75,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -107,6 +143,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-opus-4-1',
         name: 'Claude Opus 4.1 (latest)',
         releaseDate: '2025-08-05',
+        cost: {
+          input: 15,
+          output: 75,
+          cacheRead: 1.5,
+          cacheWrite: 18.75,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -123,6 +165,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-3-opus-20240229',
         name: 'Claude Opus 3',
         releaseDate: '2024-02-29',
+        cost: {
+          input: 15,
+          output: 75,
+          cacheRead: 1.5,
+          cacheWrite: 18.75,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -139,6 +187,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-3-5-haiku-latest',
         name: 'Claude Haiku 3.5 (latest)',
         releaseDate: '2024-10-22',
+        cost: {
+          input: 0.8,
+          output: 4,
+          cacheRead: 0.08,
+          cacheWrite: 1,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -155,6 +209,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-sonnet-4-5-20250929',
         name: 'Claude Sonnet 4.5',
         releaseDate: '2025-09-29',
+        cost: {
+          input: 3,
+          output: 15,
+          cacheRead: 0.3,
+          cacheWrite: 3.75,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -171,6 +231,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-3-5-haiku-20241022',
         name: 'Claude Haiku 3.5',
         releaseDate: '2024-10-22',
+        cost: {
+          input: 0.8,
+          output: 4,
+          cacheRead: 0.08,
+          cacheWrite: 1,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -187,6 +253,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-opus-4-1-20250805',
         name: 'Claude Opus 4.1',
         releaseDate: '2025-08-05',
+        cost: {
+          input: 15,
+          output: 75,
+          cacheRead: 1.5,
+          cacheWrite: 18.75,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -203,6 +275,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-3-7-sonnet-20250219',
         name: 'Claude Sonnet 3.7',
         releaseDate: '2025-02-19',
+        cost: {
+          input: 3,
+          output: 15,
+          cacheRead: 0.3,
+          cacheWrite: 3.75,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -219,6 +297,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-3-5-sonnet-20240620',
         name: 'Claude Sonnet 3.5',
         releaseDate: '2024-06-20',
+        cost: {
+          input: 3,
+          output: 15,
+          cacheRead: 0.3,
+          cacheWrite: 3.75,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -235,6 +319,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-3-5-sonnet-20241022',
         name: 'Claude Sonnet 3.5 v2',
         releaseDate: '2024-10-22',
+        cost: {
+          input: 3,
+          output: 15,
+          cacheRead: 0.3,
+          cacheWrite: 3.75,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -251,6 +341,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-opus-4-5-20251101',
         name: 'Claude Opus 4.5',
         releaseDate: '2025-11-01',
+        cost: {
+          input: 5,
+          output: 25,
+          cacheRead: 0.5,
+          cacheWrite: 6.25,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -267,6 +363,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-opus-4-8',
         name: 'Claude Opus 4.8',
         releaseDate: '2026-05-28',
+        cost: {
+          input: 5,
+          output: 25,
+          cacheRead: 0.5,
+          cacheWrite: 6.25,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -283,6 +385,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-3-haiku-20240307',
         name: 'Claude Haiku 3',
         releaseDate: '2024-03-13',
+        cost: {
+          input: 0.25,
+          output: 1.25,
+          cacheRead: 0.03,
+          cacheWrite: 0.3,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -299,6 +407,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-sonnet-4-20250514',
         name: 'Claude Sonnet 4',
         releaseDate: '2025-05-22',
+        cost: {
+          input: 3,
+          output: 15,
+          cacheRead: 0.3,
+          cacheWrite: 3.75,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -315,6 +429,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-sonnet-4-5',
         name: 'Claude Sonnet 4.5 (latest)',
         releaseDate: '2025-09-29',
+        cost: {
+          input: 3,
+          output: 15,
+          cacheRead: 0.3,
+          cacheWrite: 3.75,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -331,6 +451,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-opus-4-6',
         name: 'Claude Opus 4.6',
         releaseDate: '2026-02-05',
+        cost: {
+          input: 5,
+          output: 25,
+          cacheRead: 0.5,
+          cacheWrite: 6.25,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -347,6 +473,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-opus-4-7',
         name: 'Claude Opus 4.7',
         releaseDate: '2026-04-16',
+        cost: {
+          input: 5,
+          output: 25,
+          cacheRead: 0.5,
+          cacheWrite: 6.25,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -363,6 +495,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-3-sonnet-20240229',
         name: 'Claude Sonnet 3',
         releaseDate: '2024-03-04',
+        cost: {
+          input: 3,
+          output: 15,
+          cacheRead: 0.3,
+          cacheWrite: 0.3,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -379,6 +517,12 @@ export const MODEL_PROVIDERS = [
         id: 'claude-opus-4-0',
         name: 'Claude Opus 4 (latest)',
         releaseDate: '2025-05-22',
+        cost: {
+          input: 15,
+          output: 75,
+          cacheRead: 1.5,
+          cacheWrite: 18.75,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -402,6 +546,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-4o-2024-08-06',
         name: 'GPT-4o (2024-08-06)',
         releaseDate: '2024-08-06',
+        cost: {
+          input: 2.5,
+          output: 10,
+          cacheRead: 1.25,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -418,6 +567,10 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5-pro',
         name: 'GPT-5 Pro',
         releaseDate: '2025-10-06',
+        cost: {
+          input: 15,
+          output: 120,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -435,6 +588,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5-mini',
         name: 'GPT-5 Mini',
         releaseDate: '2025-08-07',
+        cost: {
+          input: 0.25,
+          output: 2,
+          cacheRead: 0.025,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -452,6 +610,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-4o',
         name: 'GPT-4o',
         releaseDate: '2024-05-13',
+        cost: {
+          input: 2.5,
+          output: 10,
+          cacheRead: 1.25,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -468,6 +631,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.2',
         name: 'GPT-5.2',
         releaseDate: '2025-12-11',
+        cost: {
+          input: 1.75,
+          output: 14,
+          cacheRead: 0.175,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -485,6 +653,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5-codex',
         name: 'GPT-5-Codex',
         releaseDate: '2025-09-15',
+        cost: {
+          input: 1.25,
+          output: 10,
+          cacheRead: 0.125,
+        },
         capabilities: {
           attachment: false,
           reasoning: true,
@@ -502,6 +675,11 @@ export const MODEL_PROVIDERS = [
         id: 'o3',
         name: 'o3',
         releaseDate: '2025-04-16',
+        cost: {
+          input: 2,
+          output: 8,
+          cacheRead: 0.5,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -518,6 +696,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.3-chat-latest',
         name: 'GPT-5.3 Chat (latest)',
         releaseDate: '2026-03-03',
+        cost: {
+          input: 1.75,
+          output: 14,
+          cacheRead: 0.175,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -534,6 +717,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-4o-2024-11-20',
         name: 'GPT-4o (2024-11-20)',
         releaseDate: '2024-11-20',
+        cost: {
+          input: 2.5,
+          output: 10,
+          cacheRead: 1.25,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -550,6 +738,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5',
         name: 'GPT-5',
         releaseDate: '2025-08-07',
+        cost: {
+          input: 1.25,
+          output: 10,
+          cacheRead: 0.125,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -567,6 +760,24 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.4-pro',
         name: 'GPT-5.4 Pro',
         releaseDate: '2026-03-05',
+        cost: {
+          input: 30,
+          output: 180,
+          tiers: [
+            {
+              input: 60,
+              output: 270,
+              tier: {
+                type: 'context',
+                size: 272000,
+              },
+            },
+          ],
+          contextOver200K: {
+            input: 60,
+            output: 270,
+          },
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -584,6 +795,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-4.1-mini',
         name: 'GPT-4.1 mini',
         releaseDate: '2025-04-14',
+        cost: {
+          input: 0.4,
+          output: 1.6,
+          cacheRead: 0.1,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -600,6 +816,10 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.2-pro',
         name: 'GPT-5.2 Pro',
         releaseDate: '2025-12-11',
+        cost: {
+          input: 21,
+          output: 168,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -617,6 +837,10 @@ export const MODEL_PROVIDERS = [
         id: 'o3-pro',
         name: 'o3-pro',
         releaseDate: '2025-06-10',
+        cost: {
+          input: 20,
+          output: 80,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -633,6 +857,11 @@ export const MODEL_PROVIDERS = [
         id: 'o4-mini',
         name: 'o4-mini',
         releaseDate: '2025-04-16',
+        cost: {
+          input: 1.1,
+          output: 4.4,
+          cacheRead: 0.275,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -649,6 +878,27 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.4',
         name: 'GPT-5.4',
         releaseDate: '2026-03-05',
+        cost: {
+          input: 2.5,
+          output: 15,
+          cacheRead: 0.25,
+          tiers: [
+            {
+              input: 5,
+              output: 22.5,
+              cacheRead: 0.5,
+              tier: {
+                type: 'context',
+                size: 272000,
+              },
+            },
+          ],
+          contextOver200K: {
+            input: 5,
+            output: 22.5,
+            cacheRead: 0.5,
+          },
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -666,6 +916,11 @@ export const MODEL_PROVIDERS = [
         id: 'o3-mini',
         name: 'o3-mini',
         releaseDate: '2024-12-20',
+        cost: {
+          input: 1.1,
+          output: 4.4,
+          cacheRead: 0.55,
+        },
         capabilities: {
           attachment: false,
           reasoning: true,
@@ -682,6 +937,27 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.5',
         name: 'GPT-5.5',
         releaseDate: '2026-04-23',
+        cost: {
+          input: 5,
+          output: 30,
+          cacheRead: 0.5,
+          tiers: [
+            {
+              input: 10,
+              output: 45,
+              cacheRead: 1,
+              tier: {
+                type: 'context',
+                size: 272000,
+              },
+            },
+          ],
+          contextOver200K: {
+            input: 10,
+            output: 45,
+            cacheRead: 1,
+          },
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -699,6 +975,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.2-chat-latest',
         name: 'GPT-5.2 Chat',
         releaseDate: '2025-12-11',
+        cost: {
+          input: 1.75,
+          output: 14,
+          cacheRead: 0.175,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -715,6 +996,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.1',
         name: 'GPT-5.1',
         releaseDate: '2025-11-13',
+        cost: {
+          input: 1.25,
+          output: 10,
+          cacheRead: 0.125,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -732,6 +1018,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5-nano',
         name: 'GPT-5 Nano',
         releaseDate: '2025-08-07',
+        cost: {
+          input: 0.05,
+          output: 0.4,
+          cacheRead: 0.005,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -749,6 +1040,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-4o-mini',
         name: 'GPT-4o mini',
         releaseDate: '2024-07-18',
+        cost: {
+          input: 0.15,
+          output: 0.6,
+          cacheRead: 0.075,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -765,6 +1061,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.1-codex-max',
         name: 'GPT-5.1 Codex Max',
         releaseDate: '2025-11-13',
+        cost: {
+          input: 1.25,
+          output: 10,
+          cacheRead: 0.125,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -782,6 +1083,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.1-codex-mini',
         name: 'GPT-5.1 Codex mini',
         releaseDate: '2025-11-13',
+        cost: {
+          input: 0.25,
+          output: 2,
+          cacheRead: 0.025,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -799,6 +1105,10 @@ export const MODEL_PROVIDERS = [
         id: 'o1-pro',
         name: 'o1-pro',
         releaseDate: '2025-03-19',
+        cost: {
+          input: 150,
+          output: 600,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -815,6 +1125,11 @@ export const MODEL_PROVIDERS = [
         id: 'o3-deep-research',
         name: 'o3-deep-research',
         releaseDate: '2024-06-26',
+        cost: {
+          input: 10,
+          output: 40,
+          cacheRead: 2.5,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -831,6 +1146,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-4.1',
         name: 'GPT-4.1',
         releaseDate: '2025-04-14',
+        cost: {
+          input: 2,
+          output: 8,
+          cacheRead: 0.5,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -847,6 +1167,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.4-nano',
         name: 'GPT-5.4 nano',
         releaseDate: '2026-03-17',
+        cost: {
+          input: 0.2,
+          output: 1.25,
+          cacheRead: 0.02,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -864,6 +1189,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.3-codex',
         name: 'GPT-5.3 Codex',
         releaseDate: '2026-02-05',
+        cost: {
+          input: 1.75,
+          output: 14,
+          cacheRead: 0.175,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -881,6 +1211,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.3-codex-spark',
         name: 'GPT-5.3 Codex Spark',
         releaseDate: '2026-02-05',
+        cost: {
+          input: 1.75,
+          output: 14,
+          cacheRead: 0.175,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -898,6 +1233,24 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.5-pro',
         name: 'GPT-5.5 Pro',
         releaseDate: '2026-04-23',
+        cost: {
+          input: 30,
+          output: 180,
+          tiers: [
+            {
+              input: 60,
+              output: 270,
+              tier: {
+                type: 'context',
+                size: 272000,
+              },
+            },
+          ],
+          contextOver200K: {
+            input: 60,
+            output: 270,
+          },
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -915,6 +1268,11 @@ export const MODEL_PROVIDERS = [
         id: 'o4-mini-deep-research',
         name: 'o4-mini-deep-research',
         releaseDate: '2024-06-26',
+        cost: {
+          input: 2,
+          output: 8,
+          cacheRead: 0.5,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -931,6 +1289,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.2-codex',
         name: 'GPT-5.2 Codex',
         releaseDate: '2025-12-11',
+        cost: {
+          input: 1.75,
+          output: 14,
+          cacheRead: 0.175,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -948,6 +1311,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.1-codex',
         name: 'GPT-5.1 Codex',
         releaseDate: '2025-11-13',
+        cost: {
+          input: 1.25,
+          output: 10,
+          cacheRead: 0.125,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -965,6 +1333,10 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-4o-2024-05-13',
         name: 'GPT-4o (2024-05-13)',
         releaseDate: '2024-05-13',
+        cost: {
+          input: 5,
+          output: 15,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -981,6 +1353,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.4-mini',
         name: 'GPT-5.4 mini',
         releaseDate: '2026-03-17',
+        cost: {
+          input: 0.75,
+          output: 4.5,
+          cacheRead: 0.075,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -998,6 +1375,10 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-4-turbo',
         name: 'GPT-4 Turbo',
         releaseDate: '2023-11-06',
+        cost: {
+          input: 10,
+          output: 30,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -1014,6 +1395,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-5.1-chat-latest',
         name: 'GPT-5.1 Chat',
         releaseDate: '2025-11-13',
+        cost: {
+          input: 1.25,
+          output: 10,
+          cacheRead: 0.125,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -1030,6 +1416,11 @@ export const MODEL_PROVIDERS = [
         id: 'o1',
         name: 'o1',
         releaseDate: '2024-12-05',
+        cost: {
+          input: 15,
+          output: 60,
+          cacheRead: 7.5,
+        },
         capabilities: {
           attachment: true,
           reasoning: true,
@@ -1046,6 +1437,10 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-4',
         name: 'GPT-4',
         releaseDate: '2023-11-06',
+        cost: {
+          input: 30,
+          output: 60,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,
@@ -1062,6 +1457,11 @@ export const MODEL_PROVIDERS = [
         id: 'gpt-4.1-nano',
         name: 'GPT-4.1 nano',
         releaseDate: '2025-04-14',
+        cost: {
+          input: 0.1,
+          output: 0.4,
+          cacheRead: 0.025,
+        },
         capabilities: {
           attachment: true,
           reasoning: false,

@@ -31,12 +31,40 @@ export class SessionResponse extends Schema.Class<SessionResponse>(
   updatedAt: Schema.Number,
 }) {}
 
+export class RunUsageResponse extends Schema.Class<RunUsageResponse>(
+  'RunUsageResponse'
+)({
+  inputTokens: Schema.NullOr(Schema.Number),
+  outputTokens: Schema.NullOr(Schema.Number),
+  reasoningTokens: Schema.NullOr(Schema.Number),
+  cacheReadTokens: Schema.NullOr(Schema.Number),
+  cacheWriteTokens: Schema.NullOr(Schema.Number),
+  totalTokens: Schema.NullOr(Schema.Number),
+  actualCostMicrosUsd: Schema.NullOr(Schema.Number),
+  listPriceMicrosUsd: Schema.NullOr(Schema.Number),
+}) {}
+
+export class RunSummaryResponse extends Schema.Class<RunSummaryResponse>(
+  'RunSummaryResponse'
+)({
+  id: Schema.String,
+  status: Schema.Literals(['running', 'completed', 'interrupted', 'failed']),
+  providerId: Schema.String,
+  modelId: Schema.String,
+  billingMode: Schema.Literals(['api-key', 'subscription']),
+  usage: RunUsageResponse,
+  createdAt: Schema.Number,
+  completedAt: Schema.NullOr(Schema.Number),
+}) {}
+
 export class MessageNodeResponse extends Schema.Class<MessageNodeResponse>(
   'MessageNodeResponse'
 )({
   id: Schema.String,
   sessionId: Schema.String,
   parentId: Schema.NullOr(Schema.String),
+  runId: Schema.String,
+  run: RunSummaryResponse,
   encoded: Schema.Unknown,
   createdAt: Schema.Number,
 }) {}

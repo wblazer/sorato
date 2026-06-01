@@ -11,6 +11,8 @@ import { SessionStorage, type SessionStorageApi } from './session/session.ts'
 import {
   Api,
   MessageNodeResponse,
+  RunSummaryResponse,
+  RunUsageResponse,
   ProjectOperationFailed,
   RunResponse,
   SessionResponse,
@@ -19,6 +21,7 @@ import {
 } from './api.ts'
 import { ensureModel } from './model-catalog.ts'
 import type { ModelOptions } from './model-catalog.ts'
+import type { RunRequest } from './run-registry.ts'
 import { runAgent } from './run-agent.ts'
 import {
   clearActiveFiber,
@@ -68,6 +71,24 @@ const toMessageNodeResponse = (m: {
   readonly id: string
   readonly sessionId: string
   readonly parentId: string | null
+  readonly runId: string
+  readonly run: {
+    readonly id: string
+    readonly status: 'running' | 'completed' | 'interrupted' | 'failed'
+    readonly providerId: string
+    readonly modelId: string
+    readonly billingMode: 'api-key' | 'subscription'
+    readonly inputTokens: number | null
+    readonly outputTokens: number | null
+    readonly reasoningTokens: number | null
+    readonly cacheReadTokens: number | null
+    readonly cacheWriteTokens: number | null
+    readonly totalTokens: number | null
+    readonly actualCostMicrosUsd: number | null
+    readonly listPriceMicrosUsd: number | null
+    readonly createdAt: number
+    readonly completedAt: number | null
+  }
   readonly encoded: unknown
   readonly createdAt: number
 }) =>
@@ -75,6 +96,26 @@ const toMessageNodeResponse = (m: {
     id: m.id,
     sessionId: m.sessionId,
     parentId: m.parentId,
+    runId: m.runId,
+    run: new RunSummaryResponse({
+      id: m.run.id,
+      status: m.run.status,
+      providerId: m.run.providerId,
+      modelId: m.run.modelId,
+      billingMode: m.run.billingMode,
+      usage: new RunUsageResponse({
+        inputTokens: m.run.inputTokens,
+        outputTokens: m.run.outputTokens,
+        reasoningTokens: m.run.reasoningTokens,
+        cacheReadTokens: m.run.cacheReadTokens,
+        cacheWriteTokens: m.run.cacheWriteTokens,
+        totalTokens: m.run.totalTokens,
+        actualCostMicrosUsd: m.run.actualCostMicrosUsd,
+        listPriceMicrosUsd: m.run.listPriceMicrosUsd,
+      }),
+      createdAt: m.run.createdAt,
+      completedAt: m.run.completedAt,
+    }),
     encoded: m.encoded,
     createdAt: m.createdAt,
   })
@@ -249,6 +290,32 @@ const selectRunResponse = (sessionId: string, status: 'queued' | 'started') =>
     started: startRunWorker(sessionId),
   })[status]
 
+const appendStoppedQueuedInputs = (
+  storage: SessionStorageApi,
+  sessionId: string,
+  queuedInputs: ReadonlyArray<RunRequest>
+) =>
+  Effect.forEach(queuedInputs, (request) =>
+    Effect.gen(function* () {
+      const runId = crypto.randomUUID()
+      const [providerId = 'unknown', ...rest] = request.model.split('/')
+      yield* storage.createRun({
+        id: runId,
+        sessionId,
+        providerId,
+        modelId: rest.join('/') || request.model,
+        billingMode: 'api-key',
+      })
+      yield* storage.completeRun({ id: runId, status: 'interrupted' })
+      yield* storage.append(sessionId, runId, [
+        {
+          role: 'user' as const,
+          content: request.input,
+        },
+      ])
+    })
+  )
+
 function stopWithoutActiveFiber(storage: SessionStorageApi, sessionId: string) {
   const isSessionRunning = Number(isRunning(sessionId))
   const notRunningResponse = Effect.succeed(
@@ -256,15 +323,11 @@ function stopWithoutActiveFiber(storage: SessionStorageApi, sessionId: string) {
   )
   const runningResponse = Effect.gen(function* () {
     const queuedInputs = yield* drainQueuedInputsNow(sessionId)
-    const appendedQueuedInputs = storage
-      .append(
-        sessionId,
-        queuedInputs.map((request) => ({
-          role: 'user' as const,
-          content: request.input,
-        }))
-      )
-      .pipe(Effect.tap(() => publishMessagesAppended(sessionId)))
+    const appendedQueuedInputs = appendStoppedQueuedInputs(
+      storage,
+      sessionId,
+      queuedInputs
+    ).pipe(Effect.tap(() => publishMessagesAppended(sessionId)))
     const appendQueuedInputs =
       [Effect.void, appendedQueuedInputs][Number(queuedInputs.length > 0)] ??
       Effect.void
@@ -293,13 +356,7 @@ const stopWithActiveFiber = Effect.fn('Sessions.stopWithActiveFiber')(
 
     const queuedInputs = yield* drainQueuedInputsNow(sessionId)
 
-    yield* storage.append(
-      sessionId,
-      queuedInputs.map((request) => ({
-        role: 'user' as const,
-        content: request.input,
-      }))
-    )
+    yield* appendStoppedQueuedInputs(storage, sessionId, queuedInputs)
     if (queuedInputs.length > 0) yield* publishMessagesAppended(sessionId)
 
     return new StopResponse({ status: 'stopped' })
