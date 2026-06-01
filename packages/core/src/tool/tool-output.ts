@@ -184,22 +184,17 @@ const displaySubtitle = (
   })
 }
 
-const toolIcon = (toolName: string): MessageIconName | undefined => {
-  switch (toolName.toLowerCase()) {
-    case 'read':
-      return 'file-text'
-    case 'write':
-      return 'file-plus'
-    case 'edit':
-      return 'edit'
-    case 'bash':
-      return 'terminal'
-    case 'glob':
-      return 'file-search'
-    case 'grep':
-      return 'search'
-  }
+const toolIcons: Partial<Record<string, MessageIconName>> = {
+  read: 'file-text',
+  write: 'file-plus',
+  edit: 'edit',
+  bash: 'terminal',
+  glob: 'file-search',
+  grep: 'search',
 }
+
+const toolIcon = (toolName: string): MessageIconName | undefined =>
+  toolIcons[toolName.toLowerCase()]
 
 export const toolCallHeader = (
   toolName: string,
