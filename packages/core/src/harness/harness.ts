@@ -62,11 +62,15 @@ export type HarnessEvent =
       readonly _tag: 'RunUsage'
       /** Aggregate provider-reported usage observed so far for this run. */
       readonly usage: HarnessUsage
+      /** Latest model call's total context after response, not run aggregate. */
+      readonly contextTokens: number | undefined
     }
   | {
       readonly _tag: 'RunEnd'
       readonly output: string
       readonly usage: HarnessUsage | undefined
+      /** Latest model call's total context after response, not run aggregate. */
+      readonly contextTokens: number | undefined
     }
   | {
       readonly _tag: 'RunResult'
@@ -147,4 +151,6 @@ export interface HarnessResult {
   readonly text: string
   /** Aggregate provider-reported token usage across the run. */
   readonly usage: HarnessUsage | undefined
+  /** Latest model call's total context after response, not run aggregate. */
+  readonly contextTokens: number | undefined
 }

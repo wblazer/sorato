@@ -96,7 +96,12 @@ export const createPersistenceHook = (
       const storage = yield* SessionStorage
 
       if (event._tag === 'RunUsage') {
-        const usage = pricedUsage(event.usage, pricing.billingMode, pricing.cost)
+        const usage = pricedUsage(
+          event.usage,
+          pricing.billingMode,
+          pricing.cost,
+          event.contextTokens
+        )
         if (usage) yield* storage.updateRunUsage(runId, usage)
         return
       }
@@ -129,7 +134,8 @@ export const createPersistenceHook = (
         usage: pricedUsage(
           event.result.usage,
           pricing.billingMode,
-          pricing.cost
+          pricing.cost,
+          event.result.contextTokens
         ),
       })
       if (newMessages.length === 0) return

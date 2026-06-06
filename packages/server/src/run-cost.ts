@@ -40,7 +40,8 @@ const effectiveCost = (
 export const pricedUsage = (
   usage: HarnessUsage | undefined,
   billingMode: BillingMode,
-  cost: CostInfo | undefined
+  cost: CostInfo | undefined,
+  contextWindowTokens?: number | undefined
 ): RunUsage | undefined => {
   if (!usage) return undefined
 
@@ -63,6 +64,7 @@ export const pricedUsage = (
     cacheReadTokens: usage.cacheReadTokens,
     cacheWriteTokens: usage.cacheWriteTokens,
     totalTokens: usage.totalTokens,
+    contextWindowTokens: contextWindowTokens ?? null,
     actualCostMicrosUsd:
       billingMode === 'subscription' ? 0 : listPriceMicrosUsd,
     listPriceMicrosUsd,

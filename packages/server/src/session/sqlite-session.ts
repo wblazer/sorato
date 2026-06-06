@@ -60,6 +60,7 @@ const SCHEMA = [
     cache_read_tokens          INTEGER,
     cache_write_tokens         INTEGER,
     total_tokens               INTEGER,
+    context_window_tokens      INTEGER,
     actual_cost_micros_usd     INTEGER,
     list_price_micros_usd      INTEGER,
     created_at                 INTEGER NOT NULL,
@@ -113,6 +114,7 @@ interface RunRow {
   cache_read_tokens: number | null
   cache_write_tokens: number | null
   total_tokens: number | null
+  context_window_tokens: number | null
   actual_cost_micros_usd: number | null
   list_price_micros_usd: number | null
   created_at: number
@@ -136,10 +138,15 @@ interface MessageRow {
   run_cache_read_tokens: number | null
   run_cache_write_tokens: number | null
   run_total_tokens: number | null
+  run_context_window_tokens: number | null
   run_actual_cost_micros_usd: number | null
   run_list_price_micros_usd: number | null
   run_created_at: number
   run_completed_at: number | null
+}
+
+interface TableColumnRow {
+  name: string
 }
 
 interface MessageInsertRow extends Record<string, unknown> {
@@ -195,6 +202,7 @@ const toRun = (row: RunRow): Run => ({
   cacheReadTokens: row.cache_read_tokens,
   cacheWriteTokens: row.cache_write_tokens,
   totalTokens: row.total_tokens,
+  contextWindowTokens: row.context_window_tokens,
   actualCostMicrosUsd: row.actual_cost_micros_usd,
   listPriceMicrosUsd: row.list_price_micros_usd,
   createdAt: row.created_at,
@@ -214,6 +222,7 @@ const runFromMessageRow = (row: MessageRow): Run => ({
   cacheReadTokens: row.run_cache_read_tokens,
   cacheWriteTokens: row.run_cache_write_tokens,
   totalTokens: row.run_total_tokens,
+  contextWindowTokens: row.run_context_window_tokens,
   actualCostMicrosUsd: row.run_actual_cost_micros_usd,
   listPriceMicrosUsd: row.run_list_price_micros_usd,
   createdAt: row.run_created_at,
@@ -299,6 +308,27 @@ export const SqliteSession = (options: { readonly path: string }) =>
           sqlFailure('open', `Failed to initialize database: ${options.path}`)
         )
       )
+      const runColumns = yield* sql
+        .unsafe<TableColumnRow>('PRAGMA table_info(runs)')
+        .pipe(
+          Effect.mapError(
+            sqlFailure('open', `Failed to inspect run columns: ${options.path}`)
+          )
+        )
+      if (
+        !runColumns.some((column) => column.name === 'context_window_tokens')
+      ) {
+        yield* sql
+          .unsafe('ALTER TABLE runs ADD COLUMN context_window_tokens INTEGER')
+          .pipe(
+            Effect.mapError(
+              sqlFailure(
+                'open',
+                `Failed to migrate run columns: ${options.path}`
+              )
+            )
+          )
+      }
       yield* Effect.logInfo('Session database initialized', {
         path: options.path,
       })
@@ -423,6 +453,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
             cache_read_tokens = ${usage.cacheReadTokens},
             cache_write_tokens = ${usage.cacheWriteTokens},
             total_tokens = ${usage.totalTokens},
+            context_window_tokens = ${usage.contextWindowTokens},
             actual_cost_micros_usd = ${usage.actualCostMicrosUsd},
             list_price_micros_usd = ${usage.listPriceMicrosUsd}
           WHERE id = ${id}
@@ -447,6 +478,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
                 cache_read_tokens = ${input.usage.cacheReadTokens},
                 cache_write_tokens = ${input.usage.cacheWriteTokens},
                 total_tokens = ${input.usage.totalTokens},
+                context_window_tokens = ${input.usage.contextWindowTokens},
                 actual_cost_micros_usd = ${input.usage.actualCostMicrosUsd},
                 list_price_micros_usd = ${input.usage.listPriceMicrosUsd},
                 completed_at = ${completedAt}
@@ -557,6 +589,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
                   runs.cache_read_tokens AS run_cache_read_tokens,
                   runs.cache_write_tokens AS run_cache_write_tokens,
                   runs.total_tokens AS run_total_tokens,
+                  runs.context_window_tokens AS run_context_window_tokens,
                   runs.actual_cost_micros_usd AS run_actual_cost_micros_usd,
                   runs.list_price_micros_usd AS run_list_price_micros_usd,
                   runs.created_at AS run_created_at,
@@ -607,6 +640,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
                   runs.cache_read_tokens AS run_cache_read_tokens,
                   runs.cache_write_tokens AS run_cache_write_tokens,
                   runs.total_tokens AS run_total_tokens,
+                  runs.context_window_tokens AS run_context_window_tokens,
                   runs.actual_cost_micros_usd AS run_actual_cost_micros_usd,
                   runs.list_price_micros_usd AS run_list_price_micros_usd,
                   runs.created_at AS run_created_at,
@@ -730,6 +764,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
             runs.cache_read_tokens AS run_cache_read_tokens,
             runs.cache_write_tokens AS run_cache_write_tokens,
             runs.total_tokens AS run_total_tokens,
+            runs.context_window_tokens AS run_context_window_tokens,
             runs.actual_cost_micros_usd AS run_actual_cost_micros_usd,
             runs.list_price_micros_usd AS run_list_price_micros_usd,
             runs.created_at AS run_created_at,

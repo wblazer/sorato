@@ -59,21 +59,32 @@
     return Intl.NumberFormat(undefined, { notation: 'compact' }).format(tokens)
   }
 
-  const formatCost = (micros: number | null): string | null => {
-    if (micros === null) return null
-    return Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: micros === 0 ? 0 : 4,
-    }).format(micros / 1_000_000)
+  const formatDuration = (milliseconds: number): string => {
+    const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000))
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = totalSeconds % 60
+
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`
+    if (minutes > 0) return `${minutes}m ${seconds}s`
+    return `${seconds}s`
   }
 
-  const usageLine = $derived.by(() => {
-    if (!message.run || role !== 'assistant') return null
+  const runtimeLine = $derived.by(() => {
+    if (!message.run || role !== 'assistant' || message.run.completedAt === null) {
+      return null
+    }
+
+    return formatDuration(message.run.completedAt - message.run.createdAt)
+  })
+
+  const tokenLine = $derived.by(() => {
+    if (!message.run || role !== 'assistant' || message.run.completedAt === null) {
+      return null
+    }
+
     const total = formatTokens(message.run.usage.totalTokens)
-    const cost = formatCost(message.run.usage.actualCostMicrosUsd)
-    if (!total && !cost) return null
-    return [total ? `${total} tokens` : null, cost].filter(Boolean).join(' · ')
+    return total ? `${total} tokens` : null
   })
 </script>
 
@@ -148,7 +159,7 @@
       </Accordion.Item>
     </Accordion.Root>
     {:else}
-    <div class="group/assistant">
+    <div>
       {#each renderParts as item}
         <div class="assistant-transcript-item" data-transcript-kind={transcriptItemKind(item)}>
           {#if item.type === 'combined-tool'}
@@ -164,9 +175,13 @@
           {/if}
         </div>
       {/each}
-      {#if usageLine}
-        <div class="mt-2 text-xs text-muted-foreground opacity-0 transition-opacity group-hover/assistant:opacity-100">
-          {usageLine}
+      {#if message.run && message.run.completedAt !== null}
+        <div class="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span>{runtimeLine}</span>
+          {#if tokenLine}
+            <span>·</span>
+            <span>{tokenLine}</span>
+          {/if}
         </div>
       {/if}
     </div>

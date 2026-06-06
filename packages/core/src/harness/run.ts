@@ -103,6 +103,7 @@ interface RunState {
   outputText: string
   currentTurnParts: Array<Prompt.TextPart | Prompt.ReasoningPart>
   usage: RunUsage | undefined
+  contextTokens: number | undefined
 }
 
 const appendCurrentTurnPart = (
@@ -180,6 +181,7 @@ export const run = <
       outputText: '',
       currentTurnParts: [],
       usage: undefined,
+      contextTokens: undefined,
     }
 
     // state.currentTurnParts is accumulated in the CURRENT turn only. Reset at
@@ -302,7 +304,10 @@ export const run = <
               // Turn completed normally — clear currentTurnParts so the
               // interrupt path knows there's nothing to recover.
               state.currentTurnParts = []
-              if (usage) state.usage = addUsage(state.usage, usage)
+              if (usage) {
+                state.usage = addUsage(state.usage, usage)
+                state.contextTokens = usage.totalTokens
+              }
             }).pipe(
               Effect.flatMap(() =>
                 Effect.logDebug('Harness turn finished', {
@@ -319,6 +324,7 @@ export const run = <
                   ? fireHooks(config, {
                       _tag: 'RunUsage',
                       usage: state.usage,
+                      contextTokens: state.contextTokens,
                     })
                   : Effect.void
               )
@@ -361,6 +367,7 @@ export const run = <
         _tag: 'RunEnd',
         output: state.outputText,
         usage: state.usage,
+        contextTokens: state.contextTokens,
       })
 
       let fullConversation = yield* Ref.get(chat.history)
@@ -402,6 +409,7 @@ export const run = <
         toolResultBodyDisplays,
         text: state.outputText,
         usage: state.usage,
+        contextTokens: state.contextTokens,
       } satisfies HarnessResult
 
       // Fire RunResult inside the uninterruptible region so hooks

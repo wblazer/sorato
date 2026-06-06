@@ -287,6 +287,7 @@ function createMessagesStore() {
           cacheReadTokens: null,
           cacheWriteTokens: null,
           totalTokens: null,
+          contextWindowTokens: null,
           actualCostMicrosUsd: null,
           listPriceMicrosUsd: null,
         },

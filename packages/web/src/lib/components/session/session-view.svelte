@@ -14,6 +14,7 @@
       import MessageBubble from './message-bubble.svelte'
       import QueuedMessageBubble from './queued-message-bubble.svelte'
       import StreamingIndicator from './streaming-indicator.svelte'
+      import SessionTokenUsage from './session-token-usage.svelte'
       import Composer from './composer.svelte'
       import { Button } from '$lib/components/ui/button/index.js'
       import * as Item from '$lib/components/ui/item/index.js'
@@ -38,9 +39,11 @@
       const isStopping = $derived(sessionStore.isStopping(sessionId))
       const queuedMessages = $derived(sessionStore.queuedMessagesFor(sessionId))
       const sessionError = $derived(sessionStore.sessionError(sessionId))
+      const selectedSession = $derived(
+        sessionStore.sessions.find((item) => item.id === sessionId) ?? null
+      )
       const projectName = $derived.by(() => {
-        const session = sessionStore.sessions.find((item) => item.id === sessionId)
-        const project = projectStore.getProject(session?.projectId ?? null)
+        const project = projectStore.getProject(selectedSession?.projectId ?? null)
         return project?.name ?? null
       })
       const persistedTranscriptItems = $derived.by(() =>
@@ -255,6 +258,12 @@
           <span class="text-sm leading-tight text-muted-foreground">{projectName}</span>
         {/if}
       </div>
+
+      <SessionTokenUsage
+        messages={messagesStore.messages}
+        headId={selectedSession?.headId ?? null}
+        models={modelsStore.models}
+      />
 
       {#if isStopping}
         <span

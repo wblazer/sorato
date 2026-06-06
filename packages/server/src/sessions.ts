@@ -84,6 +84,7 @@ const toMessageNodeResponse = (m: {
     readonly cacheReadTokens: number | null
     readonly cacheWriteTokens: number | null
     readonly totalTokens: number | null
+    readonly contextWindowTokens: number | null
     readonly actualCostMicrosUsd: number | null
     readonly listPriceMicrosUsd: number | null
     readonly createdAt: number
@@ -110,6 +111,7 @@ const toMessageNodeResponse = (m: {
         cacheReadTokens: m.run.cacheReadTokens,
         cacheWriteTokens: m.run.cacheWriteTokens,
         totalTokens: m.run.totalTokens,
+        contextWindowTokens: m.run.contextWindowTokens,
         actualCostMicrosUsd: m.run.actualCostMicrosUsd,
         listPriceMicrosUsd: m.run.listPriceMicrosUsd,
       }),

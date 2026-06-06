@@ -78,6 +78,8 @@ export interface RunUsage {
   readonly cacheReadTokens: number | null
   readonly cacheWriteTokens: number | null
   readonly totalTokens: number | null
+  /** Latest model call's total context after response, not cumulative run usage. */
+  readonly contextWindowTokens: number | null
   readonly actualCostMicrosUsd: number | null
   readonly listPriceMicrosUsd: number | null
 }

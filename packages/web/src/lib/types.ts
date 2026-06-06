@@ -83,6 +83,7 @@ export interface RunUsage {
   cacheReadTokens: number | null
   cacheWriteTokens: number | null
   totalTokens: number | null
+  contextWindowTokens: number | null
   actualCostMicrosUsd: number | null
   listPriceMicrosUsd: number | null
 }

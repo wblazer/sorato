@@ -40,6 +40,7 @@ export class RunUsageResponse extends Schema.Class<RunUsageResponse>(
   cacheReadTokens: Schema.NullOr(Schema.Number),
   cacheWriteTokens: Schema.NullOr(Schema.Number),
   totalTokens: Schema.NullOr(Schema.Number),
+  contextWindowTokens: Schema.NullOr(Schema.Number),
   actualCostMicrosUsd: Schema.NullOr(Schema.Number),
   listPriceMicrosUsd: Schema.NullOr(Schema.Number),
 }) {}
