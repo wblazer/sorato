@@ -265,25 +265,6 @@
         models={modelsStore.models}
       />
 
-      {#if isStopping}
-        <span
-          class="flex items-center gap-1.5 rounded-full bg-surface px-2 py-0.5 text-muted-foreground"
-        >
-          <span
-            class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground"
-          ></span>
-          <span class="text-[10px] font-medium">stopping</span>
-        </span>
-      {:else if isRunning}
-        <span
-          class="flex items-center gap-1.5 rounded-full bg-success-muted px-2 py-0.5 text-success-muted-foreground"
-        >
-          <span
-            class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-success"
-          ></span>
-          <span class="text-[10px] font-medium">live</span>
-        </span>
-      {/if}
     </div>
   </div>
 
