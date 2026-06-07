@@ -13,7 +13,7 @@ import { HttpMiddleware, HttpRouter, HttpServer } from 'effect/unstable/http'
 import { BunHttpServer, BunRuntime, BunServices } from '@effect/platform-bun'
 import { SqliteClient } from '@effect/sql-sqlite-bun'
 import { Effect, FileSystem, Layer, Option } from 'effect'
-import { Api } from './api.ts'
+import { Api } from '@sorato/api'
 import { AgentLive } from './agent-config.ts'
 import { AuthLive } from './auth.ts'
 import { DirectoriesLive } from './directories.ts'
@@ -29,7 +29,7 @@ import { SqliteProviderAuthStore } from './provider-auth.ts'
 import { SqliteProject } from './project/sqlite-project.ts'
 import { SqliteSession } from './session/sqlite-session.ts'
 
-import { HandshakeResponse } from './api.ts'
+import { HandshakeResponse } from '@sorato/api'
 
 // ── Data directory ──────────────────────────────────────────────────
 

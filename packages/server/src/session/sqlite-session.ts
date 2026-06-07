@@ -14,6 +14,7 @@ import {
   StoredMessage,
   type MessageNode,
   type ModelCall,
+  type NodeId,
   type Run,
   type RunId,
   type Session,
@@ -645,56 +646,56 @@ export const SqliteSession = (options: { readonly path: string }) =>
         )
       })
 
-      const conversation = Effect.fn('SessionStorage.conversation')(
-        function* (sessionId, headNodeId) {
-          yield* get(sessionId)
-          const rows =
-            headNodeId === null
-              ? []
-              : yield* listNodeChainRows({ id: headNodeId }).pipe(
-                  Effect.mapError(
-                    sqlFailure(
-                      'conversation',
-                      `Failed to load conversation: ${sessionId}`
-                    )
+      const conversation: SessionStorageApi['conversation'] = Effect.fn(
+        'SessionStorage.conversation'
+      )(function* (sessionId: SessionId, headNodeId: NodeId | null) {
+        yield* get(sessionId)
+        const rows =
+          headNodeId === null
+            ? []
+            : yield* listNodeChainRows({ id: headNodeId }).pipe(
+                Effect.mapError(
+                  sqlFailure(
+                    'conversation',
+                    `Failed to load conversation: ${sessionId}`
                   )
                 )
-          return Schema.decodeUnknownSync(Prompt.Prompt)({
-            content: [...rows].reverse().flatMap((row) => {
-              if (row.kind !== 'message' || row.message_content === null)
-                return []
-              const decoded = decodePromptMessageOption(row.message_content)
-              return Option.isNone(decoded) ? [] : [decoded.value]
-            }),
-          })
-        }
-      )
-
-      const messages = Effect.fn('SessionStorage.messages')(
-        function* (sessionId, headNodeId) {
-          yield* get(sessionId)
-          if (headNodeId === undefined) {
-            const rows = yield* listAllNodeRows({ id: sessionId }).pipe(
-              Effect.mapError(
-                sqlFailure('messages', `Failed to load messages: ${sessionId}`)
               )
+        return Schema.decodeUnknownSync(Prompt.Prompt)({
+          content: [...rows].reverse().flatMap((row) => {
+            if (row.kind !== 'message' || row.message_content === null)
+              return []
+            const decoded = decodePromptMessageOption(row.message_content)
+            return Option.isNone(decoded) ? [] : [decoded.value]
+          }),
+        })
+      })
+
+      const messages: SessionStorageApi['messages'] = Effect.fn(
+        'SessionStorage.messages'
+      )(function* (sessionId: SessionId, headNodeId?: NodeId | null) {
+        yield* get(sessionId)
+        if (headNodeId === undefined) {
+          const rows = yield* listAllNodeRows({ id: sessionId }).pipe(
+            Effect.mapError(
+              sqlFailure('messages', `Failed to load messages: ${sessionId}`)
             )
-            return rows.map(toMessageNode)
-          }
-          const rows =
-            headNodeId === null
-              ? []
-              : yield* listNodeChainRows({ id: headNodeId }).pipe(
-                  Effect.mapError(
-                    sqlFailure(
-                      'messages',
-                      `Failed to load messages: ${sessionId}`
-                    )
+          )
+          return rows.map(toMessageNode)
+        }
+        const rows =
+          headNodeId === null
+            ? []
+            : yield* listNodeChainRows({ id: headNodeId }).pipe(
+                Effect.mapError(
+                  sqlFailure(
+                    'messages',
+                    `Failed to load messages: ${sessionId}`
                   )
                 )
-          return [...rows].reverse().map(toMessageNode)
-        }
-      )
+              )
+        return [...rows].reverse().map(toMessageNode)
+      })
 
       const append: SessionStorageApi['append'] = Effect.fn(
         'SessionStorage.append'

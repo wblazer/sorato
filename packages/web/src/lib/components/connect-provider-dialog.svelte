@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { httpErrorMessage, requestErrorMessage } from '$lib/api-errors.js'
+  import { getApiClient, runApi } from '$lib/api-client.js'
+  import { requestErrorMessage } from '$lib/api-errors.js'
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Command from '$lib/components/ui/command/index.js'
   import * as Dialog from '$lib/components/ui/dialog/index.js'
@@ -52,12 +53,12 @@
     saving = true
     error = null
     try {
-      const res = await fetch(`${api}/auth/${encodeURIComponent(providerId)}`, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ key: apiKey }),
-      })
-      if (!res.ok) throw new Error(await httpErrorMessage(res))
+      const client = await getApiClient(api)
+      const result = await runApi(
+        client.auth.set({ params: { provider: providerId }, payload: { key: apiKey } }),
+        'Failed to connect provider'
+      )
+      if (!result.ok) throw new Error(result.error.message)
       await authStore.load()
       open = false
       if (modelsStore.projectId) void modelsStore.load(modelsStore.projectId)
@@ -75,12 +76,13 @@
     oauthSaving = true
     error = null
     try {
-      const res = await fetch(`${api}/auth/openai/oauth/authorize`, {
-        method: 'POST',
-      })
-      if (!res.ok) throw new Error(await httpErrorMessage(res))
-      const body: { url: string } = await res.json()
-      window.open(body.url, '_blank', 'noopener,noreferrer')
+      const client = await getApiClient(api)
+      const result = await runApi(
+        client.auth.oauthAuthorize({ params: { provider: 'openai' } }),
+        'Failed to start ChatGPT sign-in'
+      )
+      if (!result.ok) throw new Error(result.error.message)
+      window.open(result.value.url, '_blank', 'noopener,noreferrer')
       window.setTimeout(() => {
         void authStore.load()
         if (modelsStore.projectId) void modelsStore.load(modelsStore.projectId)

@@ -19,7 +19,8 @@
  * delivery on the same connection. No separate stream-state fetch means no
  * overlap/gap race at the replay/live boundary.
  */
-import { httpErrorMessage, requestErrorMessage } from '$lib/api-errors.js'
+import { getApiClient, runApi } from '$lib/api-client.js'
+import { requestErrorMessage } from '$lib/api-errors.js'
 import type { MessageNode, MessagePart, StreamCursor } from '$lib/types.js'
 import { connectSse, type SseConnection } from '$lib/sse.js'
 import { sseStore } from './sse.svelte.js'
@@ -43,6 +44,7 @@ function createMessagesStore() {
 
   let streamConnection: SseConnection | null = null
   let activeRunId = $state<string | null>(null)
+  let activeRunBaseNodeId = $state<string | null>(null)
 
   const getLastCursor = (sessionId: string) =>
     lastCursors.get(sessionId) ?? null
@@ -86,6 +88,7 @@ function createMessagesStore() {
             }
 
             activeRunId = event.runId
+            activeRunBaseNodeId = event.baseNodeId
             streamingParts = []
             setRunCursor(sessionId, event.runId)
             // User message is persisted before run starts; refresh to show it.
@@ -206,6 +209,7 @@ function createMessagesStore() {
     error = null
     streamingParts = []
     activeRunId = null
+    activeRunBaseNodeId = null
     openSessionStream(sessionId)
   }
 
@@ -222,6 +226,7 @@ function createMessagesStore() {
     // Reset current turn parts when changing sessions.
     streamingParts = []
     activeRunId = null
+    activeRunBaseNodeId = null
     error = null
 
     if (!hasExisting) {
@@ -233,15 +238,17 @@ function createMessagesStore() {
     openSessionStream(sessionId)
 
     try {
-      const messagesRes = await fetch(
-        `${connectionsStore.getApiBase()}/sessions/${sessionId}/messages`
+      const client = await getApiClient(connectionsStore.getApiBase())
+      const result = await runApi(
+        client.sessions.messages({ params: { id: sessionId } }),
+        'Failed to load messages'
       )
 
       if (currentSessionId !== sessionId) return
 
-      if (!messagesRes.ok) throw new Error(await httpErrorMessage(messagesRes))
+      if (!result.ok) throw new Error(result.error.message)
 
-      const serverMessages: MessageNode[] = await messagesRes.json()
+      const serverMessages: MessageNode[] = result.value as MessageNode[]
 
       // During a background refresh, the server might not have caught
       // up yet. Keep existing messages until the server has real data.
@@ -320,27 +327,28 @@ function createMessagesStore() {
     opts?: { clearPartsForRun?: string }
   ) {
     try {
-      const res = await fetch(
-        `${connectionsStore.getApiBase()}/sessions/${sessionId}/messages`
+      const client = await getApiClient(connectionsStore.getApiBase())
+      const result = await runApi(
+        client.sessions.messages({ params: { id: sessionId } }),
+        'Failed to refresh messages'
       )
-      if (!res.ok) return
-      const fresh: MessageNode[] = await res.json()
+      if (!result.ok) {
+        console.error('Failed to refresh messages', result.error)
+        return
+      }
+      const fresh: MessageNode[] = result.value as MessageNode[]
       if (currentSessionId === sessionId) {
         messages = fresh
         if (opts?.clearPartsForRun) {
           streamingParts = []
           if (activeRunId === opts.clearPartsForRun) {
             activeRunId = null
+            activeRunBaseNodeId = null
           }
         }
       }
-    } catch {
-      if (opts?.clearPartsForRun && currentSessionId === sessionId) {
-        streamingParts = []
-        if (activeRunId === opts.clearPartsForRun) {
-          activeRunId = null
-        }
-      }
+    } catch (cause) {
+      console.error('Failed to refresh messages', cause)
     }
   }
 
@@ -368,6 +376,7 @@ function createMessagesStore() {
     error = null
     streamingParts = []
     activeRunId = null
+    activeRunBaseNodeId = null
   }
 
   return {
@@ -391,6 +400,9 @@ function createMessagesStore() {
     },
     get activeRunId() {
       return activeRunId
+    },
+    get activeRunBaseNodeId() {
+      return activeRunBaseNodeId
     },
     prepareSession,
     loadMessages,

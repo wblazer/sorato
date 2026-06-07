@@ -1,6 +1,8 @@
 import type { FileContents } from '@pierre/diffs'
 import type { MessageIconName } from '@sorato/core/presentation'
 
+export type { ServerEvent, StreamCursor } from '@sorato/api'
+
 export interface MessageHeaderDisplay {
   title?: string
   subtitle?: string
@@ -53,10 +55,10 @@ export interface AvailableModel {
     reasoning: boolean
     temperature: boolean
     toolCall: boolean
-    thinkingLevels: Array<
+    thinkingLevels: ReadonlyArray<
       'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
     >
-    modes: string[]
+    modes: ReadonlyArray<string>
     limits: {
       context: number
       input?: number
@@ -66,7 +68,7 @@ export interface AvailableModel {
 }
 
 export interface AvailableModelsResponse {
-  models: AvailableModel[]
+  models: ReadonlyArray<AvailableModel>
   defaultModel?: string
 }
 
@@ -229,69 +231,4 @@ export type MessagePart =
   | ToolCallPart
   | ToolResultPart
 
-// ---------------------------------------------------------------------------
-// Server event types — mirrors ServerEvent from the agent package
-//
-// Content events (TextDelta, ToolCall, ToolResult) carry a monotonic
-// `eventId` within a single `runId`. Session streams use the pair as a
-// replay cursor.
-// ---------------------------------------------------------------------------
-
-export interface StreamCursor {
-  runId: string
-  eventId: number
-}
-
-export type ServerEvent =
-  | { _tag: 'SessionUpdated'; sessionId: string }
-  | { _tag: 'MessagesAppended'; sessionId: string }
-  | {
-      _tag: 'TextDelta'
-      sessionId: string
-      runId: string
-      delta: string
-      eventId: number
-    }
-  | {
-      _tag: 'ReasoningDelta'
-      sessionId: string
-      runId: string
-      delta: string
-      eventId: number
-    }
-  | {
-      _tag: 'ToolCall'
-      sessionId: string
-      runId: string
-      id: string
-      name: string
-      params: unknown
-      header?: MessageHeaderDisplay
-      eventId: number
-    }
-  | {
-      _tag: 'ToolResult'
-      sessionId: string
-      runId: string
-      id: string
-      name: string
-      result: string
-      header?: MessageHeaderDisplay
-      bodyDisplay?: ToolResultDisplay
-      isFailure: boolean
-      eventId: number
-    }
-  | { _tag: 'RunStart'; sessionId: string; runId: string }
-  | { _tag: 'RunEnd'; sessionId: string; runId: string }
-  | { _tag: 'RunFailed'; sessionId: string; runId: string; message: string }
-  | {
-      _tag: 'ReplayReset'
-      sessionId: string
-      runId: string
-      reason:
-        | 'run_completed'
-        | 'run_failed'
-        | 'replay_unavailable'
-        | 'replay_gap'
-      refetch: true
-    }
+// Server event types are exported from @sorato/api and re-exported above.

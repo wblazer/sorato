@@ -5,7 +5,7 @@ import {
   ProjectOperationFailed,
   ProjectResponse,
   StorageUnavailable,
-} from './api.ts'
+} from '@sorato/api'
 import { ProjectStorage, type Project } from './project/project.ts'
 import { SessionStorage } from './session/session.ts'
 

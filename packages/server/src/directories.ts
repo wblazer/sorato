@@ -17,7 +17,7 @@ import {
   DirectoryEntry,
   DirectoryError,
   DirectoryListResponse,
-} from './api.ts'
+} from '@sorato/api'
 
 /** Resolve a path string: expand ~, resolve relative to home */
 const resolvePath = (raw: string): string => {

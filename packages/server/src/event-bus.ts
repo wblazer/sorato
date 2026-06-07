@@ -18,100 +18,15 @@
  */
 import { EventEmitter } from 'node:events'
 import { Effect } from 'effect'
-import type {
-  HarnessEvent,
-  HarnessHook,
-  MessageHeaderDisplay,
-  ToolResultDisplay,
-} from '@sorato/core'
+import type { HarnessEvent, HarnessHook } from '@sorato/core'
+import {
+  isContentEvent,
+  type ContentEvent,
+  type ServerEvent,
+} from '@sorato/api'
 import { appendReplayEvent } from './event-replay.ts'
 
-// ---------------------------------------------------------------------------
-// Event types
-// ---------------------------------------------------------------------------
-
-export type ServerEvent =
-  | { readonly _tag: 'SessionUpdated'; readonly sessionId: string }
-  | { readonly _tag: 'MessagesAppended'; readonly sessionId: string }
-  | {
-      readonly _tag: 'TextDelta'
-      readonly sessionId: string
-      readonly runId: string
-      readonly delta: string
-      readonly eventId: number
-    }
-  | {
-      readonly _tag: 'ReasoningDelta'
-      readonly sessionId: string
-      readonly runId: string
-      readonly delta: string
-      readonly eventId: number
-    }
-  | {
-      readonly _tag: 'ToolCall'
-      readonly sessionId: string
-      readonly runId: string
-      readonly id: string
-      readonly name: string
-      readonly params: unknown
-      readonly header?: MessageHeaderDisplay | undefined
-      readonly eventId: number
-    }
-  | {
-      readonly _tag: 'ToolResult'
-      readonly sessionId: string
-      readonly runId: string
-      readonly id: string
-      readonly name: string
-      readonly result: string
-      readonly header?: MessageHeaderDisplay | undefined
-      readonly bodyDisplay?: ToolResultDisplay | undefined
-      readonly isFailure: boolean
-      readonly eventId: number
-    }
-  | {
-      readonly _tag: 'RunStart'
-      readonly sessionId: string
-      readonly runId: string
-    }
-  | {
-      readonly _tag: 'RunEnd'
-      readonly sessionId: string
-      readonly runId: string
-    }
-  | {
-      readonly _tag: 'RunFailed'
-      readonly sessionId: string
-      readonly runId: string
-      readonly message: string
-    }
-  | {
-      readonly _tag: 'ReplayReset'
-      readonly sessionId: string
-      readonly runId: string
-      readonly reason:
-        | 'run_completed'
-        | 'run_failed'
-        | 'replay_unavailable'
-        | 'replay_gap'
-      readonly refetch: true
-    }
-
-export type ContentEvent = Extract<
-  ServerEvent,
-  {
-    readonly _tag: 'TextDelta' | 'ReasoningDelta' | 'ToolCall' | 'ToolResult'
-  }
->
-
-export function isContentEvent(event: ServerEvent): event is ContentEvent {
-  return (
-    event._tag === 'TextDelta' ||
-    event._tag === 'ReasoningDelta' ||
-    event._tag === 'ToolCall' ||
-    event._tag === 'ToolResult'
-  )
-}
+export { isContentEvent, type ContentEvent, type ServerEvent }
 
 // ---------------------------------------------------------------------------
 // Bus singleton

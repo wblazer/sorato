@@ -1,5 +1,5 @@
 <script lang="ts">
-      import { tick } from 'svelte'
+      import { tick, untrack } from 'svelte'
       import { messagesStore } from '$lib/stores/messages.svelte.js'
       import { modelsStore } from '$lib/stores/models.svelte.js'
       import { projectStore } from '$lib/stores/projects.svelte.js'
@@ -61,19 +61,27 @@
         makeSelectedHeadStorageKey(connectionsStore.activeConnection?.id, sessionId)
       )
 
+      const renderHead = $derived.by(() =>
+        resolveRenderHead(
+          messagesStore.messages,
+          selectedHead,
+          messagesStore.activeRunId
+        )
+      )
+
       const selectedBaseNodeId = $derived.by(() =>
-        selectedHead?.type === 'node'
-          ? selectedHead.nodeId
-          : selectedHead?.type === 'run'
-            ? selectedHead.baseNodeId
+        renderHead?.type === 'node'
+          ? renderHead.nodeId
+          : renderHead?.type === 'run'
+            ? renderHead.baseNodeId
             : null
       )
       const selectedAfterRunId = $derived.by(() =>
-        selectedHead?.type === 'run' ? selectedHead.runId : null
+        renderHead?.type === 'run' ? renderHead.runId : null
       )
 
       const visibleMessages = $derived.by(() =>
-        selectedMessages(messagesStore.messages, selectedHead)
+        selectedMessages(messagesStore.messages, renderHead)
       )
 
       const persistedTranscriptItems = $derived.by(() =>
@@ -145,6 +153,21 @@
         return path.reverse()
       }
 
+      function resolveRenderHead(
+        messages: ReadonlyArray<MessageNode>,
+        head: SelectedHead,
+        activeRunId: string | null
+      ): SelectedHead {
+        if (head?.type !== 'run' || head.runId === activeRunId) return head
+
+        const finalNode = finalPersistedRunNode(
+          messages,
+          head.runId,
+          head.baseNodeId
+        )
+        return finalNode ? { type: 'node', nodeId: finalNode.id } : head
+      }
+
       function selectedMessages(
         messages: ReadonlyArray<MessageNode>,
         head: SelectedHead
@@ -188,9 +211,7 @@
         )
         const hasGeneratedOutput = runMessages.some(
           (message) =>
-            message.encoded.role === 'assistant' ||
-            message.encoded.role === 'tool' ||
-            message.encoded.role === 'system'
+            message.encoded.role === 'assistant' || message.encoded.role === 'tool'
         )
         if (!hasGeneratedOutput) return null
 
@@ -411,38 +432,30 @@
 
       $effect(() => {
         const activeRunId = messagesStore.activeRunId
-        if (
-          activeRunId === null ||
-          (selectedHead?.type === 'run' && selectedHead.runId === activeRunId)
-        )
-          return
+        if (activeRunId === null) return
 
-        const firstRunMessage = messagesStore.messages.find(
-          (message) => message.runId === activeRunId
-        )
-        if (!firstRunMessage) return
+        untrack(() => {
+          if (selectedHead?.type === 'run' && selectedHead.runId === activeRunId) {
+            return
+          }
 
-        setSelectedHead({
-          type: 'run',
-          runId: activeRunId,
-          baseNodeId: firstRunMessage.parentId,
+          const baseNodeId = messagesStore.activeRunBaseNodeId
+          if (renderHead?.type !== 'node' || renderHead.nodeId !== baseNodeId) {
+            return
+          }
+
+          setSelectedHead({
+            type: 'run',
+            runId: activeRunId,
+            baseNodeId,
+          })
         })
       })
 
-      $effect(() => {
-        const head = selectedHead
-        if (head?.type !== 'run' || isRunning) return
-
-        const finalNode = finalPersistedRunNode(
-          messagesStore.messages,
-          head.runId,
-          head.baseNodeId
-        )
-        if (!finalNode) return
-
-        setSelectedHead({ type: 'node', nodeId: finalNode.id })
-      })
-
+      // Intentionally keep run heads as run heads after completion. Rendering a
+      // run head follows the active run while it is streaming and resolves to
+      // the latest persisted node for that run once inactive. This preserves
+      // explicit node selection for mid-run history browsing.
       function handleSend(input: string) {
         const model = modelsStore.selectedModel
         if (!model) return
@@ -465,14 +478,12 @@
           .then((response) => {
             if (!response) return
 
-            if (response.status === 'started') {
-              const runHead: SelectedHead = {
-                type: 'run',
-                runId: response.runId,
-                baseNodeId,
-              }
-              setSelectedHead(runHead)
+            const runHead: SelectedHead = {
+              type: 'run',
+              runId: response.runId,
+              baseNodeId,
             }
+            setSelectedHead(runHead)
 
             if (!wasRunning) {
               // Show the user's message immediately — don't wait for the server

@@ -1,16 +1,6 @@
-import { requestJson } from '$lib/api-errors.js'
+import { getApiClient, runApi } from '$lib/api-client.js'
+import type { AuthProviderStatus } from '@sorato/api'
 import { connectionsStore } from './connections.svelte.js'
-
-export interface AuthProviderStatus {
-  id: string
-  name: string
-  authenticated: boolean
-}
-
-interface AuthStatusResponse {
-  providers: AuthProviderStatus[]
-  hasAuthenticatedProvider: boolean
-}
 
 function createAuthStore() {
   let providers = $state<AuthProviderStatus[]>([])
@@ -40,15 +30,15 @@ function createAuthStore() {
     loadedConnectionId = null
     error = null
 
-    const result = await requestJson<AuthStatusResponse>(
-      `${api}/auth`,
-      undefined,
+    const client = await getApiClient(api)
+    const result = await runApi(
+      client.auth.status(),
       'Failed to check provider credentials'
     )
 
     if (id !== requestId) return
     if (result.ok) {
-      providers = result.value.providers
+      providers = [...result.value.providers]
       loadedConnectionId = connectionId
     } else {
       providers = []

@@ -15,6 +15,14 @@
         "typescript": "^6",
       },
     },
+    "packages/api": {
+      "name": "@sorato/api",
+      "version": "0.0.1",
+      "dependencies": {
+        "@sorato/core": "workspace:*",
+        "effect": "4.0.0-beta.74",
+      },
+    },
     "packages/core": {
       "name": "@sorato/core",
       "dependencies": {
@@ -49,6 +57,7 @@
         "@effect/ai-openai": "4.0.0-beta.74",
         "@effect/platform-bun": "4.0.0-beta.74",
         "@effect/sql-sqlite-bun": "4.0.0-beta.74",
+        "@sorato/api": "workspace:*",
         "@sorato/core": "workspace:*",
         "effect": "4.0.0-beta.74",
       },
@@ -61,7 +70,9 @@
       "name": "@sorato/web",
       "version": "0.0.1",
       "dependencies": {
+        "@effect/platform-browser": "4.0.0-beta.74",
         "@pierre/diffs": "^1.2.4",
+        "@sorato/api": "workspace:*",
         "@sorato/core": "workspace:*",
         "@tanstack/hotkeys": "^0.8.0",
         "effect": "4.0.0-beta.74",
@@ -106,6 +117,8 @@
     "@effect/ai-openai": ["@effect/ai-openai@4.0.0-beta.74", "", { "peerDependencies": { "effect": "^4.0.0-beta.74" } }, "sha512-cCreNxM2OaFe38DjplTn7f6xi/LqZeEOUymyMa3dTJdi1YUvMg5riq65OlMfhj0CIqWPPFLmURJdIFj2s+gUCA=="],
 
     "@effect/language-service": ["@effect/language-service@0.86.2", "", { "bin": { "effect-language-service": "cli.js" } }, "sha512-SaPln+8srOqDJDUwNTDmP5e+IYpEDr9+1epGznnsLqu8xvo6VnxyWARdeLpqvZJlb0Pgy9ca7ppqvvdWbHPXAg=="],
+
+    "@effect/platform-browser": ["@effect/platform-browser@4.0.0-beta.74", "", { "dependencies": { "multipasta": "^0.2.7" }, "peerDependencies": { "effect": "^4.0.0-beta.74" } }, "sha512-kHKT+TqWe/XvWm7LiOLkDsC8U5PL8xnBVReNiOrMYvo6zcItp74r6ZPlEJEpXMzh6pQuCcara46IkISaMGEeNA=="],
 
     "@effect/platform-bun": ["@effect/platform-bun@4.0.0-beta.74", "", { "dependencies": { "@effect/platform-node-shared": "^4.0.0-beta.74" }, "peerDependencies": { "effect": "^4.0.0-beta.74" } }, "sha512-HPozsTKom3v8uGITYX+blua0wVSk/I7ak802FoX13t4zWhHfprT8I/A8VBO4SxmcDYb/izABtHBXBgEmp612MA=="],
 
@@ -294,6 +307,8 @@
     "@shikijs/types": ["@shikijs/types@3.23.0", "", { "dependencies": { "@shikijs/vscode-textmate": "^10.0.2", "@types/hast": "^3.0.4" } }, "sha512-3JZ5HXOZfYjsYSk0yPwBrkupyYSLpAE26Qc0HLghhZNGTZg/SKxXIIgoxOpmmeQP0RRSDJTk1/vPfw9tbw+jSQ=="],
 
     "@shikijs/vscode-textmate": ["@shikijs/vscode-textmate@10.0.2", "", {}, "sha512-83yeghZ2xxin3Nj8z1NMd/NCuca+gsYXswywDy5bHvwlWL8tpTQmzGeUuHd9FC3E/SBEMvzJRwWEOz5gGes9Qg=="],
+
+    "@sorato/api": ["@sorato/api@workspace:packages/api"],
 
     "@sorato/core": ["@sorato/core@workspace:packages/core"],
 

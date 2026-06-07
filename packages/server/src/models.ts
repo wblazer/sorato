@@ -1,6 +1,6 @@
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { Effect } from 'effect'
-import { Api, ProjectOperationFailed } from './api.ts'
+import { Api, ProjectOperationFailed } from '@sorato/api'
 import { listModels } from './model-catalog.ts'
 import { ProjectStorage } from './project/project.ts'
 

@@ -1,4 +1,4 @@
-export { Api } from './api.ts'
+export { Api } from '@sorato/api'
 export {
   AuthOauthAuthorizeResponse,
   AuthSetResponse,
@@ -20,7 +20,7 @@ export {
   SessionResponse,
   StopResponse,
   StorageUnavailable,
-} from './api.ts'
+} from '@sorato/api'
 export { publish, subscribe, createBusHook } from './event-bus.ts'
 export type { ContentEvent, ServerEvent } from './event-bus.ts'
 export { getReplayBufferSince } from './event-replay.ts'

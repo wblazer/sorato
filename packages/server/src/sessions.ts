@@ -23,7 +23,7 @@ import {
   SessionResponse,
   StopResponse,
   StorageUnavailable,
-} from './api.ts'
+} from '@sorato/api'
 import { ensureModel } from './model-catalog.ts'
 import type { ModelOptions } from './model-catalog.ts'
 import type { RunRequest } from './run-registry.ts'

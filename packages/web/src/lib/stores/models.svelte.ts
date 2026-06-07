@@ -1,5 +1,6 @@
-import { requestJson } from '$lib/api-errors.js'
-import type { AvailableModelsResponse, ModelOptions } from '$lib/types.js'
+import { getApiClient, runApi } from '$lib/api-client.js'
+import type { ModelsResponse as AvailableModelsResponse } from '@sorato/api'
+import type { ModelOptions } from '$lib/types.js'
 import { connectionsStore } from './connections.svelte.js'
 import { getJson, setJson, storageKey } from '$lib/storage.js'
 
@@ -74,10 +75,9 @@ function createModelsStore() {
     loading = true
     error = null
 
-    const query = new URLSearchParams({ projectId: nextProjectId })
-    const result = await requestJson<AvailableModelsResponse>(
-      `${api}/models?${query.toString()}`,
-      undefined,
+    const client = await getApiClient(api)
+    const result = await runApi(
+      client.models.list({ query: { projectId: nextProjectId } }),
       'Failed to load models'
     )
 

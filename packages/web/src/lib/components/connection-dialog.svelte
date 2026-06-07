@@ -1,6 +1,7 @@
 <script lang="ts">
   import * as Dialog from '$lib/components/ui/dialog/index.js'
       import Button from '$lib/components/ui/button/button.svelte'
+      import { getApiClient, runApi } from '$lib/api-client.js'
       import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
       import type { Connection } from '$lib/stores/connections.svelte.js'
       import { untrack } from 'svelte'
@@ -63,21 +64,14 @@
         checkStatus = 'loading'
 
         try {
-          const response = await fetch(`${url}/handshake`, {
-            method: 'GET',
-            headers: { Accept: 'application/json' },
-          })
+          const client = await getApiClient(url)
+          const result = await runApi(client.handshake.check(), 'Handshake failed')
 
-          if (!response.ok) {
-            throw new Error('Server returned error')
-          }
-
-          const data = await response.json()
-          if (data.status === 'ok') {
+          if (result.ok && result.value.status === 'ok') {
             checkStatus = 'success'
           } else {
             checkStatus = 'error'
-            urlError = 'Invalid server response'
+            urlError = result.ok ? 'Invalid server response' : result.error.message
           }
         } catch {
           checkStatus = 'error'

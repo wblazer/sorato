@@ -1,4 +1,5 @@
-import { httpErrorMessage, requestErrorMessage } from '$lib/api-errors.js'
+import { getApiClient, runApi } from '$lib/api-client.js'
+import { requestErrorMessage } from '$lib/api-errors.js'
 import type { ModelOptions, Session } from '$lib/types.js'
 import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
@@ -109,11 +110,13 @@ function createSessionStore() {
   /** Re-fetch a single session's metadata (background, silent). */
   async function refreshSession(sessionId: string) {
     try {
-      const res = await fetch(
-        `${connectionsStore.getApiBase()}/sessions/${sessionId}`
+      const client = await getApiClient(connectionsStore.getApiBase())
+      const result = await runApi(
+        client.sessions.get({ params: { id: sessionId } }),
+        'Failed to refresh session'
       )
-      if (!res.ok) return
-      const fresh: Session = await res.json()
+      if (!result.ok) return
+      const fresh: Session = result.value
       sessions = sessions.map((s) => (s.id === sessionId ? fresh : s))
       tabStore.updateSessionTitle(fresh.id, fresh.title)
 
@@ -137,9 +140,16 @@ function createSessionStore() {
     loading = true
     error = null
     try {
-      const res = await fetch(`${connectionsStore.getApiBase()}/sessions`)
-      if (!res.ok) throw new Error(await httpErrorMessage(res))
-      sessions = await res.json()
+      const client = await getApiClient(connectionsStore.getApiBase())
+      const result = await runApi(
+        client.sessions.list(),
+        'Failed to load sessions'
+      )
+      if (!result.ok) {
+        error = result.error.message
+        return
+      }
+      sessions = [...result.value]
 
       const projectId =
         tabStore.activeTab?.projectId ?? projectStore.selectedProjectId
@@ -163,14 +173,17 @@ function createSessionStore() {
     if (!resolvedProjectId) return null
 
     try {
-      const res = await fetch(`${connectionsStore.getApiBase()}/sessions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: resolvedProjectId }),
-      })
-      if (!res.ok) throw new Error(await httpErrorMessage(res))
+      const client = await getApiClient(connectionsStore.getApiBase())
+      const result = await runApi(
+        client.sessions.create({ payload: { projectId: resolvedProjectId } }),
+        'Failed to create session'
+      )
+      if (!result.ok) {
+        error = result.error.message
+        return null
+      }
 
-      const session: Session = await res.json()
+      const session: Session = result.value
       sessions = [session, ...sessions]
       selectedSessionId = session.id
       composing = false
@@ -196,24 +209,30 @@ function createSessionStore() {
     modelOptions: ModelOptions = {}
   ): Promise<{ status: 'started' | 'queued'; runId: string } | null> {
     try {
-      const res = await fetch(
-        `${connectionsStore.getApiBase()}/sessions/${sessionId}/run`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+      const client = await getApiClient(connectionsStore.getApiBase())
+      const result = await runApi(
+        client.sessions.run({
+          params: { id: sessionId },
+          payload: {
             input,
             model,
             baseNodeId,
             afterRunId,
             modelOptions,
-          }),
-        }
+          },
+        }),
+        'Failed to start agent run'
       )
-      if (!res.ok) throw new Error(await httpErrorMessage(res))
+      if (!result.ok) {
+        const message = result.error.message
+        error = message
+        const next = new Map(sessionErrors)
+        next.set(sessionId, message)
+        sessionErrors = next
+        return null
+      }
 
-      const data: { status: 'started' | 'queued'; runId: string } =
-        await res.json()
+      const data = result.value
 
       sessions = sessions.map((s) =>
         s.id === sessionId ? { ...s, status: 'running' as const } : s
@@ -266,14 +285,13 @@ function createSessionStore() {
     stoppingSessions = new Set([...stoppingSessions, sessionId])
 
     try {
-      const res = await fetch(
-        `${connectionsStore.getApiBase()}/sessions/${sessionId}/stop`,
-        {
-          method: 'POST',
-        }
+      const client = await getApiClient(connectionsStore.getApiBase())
+      const result = await runApi(
+        client.sessions.stop({ params: { id: sessionId } }),
+        'Failed to stop agent run'
       )
-      if (!res.ok) throw new Error(await httpErrorMessage(res))
-      const data: { status: 'stopped' | 'not_running' } = await res.json()
+      if (!result.ok) throw new Error(result.error.message)
+      const data = result.value
       // If the server says it wasn't running, clear stopping state
       // immediately (no RunEnd will arrive).
       if (data.status === 'not_running') {

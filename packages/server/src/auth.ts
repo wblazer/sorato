@@ -8,7 +8,7 @@ import {
   AuthProviderStatus,
   AuthSetResponse,
   AuthStatusResponse,
-} from './api.ts'
+} from '@sorato/api'
 import { MODEL_PROVIDERS } from './models.generated.ts'
 import { startOpenAiOauth } from './openai-chatgpt-auth.ts'
 import { hasProviderAuth, setApiKey } from './provider-auth.ts'

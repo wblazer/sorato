@@ -1,4 +1,5 @@
-import { httpErrorMessage, requestErrorMessage } from '$lib/api-errors.js'
+import { getApiClient, runApi } from '$lib/api-client.js'
+import { requestErrorMessage } from '$lib/api-errors.js'
 import type { Project } from '$lib/types.js'
 import { connectionsStore } from './connections.svelte.js'
 import { modelsStore } from './models.svelte.js'
@@ -13,9 +14,16 @@ function createProjectStore() {
     loading = true
     error = null
     try {
-      const res = await fetch(`${connectionsStore.getApiBase()}/projects`)
-      if (!res.ok) throw new Error(await httpErrorMessage(res))
-      projects = await res.json()
+      const client = await getApiClient(connectionsStore.getApiBase())
+      const result = await runApi(
+        client.projects.list(),
+        'Failed to load projects'
+      )
+      if (!result.ok) {
+        error = result.error.message
+        return
+      }
+      projects = [...result.value]
       if (!selectedProjectId && projects.length > 0) {
         selectedProjectId = projects[0]?.id ?? null
       }
@@ -29,13 +37,16 @@ function createProjectStore() {
 
   async function createLocalProject(path: string): Promise<Project | null> {
     try {
-      const res = await fetch(`${connectionsStore.getApiBase()}/projects`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path }),
-      })
-      if (!res.ok) throw new Error(await httpErrorMessage(res))
-      const project: Project = await res.json()
+      const client = await getApiClient(connectionsStore.getApiBase())
+      const result = await runApi(
+        client.projects.create({ payload: { path } }),
+        'Failed to create project'
+      )
+      if (!result.ok) {
+        error = result.error.message
+        return null
+      }
+      const project: Project = result.value
       projects = [project, ...projects]
       selectProject(project.id)
       return project
@@ -55,15 +66,18 @@ function createProjectStore() {
     archiveSessions: boolean
   ): Promise<boolean> {
     try {
-      const res = await fetch(
-        `${connectionsStore.getApiBase()}/projects/${id}/archive`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ archiveSessions }),
-        }
+      const client = await getApiClient(connectionsStore.getApiBase())
+      const result = await runApi(
+        client.projects.archive({
+          params: { id },
+          payload: { archiveSessions },
+        }),
+        'Failed to archive project'
       )
-      if (!res.ok) throw new Error(await httpErrorMessage(res))
+      if (!result.ok) {
+        error = result.error.message
+        return false
+      }
       projects = projects.filter((project) => project.id !== id)
       if (selectedProjectId === id) {
         const nextProject = projects[0] ?? null

@@ -161,6 +161,7 @@ const liveSessionStream = (
           _tag: 'RunStart' as const,
           sessionId,
           runId: replayRunId ?? '',
+          baseNodeId: null,
         },
       ][
         Number(

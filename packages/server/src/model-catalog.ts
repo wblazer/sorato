@@ -5,7 +5,7 @@ import {
   ModelUnavailable,
   ProviderCredentialsUnavailable,
   ProviderNotConfigured,
-} from './api.ts'
+} from '@sorato/api'
 import { MODEL_PROVIDERS } from './models.generated.ts'
 import { PROVIDER_ADAPTERS } from './provider-adapters.ts'
 import { RuntimeConfigService } from './runtime-config.ts'

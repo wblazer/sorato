@@ -4,7 +4,14 @@
  * Uses native EventSource with reconnect handled in this module.
  * Emits typed ServerEvent objects via a callback.
  */
-import type { ServerEvent, StreamCursor } from '$lib/types.js'
+import { Schema } from 'effect'
+import { ServerEvent } from '@sorato/api'
+import type {
+  ServerEvent as ServerEventType,
+  StreamCursor,
+} from '$lib/types.js'
+
+const decodeServerEvent = Schema.decodeUnknownOption(ServerEvent)
 
 /** Known event tags that the server emits. */
 const EVENT_TAGS = [
@@ -47,7 +54,7 @@ function formatCursor(cursor: StreamCursor): string {
  */
 export function connectSse(
   apiBase: string,
-  onEvent: (event: ServerEvent) => void,
+  onEvent: (event: ServerEventType) => void,
   options: ConnectSseOptions = {}
 ): SseConnection {
   let connected = false
@@ -87,8 +94,8 @@ export function connectSse(
     for (const tag of EVENT_TAGS) {
       es.addEventListener(tag, (e: MessageEvent) => {
         try {
-          const data = JSON.parse(e.data) as ServerEvent
-          onEvent(data)
+          const data = decodeServerEvent(JSON.parse(e.data))
+          if (data._tag === 'Some') onEvent(data.value as ServerEventType)
         } catch {
           // Malformed event — skip
         }

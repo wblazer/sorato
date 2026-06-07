@@ -1,14 +1,10 @@
 <script lang="ts">
   import { CommandPalette } from '$lib/components/ui/command-palette/index.js'
+      import { getApiClient, runApi } from '$lib/api-client.js'
       import FolderIcon from 'phosphor-svelte/lib/FolderIcon'
       import { connectionsStore } from '$lib/stores/connections.svelte.js'
       import { cn } from '$lib/utils.js'
-
-      interface DirectoryEntry {
-        name: string
-        path: string
-        type: 'directory' | 'file'
-      }
+      import type { DirectoryEntry } from '@sorato/api'
 
       interface Props {
         open: boolean
@@ -72,24 +68,22 @@
         error = null
 
         try {
-          const res = await fetch(
-            `${connectionsStore.getApiBase()}/directories?path=${encodeURIComponent(path)}`
+          const client = await getApiClient(connectionsStore.getApiBase())
+          const result = await runApi(
+            client.directories.list({ query: { path } }),
+            'Failed to list directories'
           )
           if (id !== requestId) return
 
-          if (!res.ok) {
-            const body = await res.json().catch(() => null)
-            error = body?.message ?? `${res.status} ${res.statusText}`
+          if (!result.ok) {
+            error = result.error.message
             entries = []
             return
           }
 
-          const data = await res.json()
-          if (id !== requestId) return
-
-          resolvedPath = data.resolved
-          homeDir = data.home
-          entries = data.entries
+          resolvedPath = result.value.resolved
+          homeDir = result.value.home
+          entries = [...result.value.entries]
           selectedIndex = 0
         } catch (e) {
           if (id !== requestId) return

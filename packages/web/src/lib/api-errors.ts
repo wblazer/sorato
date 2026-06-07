@@ -118,40 +118,6 @@ export function requestError(error: unknown, context: string): UiApiError {
   }
 }
 
-export async function requestJson<A>(
-  input: RequestInfo | URL,
-  init: RequestInit | undefined,
-  context: string
-): Promise<ApiResult<A>> {
-  try {
-    const response = await fetch(input, init)
-    if (!response.ok)
-      return { ok: false, error: await httpError(response, context) }
-    return { ok: true, value: (await response.json()) as A }
-  } catch (error) {
-    return { ok: false, error: requestError(error, context) }
-  }
-}
-
-export async function requestVoid(
-  input: RequestInfo | URL,
-  init: RequestInit | undefined,
-  context: string
-): Promise<ApiResult<void>> {
-  try {
-    const response = await fetch(input, init)
-    if (!response.ok)
-      return { ok: false, error: await httpError(response, context) }
-    return { ok: true, value: undefined }
-  } catch (error) {
-    return { ok: false, error: requestError(error, context) }
-  }
-}
-
-export async function httpErrorMessage(response: Response): Promise<string> {
-  return (await httpError(response)).message
-}
-
 export function requestErrorMessage(error: unknown, context: string): string {
   return requestError(error, context).message
 }

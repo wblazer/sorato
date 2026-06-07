@@ -153,7 +153,12 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     })
     publish({ _tag: 'MessagesAppended', sessionId })
     startEventReplay(sessionId, runId)
-    publish({ _tag: 'RunStart', sessionId, runId })
+    publish({
+      _tag: 'RunStart',
+      sessionId,
+      runId,
+      baseNodeId: request.baseNodeId,
+    })
     yield* Effect.forkDetach(maybeSetTitle)
     yield* Effect.logInfo('Agent run published lifecycle start', { runId })
 
