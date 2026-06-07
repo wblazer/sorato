@@ -18,17 +18,19 @@ import {
 import type { RunRequest } from '../src/run-registry.ts'
 
 const runRequest = (input: string): RunRequest => ({
-  input,
+  runId: `run-${input}`,
+  inputs: [input],
   model: 'openai/gpt-5.5',
   modelOptions: {},
   baseNodeId: null,
+  afterRunId: null,
 })
 
 describe('RunRegistry', () => {
   it('marks a session running as soon as a run is enqueued', () => {
     resetRunRegistry()
 
-    expect(enqueueRun('session-1', runRequest('hello'))).toBe('started')
+    expect(enqueueRun('session-1', runRequest('hello')).status).toBe('started')
     expect(isRunning('session-1')).toBe(true)
     expect(getFiber('session-1')).toBeUndefined()
     expect(getQueuedRunCount('session-1')).toBe(1)
@@ -36,17 +38,22 @@ describe('RunRegistry', () => {
     releaseRun('session-1')
   })
 
-  it('queues follow-up runs for the same session', () => {
+  it('coalesces compatible queued inputs into a single run', () => {
     resetRunRegistry()
 
     const first = runRequest('first')
     const second = runRequest('second')
 
-    expect(enqueueRun('session-1', first)).toBe('started')
-    expect(enqueueRun('session-1', second)).toBe('queued')
-    expect(getQueuedRunCount('session-1')).toBe(2)
-    expect(shiftQueuedRun('session-1')).toEqual(first)
-    expect(shiftQueuedRun('session-1')).toEqual(second)
+    expect(enqueueRun('session-1', first).status).toBe('started')
+    expect(enqueueRun('session-1', second)).toEqual({
+      status: 'queued',
+      runId: first.runId,
+    })
+    expect(getQueuedRunCount('session-1')).toBe(1)
+    expect(shiftQueuedRun('session-1')).toEqual({
+      ...first,
+      inputs: ['first', 'second'],
+    })
     expect(getQueuedRunCount('session-1')).toBe(0)
 
     releaseRun('session-1')
@@ -55,11 +62,11 @@ describe('RunRegistry', () => {
   it('releases a session when startup fails before a worker is attached', () => {
     resetRunRegistry()
 
-    expect(enqueueRun('session-1', runRequest('hello'))).toBe('started')
+    expect(enqueueRun('session-1', runRequest('hello')).status).toBe('started')
     releaseRun('session-1')
 
     expect(isRunning('session-1')).toBe(false)
-    expect(enqueueRun('session-1', runRequest('again'))).toBe('started')
+    expect(enqueueRun('session-1', runRequest('again')).status).toBe('started')
 
     releaseRun('session-1')
   })
@@ -68,7 +75,9 @@ describe('RunRegistry', () => {
     Effect.gen(function* () {
       resetRunRegistry()
 
-      expect(enqueueRun('session-1', runRequest('hello'))).toBe('started')
+      expect(enqueueRun('session-1', runRequest('hello')).status).toBe(
+        'started'
+      )
 
       const worker = yield* Effect.forkDetach(Effect.void)
       registerWorkerFiber('session-1', worker)
@@ -93,14 +102,16 @@ describe('RunRegistry', () => {
     const first = runRequest('first')
     const second = runRequest('second')
 
-    expect(enqueueRun('session-1', first)).toBe('started')
-    expect(enqueueRun('session-1', second)).toBe('queued')
+    expect(enqueueRun('session-1', first).status).toBe('started')
+    expect(enqueueRun('session-1', second).status).toBe('queued')
     expect(shouldStop('session-1')).toBe(false)
 
     requestStop('session-1')
 
     expect(shouldStop('session-1')).toBe(true)
-    expect(drainQueuedRuns('session-1')).toEqual([first, second])
+    expect(drainQueuedRuns('session-1')).toEqual([
+      { ...first, inputs: ['first', 'second'] },
+    ])
     expect(getQueuedRunCount('session-1')).toBe(0)
 
     releaseRun('session-1')

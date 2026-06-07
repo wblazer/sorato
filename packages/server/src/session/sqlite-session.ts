@@ -14,7 +14,6 @@ import {
   StoredMessage,
   type MessageNode,
   type ModelCall,
-  type NodeId,
   type Run,
   type RunId,
   type Session,
@@ -461,18 +460,6 @@ export const SqliteSession = (options: { readonly path: string }) =>
         `,
       })
 
-      const latestLeafNodeRow = SqlSchema.findOneOption({
-        Request: SessionIdInput,
-        Result: NodeIdentityRow,
-        execute: ({ id }) => sql`
-          SELECT n.id FROM nodes n
-          WHERE n.session_id = ${id}
-            AND NOT EXISTS (SELECT 1 FROM nodes child WHERE child.parent_node_id = n.id)
-          ORDER BY n.created_at DESC
-          LIMIT 1
-        `,
-      })
-
       const listNodeChainRows = SqlSchema.findAll({
         Request: NodeIdInput,
         Result: MessageNodeRow,
@@ -509,25 +496,6 @@ export const SqliteSession = (options: { readonly path: string }) =>
             AND NOT EXISTS (SELECT 1 FROM nodes child WHERE child.parent_node_id = n.id)
         `,
       })
-
-      const resolveHead = function* (
-        sessionId: SessionId,
-        headNodeId?: NodeId | null
-      ) {
-        if (headNodeId !== undefined) return headNodeId
-        const latest = yield* latestLeafNodeRow({ id: sessionId }).pipe(
-          Effect.mapError(
-            sqlFailure(
-              'resolveHead',
-              `Failed to resolve head for session: ${sessionId}`
-            )
-          )
-        )
-        return Option.match(latest, {
-          onNone: () => null,
-          onSome: (row) => row.id,
-        })
-      }
 
       const get = Effect.fn('SessionStorage.get')(function* (id: SessionId) {
         const row = yield* getSessionRow({ id }).pipe(
@@ -680,11 +648,10 @@ export const SqliteSession = (options: { readonly path: string }) =>
       const conversation = Effect.fn('SessionStorage.conversation')(
         function* (sessionId, headNodeId) {
           yield* get(sessionId)
-          const head = yield* resolveHead(sessionId, headNodeId)
           const rows =
-            head === null
+            headNodeId === null
               ? []
-              : yield* listNodeChainRows({ id: head }).pipe(
+              : yield* listNodeChainRows({ id: headNodeId }).pipe(
                   Effect.mapError(
                     sqlFailure(
                       'conversation',
@@ -714,11 +681,10 @@ export const SqliteSession = (options: { readonly path: string }) =>
             )
             return rows.map(toMessageNode)
           }
-          const head = yield* resolveHead(sessionId, headNodeId)
           const rows =
-            head === null
+            headNodeId === null
               ? []
-              : yield* listNodeChainRows({ id: head }).pipe(
+              : yield* listNodeChainRows({ id: headNodeId }).pipe(
                   Effect.mapError(
                     sqlFailure(
                       'messages',
@@ -736,10 +702,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
         if (messagesToAppend.length === 0) return []
         yield* get(sessionId)
         yield* getRun(runId)
-        const parentNodeId =
-          baseNodeId === undefined
-            ? yield* resolveHead(sessionId, undefined)
-            : baseNodeId
+        const parentNodeId = baseNodeId
         if (parentNodeId !== null) {
           const found = yield* findNodeInSessionRow({
             node_id: parentNodeId,

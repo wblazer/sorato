@@ -3,10 +3,12 @@ import type { Fiber } from 'effect'
 import type { ModelOptions } from './model-catalog.ts'
 
 export interface RunRequest {
-  readonly input: string
+  readonly runId: string
+  readonly inputs: ReadonlyArray<string>
   readonly model: string
   readonly modelOptions: ModelOptions
   readonly baseNodeId: string | null
+  readonly afterRunId: string | null
 }
 
 interface SessionRunState {
@@ -33,18 +35,36 @@ const startRunState = (sessionId: string, request: RunRequest) => {
   return 'started' as const
 }
 
+const sameRunBatch = (a: RunRequest, b: RunRequest) =>
+  a.model === b.model &&
+  a.baseNodeId === b.baseNodeId &&
+  a.afterRunId === b.afterRunId &&
+  JSON.stringify(a.modelOptions) === JSON.stringify(b.modelOptions)
+
 const queueRunState = (state: SessionRunState, request: RunRequest) => {
+  const last = state.queuedRuns.at(-1)
+  if (last && sameRunBatch(last, request)) {
+    state.queuedRuns[state.queuedRuns.length - 1] = {
+      ...last,
+      inputs: [...last.inputs, ...request.inputs],
+    }
+    return { status: 'queued' as const, runId: last.runId }
+  }
+
   state.queuedRuns.push(request)
-  return 'queued' as const
+  return { status: 'queued' as const, runId: request.runId }
 }
 
 export function enqueueRun(
   sessionId: string,
   request: RunRequest
-): 'started' | 'queued' {
+): { readonly status: 'started' | 'queued'; readonly runId: string } {
   const state = running.get(sessionId)
   return Match.value(state).pipe(
-    Match.when(undefined, () => startRunState(sessionId, request)),
+    Match.when(undefined, () => ({
+      status: startRunState(sessionId, request),
+      runId: request.runId,
+    })),
     Match.orElse((state) => queueRunState(state, request))
   )
 }

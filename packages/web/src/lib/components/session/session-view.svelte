@@ -5,6 +5,7 @@
       import { projectStore } from '$lib/stores/projects.svelte.js'
       import { sessionStore } from '$lib/stores/sessions.svelte.js'
       import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
+      import { connectionsStore } from '$lib/stores/connections.svelte.js'
       import type { MessageNode, ModelCall } from '$lib/types.js'
       import {
         persistedSources,
@@ -20,6 +21,14 @@
       import * as Item from '$lib/components/ui/item/index.js'
       import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
       import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
+      import {
+        readSelectedHead,
+        selectedHeadChangedEvent,
+        selectedHeadStorageKey as makeSelectedHeadStorageKey,
+        writeSelectedHead,
+        type SelectedHead,
+        type SelectedHeadChangedDetail,
+      } from '$lib/selected-head-storage.js'
 
       let { sessionId, title }: { sessionId: string; title: string | null } =
         $props()
@@ -30,6 +39,8 @@
       let shouldAutoScroll = $state(true)
       let autoScrollTop: number | undefined
       let resizeObserver: ResizeObserver | undefined
+      let selectedHead: SelectedHead = $state(null)
+      let initializedSelectedHeadKey: string | null = $state(null)
 
       const bottomThreshold = 8
 
@@ -46,8 +57,27 @@
         const project = projectStore.getProject(selectedSession?.projectId ?? null)
         return project?.name ?? null
       })
+      const selectedHeadStorageKey = $derived(
+        makeSelectedHeadStorageKey(connectionsStore.activeConnection?.id, sessionId)
+      )
+
+      const selectedBaseNodeId = $derived.by(() =>
+        selectedHead?.type === 'node'
+          ? selectedHead.nodeId
+          : selectedHead?.type === 'run'
+            ? selectedHead.baseNodeId
+            : null
+      )
+      const selectedAfterRunId = $derived.by(() =>
+        selectedHead?.type === 'run' ? selectedHead.runId : null
+      )
+
+      const visibleMessages = $derived.by(() =>
+        selectedMessages(messagesStore.messages, selectedHead)
+      )
+
       const persistedTranscriptItems = $derived.by(() =>
-        projectTranscript(persistedSources(messagesStore.messages), {
+        projectTranscript(persistedSources(visibleMessages), {
           pretty: clientSettingsStore.prettyTranscript,
         })
       )
@@ -74,9 +104,117 @@
           return message !== null && messages.includes(message)
         })
 
+      function latestNodeId(messages: ReadonlyArray<MessageNode>): string | null {
+        return messages.at(-1)?.id ?? null
+      }
+
+      function isOptimisticNode(message: MessageNode) {
+        return message.id.startsWith('optimistic-')
+      }
+
+      function latestPersistedNodeId(
+        messages: ReadonlyArray<MessageNode>
+      ): string | null {
+        return messages.toReversed().find((message) => !isOptimisticNode(message))?.id ?? null
+      }
+
+      function setSelectedHead(head: SelectedHead) {
+        selectedHead = head
+        writeSelectedHead(selectedHeadStorageKey, head)
+      }
+
+      function selectedMessagePath(
+        messages: ReadonlyArray<MessageNode>,
+        headId: string | null
+      ): ReadonlyArray<MessageNode> {
+        if (headId === null) return []
+
+        const byId = new Map(messages.map((message) => [message.id, message]))
+        const path: MessageNode[] = []
+        const seen = new Set<string>()
+        let cursor: string | null = headId
+
+        while (cursor !== null && !seen.has(cursor)) {
+          seen.add(cursor)
+          const message = byId.get(cursor)
+          if (!message) return []
+          path.push(message)
+          cursor = message.parentId
+        }
+
+        return path.reverse()
+      }
+
+      function selectedMessages(
+        messages: ReadonlyArray<MessageNode>,
+        head: SelectedHead
+      ): ReadonlyArray<MessageNode> {
+        if (head === null) return []
+        if (head.type === 'node') return selectedMessagePath(messages, head.nodeId)
+
+        return [
+          ...selectedMessagePath(messages, head.baseNodeId),
+          ...messages.filter((message) => message.runId === head.runId),
+        ]
+      }
+
+      function isDescendantOrSame(
+        messages: ReadonlyArray<MessageNode>,
+        nodeId: string,
+        ancestorId: string | null
+      ) {
+        if (ancestorId === null) return true
+
+        const byId = new Map(messages.map((message) => [message.id, message]))
+        const seen = new Set<string>()
+        let cursor: string | null = nodeId
+
+        while (cursor !== null && !seen.has(cursor)) {
+          if (cursor === ancestorId) return true
+          seen.add(cursor)
+          cursor = byId.get(cursor)?.parentId ?? null
+        }
+
+        return false
+      }
+
+      function finalPersistedRunNode(
+        messages: ReadonlyArray<MessageNode>,
+        runId: string,
+        baseNodeId: string | null
+      ): MessageNode | null {
+        const runMessages = messages.filter(
+          (message) => message.runId === runId && !isOptimisticNode(message)
+        )
+        const hasGeneratedOutput = runMessages.some(
+          (message) =>
+            message.encoded.role === 'assistant' ||
+            message.encoded.role === 'tool' ||
+            message.encoded.role === 'system'
+        )
+        if (!hasGeneratedOutput) return null
+
+        const runIds = new Set(runMessages.map((message) => message.id))
+        const parentIds = new Set(
+          runMessages
+            .map((message) => message.parentId)
+            .filter((id): id is string => id !== null && runIds.has(id))
+        )
+
+        return (
+          runMessages
+            .toReversed()
+            .find(
+              (message) =>
+                !parentIds.has(message.id) &&
+                isDescendantOrSame(messages, message.id, baseNodeId)
+            ) ?? null
+        )
+      }
+
       const messageBlocks = $derived.by((): ReadonlyArray<MessageRenderBlock> => {
         const blocks: MessageRenderBlock[] = []
-        const messages = messagesStore.messages
+        const messages = visibleMessages
 
         for (let index = 0; index < messages.length; index++) {
           const message = messages[index]
@@ -184,6 +322,12 @@
       }
 
       $effect(() => {
+        if (messagesStore.currentSessionId !== sessionId) {
+          void messagesStore.loadMessages(sessionId)
+        }
+      })
+
+      $effect(() => {
         if (!messagesContent || typeof ResizeObserver === 'undefined') return
 
         resizeObserver?.disconnect()
@@ -214,24 +358,133 @@
         )
       })
 
+      $effect(() => {
+        if (typeof window === 'undefined') return
+
+        const handler = (event: Event) => {
+          const detail = (event as CustomEvent<SelectedHeadChangedDetail>).detail
+          if (!detail || detail.key !== selectedHeadStorageKey) return
+          selectedHead = detail.head
+          initializedSelectedHeadKey = selectedHeadStorageKey
+        }
+
+        window.addEventListener(selectedHeadChangedEvent, handler)
+        return () => window.removeEventListener(selectedHeadChangedEvent, handler)
+      })
+
+      $effect(() => {
+        const key = selectedHeadStorageKey
+        const messages = messagesStore.messages
+        if (!messagesStore.loaded) return
+
+        const ids = new Set(messages.map((message) => message.id))
+
+        if (initializedSelectedHeadKey !== key) {
+          const stored = readSelectedHead(key)
+          const latest = latestPersistedNodeId(messages)
+          const fallback: SelectedHead =
+            latest === null ? null : { type: 'node', nodeId: latest }
+          const next =
+            stored.exists &&
+            (stored.value === null ||
+              (stored.value.type === 'node' && ids.has(stored.value.nodeId)) ||
+              (stored.value.type === 'run' &&
+                (stored.value.baseNodeId === null ||
+                  ids.has(stored.value.baseNodeId))))
+              ? stored.value
+              : fallback
+
+          selectedHead = next
+          initializedSelectedHeadKey = key
+          if (!stored.exists) writeSelectedHead(key, next)
+          return
+        }
+
+        if (
+          selectedHead?.type === 'node' &&
+          !ids.has(selectedHead.nodeId)
+        ) {
+          const latest = latestPersistedNodeId(messages)
+          setSelectedHead(latest === null ? null : { type: 'node', nodeId: latest })
+        }
+      })
+
+      $effect(() => {
+        const activeRunId = messagesStore.activeRunId
+        if (
+          activeRunId === null ||
+          (selectedHead?.type === 'run' && selectedHead.runId === activeRunId)
+        )
+          return
+
+        const firstRunMessage = messagesStore.messages.find(
+          (message) => message.runId === activeRunId
+        )
+        if (!firstRunMessage) return
+
+        setSelectedHead({
+          type: 'run',
+          runId: activeRunId,
+          baseNodeId: firstRunMessage.parentId,
+        })
+      })
+
+      $effect(() => {
+        const head = selectedHead
+        if (head?.type !== 'run' || isRunning) return
+
+        const finalNode = finalPersistedRunNode(
+          messagesStore.messages,
+          head.runId,
+          head.baseNodeId
+        )
+        if (!finalNode) return
+
+        setSelectedHead({ type: 'node', nodeId: finalNode.id })
+      })
+
       function handleSend(input: string) {
         const model = modelsStore.selectedModel
         if (!model) return
 
+        const baseNodeId = selectedBaseNodeId
+        const afterRunId = selectedAfterRunId
+        const wasRunning = sessionStore.isRunning(sessionId)
+
         scrollToLatestAfterRender()
 
-        if (!sessionStore.isRunning(sessionId)) {
-          // Show the user's message immediately — don't wait for the server
-          // round-trip. The optimistic node is replaced on the next refresh.
-          messagesStore.addOptimisticUserMessage(sessionId, input)
-        }
+        void sessionStore
+          .runAgent(
+            sessionId,
+            input,
+            model,
+            baseNodeId,
+            afterRunId,
+            modelsStore.selectedOptions
+          )
+          .then((response) => {
+            if (!response) return
 
-        sessionStore.runAgent(
-          sessionId,
-          input,
-          model,
-          modelsStore.selectedOptions
-        )
+            if (response.status === 'started') {
+              const runHead: SelectedHead = {
+                type: 'run',
+                runId: response.runId,
+                baseNodeId,
+              }
+              setSelectedHead(runHead)
+            }
+
+            if (!wasRunning) {
+              // Show the user's message immediately — don't wait for the server
+              // round-trip. The optimistic node is replaced on the next refresh.
+              messagesStore.addOptimisticUserMessage(
+                sessionId,
+                input,
+                baseNodeId,
+                response.runId
+              )
+            }
+          })
       }
 
       function handleStop() {
@@ -266,7 +519,7 @@
         {/if}
       </div>
 
-      <SessionTokenUsage messages={messagesStore.messages} models={modelsStore.models} />
+      <SessionTokenUsage messages={visibleMessages} models={modelsStore.models} />
 
     </div>
   </div>

@@ -97,6 +97,7 @@ export class MessageNodeResponse extends Schema.Class<MessageNodeResponse>(
 
 export class RunResponse extends Schema.Class<RunResponse>('RunResponse')({
   status: Schema.Literals(['started', 'queued']),
+  runId: Schema.String,
 }) {}
 
 export class StopResponse extends Schema.Class<StopResponse>('StopResponse')({
@@ -357,7 +358,8 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
       payload: Schema.Struct({
         input: Schema.String,
         model: Schema.String,
-        baseNodeId: Schema.optional(Schema.NullOr(Schema.String)),
+        baseNodeId: Schema.NullOr(Schema.String),
+        afterRunId: Schema.optional(Schema.NullOr(Schema.String)),
         modelOptions: Schema.optional(
           Schema.Struct({
             thinkingLevel: Schema.optional(

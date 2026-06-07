@@ -102,7 +102,7 @@ export interface CreateRunInput {
   readonly providerId?: string
   readonly modelId?: string
   readonly billingMode?: BillingMode
-  readonly baseNodeId?: NodeId | null
+  readonly baseNodeId: NodeId | null
   readonly createdAt?: number
 }
 
@@ -282,7 +282,7 @@ export interface SessionStorageApi {
    */
   readonly conversation: (
     sessionId: SessionId,
-    headNodeId?: NodeId | null
+    headNodeId: NodeId | null
   ) => Effect<Prompt.Prompt, StorageError>
 
   /**
@@ -308,7 +308,7 @@ export interface SessionStorageApi {
     sessionId: SessionId,
     runId: RunId,
     messages: ReadonlyArray<StoredMessageEncoded>,
-    baseNodeId?: NodeId | null
+    baseNodeId: NodeId | null
   ) => Effect<ReadonlyArray<NodeId>, StorageError>
 
   /**

@@ -24,7 +24,7 @@ import { getAuth } from './provider-auth.ts'
 import type { BillingMode } from './session/session.ts'
 
 export const runAgent = (sessionId: SessionId, request: RunRequest) => {
-  const runId = crypto.randomUUID()
+  const runId = request.runId
   let runFailed = false
   const finalizeRun = Effect.sync(() => {
     endEventReplay(sessionId, runId, runFailed ? 'failed' : 'completed')
@@ -36,7 +36,8 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       runId,
       model: request.model,
       modelOptions: request.modelOptions,
-      inputLength: request.input.length,
+      inputCount: request.inputs.length,
+      inputLength: request.inputs.join('\n').length,
     })
 
     const storage = yield* SessionStorage
@@ -92,7 +93,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
 
     const existingConversation = yield* storage.conversation(
       sessionId,
-      request.baseNodeId ?? null
+      request.baseNodeId
     )
     const isFirstMessage = existingConversation.content.length === 0
     const shouldSetTitle = Effect.succeed(
@@ -101,7 +102,10 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     const publishSessionUpdated = Effect.sync(() =>
       publish({ _tag: 'SessionUpdated', sessionId })
     )
-    const maybeSetTitle = generateSessionTitle(projectPath, request.input).pipe(
+    const maybeSetTitle = generateSessionTitle(
+      projectPath,
+      request.inputs.join('\n')
+    ).pipe(
       Effect.flatMap((title) =>
         Option.match(title, {
           onNone: () => Effect.void,
@@ -123,16 +127,24 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
           source: 'system-prompt' as const,
           display: { title: 'System Prompt' },
         },
-        { role: 'user' as const, content: request.input },
+        ...request.inputs.map((input) => ({
+          role: 'user' as const,
+          content: input,
+        })),
       ]),
-      Match.orElse(() => [{ role: 'user' as const, content: request.input }])
+      Match.orElse(() =>
+        request.inputs.map((input) => ({
+          role: 'user' as const,
+          content: input,
+        }))
+      )
     )
 
     const preambleNodeIds = yield* storage.append(
       sessionId,
       runId,
       preamble,
-      request.baseNodeId ?? null
+      request.baseNodeId
     )
     yield* Effect.logInfo('Agent run appended user input', {
       runId,
@@ -145,9 +157,10 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     yield* Effect.forkDetach(maybeSetTitle)
     yield* Effect.logInfo('Agent run published lifecycle start', { runId })
 
+    const appendBaseNodeId = preambleNodeIds.at(-1) ?? request.baseNodeId
     const conversation = yield* storage.conversation(
       sessionId,
-      preambleNodeIds.at(-1) ?? request.baseNodeId ?? null
+      appendBaseNodeId
     )
     const messageCountBeforeRun = conversation.content.length
     yield* Effect.logInfo('Agent run starting harness', {
@@ -169,13 +182,19 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
             toolkit: AllTools,
             hooks: [
               createBusHook(sessionId, runId),
-              createPersistenceHook(sessionId, runId, messageCountBeforeRun, {
-                providerId: resolvedModel.providerId,
-                modelId: resolvedModel.modelId,
-                billingMode,
-                cost: resolvedModel.model.cost,
-                startedAt: modelCallStartedAt,
-              }),
+              createPersistenceHook(
+                sessionId,
+                runId,
+                messageCountBeforeRun,
+                appendBaseNodeId,
+                {
+                  providerId: resolvedModel.providerId,
+                  modelId: resolvedModel.modelId,
+                  billingMode,
+                  cost: resolvedModel.model.cost,
+                  startedAt: modelCallStartedAt,
+                }
+              ),
             ],
           }),
           Layer.mergeAll(

@@ -5,12 +5,17 @@
   import { modelsStore } from '$lib/stores/models.svelte.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
   import { tabStore } from '$lib/stores/tabs.svelte.js'
+  import { connectionsStore } from '$lib/stores/connections.svelte.js'
   import Composer from './composer.svelte'
   import * as Item from '$lib/components/ui/item/index.js'
   import ProjectSelector from './project-selector.svelte'
   import SessionSearchDialog from './session-search-dialog.svelte'
   import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
+  import {
+    selectedHeadStorageKey,
+    writeSelectedHead,
+  } from '$lib/selected-head-storage.js'
 
   let sending = $state(false)
   let sessionSearchOpen = $state(false)
@@ -78,12 +83,21 @@
 
       messagesStore.prepareSession(session.id)
 
-      await sessionStore.runAgent(
+      const response = await sessionStore.runAgent(
         session.id,
         input,
         model,
+        null,
+        null,
         modelsStore.selectedOptions
       )
+      if (!response) return
+
+      writeSelectedHead(
+        selectedHeadStorageKey(connectionsStore.activeConnection?.id, session.id),
+        { type: 'run', runId: response.runId, baseNodeId: null }
+      )
+      messagesStore.addOptimisticUserMessage(session.id, input, null, response.runId)
     } finally {
       sending = false
     }

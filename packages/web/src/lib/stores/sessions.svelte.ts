@@ -10,6 +10,7 @@ import { tabStore } from './tabs.svelte.js'
 
 export interface QueuedMessageDraft {
   id: string
+  runId: string
   content: string
   createdAt: number
 }
@@ -65,17 +66,18 @@ function createSessionStore() {
           next.set(event.sessionId, pendingStarts - 1)
         }
         pendingRunStarts = next
-      } else {
-        const drafts = queuedMessages.get(event.sessionId) ?? []
-        if (drafts.length > 0) {
-          const next = new Map(queuedMessages)
-          if (drafts.length === 1) {
-            next.delete(event.sessionId)
-          } else {
-            next.set(event.sessionId, drafts.slice(1))
-          }
-          queuedMessages = next
+      }
+
+      const drafts = queuedMessages.get(event.sessionId) ?? []
+      if (drafts.length > 0) {
+        const remaining = drafts.filter((draft) => draft.runId !== event.runId)
+        const next = new Map(queuedMessages)
+        if (remaining.length === 0) {
+          next.delete(event.sessionId)
+        } else {
+          next.set(event.sessionId, remaining)
         }
+        queuedMessages = next
       }
 
       sessions = sessions.map((s) =>
@@ -189,20 +191,29 @@ function createSessionStore() {
     sessionId: string,
     input: string,
     model: string,
+    baseNodeId: string | null,
+    afterRunId: string | null,
     modelOptions: ModelOptions = {}
-  ): Promise<boolean> {
+  ): Promise<{ status: 'started' | 'queued'; runId: string } | null> {
     try {
       const res = await fetch(
         `${connectionsStore.getApiBase()}/sessions/${sessionId}/run`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ input, model, modelOptions }),
+          body: JSON.stringify({
+            input,
+            model,
+            baseNodeId,
+            afterRunId,
+            modelOptions,
+          }),
         }
       )
       if (!res.ok) throw new Error(await httpErrorMessage(res))
 
-      const data: { status: 'started' | 'queued' } = await res.json()
+      const data: { status: 'started' | 'queued'; runId: string } =
+        await res.json()
 
       sessions = sessions.map((s) =>
         s.id === sessionId ? { ...s, status: 'running' as const } : s
@@ -218,6 +229,7 @@ function createSessionStore() {
           ...(next.get(sessionId) ?? []),
           {
             id: crypto.randomUUID(),
+            runId: data.runId,
             content: input,
             createdAt: Date.now(),
           },
@@ -225,14 +237,14 @@ function createSessionStore() {
         queuedMessages = next
       }
 
-      return true
+      return data
     } catch (e) {
       const message = requestErrorMessage(e, 'Failed to start agent run')
       error = message
       const next = new Map(sessionErrors)
       next.set(sessionId, message)
       sessionErrors = next
-      return false
+      return null
     }
   }
 

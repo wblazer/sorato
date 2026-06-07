@@ -45,6 +45,12 @@ const testLayer = () => {
   )
 }
 
+const latestLeafId = (storage: SessionStorageApi, sessionId: string) =>
+  Effect.gen(function* () {
+    const leaves = yield* storage.leaves(sessionId)
+    return leaves.at(-1)?.id ?? null
+  })
+
 const append = (
   storage: SessionStorageApi,
   sessionId: string,
@@ -52,6 +58,10 @@ const append = (
   baseNodeId?: string | null
 ) =>
   Effect.gen(function* () {
+    const resolvedBaseNodeId =
+      baseNodeId === undefined
+        ? yield* latestLeafId(storage, sessionId)
+        : baseNodeId
     const runId = crypto.randomUUID()
     yield* storage.createRun({
       id: runId,
@@ -59,15 +69,23 @@ const append = (
       providerId: 'test',
       modelId: 'test-model',
       billingMode: 'api-key',
+      baseNodeId: resolvedBaseNodeId,
     })
     const nodeIds = yield* storage.append(
       sessionId,
       runId,
       messages,
-      baseNodeId
+      resolvedBaseNodeId
     )
     yield* storage.completeRun({ id: runId, status: 'completed' })
+
     return nodeIds
+  })
+
+const conversation = (storage: SessionStorageApi, sessionId: string) =>
+  Effect.gen(function* () {
+    const headNodeId = yield* latestLeafId(storage, sessionId)
+    return yield* storage.conversation(sessionId, headNodeId)
   })
 // ---------------------------------------------------------------------------
 // Helpers
@@ -249,7 +267,7 @@ describe('SessionStorage', () => {
           assistantMsg('Hi there!'),
         ])
 
-        const prompt = yield* storage.conversation(session.id)
+        const prompt = yield* conversation(storage, session.id)
         expect(prompt.content.length).toBe(3)
 
         // Check roles in order
@@ -276,7 +294,7 @@ describe('SessionStorage', () => {
           assistantMsg('Second response'),
         ])
 
-        const prompt = yield* storage.conversation(session.id)
+        const prompt = yield* conversation(storage, session.id)
         expect(prompt.content.length).toBe(5)
       }).pipe(Effect.provide(testLayer()))
     )
@@ -285,7 +303,7 @@ describe('SessionStorage', () => {
       Effect.gen(function* () {
         const storage = yield* SessionStorage
         const session = yield* storage.create(TEST_DIR, 'empty')
-        const prompt = yield* storage.conversation(session.id)
+        const prompt = yield* conversation(storage, session.id)
 
         expect(prompt.content.length).toBe(0)
       }).pipe(Effect.provide(testLayer()))
@@ -304,7 +322,7 @@ describe('SessionStorage', () => {
           assistantMsg('Here are the contents.'),
         ])
 
-        const prompt = yield* storage.conversation(session.id)
+        const prompt = yield* conversation(storage, session.id)
         expect(prompt.content.length).toBe(5)
 
         // The conversation round-trips — we can re-encode it
@@ -358,7 +376,7 @@ describe('SessionStorage', () => {
 
         // Get leaves to find the current tip, then walk back to find
         // the message we want to fork from (the system message)
-        const beforeFork = yield* storage.conversation(session.id)
+        const beforeFork = yield* conversation(storage, session.id)
         expect(beforeFork.content.length).toBe(3)
 
         // Get all leaves to find messages. The head is at assistant1.

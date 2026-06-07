@@ -9,6 +9,7 @@ import { Cause, Effect, Fiber, Match } from 'effect'
 import { ProjectStorage } from './project/project.ts'
 import {
   SessionStorage,
+  type MessageNode,
   type ModelCall,
   type SessionStorageApi,
 } from './session/session.ts'
@@ -226,6 +227,78 @@ const doPublishMessagesAppended = (sessionId: string) => {
   return Effect.void
 }
 
+function isDescendantOrSame(
+  messages: ReadonlyArray<MessageNode>,
+  nodeId: string,
+  ancestorId: string | null
+) {
+  if (ancestorId === null) return true
+
+  const byId = new Map(messages.map((message) => [message.id, message]))
+  const seen = new Set<string>()
+  let cursor: string | null = nodeId
+
+  while (cursor !== null && !seen.has(cursor)) {
+    if (cursor === ancestorId) return true
+    seen.add(cursor)
+    cursor = byId.get(cursor)?.parentId ?? null
+  }
+
+  return false
+}
+
+function finalPersistedRunNode(
+  messages: ReadonlyArray<MessageNode>,
+  runId: string,
+  baseNodeId: string | null
+): MessageNode | undefined {
+  const runMessages = messages.filter((message) => message.runId === runId)
+  const hasGeneratedOutput = runMessages.some(
+    (message) =>
+      message.encoded.role === 'assistant' ||
+      message.encoded.role === 'tool' ||
+      message.encoded.role === 'system'
+  )
+  if (!hasGeneratedOutput) return undefined
+
+  const runIds = new Set(runMessages.map((message) => message.id))
+  const parentIds = new Set(
+    runMessages
+      .map((message) => message.parentId)
+      .filter((id): id is string => id !== null && runIds.has(id))
+  )
+
+  return (
+    runMessages
+      .toReversed()
+      .find(
+        (message) =>
+          !parentIds.has(message.id) &&
+          isDescendantOrSame(messages, message.id, baseNodeId)
+      ) ?? undefined
+  )
+}
+
+const resolveRunBase = (
+  storage: SessionStorageApi,
+  sessionId: string,
+  request: RunRequest
+) => {
+  const afterRunId = request.afterRunId
+  if (afterRunId === null) return Effect.succeed(request)
+
+  return storage.messages(sessionId).pipe(
+    Effect.map((messages) =>
+      finalPersistedRunNode(messages, afterRunId, request.baseNodeId)
+    ),
+    Effect.map((node) => ({
+      ...request,
+      afterRunId: null,
+      baseNodeId: node?.id ?? request.baseNodeId,
+    }))
+  )
+}
+
 function createRunWorker(sessionId: string) {
   const clearActive = clearActiveRun(sessionId)
   const releaseRunNow = releaseQueuedRun(sessionId)
@@ -235,6 +308,7 @@ function createRunWorker(sessionId: string) {
   })
 
   return Effect.gen(function* () {
+    const storage = yield* SessionStorage
     yield* Effect.logInfo('Session run worker starting')
 
     while (true) {
@@ -253,11 +327,15 @@ function createRunWorker(sessionId: string) {
       yield* Effect.logInfo('Session run worker starting queued run', {
         model: input.model,
         modelOptions: input.modelOptions,
-        inputLength: input.input.length,
+        inputCount: input.inputs.length,
+        inputLength: input.inputs.join('\n').length,
         queuedRunCount: getQueuedRunCount(sessionId),
       })
 
-      const fiber = yield* Effect.forkDetach(runAgent(sessionId, input))
+      const request = yield* resolveRunBase(storage, sessionId, input).pipe(
+        Effect.orDie
+      )
+      const fiber = yield* Effect.forkDetach(runAgent(sessionId, request))
       yield* registerActiveRun(sessionId, fiber)
       yield* Effect.logInfo('Session run worker registered active run')
 
@@ -280,7 +358,7 @@ function createRunWorker(sessionId: string) {
   )
 }
 
-function startRunWorker(sessionId: string) {
+function startRunWorker(sessionId: string, runId: string) {
   const onWorkerError = releaseQueuedRun(sessionId)
 
   return Effect.forkDetach(createRunWorker(sessionId)).pipe(
@@ -288,7 +366,7 @@ function startRunWorker(sessionId: string) {
       Effect.logInfo('Session run worker forked', { sessionId })
     ),
     Effect.tap((fiber) => registerRunWorker(sessionId, fiber)),
-    Effect.map(() => new RunResponse({ status: 'started' as const })),
+    Effect.map(() => new RunResponse({ status: 'started' as const, runId })),
     Effect.onError((cause) =>
       Effect.gen(function* () {
         yield* Effect.logError('Session run worker failed to start', {
@@ -301,10 +379,16 @@ function startRunWorker(sessionId: string) {
   )
 }
 
-const selectRunResponse = (sessionId: string, status: 'queued' | 'started') =>
+const selectRunResponse = (
+  sessionId: string,
+  status: 'queued' | 'started',
+  runId: string
+) =>
   ({
-    queued: queuedRunResponse,
-    started: startRunWorker(sessionId),
+    queued: Effect.succeed(
+      new RunResponse({ status: 'queued' as const, runId })
+    ),
+    started: startRunWorker(sessionId, runId),
   })[status]
 
 const appendStoppedQueuedInputs = (
@@ -312,9 +396,10 @@ const appendStoppedQueuedInputs = (
   sessionId: string,
   queuedInputs: ReadonlyArray<RunRequest>
 ) =>
-  Effect.forEach(queuedInputs, (request) =>
+  Effect.forEach(queuedInputs, (queuedRequest) =>
     Effect.gen(function* () {
-      const runId = crypto.randomUUID()
+      const request = yield* resolveRunBase(storage, sessionId, queuedRequest)
+      const runId = request.runId
       const [providerId = 'unknown', ...rest] = request.model.split('/')
       yield* storage.createRun({
         id: runId,
@@ -328,12 +413,10 @@ const appendStoppedQueuedInputs = (
       yield* storage.append(
         sessionId,
         runId,
-        [
-          {
-            role: 'user' as const,
-            content: request.input,
-          },
-        ],
+        request.inputs.map((input) => ({
+          role: 'user' as const,
+          content: input,
+        })),
         request.baseNodeId
       )
     })
@@ -401,10 +484,6 @@ const stopSession = Effect.fn('Sessions.stopSession')(function* (
   return yield* stopEffect
 })
 
-const queuedRunResponse = Effect.succeed(
-  new RunResponse({ status: 'queued' as const })
-)
-
 const mapStorageError = StorageUnavailable.fromStorage
 const mapProjectError = ProjectOperationFailed.fromProject
 
@@ -466,7 +545,7 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
               sessionId: params.id,
               model: payload.model,
               modelOptions: modelOptions(payload.modelOptions),
-              baseNodeId: payload.baseNodeId ?? null,
+              baseNodeId: payload.baseNodeId,
               inputLength: payload.input.length,
             })
           ),
@@ -495,17 +574,25 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
           ),
           Effect.flatMap(() =>
             Effect.suspend(() => {
-              const status = enqueueRun(params.id, {
-                input: payload.input,
+              const runId = crypto.randomUUID()
+              const run = enqueueRun(params.id, {
+                runId,
+                inputs: [payload.input],
                 model: payload.model,
                 modelOptions: modelOptions(payload.modelOptions),
-                baseNodeId: payload.baseNodeId ?? null,
+                baseNodeId: payload.baseNodeId,
+                afterRunId: payload.afterRunId ?? null,
               })
               return Effect.logInfo('Session run request enqueued', {
                 sessionId: params.id,
-                status,
+                status: run.status,
+                runId: run.runId,
                 queuedRunCount: getQueuedRunCount(params.id),
-              }).pipe(Effect.andThen(selectRunResponse(params.id, status)))
+              }).pipe(
+                Effect.andThen(
+                  selectRunResponse(params.id, run.status, run.runId)
+                )
+              )
             })
           )
         )

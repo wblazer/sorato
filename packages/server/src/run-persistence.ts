@@ -85,6 +85,7 @@ export const createPersistenceHook = (
   sessionId: SessionId,
   runId: string,
   messageCountBeforeRun: number,
+  appendBaseNodeId: string | null,
   pricing: {
     readonly providerId: string
     readonly modelId: string
@@ -141,7 +142,12 @@ export const createPersistenceHook = (
         interrupted: event.interrupted,
       })
 
-      const nodeIds = yield* storage.append(sessionId, runId, newMessages)
+      const nodeIds = yield* storage.append(
+        sessionId,
+        runId,
+        newMessages,
+        appendBaseNodeId
+      )
       const assistantIndex = newMessages.findLastIndex(
         (message) => message.role === 'assistant'
       )

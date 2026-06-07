@@ -266,13 +266,17 @@ function createMessagesStore() {
    * Add an optimistic user message so it appears immediately.
    * Replaced by real data on the next refresh.
    */
-  function addOptimisticUserMessage(sessionId: string, input: string) {
+  function addOptimisticUserMessage(
+    sessionId: string,
+    input: string,
+    parentNodeId: string | null,
+    runId: string
+  ) {
     const now = Date.now()
-    const runId = `optimistic-run-${now}`
     const optimistic: MessageNode = {
-      id: `optimistic-${now}`,
+      id: `optimistic-${runId}`,
       sessionId,
-      parentId: messages.at(-1)?.id ?? null,
+      parentId: parentNodeId,
       kind: 'message',
       messageId: null,
       summaryId: null,
@@ -384,6 +388,9 @@ function createMessagesStore() {
     },
     get streamingParts() {
       return streamingParts
+    },
+    get activeRunId() {
+      return activeRunId
     },
     prepareSession,
     loadMessages,
