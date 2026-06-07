@@ -304,6 +304,7 @@ export const run = <
 
           case 'finish': {
             const usage = usageFromResponse(part.usage)
+            const finishedAt = Date.now()
             return Effect.sync(() => {
               // Turn completed normally — clear currentTurnParts so the
               // interrupt path knows there's nothing to recover.
@@ -313,7 +314,7 @@ export const run = <
                   usage,
                   contextTokens: usage.totalTokens,
                   startedAt,
-                  finishedAt: Date.now(),
+                  finishedAt,
                 })
                 state.usage = addUsage(state.usage, usage)
                 state.contextTokens = usage.totalTokens
@@ -336,7 +337,7 @@ export const run = <
                       usage,
                       contextTokens: usage.totalTokens,
                       startedAt,
-                      finishedAt: Date.now(),
+                      finishedAt,
                     })
                   : Effect.void
               )
@@ -347,7 +348,24 @@ export const run = <
         return Effect.void
       })
 
+      const turnConversation = yield* Ref.get(chat.history)
+      yield* fireHooks(config, {
+        _tag: 'ModelCallComplete',
+        result: makeResult(turnConversation),
+      })
+
       return hadToolCalls
+    })
+
+    const makeResult = (conversation: Prompt.Prompt): HarnessResult => ({
+      conversation,
+      toolCallHeaders,
+      toolResultHeaders,
+      toolResultBodyDisplays,
+      text: state.outputText,
+      modelCalls: state.modelCalls,
+      usage: state.usage,
+      contextTokens: state.contextTokens,
     })
 
     const runToolLoop = Effect.fn('Harness.runToolLoop')(function* () {
@@ -414,16 +432,7 @@ export const run = <
         return yield* Effect.failCause(exit.cause)
       }
 
-      const result = {
-        conversation: fullConversation,
-        toolCallHeaders,
-        toolResultHeaders,
-        toolResultBodyDisplays,
-        text: state.outputText,
-        modelCalls: state.modelCalls,
-        usage: state.usage,
-        contextTokens: state.contextTokens,
-      } satisfies HarnessResult
+      const result = makeResult(fullConversation)
 
       // Fire RunResult inside the uninterruptible region so hooks
       // (e.g. persistence) are guaranteed to run even on interrupt.

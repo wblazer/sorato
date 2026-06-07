@@ -1,5 +1,5 @@
 import { Prompt } from 'effect/unstable/ai'
-import { Effect, Match, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import type { HarnessEvent, HarnessHook, HarnessResult } from '@sorato/core'
 import {
   SessionStorage,
@@ -92,35 +92,44 @@ export const createPersistenceHook = (
     readonly billingMode: BillingMode
     readonly cost: CostInfo | undefined
   }
-): HarnessHook<StorageError, SessionStorage> => ({
-  name: 'persist',
-  handle: (event: HarnessEvent) =>
-    Effect.gen(function* () {
-      const storage = yield* SessionStorage
+): HarnessHook<StorageError, SessionStorage> => {
+  let nextMessageIndex = messageCountBeforeRun
+  let nextModelCallIndex = 0
+  let nextAppendBaseNodeId = appendBaseNodeId
+  let interruptionMarkerPersisted = false
 
-      if (event._tag !== 'RunResult') return
-      const encoded = yield* Effect.try({
-        try: () => Schema.encodeSync(Prompt.Prompt)(event.result.conversation),
-        catch: (error) =>
-          new StorageError({
-            operation: 'run',
-            message: `Failed to encode conversation: ${String(error)}`,
-          }),
-      })
+  const persistResult = Effect.fn('RunPersistence.persistResult')(function* (
+    result: HarnessResult,
+    interrupted: boolean
+  ) {
+    const storage = yield* SessionStorage
+    const encoded = yield* Effect.try({
+      try: () => Schema.encodeSync(Prompt.Prompt)(result.conversation),
+      catch: (error) =>
+        new StorageError({
+          operation: 'run',
+          message: `Failed to encode conversation: ${String(error)}`,
+        }),
+    })
 
-      const encodedNewMessages = encoded.content.slice(messageCountBeforeRun)
-      const displayMessages = addToolDisplays(
-        encodedNewMessages,
-        event.result.toolCallHeaders,
-        event.result.toolResultHeaders,
-        event.result.toolResultBodyDisplays
-      )
-      const newMessages = Match.value(event.interrupted).pipe(
-        Match.when(true, () => [...displayMessages, stoppedSystemMessage]),
-        Match.orElse(() => displayMessages)
-      )
+    const encodedNewMessages = encoded.content.slice(nextMessageIndex)
+    const displayMessages = addToolDisplays(
+      encodedNewMessages,
+      result.toolCallHeaders,
+      result.toolResultHeaders,
+      result.toolResultBodyDisplays
+    )
+    const shouldAppendInterruptionMarker =
+      interrupted && !interruptionMarkerPersisted
+    const newMessages = shouldAppendInterruptionMarker
+      ? [...displayMessages, stoppedSystemMessage]
+      : displayMessages
 
-      const modelCallUsages = event.result.modelCalls.map((modelCall) => ({
+    if (newMessages.length === 0) return
+
+    const modelCallUsages = result.modelCalls
+      .slice(nextModelCallIndex)
+      .map((modelCall) => ({
         usage: pricedUsage(
           modelCall.usage,
           pricing.billingMode,
@@ -131,54 +140,76 @@ export const createPersistenceHook = (
         finishedAt: modelCall.finishedAt,
       }))
 
-      if (newMessages.length === 0) return
+    yield* Effect.logInfo('Persisting run messages', {
+      sessionId,
+      runId,
+      messageCount: newMessages.length,
+      interrupted,
+    })
 
-      yield* Effect.logInfo('Persisting run messages', {
-        sessionId,
-        runId,
-        messageCount: newMessages.length,
-        interrupted: event.interrupted,
-      })
+    const nodeIds = yield* storage.append(
+      sessionId,
+      runId,
+      newMessages,
+      nextAppendBaseNodeId
+    )
+    nextAppendBaseNodeId = nodeIds.at(-1) ?? nextAppendBaseNodeId
+    nextMessageIndex += encodedNewMessages.length
+    interruptionMarkerPersisted ||= shouldAppendInterruptionMarker
 
-      const nodeIds = yield* storage.append(
-        sessionId,
-        runId,
-        newMessages,
-        appendBaseNodeId
-      )
-      const assistantNodeIds = newMessages.flatMap((message, index) => {
-        const nodeId = nodeIds[index]
-        return message.role === 'assistant' && nodeId !== undefined
-          ? [nodeId]
-          : []
-      })
-      yield* Effect.forEach(
-        assistantNodeIds,
-        (assistantNodeId, index) => {
-          const modelCallUsage = modelCallUsages[index]
-          if (!modelCallUsage?.usage) return Effect.void
-          return storage.createModelCall({
-            sessionId,
-            runId,
-            assistantNodeId,
-            providerId: pricing.providerId,
-            modelId: pricing.modelId,
-            billingMode: pricing.billingMode,
-            startedAt: modelCallUsage.startedAt,
-            finishedAt: modelCallUsage.finishedAt,
-            ...modelCallUsage.usage,
-          })
-        },
-        { discard: true }
-      )
-      publish({ _tag: 'MessagesAppended', sessionId })
-      publish({ _tag: 'SessionUpdated', sessionId })
-    }).pipe(
-      Effect.annotateLogs({
-        package: 'server',
-        subsystem: 'run-persistence',
-        sessionId,
-      }),
-      Effect.withLogSpan('server.persistRun')
-    ),
-})
+    const assistantNodeIds = displayMessages.flatMap((message, index) => {
+      const nodeId = nodeIds[index]
+      return message.role === 'assistant' && nodeId !== undefined
+        ? [nodeId]
+        : []
+    })
+    yield* Effect.forEach(
+      assistantNodeIds,
+      (assistantNodeId, index) => {
+        const modelCallUsage = modelCallUsages[index]
+        if (!modelCallUsage?.usage) return Effect.void
+        return storage.createModelCall({
+          sessionId,
+          runId,
+          assistantNodeId,
+          providerId: pricing.providerId,
+          modelId: pricing.modelId,
+          billingMode: pricing.billingMode,
+          startedAt: modelCallUsage.startedAt,
+          finishedAt: modelCallUsage.finishedAt,
+          ...modelCallUsage.usage,
+        })
+      },
+      { discard: true }
+    )
+    nextModelCallIndex += Math.min(
+      assistantNodeIds.length,
+      modelCallUsages.length
+    )
+
+    publish({ _tag: 'MessagesAppended', sessionId, runId })
+    publish({ _tag: 'SessionUpdated', sessionId })
+  })
+
+  return {
+    name: 'persist',
+    handle: (event: HarnessEvent) =>
+      Effect.gen(function* () {
+        if (event._tag === 'ModelCallComplete') {
+          yield* persistResult(event.result, false)
+          return
+        }
+
+        if (event._tag === 'RunResult') {
+          yield* persistResult(event.result, event.interrupted)
+        }
+      }).pipe(
+        Effect.annotateLogs({
+          package: 'server',
+          subsystem: 'run-persistence',
+          sessionId,
+        }),
+        Effect.withLogSpan('server.persistRun')
+      ),
+  }
+}

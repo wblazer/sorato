@@ -76,6 +76,11 @@ export type HarnessEvent =
       readonly finishedAt: number
     }
   | {
+      readonly _tag: 'ModelCallComplete'
+      /** Complete conversation/history after the just-finished model call. */
+      readonly result: HarnessResult
+    }
+  | {
       readonly _tag: 'RunEnd'
       readonly output: string
       readonly usage: HarnessUsage | undefined

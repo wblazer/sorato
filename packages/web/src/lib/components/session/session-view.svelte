@@ -57,6 +57,7 @@
         readonly message: MessageNode
         readonly items: ReadonlyArray<TranscriptItem>
         readonly modelCall: ModelCall | null
+        readonly runId: string | null
       }
 
       const transcriptSourceMessage = (
@@ -102,6 +103,7 @@
                   .toReversed()
                   .find((groupMessage) => groupMessage.modelCall !== null)?.modelCall ??
                 null,
+              runId: message.runId,
             })
             index = cursor - 1
             continue
@@ -112,10 +114,21 @@
             message,
             items: transcriptItemsForMessages([message]),
             modelCall: message.modelCall,
+            runId: message.runId,
           })
         }
 
-        return blocks
+        return blocks.map((block, index) => {
+          if (block.runId === null) return block
+          if (sessionStore.isRunActive(block.runId)) {
+            return { ...block, modelCall: null }
+          }
+
+          const isLastBlockForRun = !blocks
+            .slice(index + 1)
+            .some((laterBlock) => laterBlock.runId === block.runId)
+          return isLastBlockForRun ? block : { ...block, modelCall: null }
+        })
       })
 
       $effect(() => {

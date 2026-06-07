@@ -129,6 +129,11 @@ function createMessagesStore() {
             break
 
           case 'MessagesAppended':
+            refreshMessages(sessionId, {
+              clearStreamingPartsForRun: event.runId,
+            })
+            break
+
           case 'SessionUpdated':
             break
         }
@@ -291,7 +296,7 @@ function createMessagesStore() {
 
   async function refreshMessages(
     sessionId: string,
-    opts?: { clearPartsForRun?: string }
+    opts?: { clearPartsForRun?: string; clearStreamingPartsForRun?: string }
   ) {
     try {
       const client = await getApiClient(connectionsStore.getApiBase())
@@ -306,6 +311,12 @@ function createMessagesStore() {
       const fresh: MessageNode[] = result.value as MessageNode[]
       if (currentSessionId === sessionId) {
         messages = fresh
+        if (
+          opts?.clearStreamingPartsForRun &&
+          streamedRunId === opts.clearStreamingPartsForRun
+        ) {
+          streamingParts = []
+        }
         if (opts?.clearPartsForRun && streamedRunId === opts.clearPartsForRun) {
           streamingParts = []
           resetCursor(opts.clearPartsForRun)
@@ -325,7 +336,9 @@ function createMessagesStore() {
       currentSessionId &&
       event.sessionId === currentSessionId
     ) {
-      refreshMessages(event.sessionId)
+      refreshMessages(event.sessionId, {
+        clearStreamingPartsForRun: event.runId,
+      })
     }
   })
 

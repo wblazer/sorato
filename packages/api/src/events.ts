@@ -11,7 +11,10 @@ export class StreamCursor extends Schema.Class<StreamCursor>('StreamCursor')({
 
 export const ServerEvent = Schema.Union([
   Schema.TaggedStruct('SessionUpdated', { sessionId: Schema.String }),
-  Schema.TaggedStruct('MessagesAppended', { sessionId: Schema.String }),
+  Schema.TaggedStruct('MessagesAppended', {
+    sessionId: Schema.String,
+    runId: Schema.optional(Schema.String),
+  }),
   Schema.TaggedStruct('TextDelta', {
     sessionId: Schema.String,
     runId: Schema.String,
