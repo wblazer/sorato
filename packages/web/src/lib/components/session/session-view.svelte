@@ -65,7 +65,7 @@
         resolveRenderHead(
           messagesStore.messages,
           selectedHead,
-          messagesStore.activeRunId
+          (runId) => sessionStore.isRunActive(runId)
         )
       )
 
@@ -156,9 +156,9 @@
       function resolveRenderHead(
         messages: ReadonlyArray<MessageNode>,
         head: SelectedHead,
-        activeRunId: string | null
+        isRunActive: (runId: string) => boolean
       ): SelectedHead {
-        if (head?.type !== 'run' || head.runId === activeRunId) return head
+        if (head?.type !== 'run' || isRunActive(head.runId)) return head
 
         const finalNode = finalPersistedRunNode(
           messages,
@@ -431,25 +431,33 @@
       })
 
       $effect(() => {
-        const activeRunId = messagesStore.activeRunId
-        if (activeRunId === null) return
+        const runStart = sessionStore.latestRunStart
+        if (runStart === null || runStart.sessionId !== sessionId) return
 
         untrack(() => {
-          if (selectedHead?.type === 'run' && selectedHead.runId === activeRunId) {
+          if (selectedHead?.type === 'run' && selectedHead.runId === runStart.runId) {
             return
           }
 
-          const baseNodeId = messagesStore.activeRunBaseNodeId
-          if (renderHead?.type !== 'node' || renderHead.nodeId !== baseNodeId) {
+          if (renderHead?.type !== 'node' || renderHead.nodeId !== runStart.baseNodeId) {
             return
           }
 
           setSelectedHead({
             type: 'run',
-            runId: activeRunId,
-            baseNodeId,
+            runId: runStart.runId,
+            baseNodeId: runStart.baseNodeId,
           })
         })
+      })
+
+      $effect(() => {
+        const head = renderHead
+        messagesStore.selectRunStream(
+          sessionId,
+          head?.type === 'run' ? head.runId : null,
+          head?.type === 'run' ? head.baseNodeId : null
+        )
       })
 
       // Intentionally keep run heads as run heads after completion. Rendering a

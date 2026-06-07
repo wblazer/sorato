@@ -1,4 +1,3 @@
-import { Match } from 'effect'
 import type { Fiber } from 'effect'
 import type { ModelOptions } from './model-catalog.ts'
 
@@ -11,28 +10,28 @@ export interface RunRequest {
   readonly afterRunId: string | null
 }
 
-interface SessionRunState {
+export interface ActiveRunInfo {
+  readonly sessionId: string
+  readonly runId: string
+  readonly baseNodeId: string | null
+}
+
+interface RunQueueState {
+  readonly id: string
+  readonly sessionId: string
   workerFiber: Fiber.Fiber<void, never> | null
   activeRunFiber: Fiber.Fiber<void, never> | null
+  activeRunId: string | null
+  activeBaseNodeId: string | null
   queuedRuns: Array<RunRequest>
   stopRequested: boolean
 }
 
-const running = new Map<string, SessionRunState>()
+const queues = new Map<string, RunQueueState>()
+const runQueues = new Map<string, string>()
 
-const missingSessionState = (kind: string, sessionId: string): never => {
-  throw new Error(`Cannot register ${kind} for unknown session ${sessionId}`)
-}
-
-const startRunState = (sessionId: string, request: RunRequest) => {
-  running.set(sessionId, {
-    workerFiber: null,
-    activeRunFiber: null,
-    queuedRuns: [request],
-    stopRequested: false,
-  })
-
-  return 'started' as const
+const missingQueueState = (kind: string, queueId: string): never => {
+  throw new Error(`Cannot register ${kind} for unknown run queue ${queueId}`)
 }
 
 const sameRunBatch = (a: RunRequest, b: RunRequest) =>
@@ -41,103 +40,169 @@ const sameRunBatch = (a: RunRequest, b: RunRequest) =>
   a.afterRunId === b.afterRunId &&
   JSON.stringify(a.modelOptions) === JSON.stringify(b.modelOptions)
 
-const queueRunState = (state: SessionRunState, request: RunRequest) => {
+const queueRunState = (state: RunQueueState, request: RunRequest) => {
   const last = state.queuedRuns.at(-1)
   if (last && sameRunBatch(last, request)) {
     state.queuedRuns[state.queuedRuns.length - 1] = {
       ...last,
       inputs: [...last.inputs, ...request.inputs],
     }
-    return { status: 'queued' as const, runId: last.runId }
+    return { status: 'queued' as const, runId: last.runId, queueId: state.id }
   }
 
   state.queuedRuns.push(request)
-  return { status: 'queued' as const, runId: request.runId }
+  runQueues.set(request.runId, state.id)
+  return { status: 'queued' as const, runId: request.runId, queueId: state.id }
+}
+
+export function startRunQueue(
+  sessionId: string,
+  request: RunRequest
+): {
+  readonly status: 'started'
+  readonly runId: string
+  readonly queueId: string
+} {
+  const queueId = request.runId
+  queues.set(queueId, {
+    id: queueId,
+    sessionId,
+    workerFiber: null,
+    activeRunFiber: null,
+    activeRunId: null,
+    activeBaseNodeId: null,
+    queuedRuns: [request],
+    stopRequested: false,
+  })
+  runQueues.set(request.runId, queueId)
+  return { status: 'started' as const, runId: request.runId, queueId }
 }
 
 export function enqueueRun(
   sessionId: string,
-  request: RunRequest
-): { readonly status: 'started' | 'queued'; readonly runId: string } {
-  const state = running.get(sessionId)
-  return Match.value(state).pipe(
-    Match.when(undefined, () => ({
-      status: startRunState(sessionId, request),
-      runId: request.runId,
-    })),
-    Match.orElse((state) => queueRunState(state, request))
-  )
+  request: RunRequest,
+  targetRunId?: string
+): {
+  readonly status: 'started' | 'queued'
+  readonly runId: string
+  readonly queueId: string
+} {
+  const targetQueueId = targetRunId ? runQueues.get(targetRunId) : undefined
+  const targetQueue = targetQueueId ? queues.get(targetQueueId) : undefined
+  if (targetQueue && targetQueue.sessionId === sessionId) {
+    return queueRunState(targetQueue, request)
+  }
+
+  return startRunQueue(sessionId, request)
 }
 
 export function registerWorkerFiber(
-  sessionId: string,
+  queueId: string,
   fiber: Fiber.Fiber<void, never>
 ): void {
-  const state =
-    running.get(sessionId) ?? missingSessionState('worker', sessionId)
+  const state = queues.get(queueId) ?? missingQueueState('worker', queueId)
   state.workerFiber = fiber
 }
 
 export function registerActiveFiber(
-  sessionId: string,
+  queueId: string,
+  runId: string,
+  baseNodeId: string | null,
   fiber: Fiber.Fiber<void, never>
 ): void {
-  const state =
-    running.get(sessionId) ?? missingSessionState('active run', sessionId)
+  const state = queues.get(queueId) ?? missingQueueState('active run', queueId)
   state.activeRunFiber = fiber
+  state.activeRunId = runId
+  state.activeBaseNodeId = baseNodeId
+  runQueues.set(runId, queueId)
 }
 
-export function clearActiveFiber(sessionId: string): void {
-  const state = running.get(sessionId)
+export function clearActiveFiber(queueId: string): void {
+  const state = queues.get(queueId)
   if (!state) return
   state.activeRunFiber = null
+  state.activeRunId = null
+  state.activeBaseNodeId = null
 }
 
-export function shiftQueuedRun(sessionId: string): RunRequest | undefined {
-  return running.get(sessionId)?.queuedRuns.shift()
+export function shiftQueuedRun(queueId: string): RunRequest | undefined {
+  return queues.get(queueId)?.queuedRuns.shift()
 }
 
 export function requestStop(sessionId: string): void {
-  const state = running.get(sessionId)
-  if (!state) return
-  state.stopRequested = true
+  for (const state of queues.values()) {
+    if (state.sessionId === sessionId) state.stopRequested = true
+  }
 }
 
-export function shouldStop(sessionId: string): boolean {
-  return running.get(sessionId)?.stopRequested ?? false
+export function shouldStop(queueId: string): boolean {
+  return queues.get(queueId)?.stopRequested ?? false
 }
 
 export function drainQueuedRuns(sessionId: string): Array<RunRequest> {
-  const state = running.get(sessionId)
-  if (!state) return []
-
-  const queued = [...state.queuedRuns]
-  state.queuedRuns = []
+  const queued: Array<RunRequest> = []
+  for (const state of queues.values()) {
+    if (state.sessionId !== sessionId) continue
+    queued.push(...state.queuedRuns)
+    state.queuedRuns = []
+  }
   return queued
 }
 
-export function releaseRun(sessionId: string): void {
-  running.delete(sessionId)
+export function releaseRunQueue(queueId: string): void {
+  const state = queues.get(queueId)
+  if (!state) return
+  for (const [runId, mappedQueueId] of runQueues) {
+    if (mappedQueueId === queueId) runQueues.delete(runId)
+  }
+  queues.delete(queueId)
 }
 
-export function getFiber(
+export function getFibers(
   sessionId: string
-): Fiber.Fiber<void, never> | undefined {
-  return running.get(sessionId)?.activeRunFiber ?? undefined
+): ReadonlyArray<Fiber.Fiber<void, never>> {
+  return [...queues.values()].flatMap((state) =>
+    state.sessionId === sessionId && state.activeRunFiber
+      ? [state.activeRunFiber]
+      : []
+  )
 }
 
 export function isRunning(sessionId: string): boolean {
-  return running.has(sessionId)
+  return [...queues.values()].some((state) => state.sessionId === sessionId)
+}
+
+export function isRunActive(runId: string): boolean {
+  const queueId = runQueues.get(runId)
+  const state = queueId ? queues.get(queueId) : undefined
+  return state?.activeRunId === runId && state.activeRunFiber !== null
 }
 
 export function getQueuedRunCount(sessionId: string): number {
-  return running.get(sessionId)?.queuedRuns.length ?? 0
+  return [...queues.values()]
+    .filter((state) => state.sessionId === sessionId)
+    .reduce((count, state) => count + state.queuedRuns.length, 0)
+}
+
+export function getActiveRuns(sessionId: string): ReadonlyArray<ActiveRunInfo> {
+  return [...queues.values()].flatMap((state) =>
+    state.sessionId === sessionId && state.activeRunId !== null
+      ? [
+          {
+            sessionId,
+            runId: state.activeRunId,
+            baseNodeId: state.activeBaseNodeId,
+          },
+        ]
+      : []
+  )
 }
 
 export function getRunningSessionIds(): ReadonlySet<string> {
-  return new Set(running.keys())
+  return new Set([...queues.values()].map((state) => state.sessionId))
 }
 
 export function resetRunRegistry(): void {
-  running.clear()
+  queues.clear()
+  runQueues.clear()
 }

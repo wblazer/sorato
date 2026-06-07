@@ -35,9 +35,9 @@ export interface SseConnection {
 }
 
 export interface ConnectSseOptions {
-  /** Filter events to one session. Omit for global control stream. */
-  sessionId?: string
-  /** Cursor getter used when opening/reconnecting a session stream. */
+  /** Filter events to one run. Omit for global control stream. */
+  runId?: string
+  /** Cursor getter used when opening/reconnecting a run stream. */
   getSince?: () => StreamCursor | null
 }
 
@@ -64,8 +64,8 @@ export function connectSse(
 
   const buildUrl = () => {
     const url = new URL('/events', apiBase)
-    if (options.sessionId) {
-      url.searchParams.set('sessionId', options.sessionId)
+    if (options.runId) {
+      url.searchParams.set('runId', options.runId)
       const cursor = options.getSince?.()
       if (cursor) {
         url.searchParams.set('since', formatCursor(cursor))

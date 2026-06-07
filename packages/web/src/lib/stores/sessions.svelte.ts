@@ -51,6 +51,19 @@ function createSessionStore() {
   let queuedMessages = $state(new Map<string, QueuedMessageDraft[]>())
   let pendingRunStarts = $state(new Map<string, number>())
   let sessionErrors = $state(new Map<string, string>())
+  let activeRuns = $state(
+    new Map<
+      string,
+      { sessionId: string; runId: string; baseNodeId: string | null }
+    >()
+  )
+  let latestRunStart = $state<{
+    sessionId: string
+    runId: string
+    baseNodeId: string | null
+    sequence: number
+  } | null>(null)
+  let runStartSequence = 0
 
   onSessionRefreshRequest((sessionId) => {
     void refreshSession(sessionId)
@@ -81,6 +94,20 @@ function createSessionStore() {
         queuedMessages = next
       }
 
+      const nextActiveRuns = new Map(activeRuns)
+      nextActiveRuns.set(event.runId, {
+        sessionId: event.sessionId,
+        runId: event.runId,
+        baseNodeId: event.baseNodeId,
+      })
+      activeRuns = nextActiveRuns
+      latestRunStart = {
+        sessionId: event.sessionId,
+        runId: event.runId,
+        baseNodeId: event.baseNodeId,
+        sequence: ++runStartSequence,
+      }
+
       sessions = sessions.map((s) =>
         s.id === event.sessionId ? { ...s, status: 'running' as const } : s
       )
@@ -95,8 +122,14 @@ function createSessionStore() {
       next.set(event.sessionId, event.message)
       sessionErrors = next
     } else if (event._tag === 'RunEnd') {
-      // Clear stopping state — the run is definitively done.
-      if (stoppingSessions.has(event.sessionId)) {
+      const nextActiveRuns = new Map(activeRuns)
+      nextActiveRuns.delete(event.runId)
+      activeRuns = nextActiveRuns
+
+      if (
+        !activeRunsFor(event.sessionId).length &&
+        stoppingSessions.has(event.sessionId)
+      ) {
         const next = new Set(stoppingSessions)
         next.delete(event.sessionId)
         stoppingSessions = next
@@ -323,6 +356,14 @@ function createSessionStore() {
     return session?.status === 'running'
   }
 
+  function isRunActive(runId: string): boolean {
+    return activeRuns.has(runId)
+  }
+
+  function activeRunsFor(sessionId: string) {
+    return [...activeRuns.values()].filter((run) => run.sessionId === sessionId)
+  }
+
   /** Check if a stop has been requested but hasn't completed yet. */
   function isStopping(sessionId: string): boolean {
     return stoppingSessions.has(sessionId)
@@ -385,6 +426,11 @@ function createSessionStore() {
       void messagesStore.loadMessages(id)
     },
     isRunning,
+    isRunActive,
+    activeRunsFor,
+    get latestRunStart() {
+      return latestRunStart
+    },
     isStopping,
     sessionError,
     displayTitle,

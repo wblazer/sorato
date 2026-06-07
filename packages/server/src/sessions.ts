@@ -32,13 +32,15 @@ import {
   clearActiveFiber,
   drainQueuedRuns as drainQueuedInputs,
   enqueueRun,
-  getFiber,
+  getActiveRuns,
+  getFibers,
   getQueuedRunCount,
   isRunning,
+  isRunActive,
   requestStop,
   registerActiveFiber,
   registerWorkerFiber,
-  releaseRun,
+  releaseRunQueue,
   shouldStop,
   shiftQueuedRun,
 } from './run-registry.ts'
@@ -160,21 +162,26 @@ const modelOptions = (options?: {
 })
 
 const registerActiveRun = Effect.fn('Sessions.registerActiveRun')(
-  (sessionId: string, fiber: Fiber.Fiber<void, never>) =>
-    Effect.suspend(() => doRegisterActiveRun(sessionId, fiber))
+  (
+    queueId: string,
+    runId: string,
+    baseNodeId: string | null,
+    fiber: Fiber.Fiber<void, never>
+  ) =>
+    Effect.suspend(() => doRegisterActiveRun(queueId, runId, baseNodeId, fiber))
 )
 
-const clearActiveRun = Effect.fn('Sessions.clearActiveRun')(
-  (sessionId: string) => Effect.suspend(() => doClearActiveRun(sessionId))
+const clearActiveRun = Effect.fn('Sessions.clearActiveRun')((queueId: string) =>
+  Effect.suspend(() => doClearActiveRun(queueId))
 )
 
 const releaseQueuedRun = Effect.fn('Sessions.releaseQueuedRun')(
-  (sessionId: string) => Effect.suspend(() => doReleaseQueuedRun(sessionId))
+  (queueId: string) => Effect.suspend(() => doReleaseQueuedRun(queueId))
 )
 
 const registerRunWorker = Effect.fn('Sessions.registerRunWorker')(
-  (sessionId: string, fiber: Fiber.Fiber<void, never>) =>
-    Effect.suspend(() => doRegisterRunWorker(sessionId, fiber))
+  (queueId: string, fiber: Fiber.Fiber<void, never>) =>
+    Effect.suspend(() => doRegisterRunWorker(queueId, fiber))
 )
 
 const requestRunStop = Effect.fn('Sessions.requestRunStop')(
@@ -192,28 +199,30 @@ const publishMessagesAppended = Effect.fn('Sessions.publishMessagesAppended')(
 )
 
 const doRegisterActiveRun = (
-  sessionId: string,
+  queueId: string,
+  runId: string,
+  baseNodeId: string | null,
   fiber: Fiber.Fiber<void, never>
 ) => {
-  registerActiveFiber(sessionId, fiber)
+  registerActiveFiber(queueId, runId, baseNodeId, fiber)
   return Effect.void
 }
 
-const doClearActiveRun = (sessionId: string) => {
-  clearActiveFiber(sessionId)
+const doClearActiveRun = (queueId: string) => {
+  clearActiveFiber(queueId)
   return Effect.void
 }
 
-const doReleaseQueuedRun = (sessionId: string) => {
-  releaseRun(sessionId)
+const doReleaseQueuedRun = (queueId: string) => {
+  releaseRunQueue(queueId)
   return Effect.void
 }
 
 const doRegisterRunWorker = (
-  sessionId: string,
+  queueId: string,
   fiber: Fiber.Fiber<void, never>
 ) => {
-  registerWorkerFiber(sessionId, fiber)
+  registerWorkerFiber(queueId, fiber)
   return Effect.void
 }
 
@@ -299,11 +308,37 @@ const resolveRunBase = (
   )
 }
 
-function createRunWorker(sessionId: string) {
-  const clearActive = clearActiveRun(sessionId)
-  const releaseRunNow = releaseQueuedRun(sessionId)
+const resolveRunTarget = Effect.fn('Sessions.resolveRunTarget')(function* (
+  storage: SessionStorageApi,
+  sessionId: string,
+  request: RunRequest
+) {
+  const afterRunId = request.afterRunId
+  if (afterRunId === null) return { request }
+  if (isRunActive(afterRunId)) return { request, targetRunId: afterRunId }
+
+  const messages = yield* storage.messages(sessionId)
+  const node = finalPersistedRunNode(messages, afterRunId, request.baseNodeId)
+  const baseNodeId = node?.id ?? request.baseNodeId
+  const activeChild = getActiveRuns(sessionId).find(
+    (run) => run.baseNodeId === baseNodeId
+  )
+  const resolvedRequest = {
+    ...request,
+    afterRunId: null,
+    baseNodeId,
+  }
+
+  return activeChild
+    ? { request: resolvedRequest, targetRunId: activeChild.runId }
+    : { request: resolvedRequest }
+})
+
+function createRunWorker(sessionId: string, queueId: string) {
+  const clearActive = clearActiveRun(queueId)
+  const releaseRunNow = releaseQueuedRun(queueId)
   const releaseSession = Effect.gen(function* () {
-    yield* Effect.logInfo('Session run worker releasing session')
+    yield* Effect.logInfo('Session run worker releasing queue')
     yield* releaseRunNow
   })
 
@@ -312,13 +347,13 @@ function createRunWorker(sessionId: string) {
     yield* Effect.logInfo('Session run worker starting')
 
     while (true) {
-      const stopRequested = shouldStop(sessionId)
+      const stopRequested = shouldStop(queueId)
       if (stopRequested) {
         yield* Effect.logInfo('Session run worker stopping before next run')
         break
       }
 
-      const input = shiftQueuedRun(sessionId)
+      const input = shiftQueuedRun(queueId)
       if (!input) {
         yield* Effect.logInfo('Session run worker queue drained')
         break
@@ -336,7 +371,12 @@ function createRunWorker(sessionId: string) {
         Effect.orDie
       )
       const fiber = yield* Effect.forkDetach(runAgent(sessionId, request))
-      yield* registerActiveRun(sessionId, fiber)
+      yield* registerActiveRun(
+        queueId,
+        request.runId,
+        request.baseNodeId,
+        fiber
+      )
       yield* Effect.logInfo('Session run worker registered active run')
 
       const joinedFiber = Fiber.join(fiber)
@@ -354,23 +394,24 @@ function createRunWorker(sessionId: string) {
     }
   }).pipe(
     Effect.ensuring(releaseSession),
-    Effect.annotateLogs('sessionId', sessionId)
+    Effect.annotateLogs({ sessionId, queueId })
   )
 }
 
-function startRunWorker(sessionId: string, runId: string) {
-  const onWorkerError = releaseQueuedRun(sessionId)
+function startRunWorker(sessionId: string, runId: string, queueId: string) {
+  const onWorkerError = releaseQueuedRun(queueId)
 
-  return Effect.forkDetach(createRunWorker(sessionId)).pipe(
+  return Effect.forkDetach(createRunWorker(sessionId, queueId)).pipe(
     Effect.tap(() =>
-      Effect.logInfo('Session run worker forked', { sessionId })
+      Effect.logInfo('Session run worker forked', { sessionId, queueId })
     ),
-    Effect.tap((fiber) => registerRunWorker(sessionId, fiber)),
+    Effect.tap((fiber) => registerRunWorker(queueId, fiber)),
     Effect.map(() => new RunResponse({ status: 'started' as const, runId })),
     Effect.onError((cause) =>
       Effect.gen(function* () {
         yield* Effect.logError('Session run worker failed to start', {
           sessionId,
+          queueId,
           cause: Cause.pretty(cause),
         })
         yield* onWorkerError
@@ -382,13 +423,14 @@ function startRunWorker(sessionId: string, runId: string) {
 const selectRunResponse = (
   sessionId: string,
   status: 'queued' | 'started',
-  runId: string
+  runId: string,
+  queueId: string
 ) =>
   ({
     queued: Effect.succeed(
       new RunResponse({ status: 'queued' as const, runId })
     ),
-    started: startRunWorker(sessionId, runId),
+    started: startRunWorker(sessionId, runId, queueId),
   })[status]
 
 const appendStoppedQueuedInputs = (
@@ -447,19 +489,20 @@ function stopWithoutActiveFiber(storage: SessionStorageApi, sessionId: string) {
   )
 }
 
-const stopWithActiveFiber = Effect.fn('Sessions.stopWithActiveFiber')(
+const stopWithActiveFibers = Effect.fn('Sessions.stopWithActiveFibers')(
   function* (
     storage: SessionStorageApi,
     sessionId: string,
-    fiber: Fiber.Fiber<void, never>
+    fibers: ReadonlyArray<Fiber.Fiber<void, never>>
   ) {
-    // Interrupt the running fiber and wait for it to finish.
-    // The fiber's uninterruptible cleanup persists partial
-    // assistant content before terminating, so the system message
-    // we append below is guaranteed to come AFTER the partial turn.
-    yield* Fiber.interrupt(fiber)
-
     const queuedInputs = yield* drainQueuedInputsNow(sessionId)
+
+    // Interrupt running fibers and wait for them to finish. Each fiber's
+    // uninterruptible cleanup persists partial assistant content before
+    // terminating.
+    yield* Effect.forEach(fibers, (fiber) => Fiber.interrupt(fiber), {
+      concurrency: 'unbounded',
+    })
 
     yield* appendStoppedQueuedInputs(storage, sessionId, queuedInputs)
     if (queuedInputs.length > 0) yield* publishMessagesAppended(sessionId)
@@ -474,13 +517,52 @@ const stopSession = Effect.fn('Sessions.stopSession')(function* (
 ) {
   yield* Effect.logInfo('Session stop request received', { sessionId })
   yield* requestRunStop(sessionId)
-  const fiber = getFiber(sessionId)
-  const stopEffect = Match.value(fiber).pipe(
-    Match.when(undefined, () => stopWithoutActiveFiber(storage, sessionId)),
-    Match.orElse((fiber) => stopWithActiveFiber(storage, sessionId, fiber))
+  const fibers = getFibers(sessionId)
+  const stopEffect = Match.value(fibers.length).pipe(
+    Match.when(0, () => stopWithoutActiveFiber(storage, sessionId)),
+    Match.orElse(() => stopWithActiveFibers(storage, sessionId, fibers))
   )
 
   return yield* stopEffect
+})
+
+const enqueueRunRequest = Effect.fn('Sessions.enqueueRunRequest')((
+  storage: SessionStorageApi,
+  sessionId: string,
+  input: string,
+  model: string,
+  options: ModelOptions,
+  baseNodeId: string | null,
+  afterRunId: string | null
+) => {
+  const runId = crypto.randomUUID()
+  const initialRequest = {
+    runId,
+    inputs: [input],
+    model,
+    modelOptions: options,
+    baseNodeId,
+    afterRunId,
+  }
+  return resolveRunTarget(storage, sessionId, initialRequest).pipe(
+    Effect.mapError(StorageUnavailable.fromStorage),
+    Effect.flatMap((target) =>
+      Effect.suspend(() => {
+        const run = enqueueRun(sessionId, target.request, target.targetRunId)
+        return Effect.logInfo('Session run request enqueued', {
+          sessionId,
+          status: run.status,
+          runId: run.runId,
+          targetRunId: target.targetRunId,
+          queuedRunCount: getQueuedRunCount(sessionId),
+        }).pipe(
+          Effect.andThen(
+            selectRunResponse(sessionId, run.status, run.runId, run.queueId)
+          )
+        )
+      })
+    )
+  )
 })
 
 const mapStorageError = StorageUnavailable.fromStorage
@@ -572,27 +654,15 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
             })
           ),
           Effect.flatMap(() =>
-            Effect.suspend(() => {
-              const runId = crypto.randomUUID()
-              const run = enqueueRun(params.id, {
-                runId,
-                inputs: [payload.input],
-                model: payload.model,
-                modelOptions: modelOptions(payload.modelOptions),
-                baseNodeId: payload.baseNodeId,
-                afterRunId: payload.afterRunId ?? null,
-              })
-              return Effect.logInfo('Session run request enqueued', {
-                sessionId: params.id,
-                status: run.status,
-                runId: run.runId,
-                queuedRunCount: getQueuedRunCount(params.id),
-              }).pipe(
-                Effect.andThen(
-                  selectRunResponse(params.id, run.status, run.runId)
-                )
-              )
-            })
+            enqueueRunRequest(
+              storage,
+              params.id,
+              payload.input,
+              payload.model,
+              modelOptions(payload.modelOptions),
+              payload.baseNodeId,
+              payload.afterRunId ?? null
+            )
           )
         )
       )

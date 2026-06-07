@@ -1,23 +1,9 @@
 /**
- * Messages store — streaming content and persisted messages for the
- * active session.
+ * Messages store — persisted messages for the active session plus streaming
+ * content for the selected run.
  *
- * Uses a session-scoped SSE stream for heavy content events
- * (TextDelta/ReasoningDelta/ToolCall/ToolResult). The stream is opened when a
- * session is viewed and closed when leaving/switching.
- *
- * Running state lives in the session store (single source of truth for
- * all sessions). This store tracks streaming *content* — the parts
- * accumulating for the in-flight turn — and the persisted message list.
- * Components derive "is running" from the session store and decide how
- * to render (pulsing indicators vs static content) based on that.
- *
- * Correctness comes from a single channel for streaming content:
- * `/events?sessionId=...&since=...`.
- *
- * The server replays events newer than `since` and then switches to live
- * delivery on the same connection. No separate stream-state fetch means no
- * overlap/gap race at the replay/live boundary.
+ * Heavy content SSE is run-scoped: `/events?runId=...&since=...`. The global
+ * SSE stream still carries lifecycle events used by the session store.
  */
 import { getApiClient, runApi } from '$lib/api-client.js'
 import { requestErrorMessage } from '$lib/api-errors.js'
@@ -34,50 +20,41 @@ function createMessagesStore() {
   let error = $state<string | null>(null)
   let currentSessionId = $state<string | null>(null)
 
-  // Streaming content: the in-flight turn's parts as they arrive.
-  // Cleared when the run ends and persisted messages replace it.
   let streamingParts = $state<MessagePart[]>([])
-
-  // Cursor of the last streamed content event seen per session.
-  // Used for catch-up when (re)opening a session stream.
   const lastCursors = new Map<string, StreamCursor>()
 
   let streamConnection: SseConnection | null = null
-  let activeRunId = $state<string | null>(null)
-  let activeRunBaseNodeId = $state<string | null>(null)
+  let streamedRunId = $state<string | null>(null)
+  let streamedRunBaseNodeId = $state<string | null>(null)
 
-  const getLastCursor = (sessionId: string) =>
-    lastCursors.get(sessionId) ?? null
+  const getLastCursor = (runId: string) => lastCursors.get(runId) ?? null
 
-  const setRunCursor = (sessionId: string, runId: string) => {
-    lastCursors.set(sessionId, { runId, eventId: 0 })
+  const setRunCursor = (runId: string) => {
+    lastCursors.set(runId, { runId, eventId: 0 })
   }
 
-  const setContentCursor = (
-    sessionId: string,
-    runId: string,
-    eventId: number
-  ) => {
-    const prev = getLastCursor(sessionId)
-    if (!prev || prev.runId !== runId || eventId > prev.eventId) {
-      lastCursors.set(sessionId, { runId, eventId })
+  const setContentCursor = (runId: string, eventId: number) => {
+    const prev = getLastCursor(runId)
+    if (!prev || eventId > prev.eventId) {
+      lastCursors.set(runId, { runId, eventId })
     }
   }
 
-  const resetCursor = (sessionId: string, runId?: string) => {
-    const prev = getLastCursor(sessionId)
-    if (runId === undefined || prev?.runId === runId) {
-      lastCursors.delete(sessionId)
+  const resetCursor = (runId?: string) => {
+    if (runId === undefined) {
+      lastCursors.clear()
+      return
     }
+    lastCursors.delete(runId)
   }
 
-  function closeSessionStream() {
+  function closeRunStream() {
     streamConnection?.close()
     streamConnection = null
   }
 
-  function openSessionStream(sessionId: string) {
-    closeSessionStream()
+  function openRunStream(sessionId: string, runId: string) {
+    closeRunStream()
 
     const apiBase = connectionsStore.getApiBase()
     if (!apiBase) return
@@ -87,33 +64,29 @@ function createMessagesStore() {
       (event) => {
         if (!('sessionId' in event) || event.sessionId !== currentSessionId)
           return
+        if ('runId' in event && event.runId !== streamedRunId) return
 
         switch (event._tag) {
           case 'RunStart':
-            if (activeRunId === event.runId) {
-              break
-            }
-
-            activeRunId = event.runId
-            activeRunBaseNodeId = event.baseNodeId
+            streamedRunId = event.runId
+            streamedRunBaseNodeId = event.baseNodeId
             streamingParts = []
-            setRunCursor(sessionId, event.runId)
-            // User message is persisted before run starts; refresh to show it.
+            setRunCursor(event.runId)
             refreshMessages(sessionId)
             break
 
           case 'TextDelta':
-            setContentCursor(sessionId, event.runId, event.eventId)
+            setContentCursor(event.runId, event.eventId)
             appendTextDelta(event.delta)
             break
 
           case 'ReasoningDelta':
-            setContentCursor(sessionId, event.runId, event.eventId)
+            setContentCursor(event.runId, event.eventId)
             appendReasoningDelta(event.delta)
             break
 
           case 'ToolCall':
-            setContentCursor(sessionId, event.runId, event.eventId)
+            setContentCursor(event.runId, event.eventId)
             streamingParts = [
               ...streamingParts,
               {
@@ -127,7 +100,7 @@ function createMessagesStore() {
             break
 
           case 'ToolResult':
-            setContentCursor(sessionId, event.runId, event.eventId)
+            setContentCursor(event.runId, event.eventId)
             streamingParts = [
               ...streamingParts,
               {
@@ -143,8 +116,6 @@ function createMessagesStore() {
             break
 
           case 'RunEnd':
-            // Refresh messages to pick up the persisted conversation.
-            // Streaming parts stay visible until the refresh lands.
             refreshMessages(sessionId, { clearPartsForRun: event.runId })
             break
 
@@ -153,26 +124,46 @@ function createMessagesStore() {
             break
 
           case 'ReplayReset':
-            // The server cannot satisfy our run cursor from the live replay
-            // buffer. Fall back to canonical persisted session/messages.
             requestSessionRefresh(sessionId)
             refreshMessages(sessionId, { clearPartsForRun: event.runId })
             break
 
           case 'MessagesAppended':
           case 'SessionUpdated':
-            // Not emitted on session-scoped streams.
             break
         }
       },
       {
-        sessionId,
-        getSince: () => getLastCursor(sessionId),
+        runId,
+        getSince: () => getLastCursor(runId),
       }
     )
   }
 
-  // ── Text delta accumulation ─────────────────────────────────────
+  function selectRunStream(
+    sessionId: string,
+    runId: string | null,
+    baseNodeId: string | null = null
+  ) {
+    if (runId === null) {
+      closeRunStream()
+      if (streamedRunId !== null) resetCursor(streamedRunId)
+      streamedRunId = null
+      streamedRunBaseNodeId = null
+      streamingParts = []
+      return
+    }
+
+    if (currentSessionId !== sessionId) currentSessionId = sessionId
+    if (streamedRunId === runId && streamConnection !== null) return
+
+    if (streamedRunId !== null) resetCursor(streamedRunId)
+    streamingParts = []
+    resetCursor(runId)
+    streamedRunId = runId
+    streamedRunBaseNodeId = baseNodeId
+    openRunStream(sessionId, runId)
+  }
 
   function appendTextDelta(delta: string) {
     const last = streamingParts[streamingParts.length - 1]
@@ -198,16 +189,6 @@ function createMessagesStore() {
     }
   }
 
-  // ── Loading ─────────────────────────────────────────────────────
-
-  /**
-   * Prepare the store for a new session without fetching.
-   *
-   * Sets `currentSessionId` so SSE events flow, marks the store as
-   * loaded so the UI renders immediately. SessionView's `loadMessages`
-   * sees the session is already set up and does a background refresh
-   * instead of a full load.
-   */
   function prepareSession(sessionId: string) {
     messages = []
     currentSessionId = sessionId
@@ -215,29 +196,20 @@ function createMessagesStore() {
     loaded = true
     error = null
     streamingParts = []
-    resetCursor(sessionId)
-    activeRunId = null
-    activeRunBaseNodeId = null
-    openSessionStream(sessionId)
+    resetCursor()
+    streamedRunId = null
+    streamedRunBaseNodeId = null
+    closeRunStream()
   }
 
-  /**
-   * Load persisted messages for a session.
-   *
-   * If `currentSessionId` is already set for this session (e.g. via
-   * `prepareSession`), does a background refresh — no loading indicator,
-   * existing messages preserved until the server catches up.
-   */
   async function loadMessages(sessionId: string) {
     const hasExisting = currentSessionId === sessionId && messages.length > 0
 
-    // Reset current turn parts when loading/opening a session. Since the
-    // local in-flight parts are gone, the next stream must replay from the
-    // beginning of the active run rather than from a stale cursor.
     streamingParts = []
-    resetCursor(sessionId)
-    activeRunId = null
-    activeRunBaseNodeId = null
+    resetCursor()
+    streamedRunId = null
+    streamedRunBaseNodeId = null
+    closeRunStream()
     error = null
 
     if (!hasExisting) {
@@ -246,7 +218,6 @@ function createMessagesStore() {
     }
 
     currentSessionId = sessionId
-    openSessionStream(sessionId)
 
     try {
       const client = await getApiClient(connectionsStore.getApiBase())
@@ -260,12 +231,7 @@ function createMessagesStore() {
       if (!result.ok) throw new Error(result.error.message)
 
       const serverMessages: MessageNode[] = result.value as MessageNode[]
-
-      // During a background refresh, the server might not have caught
-      // up yet. Keep existing messages until the server has real data.
-      if (hasExisting && serverMessages.length === 0) {
-        // Server hasn't caught up — keep what we have
-      } else {
+      if (!(hasExisting && serverMessages.length === 0)) {
         messages = serverMessages
       }
     } catch (e) {
@@ -280,10 +246,6 @@ function createMessagesStore() {
     }
   }
 
-  /**
-   * Add an optimistic user message so it appears immediately.
-   * Replaced by real data on the next refresh.
-   */
   function addOptimisticUserMessage(
     sessionId: string,
     input: string,
@@ -327,12 +289,6 @@ function createMessagesStore() {
     messages = [...messages, optimistic]
   }
 
-  /**
-   * Re-fetch messages (background, no loading indicator).
-   * When `clearParts` is true, streaming parts are cleared after the
-   * fetch — used on RunEnd to atomically swap streaming content for
-   * persisted messages.
-   */
   async function refreshMessages(
     sessionId: string,
     opts?: { clearPartsForRun?: string }
@@ -350,13 +306,12 @@ function createMessagesStore() {
       const fresh: MessageNode[] = result.value as MessageNode[]
       if (currentSessionId === sessionId) {
         messages = fresh
-        if (opts?.clearPartsForRun) {
+        if (opts?.clearPartsForRun && streamedRunId === opts.clearPartsForRun) {
           streamingParts = []
-          resetCursor(sessionId, opts.clearPartsForRun)
-          if (activeRunId === opts.clearPartsForRun) {
-            activeRunId = null
-            activeRunBaseNodeId = null
-          }
+          resetCursor(opts.clearPartsForRun)
+          streamedRunId = null
+          streamedRunBaseNodeId = null
+          closeRunStream()
         }
       }
     } catch (cause) {
@@ -364,10 +319,6 @@ function createMessagesStore() {
     }
   }
 
-  // Listen for MessagesAppended on the global SSE stream.
-  // Session-scoped streams only carry content events + RunStart/RunEnd,
-  // so appends that happen outside a run (e.g. the system message injected
-  // by the stop handler) only show up on the global stream.
   sseStore.onEvent((event) => {
     if (
       event._tag === 'MessagesAppended' &&
@@ -378,19 +329,17 @@ function createMessagesStore() {
     }
   })
 
-  /** Reset all state. Called when SessionView unmounts. */
   function clear() {
-    const sessionId = currentSessionId
-    closeSessionStream()
+    closeRunStream()
     messages = []
     currentSessionId = null
     loading = false
     loaded = false
     error = null
     streamingParts = []
-    if (sessionId) resetCursor(sessionId)
-    activeRunId = null
-    activeRunBaseNodeId = null
+    resetCursor()
+    streamedRunId = null
+    streamedRunBaseNodeId = null
   }
 
   return {
@@ -413,13 +362,14 @@ function createMessagesStore() {
       return streamingParts
     },
     get activeRunId() {
-      return activeRunId
+      return streamedRunId
     },
     get activeRunBaseNodeId() {
-      return activeRunBaseNodeId
+      return streamedRunBaseNodeId
     },
     prepareSession,
     loadMessages,
+    selectRunStream,
     addOptimisticUserMessage,
     clear,
   }

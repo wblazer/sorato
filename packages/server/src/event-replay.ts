@@ -13,6 +13,7 @@ export type ReplayResetReason =
 
 interface ActiveReplayState {
   readonly status: 'active'
+  readonly sessionId: string
   readonly runId: string
   readonly baseNodeId: string | null
   nextEventId: number
@@ -21,6 +22,7 @@ interface ActiveReplayState {
 
 interface FinishedReplayState {
   readonly status: 'completed' | 'failed'
+  readonly sessionId: string
   readonly runId: string
   readonly endedAt: number
 }
@@ -43,8 +45,9 @@ export function startEventReplay(
   runId: string,
   baseNodeId: string | null = null
 ): void {
-  buffers.set(sessionId, {
+  buffers.set(runId, {
     status: 'active',
+    sessionId,
     runId,
     baseNodeId,
     nextEventId: 1,
@@ -57,8 +60,8 @@ export function appendReplayEvent(
   runId: string,
   event: UnstampedContentEvent
 ): ContentEvent {
-  const state = buffers.get(sessionId)
-  if (!state || state.status !== 'active' || state.runId !== runId) {
+  const state = buffers.get(runId)
+  if (!state || state.status !== 'active' || state.sessionId !== sessionId) {
     throw new Error(
       `No active replay state for session ${sessionId} and run ${runId}`
     )
@@ -78,22 +81,24 @@ export function endEventReplay(
   runId: string,
   status: 'completed' | 'failed' = 'completed'
 ): void {
-  const state = buffers.get(sessionId)
+  const state = buffers.get(runId)
   if (state?.runId === runId) {
-    buffers.set(sessionId, { status, runId, endedAt: Date.now() })
+    buffers.set(runId, { status, sessionId, runId, endedAt: Date.now() })
     trimFinishedStates()
   }
 }
 
-export function getReplaySnapshot(sessionId: string): {
+export function getReplaySnapshot(runId: string): {
+  readonly sessionId: string
   readonly runId: string
   readonly baseNodeId: string | null
   readonly events: readonly ContentEvent[]
 } | null {
-  const state = buffers.get(sessionId)
+  const state = buffers.get(runId)
   if (!state || state.status !== 'active') return null
 
   return {
+    sessionId: state.sessionId,
     runId: state.runId,
     baseNodeId: state.baseNodeId,
     events: [...state.events],
@@ -101,10 +106,10 @@ export function getReplaySnapshot(sessionId: string): {
 }
 
 export function getReplayBufferSince(
-  sessionId: string,
+  runId: string,
   cursor: StreamCursor | undefined
 ): readonly ContentEvent[] {
-  const state = buffers.get(sessionId)
+  const state = buffers.get(runId)
   if (!state || state.status !== 'active') return []
 
   if (!cursor || cursor.runId !== state.runId || cursor.eventId <= 0) {
@@ -115,19 +120,18 @@ export function getReplayBufferSince(
 }
 
 export function getReplayResetReason(
-  sessionId: string,
+  runId: string,
   cursor: StreamCursor | undefined
 ): ReplayResetReason | null {
   if (!cursor) return null
 
-  const state = buffers.get(sessionId)
+  const state = buffers.get(runId)
   if (!state) return 'replay_unavailable'
   if (state.runId !== cursor.runId) return null
 
   if (state.status === 'completed') return 'run_completed'
   if (state.status === 'failed') return 'run_failed'
-
-  if (!('events' in state)) return null
+  if (state.status !== 'active') return null
 
   const oldestEventId = state.events[0]?.eventId
   if (
@@ -149,8 +153,8 @@ function trimFinishedStates(): void {
     )
     .sort((left, right) => left[1].endedAt - right[1].endedAt)
 
-  for (const [sessionId] of finished.slice(0, -MAX_FINISHED_STATES)) {
-    buffers.delete(sessionId)
+  for (const [runId] of finished.slice(0, -MAX_FINISHED_STATES)) {
+    buffers.delete(runId)
   }
 }
 

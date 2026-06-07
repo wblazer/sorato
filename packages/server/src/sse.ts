@@ -1,14 +1,10 @@
 /**
  * SSE route — serves `/events` as a Server-Sent Events stream.
  *
- * Uses Effect HTTP's native `HttpServerResponse.stream` so the endpoint is a
- * normal router route rather than middleware that intercepts requests before
- * the API router.
- *
  * Query params:
- *   - `sessionId` (optional) — filter events to a specific session
- *   - `since` (optional, session streams only) — replay content events after
- *     the `runId:eventId` cursor before switching to live delivery
+ *   - no params: global lifecycle stream
+ *   - `runId`: stream/replay content and lifecycle for one active run
+ *   - `since`: replay content events after the `runId:eventId` cursor
  */
 import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
 import { Effect, Match, Queue, Scope, Stream } from 'effect'
@@ -69,12 +65,12 @@ const formatEvent = Match.type<ServerEvent>().pipe(
   })
 )
 
-const isSessionEvent =
-  (sessionId: string) =>
+const isRunEvent =
+  (runId: string) =>
   (event: ServerEvent): boolean =>
-    'sessionId' in event && event.sessionId === sessionId
+    'runId' in event && event.runId === runId
 
-const isSessionStreamEvent = (event: ServerEvent): boolean =>
+const isRunStreamEvent = (event: ServerEvent): boolean =>
   event._tag === 'RunStart' ||
   event._tag === 'RunEnd' ||
   event._tag === 'RunFailed' ||
@@ -92,10 +88,7 @@ const liveGlobalStream = Stream.callback<string>((queue) =>
   })
 )
 
-const liveSessionStream = (
-  sessionId: string,
-  cursor: StreamCursor | undefined
-) =>
+const liveRunStream = (runId: string, cursor: StreamCursor | undefined) =>
   Stream.callback<string>((queue) =>
     Effect.gen(function* () {
       Queue.offerUnsafe(queue, connectedEvent())
@@ -104,7 +97,7 @@ const liveSessionStream = (
       let replaying = true
       const pending: ServerEvent[] = []
 
-      const writeSessionContentEvent = (event: ContentEvent) => {
+      const writeRunContentEvent = (event: ContentEvent) => {
         const alreadyStreamed =
           lastCursor?.runId === event.runId &&
           event.eventId <= lastCursor.eventId
@@ -115,7 +108,7 @@ const liveSessionStream = (
         Queue.offerUnsafe(queue, formatEvent(event))
       }
 
-      const writeSessionEvent = Match.type<ServerEvent>().pipe(
+      const writeRunEvent = Match.type<ServerEvent>().pipe(
         Match.tagsExhaustive({
           MessagesAppended: (event) =>
             Queue.offerUnsafe(queue, formatEvent(event)),
@@ -125,61 +118,55 @@ const liveSessionStream = (
           SessionUpdated: (event) =>
             Queue.offerUnsafe(queue, formatEvent(event)),
           ReplayReset: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
-          ReasoningDelta: writeSessionContentEvent,
-          TextDelta: writeSessionContentEvent,
-          ToolCall: writeSessionContentEvent,
-          ToolResult: writeSessionContentEvent,
+          ReasoningDelta: writeRunContentEvent,
+          TextDelta: writeRunContentEvent,
+          ToolCall: writeRunContentEvent,
+          ToolResult: writeRunContentEvent,
         })
       )
 
       const unsubscribe = subscribe((event) => {
-        const isLiveSessionEvent =
-          isSessionEvent(sessionId)(event) && isSessionStreamEvent(event)
+        const liveRunEvent = isRunEvent(runId)(event) && isRunStreamEvent(event)
 
-        isLiveSessionEvent &&
+        liveRunEvent &&
           Match.value(replaying).pipe(
             Match.when(true, () => pending.push(event)),
-            Match.orElse(() => writeSessionEvent(event))
+            Match.orElse(() => writeRunEvent(event))
           )
       })
       const scope = yield* Scope.Scope
       yield* Scope.addFinalizer(scope, Effect.sync(unsubscribe))
 
-      const pendingRunStartIds = new Set(
-        pending
-          .filter(
-            (event): event is Extract<ServerEvent, { _tag: 'RunStart' }> =>
-              event._tag === 'RunStart'
-          )
-          .map((event) => event.runId)
+      const pendingHasRunStart = pending.some(
+        (event) => event._tag === 'RunStart' && event.runId === runId
       )
-      const replaySnapshot = getReplaySnapshot(sessionId)
-      const replayRunId = replaySnapshot?.runId
+      const replaySnapshot = getReplaySnapshot(runId)
       const replayStartEvent = [
         undefined,
-        {
+        replaySnapshot && {
           _tag: 'RunStart' as const,
-          sessionId,
-          runId: replayRunId ?? '',
-          baseNodeId: replaySnapshot?.baseNodeId ?? null,
+          sessionId: replaySnapshot.sessionId,
+          runId,
+          baseNodeId: replaySnapshot.baseNodeId,
         },
       ][
         Number(
-          replayRunId !== undefined &&
-            cursor?.runId !== replayRunId &&
-            !pendingRunStartIds.has(replayRunId)
+          replaySnapshot !== null &&
+            cursor?.runId !== runId &&
+            !pendingHasRunStart
         )
       ]
-      const resetReason = getReplayResetReason(sessionId, cursor)
-      const replay = getReplayBufferSince(sessionId, cursor)
+      const resetReason = getReplayResetReason(runId, cursor)
+      const replay = getReplayBufferSince(runId, cursor)
 
       resetReason &&
         cursor &&
+        replaySnapshot &&
         Queue.offerUnsafe(
           queue,
           formatEvent({
             _tag: 'ReplayReset',
-            sessionId,
+            sessionId: replaySnapshot.sessionId,
             runId: cursor.runId,
             reason: resetReason,
             refetch: true,
@@ -191,38 +178,35 @@ const liveSessionStream = (
 
       replaying = false
       for (const event of [...replay, ...pending]) {
-        writeSessionEvent(event)
+        writeRunEvent(event)
       }
     })
   )
 
-// Keep this comfortably below the HTTP server/proxy idle timeout. If the
-// stream is quiet for too long, browsers report the closed chunked response as
-// ERR_INCOMPLETE_CHUNKED_ENCODING and EventSource reconnects in a tight loop.
 const heartbeatStream = Stream.tick('5 seconds').pipe(
   Stream.map(() => ':heartbeat\n\n')
 )
 
 const makeSseStream = (
-  sessionId: string | undefined,
+  runId: string | undefined,
   cursor: StreamCursor | undefined
 ) =>
-  (sessionId ? liveSessionStream(sessionId, cursor) : liveGlobalStream).pipe(
+  (runId ? liveRunStream(runId, cursor) : liveGlobalStream).pipe(
     Stream.merge(heartbeatStream),
     Stream.encodeText
   )
 
 export const SseLive = HttpRouter.add('GET', '/events', (request) => {
   const url = new URL(request.url, 'http://localhost')
-  const sessionId = url.searchParams.get('sessionId') ?? undefined
+  const runId = url.searchParams.get('runId') ?? undefined
   const cursor = parseCursor(url.searchParams.get('since'))
 
   return Effect.logInfo('SSE connection requested', {
-    sessionId,
+    runId,
     hasCursor: cursor !== undefined,
   }).pipe(
     Effect.map(() =>
-      HttpServerResponse.stream(makeSseStream(sessionId, cursor), {
+      HttpServerResponse.stream(makeSseStream(runId, cursor), {
         headers: {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',

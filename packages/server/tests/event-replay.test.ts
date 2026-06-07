@@ -30,7 +30,8 @@ describe('EventReplay', () => {
       params: {},
     })
 
-    expect(getReplaySnapshot('session-1')).toEqual({
+    expect(getReplaySnapshot('run-1')).toEqual({
+      sessionId: 'session-1',
       runId: 'run-1',
       baseNodeId: null,
       events: [
@@ -52,7 +53,7 @@ describe('EventReplay', () => {
         },
       ],
     })
-    expect(getReplayBufferSince('session-1', undefined)).toEqual([
+    expect(getReplayBufferSince('run-1', undefined)).toEqual([
       {
         _tag: 'TextDelta',
         sessionId: 'session-1',
@@ -71,7 +72,7 @@ describe('EventReplay', () => {
       },
     ])
     expect(
-      getReplayBufferSince('session-1', { runId: 'run-1', eventId: 1 })
+      getReplayBufferSince('run-1', { runId: 'run-1', eventId: 1 })
     ).toEqual([
       {
         _tag: 'ToolCall',
@@ -85,21 +86,21 @@ describe('EventReplay', () => {
     ])
 
     endEventReplay('session-1', 'run-1')
-    expect(getReplayBufferSince('session-1', undefined)).toEqual([])
-    expect(
-      getReplayResetReason('session-1', { runId: 'run-1', eventId: 2 })
-    ).toBe('run_completed')
+    expect(getReplayBufferSince('run-1', undefined)).toEqual([])
+    expect(getReplayResetReason('run-1', { runId: 'run-1', eventId: 2 })).toBe(
+      'run_completed'
+    )
   })
 
   it('reports unavailable replay for cursors with no known run state', () => {
     resetEventReplay()
 
-    expect(
-      getReplayResetReason('session-1', { runId: 'run-1', eventId: 1 })
-    ).toBe('replay_unavailable')
+    expect(getReplayResetReason('run-1', { runId: 'run-1', eventId: 1 })).toBe(
+      'replay_unavailable'
+    )
   })
 
-  it('treats cursors from older runs as a full replay of the active run', () => {
+  it('treats cursors from older runs as a full replay of the requested active run', () => {
     resetEventReplay()
 
     startEventReplay('session-1', 'run-1')
@@ -120,7 +121,7 @@ describe('EventReplay', () => {
     })
 
     expect(
-      getReplayBufferSince('session-1', { runId: 'run-1', eventId: 99 })
+      getReplayBufferSince('run-2', { runId: 'run-1', eventId: 99 })
     ).toEqual([
       {
         _tag: 'TextDelta',

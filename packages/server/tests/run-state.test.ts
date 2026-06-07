@@ -4,13 +4,13 @@ import {
   clearActiveFiber,
   drainQueuedRuns,
   enqueueRun,
-  getFiber,
+  getFibers,
   getQueuedRunCount,
   isRunning,
   requestStop,
   registerActiveFiber,
   registerWorkerFiber,
-  releaseRun,
+  releaseRunQueue,
   resetRunRegistry,
   shouldStop,
   shiftQueuedRun,
@@ -30,12 +30,13 @@ describe('RunRegistry', () => {
   it('marks a session running as soon as a run is enqueued', () => {
     resetRunRegistry()
 
-    expect(enqueueRun('session-1', runRequest('hello')).status).toBe('started')
+    const run = enqueueRun('session-1', runRequest('hello'))
+    expect(run.status).toBe('started')
     expect(isRunning('session-1')).toBe(true)
-    expect(getFiber('session-1')).toBeUndefined()
+    expect(getFibers('session-1')).toEqual([])
     expect(getQueuedRunCount('session-1')).toBe(1)
 
-    releaseRun('session-1')
+    releaseRunQueue(run.queueId)
   })
 
   it('coalesces compatible queued inputs into a single run', () => {
@@ -44,53 +45,55 @@ describe('RunRegistry', () => {
     const first = runRequest('first')
     const second = runRequest('second')
 
-    expect(enqueueRun('session-1', first).status).toBe('started')
-    expect(enqueueRun('session-1', second)).toEqual({
+    const run = enqueueRun('session-1', first)
+    expect(run.status).toBe('started')
+    expect(enqueueRun('session-1', second, first.runId)).toMatchObject({
       status: 'queued',
       runId: first.runId,
     })
     expect(getQueuedRunCount('session-1')).toBe(1)
-    expect(shiftQueuedRun('session-1')).toEqual({
+    expect(shiftQueuedRun(run.queueId)).toEqual({
       ...first,
       inputs: ['first', 'second'],
     })
     expect(getQueuedRunCount('session-1')).toBe(0)
 
-    releaseRun('session-1')
+    releaseRunQueue(run.queueId)
   })
 
   it('releases a session when startup fails before a worker is attached', () => {
     resetRunRegistry()
 
-    expect(enqueueRun('session-1', runRequest('hello')).status).toBe('started')
-    releaseRun('session-1')
+    const first = enqueueRun('session-1', runRequest('hello'))
+    expect(first.status).toBe('started')
+    releaseRunQueue(first.queueId)
 
     expect(isRunning('session-1')).toBe(false)
-    expect(enqueueRun('session-1', runRequest('again')).status).toBe('started')
+    const second = enqueueRun('session-1', runRequest('again'))
+    expect(second.status).toBe('started')
 
-    releaseRun('session-1')
+    releaseRunQueue(second.queueId)
   })
 
   it.effect('tracks worker and active run fibers separately', () =>
     Effect.gen(function* () {
       resetRunRegistry()
 
-      expect(enqueueRun('session-1', runRequest('hello')).status).toBe(
-        'started'
-      )
+      const run = enqueueRun('session-1', runRequest('hello'))
+      expect(run.status).toBe('started')
 
       const worker = yield* Effect.forkDetach(Effect.void)
-      registerWorkerFiber('session-1', worker)
+      registerWorkerFiber(run.queueId, worker)
 
       const active = yield* Effect.forkDetach(Effect.void)
-      registerActiveFiber('session-1', active)
+      registerActiveFiber(run.queueId, run.runId, null, active)
 
-      expect(getFiber('session-1')).toBe(active)
+      expect(getFibers('session-1')).toEqual([active])
 
-      clearActiveFiber('session-1')
-      expect(getFiber('session-1')).toBeUndefined()
+      clearActiveFiber(run.queueId)
+      expect(getFibers('session-1')).toEqual([])
 
-      releaseRun('session-1')
+      releaseRunQueue(run.queueId)
       yield* Fiber.interrupt(worker)
       yield* Fiber.interrupt(active)
     })
@@ -102,18 +105,19 @@ describe('RunRegistry', () => {
     const first = runRequest('first')
     const second = runRequest('second')
 
-    expect(enqueueRun('session-1', first).status).toBe('started')
-    expect(enqueueRun('session-1', second).status).toBe('queued')
-    expect(shouldStop('session-1')).toBe(false)
+    const run = enqueueRun('session-1', first)
+    expect(run.status).toBe('started')
+    expect(enqueueRun('session-1', second, first.runId).status).toBe('queued')
+    expect(shouldStop(run.queueId)).toBe(false)
 
     requestStop('session-1')
 
-    expect(shouldStop('session-1')).toBe(true)
+    expect(shouldStop(run.queueId)).toBe(true)
     expect(drainQueuedRuns('session-1')).toEqual([
       { ...first, inputs: ['first', 'second'] },
     ])
     expect(getQueuedRunCount('session-1')).toBe(0)
 
-    releaseRun('session-1')
+    releaseRunQueue(run.queueId)
   })
 })
