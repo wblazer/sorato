@@ -109,51 +109,28 @@
 <div class="flex h-full flex-col">
   <div class="mx-auto flex min-h-0 w-full max-w-6xl flex-1 items-center justify-center px-6 py-6">
     <div class="flex w-full flex-col items-center gap-10">
-      <div class="w-full max-w-md space-y-2">
-        <div class="text-center text-base font-medium text-muted-foreground">
-          Resume a session
-        </div>
-
-        <div class="space-y-5">
-          <div class="flex justify-center">
-            <Button
-              variant="outline"
-              onclick={() => (sessionSearchOpen = true)}
-            >
-              <MagnifyingGlassIcon />
-              Search sessions
-            </Button>
+      {#if sessionStore.sessions.length > 0}
+        <div class="w-full max-w-md space-y-2">
+          <div class="text-center text-base font-medium text-muted-foreground">
+            Resume a session
           </div>
 
-          <div class="space-y-1">
-            <div class="px-2 text-sm font-medium text-muted-foreground">
-              Recent Sessions
+          <div class="space-y-5">
+            <div class="flex justify-center">
+              <Button
+                variant="outline"
+                onclick={() => (sessionSearchOpen = true)}
+              >
+                <MagnifyingGlassIcon />
+                Search sessions
+              </Button>
             </div>
 
-            {#if sessionStore.loading && sessionStore.sessions.length === 0}
-              <div class="px-3 py-6 text-center text-base text-muted-foreground">
-                Loading sessions...
+            <div class="space-y-1">
+              <div class="px-2 text-sm font-medium text-muted-foreground">
+                Recent Sessions
               </div>
-            {:else if sessionStore.error && sessionStore.sessions.length === 0}
-              <Item.Root variant="danger" size="sm" class="text-left">
-                <Item.Media variant="icon">
-                  <WarningCircleIcon />
-                </Item.Media>
-                <Item.Content>
-                  <Item.Title>Sessions failed to load</Item.Title>
-                  <Item.Description>{sessionStore.error}</Item.Description>
-                </Item.Content>
-                <Item.Actions>
-                  <Button variant="outline" onclick={() => void sessionStore.fetchSessions()}>
-                    Retry
-                  </Button>
-                </Item.Actions>
-              </Item.Root>
-            {:else if recentSessions.length === 0}
-              <div class="px-3 py-6 text-center text-base text-muted-foreground">
-                No recent sessions.
-              </div>
-            {:else}
+
               {#each recentSessions as item (item.session.id)}
                 <button
                   type="button"
@@ -171,16 +148,16 @@
                   </span>
                 </button>
               {/each}
-            {/if}
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="flex w-full max-w-sm items-center gap-3 text-sm font-medium text-muted-foreground">
-        <div class="h-px flex-1 bg-border"></div>
-        <span>or</span>
-        <div class="h-px flex-1 bg-border"></div>
-      </div>
+        <div class="flex w-full max-w-sm items-center gap-3 text-sm font-medium text-muted-foreground">
+          <div class="h-px flex-1 bg-border"></div>
+          <span>or</span>
+          <div class="h-px flex-1 bg-border"></div>
+        </div>
+      {/if}
 
       <div class="w-full max-w-sm space-y-2 text-center">
         <div class="text-base font-medium text-muted-foreground">

@@ -5,6 +5,7 @@
   import { actionStore } from '$lib/stores/actions.svelte.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
   import FolderOpenIcon from 'phosphor-svelte/lib/FolderOpenIcon'
+  import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
 </script>
 
@@ -47,7 +48,7 @@
         </Item.Root>
       {:else}
         <Button size="lg" onclick={() => actionStore.trigger('project.add')}>
-          <FolderOpenIcon class="size-4" />
+          <PlusIcon />
           Add Project
         </Button>
       {/if}
