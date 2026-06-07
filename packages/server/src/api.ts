@@ -22,7 +22,6 @@ export class SessionResponse extends Schema.Class<SessionResponse>(
   id: Schema.String,
   projectId: Schema.String,
   title: Schema.NullOr(Schema.String),
-  headId: Schema.NullOr(Schema.String),
   /** Ephemeral run status — 'running' if an agent run is active. */
   status: Schema.Literals(['idle', 'running']),
   archivedAt: Schema.NullOr(Schema.Number),
@@ -64,8 +63,34 @@ export class MessageNodeResponse extends Schema.Class<MessageNodeResponse>(
   id: Schema.String,
   sessionId: Schema.String,
   parentId: Schema.NullOr(Schema.String),
-  runId: Schema.String,
-  run: RunSummaryResponse,
+  kind: Schema.Literals(['message', 'summary']),
+  messageId: Schema.NullOr(Schema.String),
+  summaryId: Schema.NullOr(Schema.String),
+  sourceNodeId: Schema.NullOr(Schema.String),
+  runId: Schema.NullOr(Schema.String),
+  run: Schema.NullOr(RunSummaryResponse),
+  modelCall: Schema.NullOr(
+    Schema.Struct({
+      id: Schema.String,
+      sessionId: Schema.String,
+      runId: Schema.NullOr(Schema.String),
+      assistantNodeId: Schema.String,
+      providerId: Schema.String,
+      modelId: Schema.String,
+      billingMode: Schema.Literals(['api-key', 'subscription']),
+      inputTokens: Schema.NullOr(Schema.Number),
+      outputTokens: Schema.NullOr(Schema.Number),
+      reasoningTokens: Schema.NullOr(Schema.Number),
+      cacheReadTokens: Schema.NullOr(Schema.Number),
+      cacheWriteTokens: Schema.NullOr(Schema.Number),
+      totalTokens: Schema.NullOr(Schema.Number),
+      contextWindowTokens: Schema.NullOr(Schema.Number),
+      actualCostMicrosUsd: Schema.NullOr(Schema.Number),
+      listPriceMicrosUsd: Schema.NullOr(Schema.Number),
+      startedAt: Schema.NullOr(Schema.Number),
+      finishedAt: Schema.Number,
+    })
+  ),
   encoded: Schema.Unknown,
   createdAt: Schema.Number,
 }) {}
@@ -332,6 +357,7 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
       payload: Schema.Struct({
         input: Schema.String,
         model: Schema.String,
+        baseNodeId: Schema.optional(Schema.NullOr(Schema.String)),
         modelOptions: Schema.optional(
           Schema.Struct({
             thinkingLevel: Schema.optional(

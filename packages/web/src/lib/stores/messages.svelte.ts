@@ -273,6 +273,10 @@ function createMessagesStore() {
       id: `optimistic-${now}`,
       sessionId,
       parentId: messages.at(-1)?.id ?? null,
+      kind: 'message',
+      messageId: null,
+      summaryId: null,
+      sourceNodeId: null,
       runId,
       run: {
         id: runId,
@@ -294,6 +298,7 @@ function createMessagesStore() {
         createdAt: now,
         completedAt: null,
       },
+      modelCall: null,
       encoded: { role: 'user', content: input },
       createdAt: now,
     }

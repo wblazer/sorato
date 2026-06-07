@@ -2,34 +2,54 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Effect, Layer, Schema } from 'effect'
 import { Prompt } from 'effect/unstable/ai'
+import { SqlClient } from 'effect/unstable/sql/SqlClient'
 import { describe, expect, it } from '@effect/vitest'
-import { SqliteClient } from '@effect/sql-sqlite-bun'
 import { BunServices } from '@effect/platform-bun'
 import {
   SessionId,
   SessionStorage,
   type SessionStorageApi,
 } from '../src/session/session.ts'
+import { makeSqlitePersistenceLive } from '../src/db/sqlite.ts'
 import { SqliteSession } from '../src/session/sqlite-session.ts'
 
+const TEST_DIR = '/tmp/test-project'
+
 // ---------------------------------------------------------------------------
-// Test layer — in-memory sqlite per test
+// Test layer — isolated sqlite database per test
 // ---------------------------------------------------------------------------
+
+const TestProjectLive = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const sql = yield* SqlClient
+    const now = Date.now()
+    yield* sql`
+      INSERT OR IGNORE INTO projects (
+        id,
+        name,
+        path,
+        created_at,
+        updated_at,
+        last_opened_at
+      )
+      VALUES (${TEST_DIR}, 'test-project', ${TEST_DIR}, ${now}, ${now}, ${now})
+    `
+  })
+)
 
 const testLayer = () => {
   const path = join(tmpdir(), `sorato-session-${crypto.randomUUID()}.db`)
-  return SqliteSession({ path }).pipe(
-    Layer.provide(SqliteClient.layer({ filename: path })),
+  return Layer.merge(SqliteSession({ path }), TestProjectLive).pipe(
+    Layer.provide(makeSqlitePersistenceLive({ filename: path })),
     Layer.provide(BunServices.layer)
   )
 }
 
-const TEST_DIR = '/tmp/test-project'
-
 const append = (
   storage: SessionStorageApi,
   sessionId: string,
-  messages: ReadonlyArray<Prompt.MessageEncoded>
+  messages: ReadonlyArray<Prompt.MessageEncoded>,
+  baseNodeId?: string | null
 ) =>
   Effect.gen(function* () {
     const runId = crypto.randomUUID()
@@ -40,8 +60,14 @@ const append = (
       modelId: 'test-model',
       billingMode: 'api-key',
     })
-    yield* storage.append(sessionId, runId, messages)
+    const nodeIds = yield* storage.append(
+      sessionId,
+      runId,
+      messages,
+      baseNodeId
+    )
     yield* storage.completeRun({ id: runId, status: 'completed' })
+    return nodeIds
   })
 // ---------------------------------------------------------------------------
 // Helpers
@@ -129,7 +155,6 @@ describe('SessionStorage', () => {
         expect(session.id).toBeTruthy()
         expect(session.projectId).toBe(TEST_DIR)
         expect(session.title).toBe('test session')
-        expect(session.headId).toBeNull()
       }).pipe(Effect.provide(testLayer()))
     )
 
@@ -296,14 +321,14 @@ describe('SessionStorage', () => {
         yield* append(storage, session.id, [])
 
         const fetched = yield* storage.get(session.id)
-        expect(fetched.headId).toBeNull()
+        expect(fetched.updatedAt).toBeGreaterThanOrEqual(session.updatedAt)
       }).pipe(Effect.provide(testLayer()))
     )
   })
 
   // -- Forking + Branching --------------------------------------------------
 
-  describe('setHead / leaves / forking', () => {
+  describe('leaves / explicit-base forking', () => {
     it.effect('lists leaves (single branch = one leaf)', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
@@ -319,7 +344,7 @@ describe('SessionStorage', () => {
       }).pipe(Effect.provide(testLayer()))
     )
 
-    it.effect('forks conversation by setting head to earlier message', () =>
+    it.effect('forks conversation by appending at an explicit base node', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
         const session = yield* storage.create(TEST_DIR, 'fork-test')
@@ -341,7 +366,7 @@ describe('SessionStorage', () => {
         expect(tips1.length).toBe(1)
         // The system message is the root — find it by walking from assistant1
         // We need to get the parent chain. Let's use leaves to get the tip,
-        // then setHead to its grandparent (system msg).
+        // then use its grandparent (system msg).
         // Actually, we need the message IDs. Let's fork from the user message.
         // The user message is assistant1's grandparent (system -> user -> assistant).
         // We can get it from the parent chain.
@@ -362,18 +387,24 @@ describe('SessionStorage', () => {
         )
 
         // Fork: set head to user1 (so next append branches from there)
-        yield* storage.setHead(session.id, user1Id)
-
-        // Verify conversation is now just system + user1
-        const forked = yield* storage.conversation(session.id)
+        // Verify explicit-base conversation is just system + user1
+        const forked = yield* storage.conversation(session.id, user1Id)
         expect(forked.content.length).toBe(2)
         expect(forked.content.map((m) => m.role)).toEqual(['system', 'user'])
 
         // Append a different assistant response on the new branch
-        yield* append(storage, session.id, [assistantMsg('Different answer!')])
+        const newNodeIds = yield* append(
+          storage,
+          session.id,
+          [assistantMsg('Different answer!')],
+          user1Id
+        )
 
         // New conversation has 3 messages, but with the new response
-        const newBranch = yield* storage.conversation(session.id)
+        const newBranch = yield* storage.conversation(
+          session.id,
+          expectDefined(newNodeIds[0], 'expected new branch node')
+        )
         expect(newBranch.content.length).toBe(3)
 
         // Now we have TWO leaves (two branches)
@@ -403,13 +434,19 @@ describe('SessionStorage', () => {
           expectDefined(tipsA[0], 'expected branch A leaf').parentId,
           'expected branch A user message id'
         )
-        yield* storage.setHead(session.id, userMsgId)
-
         // Branch B: system -> user -> assistantB
-        yield* append(storage, session.id, [assistantMsg('Answer B')])
+        const branchBNodeIds = yield* append(
+          storage,
+          session.id,
+          [assistantMsg('Answer B')],
+          userMsgId
+        )
 
         // We're on branch B now
-        const branchB = yield* storage.conversation(session.id)
+        const branchB = yield* storage.conversation(
+          session.id,
+          expectDefined(branchBNodeIds[0], 'expected branch B node')
+        )
         const lastMsgB = expectDefined(
           branchB.content[branchB.content.length - 1],
           'expected branch B final message'
@@ -423,19 +460,17 @@ describe('SessionStorage', () => {
           'expected branch B leaf'
         ).id
 
-        // Switch back to branch A
-        yield* storage.setHead(session.id, branchALeaf)
-        const backToA = yield* storage.conversation(session.id)
+        // Read branch A explicitly
+        const backToA = yield* storage.conversation(session.id, branchALeaf)
         expect(backToA.content.length).toBe(3)
 
-        // Switch to branch B
-        yield* storage.setHead(session.id, branchBLeaf)
-        const backToB = yield* storage.conversation(session.id)
+        // Read branch B explicitly
+        const backToB = yield* storage.conversation(session.id, branchBLeaf)
         expect(backToB.content.length).toBe(3)
       }).pipe(Effect.provide(testLayer()))
     )
 
-    it.effect('fails to setHead to a message from another session', () =>
+    it.effect('fails to append at a node from another session', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
         const s1 = yield* storage.create(TEST_DIR, 'session 1')
@@ -446,10 +481,15 @@ describe('SessionStorage', () => {
         const tips = yield* storage.leaves(s1.id)
         const s1MsgId = expectDefined(tips[0], 'expected session 1 leaf').id
 
-        // Try to set s2's head to s1's message
-        const error = yield* storage.setHead(s2.id, s1MsgId).pipe(Effect.flip)
+        // Try to append in s2 at s1's node
+        const error = yield* append(
+          storage,
+          s2.id,
+          [userMsg('bad')],
+          s1MsgId
+        ).pipe(Effect.flip)
         expect(error._tag).toBe('StorageError')
-        expect(error.operation).toBe('setHead')
+        expect(error.operation).toBe('append')
       }).pipe(Effect.provide(testLayer()))
     )
 
@@ -464,25 +504,9 @@ describe('SessionStorage', () => {
     )
   })
 
-  // -- Head tracking --------------------------------------------------------
+  // -- Timestamps -----------------------------------------------------------
 
-  describe('head tracking', () => {
-    it.effect('advances head on append', () =>
-      Effect.gen(function* () {
-        const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'head-tracking')
-
-        yield* append(storage, session.id, [userMsg('msg1')])
-        const after1 = yield* storage.get(session.id)
-        expect(after1.headId).not.toBeNull()
-        const head1 = after1.headId
-
-        yield* append(storage, session.id, [assistantMsg('msg2')])
-        const after2 = yield* storage.get(session.id)
-        expect(after2.headId).not.toBe(head1)
-      }).pipe(Effect.provide(testLayer()))
-    )
-
+  describe('timestamps', () => {
     it.live('updates updatedAt on append', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage

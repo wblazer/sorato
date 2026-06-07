@@ -5,7 +5,7 @@
       import { projectStore } from '$lib/stores/projects.svelte.js'
       import { sessionStore } from '$lib/stores/sessions.svelte.js'
       import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
-      import type { MessageNode } from '$lib/types.js'
+      import type { MessageNode, ModelCall } from '$lib/types.js'
       import {
         persistedSources,
         projectTranscript,
@@ -56,6 +56,7 @@
         readonly key: string
         readonly message: MessageNode
         readonly items: ReadonlyArray<TranscriptItem>
+        readonly modelCall: ModelCall | null
       }
 
       const transcriptSourceMessage = (
@@ -96,6 +97,11 @@
               key: group.map((groupMessage) => groupMessage.id).join(':'),
               message,
               items: transcriptItemsForMessages(group),
+              modelCall:
+                group
+                  .toReversed()
+                  .find((groupMessage) => groupMessage.modelCall !== null)?.modelCall ??
+                null,
             })
             index = cursor - 1
             continue
@@ -105,6 +111,7 @@
             key: message.id,
             message,
             items: transcriptItemsForMessages([message]),
+            modelCall: message.modelCall,
           })
         }
 
@@ -259,11 +266,7 @@
         {/if}
       </div>
 
-      <SessionTokenUsage
-        messages={messagesStore.messages}
-        headId={selectedSession?.headId ?? null}
-        models={modelsStore.models}
-      />
+      <SessionTokenUsage messages={messagesStore.messages} models={modelsStore.models} />
 
     </div>
   </div>
@@ -309,6 +312,7 @@
             <MessageBubble
               message={block.message}
               transcriptItems={block.items}
+              modelCall={block.modelCall}
             />
           {/each}
 

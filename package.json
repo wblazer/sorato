@@ -16,6 +16,7 @@
     "effect-solutions": "bun node_modules/effect-solutions/dist/cli.js",
     "web": "bun run --filter @sorato/web dev",
     "server": "bun run --filter @sorato/server dev",
+    "db:reset": "bun run --filter @sorato/server db:reset",
     "desktop": "bun run --filter @sorato/desktop dev",
     "desktop:build": "bun run --filter @sorato/web build && bun run --filter @sorato/desktop build"
   },

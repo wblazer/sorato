@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { MessageNode } from '$lib/types.js'
+  import type { MessageNode, ModelCall } from '$lib/types.js'
   import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
   import {
     messageParts,
@@ -14,8 +14,12 @@
   let {
     message,
     transcriptItems,
-  }: { message: MessageNode; transcriptItems?: ReadonlyArray<TranscriptItem> } =
-    $props()
+    modelCall = message.modelCall,
+  }: {
+    message: MessageNode
+    transcriptItems?: ReadonlyArray<TranscriptItem>
+    modelCall?: ModelCall | null
+  } = $props()
 
   const role = $derived(message.encoded.role)
 
@@ -54,10 +58,12 @@
     return item.type
   }
 
-  const formatTokens = (tokens: number | null): string | null => {
-    if (tokens === null) return null
-    return Intl.NumberFormat(undefined, { notation: 'compact' }).format(tokens)
-  }
+  const formatCost = (micros: number): string =>
+    Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: micros === 0 ? 0 : 4,
+    }).format(micros / 1_000_000)
 
   const formatDuration = (milliseconds: number): string => {
     const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000))
@@ -71,20 +77,17 @@
   }
 
   const runtimeLine = $derived.by(() => {
-    if (!message.run || role !== 'assistant' || message.run.completedAt === null) {
-      return null
-    }
+    if (modelCall === null || role !== 'assistant') return null
+    if (modelCall.startedAt === null) return null
 
-    return formatDuration(message.run.completedAt - message.run.createdAt)
+    return formatDuration(modelCall.finishedAt - modelCall.startedAt)
   })
 
-  const tokenLine = $derived.by(() => {
-    if (!message.run || role !== 'assistant' || message.run.completedAt === null) {
-      return null
-    }
+  const costLine = $derived.by(() => {
+    if (modelCall === null || role !== 'assistant') return null
+    if (modelCall.actualCostMicrosUsd === null) return null
 
-    const total = formatTokens(message.run.usage.totalTokens)
-    return total ? `${total} tokens` : null
+    return formatCost(modelCall.actualCostMicrosUsd)
   })
 </script>
 
@@ -159,7 +162,7 @@
       </Accordion.Item>
     </Accordion.Root>
     {:else}
-    <div>
+    <div class="assistant-message">
       {#each renderParts as item}
         <div class="assistant-transcript-item" data-transcript-kind={transcriptItemKind(item)}>
           {#if item.type === 'combined-tool'}
@@ -175,12 +178,16 @@
           {/if}
         </div>
       {/each}
-      {#if message.run && message.run.completedAt !== null}
-        <div class="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span>{runtimeLine}</span>
-          {#if tokenLine}
-            <span>·</span>
-            <span>{tokenLine}</span>
+      {#if modelCall !== null && (runtimeLine !== null || costLine !== null)}
+        <div class="assistant-meta mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+          {#if runtimeLine}
+            <span>{runtimeLine}</span>
+          {/if}
+          {#if costLine}
+            {#if runtimeLine}
+              <span>·</span>
+            {/if}
+            <span>{costLine}</span>
           {/if}
         </div>
       {/if}
@@ -204,5 +211,15 @@
   .assistant-transcript-item:not([data-transcript-kind='tool'])
     + .assistant-transcript-item[data-transcript-kind='tool'] {
     margin-top: 1.25rem;
+  }
+
+  .assistant-meta {
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  .assistant-message:hover .assistant-meta,
+  .assistant-message:focus-within .assistant-meta {
+    opacity: 1;
   }
 </style>

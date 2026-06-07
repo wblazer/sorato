@@ -1,14 +1,12 @@
 <script lang="ts">
-  import type { AvailableModel, MessageNode, RunSummary } from '$lib/types.js'
+  import type { AvailableModel, MessageNode } from '$lib/types.js'
   import * as Tooltip from '$lib/components/ui/tooltip/index.js'
 
   let {
     messages,
-    headId,
     models,
   }: {
     messages: ReadonlyArray<MessageNode>
-    headId: string | null
     models: ReadonlyArray<AvailableModel>
   } = $props()
 
@@ -26,26 +24,10 @@
       maximumFractionDigits: micros === 0 ? 0 : 4,
     }).format(micros / 1_000_000)
 
-  const visibleMessages = $derived.by((): ReadonlyArray<MessageNode> => {
-    if (headId === null) return messages
-
-    const byId = new Map(messages.map((message) => [message.id, message]))
-    const path: MessageNode[] = []
-    let cursor = byId.get(headId) ?? null
-
-    while (cursor !== null) {
-      path.push(cursor)
-      cursor = cursor.parentId === null ? null : (byId.get(cursor.parentId) ?? null)
-    }
-
-    return path.length > 0 ? path.reverse() : messages
-  })
-
   const usage = $derived.by(() => {
-    const runs = new Map<string, RunSummary>()
-    for (const message of visibleMessages) {
-      runs.set(message.run.id, message.run)
-    }
+    const modelCalls = messages.flatMap((message) =>
+      message.modelCall === null ? [] : [message.modelCall]
+    )
 
     let totalTokens = 0
     let totalInputTokens = 0
@@ -54,19 +36,18 @@
     let latestContextTokens: number | null = null
     let latestModelKey: string | null = null
 
-    for (const run of runs.values()) {
-      totalTokens += run.usage.totalTokens ?? 0
+    for (const call of modelCalls) {
+      totalTokens += call.totalTokens ?? 0
       totalInputTokens +=
-        (run.usage.inputTokens ?? 0) +
-        (run.usage.cacheReadTokens ?? 0) +
-        (run.usage.cacheWriteTokens ?? 0)
-      totalOutputTokens +=
-        (run.usage.outputTokens ?? 0) + (run.usage.reasoningTokens ?? 0)
-      totalCostMicros += run.usage.actualCostMicrosUsd ?? 0
+        (call.inputTokens ?? 0) +
+        (call.cacheReadTokens ?? 0) +
+        (call.cacheWriteTokens ?? 0)
+      totalOutputTokens += (call.outputTokens ?? 0) + (call.reasoningTokens ?? 0)
+      totalCostMicros += call.actualCostMicrosUsd ?? 0
 
-      if (run.usage.contextWindowTokens !== null) {
-        latestContextTokens = run.usage.contextWindowTokens
-        latestModelKey = `${run.providerId}/${run.modelId}`
+      if (call.contextWindowTokens !== null) {
+        latestContextTokens = call.contextWindowTokens
+        latestModelKey = `${call.providerId}/${call.modelId}`
       }
     }
 

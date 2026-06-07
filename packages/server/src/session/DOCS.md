@@ -2,7 +2,7 @@
 
 Persistent conversation storage for the coordinator.
 
-Messages form a tree via `parentId`; `headId` points at the active leaf. Branching is `setHead` plus the next append.
+Nodes form a tree via `parent_node_id`. The backend does not persist a global head; callers pass an explicit selected/base node when reconstructing context or starting a run.
 
 ## Files
 

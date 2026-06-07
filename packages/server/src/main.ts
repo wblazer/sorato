@@ -24,6 +24,7 @@ import { RuntimeConfigLive } from './runtime-config.ts'
 import { SessionsLive } from './sessions.ts'
 import { SseLive } from './sse.ts'
 import { dataDir } from './data-dir.ts'
+import { makeSqlitePersistenceLive } from './db/sqlite.ts'
 import { SqliteProviderAuthStore } from './provider-auth.ts'
 import { SqliteProject } from './project/sqlite-project.ts'
 import { SqliteSession } from './session/sqlite-session.ts'
@@ -64,7 +65,7 @@ const SqliteClientLive = (filename: string) =>
 const SessionStorageLive = SqliteSession({ path: sessionsDbPath })
 const ProjectStorageLive = SqliteProject
 const StorageLive = Layer.merge(SessionStorageLive, ProjectStorageLive).pipe(
-  Layer.provide(SqliteClientLive(sessionsDbPath))
+  Layer.provide(makeSqlitePersistenceLive({ filename: sessionsDbPath }))
 )
 const ProviderAuthLive = SqliteProviderAuthStore({
   path: providerAuthDbPath,

@@ -31,7 +31,6 @@ export interface Session {
   id: string
   projectId: string
   title: string | null
-  headId: string | null
   /** Ephemeral run status — 'running' if an agent run is active. */
   status: 'idle' | 'running'
   archivedAt: number | null
@@ -99,12 +98,29 @@ export interface RunSummary {
   completedAt: number | null
 }
 
+export interface ModelCall extends RunUsage {
+  id: string
+  sessionId: string
+  runId: string | null
+  assistantNodeId: string
+  providerId: string
+  modelId: string
+  billingMode: 'api-key' | 'subscription'
+  startedAt: number | null
+  finishedAt: number
+}
+
 export interface MessageNode {
   id: string
   sessionId: string
   parentId: string | null
-  runId: string
-  run: RunSummary
+  kind: 'message' | 'summary'
+  messageId: string | null
+  summaryId: string | null
+  sourceNodeId: string | null
+  runId: string | null
+  run: RunSummary | null
+  modelCall: ModelCall | null
   encoded: MessageEncoded
   createdAt: number
 }

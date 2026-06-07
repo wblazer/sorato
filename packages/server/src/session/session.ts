@@ -2,19 +2,15 @@
  * Session — persistent conversation storage with tree-structured history.
  *
  * Conversations are not linear — they're trees. A user can fork at any
- * point, try a different prompt, and switch between branches. The data
- * model mirrors git: each message stores a `parentId`, and the session
- * has a `headId` pointing to the current leaf.
+ * point, try a different prompt, and switch between branches. Nodes form
+ * the context tree; message and summary content live separately.
  *
- * **Reconstructing a conversation**: walk from `headId` up parent pointers
- * to the root, reverse to chronological order, decode into `Prompt.Prompt`.
+ * **Reconstructing a conversation**: walk from an explicit selected node up
+ * parent pointers to the root, reverse to chronological order, decode into
+ * `Prompt.Prompt`.
  *
- * **Forking**: `setHead` to an earlier message, then `append` new messages.
- * The old branch's messages remain in the tree. The new messages chain off
- * the fork point, creating a new branch.
- *
- * **Branch switching**: `setHead` to a different leaf. The conversation
- * returned by `conversation()` reflects that branch.
+ * **Forking**: append at an explicit base node. The old branch's nodes remain
+ * in the tree. The new nodes chain off the fork point, creating a branch.
  *
  * The storage layer is agnostic to VCS, tools, or any other domain concern.
  * It stores `Prompt.MessageEncoded` blobs faithfully and reconstitutes them
@@ -36,6 +32,9 @@ import {
 
 export const SessionId = Schema.String
 export type SessionId = string
+
+export const NodeId = Schema.String
+export type NodeId = string
 
 export const MessageId = Schema.String
 export type MessageId = string
@@ -87,10 +86,12 @@ export interface RunUsage {
 export interface Run extends RunUsage {
   readonly id: RunId
   readonly sessionId: SessionId
+  /** Ephemeral compatibility status; persisted runs do not store status. */
   readonly status: RunStatus
   readonly providerId: string
   readonly modelId: string
   readonly billingMode: BillingMode
+  readonly baseNodeId: NodeId | null
   readonly createdAt: number
   readonly completedAt: number | null
 }
@@ -98,9 +99,10 @@ export interface Run extends RunUsage {
 export interface CreateRunInput {
   readonly id: RunId
   readonly sessionId: SessionId
-  readonly providerId: string
-  readonly modelId: string
-  readonly billingMode: BillingMode
+  readonly providerId?: string
+  readonly modelId?: string
+  readonly billingMode?: BillingMode
+  readonly baseNodeId?: NodeId | null
   readonly createdAt?: number
 }
 
@@ -117,8 +119,6 @@ export interface Session {
   /** The project this session operates in. */
   readonly projectId: string
   readonly title: string | null
-  /** Points to the current active leaf. Null when the session is empty. */
-  readonly headId: MessageId | null
   readonly archivedAt: number | null
   readonly lastUserMessageAt: number | null
   readonly createdAt: number
@@ -126,12 +126,41 @@ export interface Session {
 }
 
 /** A node in the message tree. */
-export interface MessageNode {
-  readonly id: MessageId
+export interface ModelCall extends RunUsage {
+  readonly id: string
   readonly sessionId: SessionId
-  readonly parentId: MessageId | null
-  readonly runId: RunId
-  readonly run: Run
+  readonly runId: RunId | null
+  readonly assistantNodeId: NodeId
+  readonly providerId: string
+  readonly modelId: string
+  readonly billingMode: BillingMode
+  readonly startedAt: number | null
+  readonly finishedAt: number
+}
+
+export interface CreateModelCallInput extends RunUsage {
+  readonly id?: string
+  readonly sessionId: SessionId
+  readonly runId: RunId | null
+  readonly assistantNodeId: NodeId
+  readonly providerId: string
+  readonly modelId: string
+  readonly billingMode: BillingMode
+  readonly startedAt?: number | null
+  readonly finishedAt?: number
+}
+
+export interface MessageNode {
+  readonly id: NodeId
+  readonly sessionId: SessionId
+  readonly parentId: NodeId | null
+  readonly kind: 'message' | 'summary'
+  readonly messageId: MessageId | null
+  readonly summaryId: string | null
+  readonly sourceNodeId: NodeId | null
+  readonly runId: RunId | null
+  readonly run: Run | null
+  readonly modelCall: ModelCall | null
   /** The full encoded message — role, content/parts, options. */
   readonly encoded: StoredMessageEncoded
   readonly createdAt: number
@@ -222,17 +251,16 @@ export interface SessionStorageApi {
   /** Create a run envelope for messages and usage caused by one execution. */
   readonly createRun: (input: CreateRunInput) => Effect<void, StorageError>
 
-  /** Persist provider-reported aggregate usage/cost for a still-running run. */
-  readonly updateRunUsage: (
-    id: RunId,
-    usage: RunUsage
-  ) => Effect<void, StorageError>
-
-  /** Complete a run and persist provider-reported aggregate usage/cost. */
+  /** Compatibility no-op until callers stop using run completion. */
   readonly completeRun: (input: CompleteRunInput) => Effect<void, StorageError>
 
   /** Get a persisted run. */
   readonly getRun: (id: RunId) => Effect<Run, StorageError>
+
+  /** Persist per-model-call usage/cost on the original assistant node. */
+  readonly createModelCall: (
+    input: CreateModelCallInput
+  ) => Effect<void, StorageError>
 
   /** Set or clear the session title. */
   readonly setTitle: (
@@ -249,22 +277,24 @@ export interface SessionStorageApi {
   /**
    * Reconstruct the current branch as a `Prompt.Prompt`.
    *
-   * Walks from `headId` to the root via parent pointers, reverses to
+   * Walks from the selected node to the root via parent pointers, reverses to
    * chronological order, and decodes each message.
    */
   readonly conversation: (
-    sessionId: SessionId
+    sessionId: SessionId,
+    headNodeId?: NodeId | null
   ) => Effect<Prompt.Prompt, StorageError>
 
   /**
    * Return the message nodes for the current branch in chronological order.
    *
-   * Walks from `headId` to the root via parent pointers, then reverses
+   * Walks from the selected node to the root via parent pointers, then reverses
    * to chronological order. Unlike `conversation()`, this preserves the
    * full `MessageNode` metadata (IDs, parent pointers, timestamps).
    */
   readonly messages: (
-    sessionId: SessionId
+    sessionId: SessionId,
+    headNodeId?: NodeId | null
   ) => Effect<ReadonlyArray<MessageNode>, StorageError>
 
   /**
@@ -277,8 +307,9 @@ export interface SessionStorageApi {
   readonly append: (
     sessionId: SessionId,
     runId: RunId,
-    messages: ReadonlyArray<StoredMessageEncoded>
-  ) => Effect<void, StorageError>
+    messages: ReadonlyArray<StoredMessageEncoded>,
+    baseNodeId?: NodeId | null
+  ) => Effect<ReadonlyArray<NodeId>, StorageError>
 
   /**
    * Move the head to any message in the tree.
@@ -286,16 +317,11 @@ export interface SessionStorageApi {
    * Use this to fork (set head to an earlier message, then append) or to
    * switch branches (set head to a different leaf).
    */
-  readonly setHead: (
-    sessionId: SessionId,
-    messageId: MessageId
-  ) => Effect<void, StorageError>
-
   /**
    * List all leaf messages in the session — the tips of every branch.
    *
    * A leaf is a message with no children. Each leaf represents a
-   * branch that can be switched to via `setHead`.
+   * branch that can be selected by the frontend.
    */
   readonly leaves: (
     sessionId: SessionId

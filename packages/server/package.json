@@ -11,6 +11,7 @@
     "generate-models": "bun run scripts/generate-models.ts",
     "typecheck": "tsgo --noEmit",
     "test": "bun --bun vitest run",
+    "db:reset": "bun --env-file=../../.env run scripts/reset-dev-db.ts",
     "dev": "bun --env-file=../../.env --watch run src/main.ts",
     "start": "bun --env-file=../../.env run src/main.ts"
   },

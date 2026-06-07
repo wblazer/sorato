@@ -7,7 +7,11 @@
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { Cause, Effect, Fiber, Match } from 'effect'
 import { ProjectStorage } from './project/project.ts'
-import { SessionStorage, type SessionStorageApi } from './session/session.ts'
+import {
+  SessionStorage,
+  type ModelCall,
+  type SessionStorageApi,
+} from './session/session.ts'
 import {
   Api,
   MessageNodeResponse,
@@ -43,7 +47,6 @@ const toSessionResponse = (s: {
   readonly id: string
   readonly projectId: string
   readonly title: string | null
-  readonly headId: string | null
   readonly createdAt: number
   readonly updatedAt: number
   readonly archivedAt: number | null
@@ -58,7 +61,6 @@ const toSessionResponse = (s: {
     id: s.id,
     projectId: s.projectId,
     title: s.title,
-    headId: s.headId,
     status,
     archivedAt: s.archivedAt,
     lastUserMessageAt: s.lastUserMessageAt,
@@ -71,7 +73,11 @@ const toMessageNodeResponse = (m: {
   readonly id: string
   readonly sessionId: string
   readonly parentId: string | null
-  readonly runId: string
+  readonly kind: 'message' | 'summary'
+  readonly messageId: string | null
+  readonly summaryId: string | null
+  readonly sourceNodeId: string | null
+  readonly runId: string | null
   readonly run: {
     readonly id: string
     readonly status: 'running' | 'completed' | 'interrupted' | 'failed'
@@ -89,7 +95,8 @@ const toMessageNodeResponse = (m: {
     readonly listPriceMicrosUsd: number | null
     readonly createdAt: number
     readonly completedAt: number | null
-  }
+  } | null
+  readonly modelCall: ModelCall | null
   readonly encoded: unknown
   readonly createdAt: number
 }) =>
@@ -97,27 +104,35 @@ const toMessageNodeResponse = (m: {
     id: m.id,
     sessionId: m.sessionId,
     parentId: m.parentId,
+    kind: m.kind,
+    messageId: m.messageId,
+    summaryId: m.summaryId,
+    sourceNodeId: m.sourceNodeId,
     runId: m.runId,
-    run: new RunSummaryResponse({
-      id: m.run.id,
-      status: m.run.status,
-      providerId: m.run.providerId,
-      modelId: m.run.modelId,
-      billingMode: m.run.billingMode,
-      usage: new RunUsageResponse({
-        inputTokens: m.run.inputTokens,
-        outputTokens: m.run.outputTokens,
-        reasoningTokens: m.run.reasoningTokens,
-        cacheReadTokens: m.run.cacheReadTokens,
-        cacheWriteTokens: m.run.cacheWriteTokens,
-        totalTokens: m.run.totalTokens,
-        contextWindowTokens: m.run.contextWindowTokens,
-        actualCostMicrosUsd: m.run.actualCostMicrosUsd,
-        listPriceMicrosUsd: m.run.listPriceMicrosUsd,
-      }),
-      createdAt: m.run.createdAt,
-      completedAt: m.run.completedAt,
-    }),
+    run:
+      m.run === null
+        ? null
+        : new RunSummaryResponse({
+            id: m.run.id,
+            status: m.run.status,
+            providerId: m.run.providerId,
+            modelId: m.run.modelId,
+            billingMode: m.run.billingMode,
+            usage: new RunUsageResponse({
+              inputTokens: m.run.inputTokens,
+              outputTokens: m.run.outputTokens,
+              reasoningTokens: m.run.reasoningTokens,
+              cacheReadTokens: m.run.cacheReadTokens,
+              cacheWriteTokens: m.run.cacheWriteTokens,
+              totalTokens: m.run.totalTokens,
+              contextWindowTokens: m.run.contextWindowTokens,
+              actualCostMicrosUsd: m.run.actualCostMicrosUsd,
+              listPriceMicrosUsd: m.run.listPriceMicrosUsd,
+            }),
+            createdAt: m.run.createdAt,
+            completedAt: m.run.completedAt,
+          }),
+    modelCall: m.modelCall,
     encoded: m.encoded,
     createdAt: m.createdAt,
   })
@@ -307,14 +322,20 @@ const appendStoppedQueuedInputs = (
         providerId,
         modelId: rest.join('/') || request.model,
         billingMode: 'api-key',
+        baseNodeId: request.baseNodeId,
       })
       yield* storage.completeRun({ id: runId, status: 'interrupted' })
-      yield* storage.append(sessionId, runId, [
-        {
-          role: 'user' as const,
-          content: request.input,
-        },
-      ])
+      yield* storage.append(
+        sessionId,
+        runId,
+        [
+          {
+            role: 'user' as const,
+            content: request.input,
+          },
+        ],
+        request.baseNodeId
+      )
     })
   )
 
@@ -445,6 +466,7 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
               sessionId: params.id,
               model: payload.model,
               modelOptions: modelOptions(payload.modelOptions),
+              baseNodeId: payload.baseNodeId ?? null,
               inputLength: payload.input.length,
             })
           ),
@@ -477,6 +499,7 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
                 input: payload.input,
                 model: payload.model,
                 modelOptions: modelOptions(payload.modelOptions),
+                baseNodeId: payload.baseNodeId ?? null,
               })
               return Effect.logInfo('Session run request enqueued', {
                 sessionId: params.id,

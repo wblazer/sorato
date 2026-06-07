@@ -1,6 +1,8 @@
 import { basename } from 'node:path'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Option, Schema } from 'effect'
 import { SqlClient } from 'effect/unstable/sql/SqlClient'
+import * as SqlSchema from 'effect/unstable/sql/SqlSchema'
+import { ProjectTableRow } from '../db/schema.ts'
 import {
   ProjectError,
   ProjectStorage,
@@ -9,32 +11,30 @@ import {
   type ProjectStorageApi,
 } from './project.ts'
 
-const SCHEMA = [
-  'PRAGMA foreign_keys = ON',
-  `CREATE TABLE IF NOT EXISTS projects (
-    id             TEXT PRIMARY KEY,
-    name           TEXT NOT NULL,
-    path           TEXT NOT NULL,
-    created_at     INTEGER NOT NULL,
-    updated_at     INTEGER NOT NULL,
-    last_opened_at INTEGER,
-    archived_at    INTEGER
-  )`,
-  'CREATE INDEX IF NOT EXISTS idx_projects_updated ON projects(updated_at)',
-  'CREATE INDEX IF NOT EXISTS idx_projects_archived ON projects(archived_at)',
-]
+const ProjectIdInput = Schema.Struct({
+  id: Schema.String,
+})
 
-interface ProjectRow {
-  id: string
-  name: string
-  path: string
-  created_at: number
-  updated_at: number
-  last_opened_at: number | null
-  archived_at: number | null
-}
+const InsertProjectInput = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  path: Schema.String,
+  created_at: Schema.Number,
+  updated_at: Schema.Number,
+  last_opened_at: Schema.NullOr(Schema.Number),
+})
 
-const toProject = (row: ProjectRow): Project => ({
+const UpdateProjectOpenedInput = Schema.Struct({
+  id: Schema.String,
+  now: Schema.Number,
+})
+
+const ArchiveProjectInput = Schema.Struct({
+  id: Schema.String,
+  now: Schema.Number,
+})
+
+const toProject = (row: ProjectTableRow): Project => ({
   id: row.id,
   name: row.name,
   path: row.path,
@@ -56,9 +56,85 @@ export const SqliteProject = Layer.effect(ProjectStorage)(
   Effect.gen(function* () {
     const sql = yield* SqlClient
 
-    yield* Effect.forEach(SCHEMA, (statement) => sql.unsafe(statement)).pipe(
-      Effect.mapError(sqlFailure('open', 'Failed to initialize projects table'))
-    )
+    const insertProjectRow = SqlSchema.void({
+      Request: InsertProjectInput,
+      execute: ({ id, name, path, created_at, updated_at, last_opened_at }) =>
+        sql`
+          INSERT INTO projects (
+            id,
+            name,
+            path,
+            created_at,
+            updated_at,
+            last_opened_at
+          )
+          VALUES (
+            ${id},
+            ${name},
+            ${path},
+            ${created_at},
+            ${updated_at},
+            ${last_opened_at}
+          )
+        `,
+    })
+
+    const getProjectRow = SqlSchema.findOneOption({
+      Request: ProjectIdInput,
+      Result: ProjectTableRow,
+      execute: ({ id }) =>
+        sql`
+          SELECT
+            id,
+            name,
+            path,
+            created_at,
+            updated_at,
+            last_opened_at,
+            archived_at
+          FROM projects
+          WHERE id = ${id}
+        `,
+    })
+
+    const listProjectRows = SqlSchema.findAll({
+      Request: Schema.Void,
+      Result: ProjectTableRow,
+      execute: () =>
+        sql`
+          SELECT
+            id,
+            name,
+            path,
+            created_at,
+            updated_at,
+            last_opened_at,
+            archived_at
+          FROM projects
+          WHERE archived_at IS NULL
+          ORDER BY COALESCE(last_opened_at, updated_at) DESC
+        `,
+    })
+
+    const updateProjectOpenedRow = SqlSchema.void({
+      Request: UpdateProjectOpenedInput,
+      execute: ({ id, now }) =>
+        sql`
+          UPDATE projects
+          SET last_opened_at = ${now}, updated_at = ${now}
+          WHERE id = ${id}
+        `,
+    })
+
+    const archiveProjectRow = SqlSchema.void({
+      Request: ArchiveProjectInput,
+      execute: ({ id, now }) =>
+        sql`
+          UPDATE projects
+          SET archived_at = ${now}, updated_at = ${now}
+          WHERE id = ${id}
+        `,
+    })
 
     const createLocalDirectory: ProjectStorageApi['createLocalDirectory'] =
       Effect.fn('ProjectStorage.createLocalDirectory')(function* ({
@@ -69,10 +145,14 @@ export const SqliteProject = Layer.effect(ProjectStorage)(
         const now = Date.now()
         const resolvedName = projectName(path, name)
 
-        yield* sql`
-          INSERT INTO projects (id, name, path, created_at, updated_at, last_opened_at)
-          VALUES (${id}, ${resolvedName}, ${path}, ${now}, ${now}, ${now})
-        `.pipe(
+        yield* insertProjectRow({
+          id,
+          name: resolvedName,
+          path,
+          created_at: now,
+          updated_at: now,
+          last_opened_at: now,
+        }).pipe(
           Effect.mapError(
             sqlFailure('createLocalDirectory', 'Failed to create project')
           )
@@ -90,38 +170,32 @@ export const SqliteProject = Layer.effect(ProjectStorage)(
       })
 
     const get = Effect.fn('ProjectStorage.get')(function* (id: ProjectId) {
-      const rows = yield* sql<ProjectRow>`
-        SELECT * FROM projects WHERE id = ${id}
-      `.pipe(Effect.mapError(sqlFailure('get', `Failed to get project: ${id}`)))
-      const row = rows[0]
+      const row = yield* getProjectRow({ id }).pipe(
+        Effect.mapError(sqlFailure('get', `Failed to get project: ${id}`))
+      )
 
-      return yield* Effect.fromNullishOr(row).pipe(
-        Effect.mapError(
-          () =>
+      return yield* Option.match(row, {
+        onNone: () =>
+          Effect.fail(
             new ProjectError({
               operation: 'get',
               message: `Project not found: ${id}`,
             })
-        ),
-        Effect.map(toProject)
-      )
+          ),
+        onSome: (project) => Effect.succeed(toProject(project)),
+      })
     })
 
     const list = Effect.fn('ProjectStorage.list')(function* () {
-      const rows = yield* sql<ProjectRow>`
-        SELECT * FROM projects
-        WHERE archived_at IS NULL
-        ORDER BY COALESCE(last_opened_at, updated_at) DESC
-      `.pipe(Effect.mapError(sqlFailure('list', 'Failed to list projects')))
+      const rows = yield* listProjectRows().pipe(
+        Effect.mapError(sqlFailure('list', 'Failed to list projects'))
+      )
       return rows.map(toProject)
     })
 
     const touch = Effect.fn('ProjectStorage.touch')(function* (id: ProjectId) {
       yield* get(id)
-      const now = Date.now()
-      yield* sql`
-        UPDATE projects SET last_opened_at = ${now}, updated_at = ${now} WHERE id = ${id}
-      `.pipe(
+      yield* updateProjectOpenedRow({ id, now: Date.now() }).pipe(
         Effect.mapError(
           sqlFailure('touch', `Failed to mark project opened: ${id}`)
         )
@@ -132,10 +206,7 @@ export const SqliteProject = Layer.effect(ProjectStorage)(
       id: ProjectId
     ) {
       yield* get(id)
-      const now = Date.now()
-      yield* sql`
-        UPDATE projects SET archived_at = ${now}, updated_at = ${now} WHERE id = ${id}
-      `.pipe(
+      yield* archiveProjectRow({ id, now: Date.now() }).pipe(
         Effect.mapError(
           sqlFailure('archive', `Failed to archive project: ${id}`)
         )

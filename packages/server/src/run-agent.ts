@@ -49,7 +49,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       runId,
       projectId: session.projectId,
       projectPath,
-      headId: session.headId,
+      baseNodeId: request.baseNodeId ?? null,
     })
 
     const resolvedModel = resolveModel(request.model)
@@ -68,6 +68,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       providerId: resolvedModel.providerId,
       modelId: resolvedModel.modelId,
       billingMode,
+      baseNodeId: request.baseNodeId ?? null,
     })
 
     const modelServices = yield* modelLayer(dataDir, {
@@ -89,7 +90,10 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     )
     yield* Effect.logInfo('Agent run resolved model layer', { runId })
 
-    const existingConversation = yield* storage.conversation(sessionId)
+    const existingConversation = yield* storage.conversation(
+      sessionId,
+      request.baseNodeId ?? null
+    )
     const isFirstMessage = existingConversation.content.length === 0
     const shouldSetTitle = Effect.succeed(
       isFirstMessage && session.title === null
@@ -124,7 +128,12 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       Match.orElse(() => [{ role: 'user' as const, content: request.input }])
     )
 
-    yield* storage.append(sessionId, runId, preamble)
+    const preambleNodeIds = yield* storage.append(
+      sessionId,
+      runId,
+      preamble,
+      request.baseNodeId ?? null
+    )
     yield* Effect.logInfo('Agent run appended user input', {
       runId,
       appendedMessages: preamble.length,
@@ -136,12 +145,16 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     yield* Effect.forkDetach(maybeSetTitle)
     yield* Effect.logInfo('Agent run published lifecycle start', { runId })
 
-    const conversation = yield* storage.conversation(sessionId)
+    const conversation = yield* storage.conversation(
+      sessionId,
+      preambleNodeIds.at(-1) ?? request.baseNodeId ?? null
+    )
     const messageCountBeforeRun = conversation.content.length
     yield* Effect.logInfo('Agent run starting harness', {
       runId,
       messageCountBeforeRun,
     })
+    const modelCallStartedAt = Date.now()
 
     yield* sandbox.acquire(projectPath).pipe(
       Effect.tap(() =>
@@ -157,8 +170,11 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
             hooks: [
               createBusHook(sessionId, runId),
               createPersistenceHook(sessionId, runId, messageCountBeforeRun, {
+                providerId: resolvedModel.providerId,
+                modelId: resolvedModel.modelId,
                 billingMode,
                 cost: resolvedModel.model.cost,
+                startedAt: modelCallStartedAt,
               }),
             ],
           }),

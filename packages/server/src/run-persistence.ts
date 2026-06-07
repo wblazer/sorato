@@ -86,25 +86,17 @@ export const createPersistenceHook = (
   runId: string,
   messageCountBeforeRun: number,
   pricing: {
+    readonly providerId: string
+    readonly modelId: string
     readonly billingMode: BillingMode
     readonly cost: CostInfo | undefined
+    readonly startedAt: number | null
   }
 ): HarnessHook<StorageError, SessionStorage> => ({
   name: 'persist',
   handle: (event: HarnessEvent) =>
     Effect.gen(function* () {
       const storage = yield* SessionStorage
-
-      if (event._tag === 'RunUsage') {
-        const usage = pricedUsage(
-          event.usage,
-          pricing.billingMode,
-          pricing.cost,
-          event.contextTokens
-        )
-        if (usage) yield* storage.updateRunUsage(runId, usage)
-        return
-      }
 
       if (event._tag !== 'RunResult') return
       const encoded = yield* Effect.try({
@@ -128,15 +120,17 @@ export const createPersistenceHook = (
         Match.orElse(() => displayMessages)
       )
 
+      const usage = pricedUsage(
+        event.result.usage,
+        pricing.billingMode,
+        pricing.cost,
+        event.result.contextTokens
+      )
+
       yield* storage.completeRun({
         id: runId,
         status: event.interrupted ? 'interrupted' : 'completed',
-        usage: pricedUsage(
-          event.result.usage,
-          pricing.billingMode,
-          pricing.cost,
-          event.result.contextTokens
-        ),
+        usage,
       })
       if (newMessages.length === 0) return
 
@@ -147,7 +141,24 @@ export const createPersistenceHook = (
         interrupted: event.interrupted,
       })
 
-      yield* storage.append(sessionId, runId, newMessages)
+      const nodeIds = yield* storage.append(sessionId, runId, newMessages)
+      const assistantIndex = newMessages.findLastIndex(
+        (message) => message.role === 'assistant'
+      )
+      const assistantNodeId =
+        assistantIndex === -1 ? undefined : nodeIds[assistantIndex]
+      if (usage && assistantNodeId !== undefined) {
+        yield* storage.createModelCall({
+          sessionId,
+          runId,
+          assistantNodeId,
+          providerId: pricing.providerId,
+          modelId: pricing.modelId,
+          billingMode: pricing.billingMode,
+          startedAt: pricing.startedAt,
+          ...usage,
+        })
+      }
       publish({ _tag: 'MessagesAppended', sessionId })
       publish({ _tag: 'SessionUpdated', sessionId })
     }).pipe(

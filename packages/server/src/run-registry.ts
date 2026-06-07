@@ -6,6 +6,7 @@ export interface RunRequest {
   readonly input: string
   readonly model: string
   readonly modelOptions: ModelOptions
+  readonly baseNodeId: string | null
 }
 
 interface SessionRunState {

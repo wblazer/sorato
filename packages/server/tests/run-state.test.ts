@@ -21,6 +21,7 @@ const runRequest = (input: string): RunRequest => ({
   input,
   model: 'openai/gpt-5.5',
   modelOptions: {},
+  baseNodeId: null,
 })
 
 describe('RunRegistry', () => {
