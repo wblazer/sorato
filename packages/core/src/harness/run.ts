@@ -29,6 +29,7 @@ import type { LanguageModel } from 'effect/unstable/ai'
 import type {
   HarnessConfig,
   HarnessEvent,
+  HarnessModelCall,
   HarnessResult,
   HarnessUsage,
 } from './harness.ts'
@@ -102,6 +103,7 @@ const addUsage = (left: RunUsage | undefined, right: RunUsage): RunUsage => ({
 interface RunState {
   outputText: string
   currentTurnParts: Array<Prompt.TextPart | Prompt.ReasoningPart>
+  modelCalls: Array<HarnessModelCall>
   usage: RunUsage | undefined
   contextTokens: number | undefined
 }
@@ -180,6 +182,7 @@ export const run = <
     const state: RunState = {
       outputText: '',
       currentTurnParts: [],
+      modelCalls: [],
       usage: undefined,
       contextTokens: undefined,
     }
@@ -194,6 +197,7 @@ export const run = <
       prompt: Prompt.RawInput
     ) {
       let hadToolCalls = false
+      const startedAt = Date.now()
       state.currentTurnParts = []
       yield* Effect.logDebug('Harness turn starting', { turn })
 
@@ -305,6 +309,12 @@ export const run = <
               // interrupt path knows there's nothing to recover.
               state.currentTurnParts = []
               if (usage) {
+                state.modelCalls.push({
+                  usage,
+                  contextTokens: usage.totalTokens,
+                  startedAt,
+                  finishedAt: Date.now(),
+                })
                 state.usage = addUsage(state.usage, usage)
                 state.contextTokens = usage.totalTokens
               }
@@ -320,11 +330,13 @@ export const run = <
                 })
               ),
               Effect.flatMap(() =>
-                state.usage
+                usage
                   ? fireHooks(config, {
                       _tag: 'RunUsage',
-                      usage: state.usage,
-                      contextTokens: state.contextTokens,
+                      usage,
+                      contextTokens: usage.totalTokens,
+                      startedAt,
+                      finishedAt: Date.now(),
                     })
                   : Effect.void
               )
@@ -408,6 +420,7 @@ export const run = <
         toolResultHeaders,
         toolResultBodyDisplays,
         text: state.outputText,
+        modelCalls: state.modelCalls,
         usage: state.usage,
         contextTokens: state.contextTokens,
       } satisfies HarnessResult

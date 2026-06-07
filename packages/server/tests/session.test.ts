@@ -77,7 +77,6 @@ const append = (
       messages,
       resolvedBaseNodeId
     )
-    yield* storage.completeRun({ id: runId, status: 'completed' })
 
     return nodeIds
   })

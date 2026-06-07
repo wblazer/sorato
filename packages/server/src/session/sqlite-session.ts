@@ -557,12 +557,6 @@ export const SqliteSession = (options: { readonly path: string }) =>
         )
       })
 
-      const completeRun: SessionStorageApi['completeRun'] = Effect.fn(
-        'SessionStorage.completeRun'
-      )(function* () {
-        // Persisted runs are provenance only; active status remains in server memory.
-      })
-
       const getRun: SessionStorageApi['getRun'] = Effect.fn(
         'SessionStorage.getRun'
       )(function* (id) {
@@ -769,7 +763,6 @@ export const SqliteSession = (options: { readonly path: string }) =>
         get,
         list,
         createRun,
-        completeRun,
         getRun,
         createModelCall,
         setTitle,

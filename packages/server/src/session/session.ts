@@ -106,13 +106,6 @@ export interface CreateRunInput {
   readonly createdAt?: number
 }
 
-export interface CompleteRunInput {
-  readonly id: RunId
-  readonly status: Exclude<RunStatus, 'running'>
-  readonly usage?: RunUsage | undefined
-  readonly completedAt?: number
-}
-
 /** A session — a container for a tree of messages. */
 export interface Session {
   readonly id: SessionId
@@ -250,9 +243,6 @@ export interface SessionStorageApi {
 
   /** Create a run envelope for messages and usage caused by one execution. */
   readonly createRun: (input: CreateRunInput) => Effect<void, StorageError>
-
-  /** Compatibility no-op until callers stop using run completion. */
-  readonly completeRun: (input: CompleteRunInput) => Effect<void, StorageError>
 
   /** Get a persisted run. */
   readonly getRun: (id: RunId) => Effect<Run, StorageError>

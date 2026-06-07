@@ -64,6 +64,13 @@ function createMessagesStore() {
     }
   }
 
+  const resetCursor = (sessionId: string, runId?: string) => {
+    const prev = getLastCursor(sessionId)
+    if (runId === undefined || prev?.runId === runId) {
+      lastCursors.delete(sessionId)
+    }
+  }
+
   function closeSessionStream() {
     streamConnection?.close()
     streamConnection = null
@@ -208,6 +215,7 @@ function createMessagesStore() {
     loaded = true
     error = null
     streamingParts = []
+    resetCursor(sessionId)
     activeRunId = null
     activeRunBaseNodeId = null
     openSessionStream(sessionId)
@@ -223,8 +231,11 @@ function createMessagesStore() {
   async function loadMessages(sessionId: string) {
     const hasExisting = currentSessionId === sessionId && messages.length > 0
 
-    // Reset current turn parts when changing sessions.
+    // Reset current turn parts when loading/opening a session. Since the
+    // local in-flight parts are gone, the next stream must replay from the
+    // beginning of the active run rather than from a stale cursor.
     streamingParts = []
+    resetCursor(sessionId)
     activeRunId = null
     activeRunBaseNodeId = null
     error = null
@@ -341,6 +352,7 @@ function createMessagesStore() {
         messages = fresh
         if (opts?.clearPartsForRun) {
           streamingParts = []
+          resetCursor(sessionId, opts.clearPartsForRun)
           if (activeRunId === opts.clearPartsForRun) {
             activeRunId = null
             activeRunBaseNodeId = null
@@ -368,6 +380,7 @@ function createMessagesStore() {
 
   /** Reset all state. Called when SessionView unmounts. */
   function clear() {
+    const sessionId = currentSessionId
     closeSessionStream()
     messages = []
     currentSessionId = null
@@ -375,6 +388,7 @@ function createMessagesStore() {
     loaded = false
     error = null
     streamingParts = []
+    if (sessionId) resetCursor(sessionId)
     activeRunId = null
     activeRunBaseNodeId = null
   }

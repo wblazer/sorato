@@ -152,7 +152,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       wasEmptySession: isFirstMessage,
     })
     publish({ _tag: 'MessagesAppended', sessionId })
-    startEventReplay(sessionId, runId)
+    startEventReplay(sessionId, runId, request.baseNodeId)
     publish({
       _tag: 'RunStart',
       sessionId,
@@ -172,7 +172,6 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       runId,
       messageCountBeforeRun,
     })
-    const modelCallStartedAt = Date.now()
 
     yield* sandbox.acquire(projectPath).pipe(
       Effect.tap(() =>
@@ -197,7 +196,6 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                   modelId: resolvedModel.modelId,
                   billingMode,
                   cost: resolvedModel.model.cost,
-                  startedAt: modelCallStartedAt,
                 }
               ),
             ],
@@ -220,10 +218,6 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
           yield* Effect.logInfo('Agent run interrupted', { runId })
         } else {
           runFailed = true
-          const storage = yield* SessionStorage
-          yield* storage
-            .completeRun({ id: runId, status: 'failed' })
-            .pipe(Effect.catch(() => Effect.void))
           yield* Effect.logError('Agent run failed', {
             runId,
             cause: Cause.pretty(cause),

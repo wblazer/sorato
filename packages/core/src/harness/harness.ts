@@ -38,6 +38,14 @@ export interface HarnessUsage {
   readonly totalTokens: number
 }
 
+export interface HarnessModelCall {
+  readonly usage: HarnessUsage
+  /** Latest model call's total context after response. */
+  readonly contextTokens: number | undefined
+  readonly startedAt: number
+  readonly finishedAt: number
+}
+
 export type HarnessEvent =
   | { readonly _tag: 'RunStart' }
   | { readonly _tag: 'TextDelta'; readonly delta: string }
@@ -60,10 +68,12 @@ export type HarnessEvent =
     }
   | {
       readonly _tag: 'RunUsage'
-      /** Aggregate provider-reported usage observed so far for this run. */
+      /** Provider-reported usage for the model call that just finished. */
       readonly usage: HarnessUsage
-      /** Latest model call's total context after response, not run aggregate. */
+      /** This model call's total context after response. */
       readonly contextTokens: number | undefined
+      readonly startedAt: number
+      readonly finishedAt: number
     }
   | {
       readonly _tag: 'RunEnd'
@@ -149,6 +159,8 @@ export interface HarnessResult {
   >
   /** The concatenated text from all assistant messages across all turns. */
   readonly text: string
+  /** Per-model-call provider-reported token usage. */
+  readonly modelCalls: ReadonlyArray<HarnessModelCall>
   /** Aggregate provider-reported token usage across the run. */
   readonly usage: HarnessUsage | undefined
   /** Latest model call's total context after response, not run aggregate. */

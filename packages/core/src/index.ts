@@ -27,6 +27,7 @@ export type {
   HarnessEvent,
   HarnessHook,
   HarnessConfig,
+  HarnessModelCall,
   HarnessResult,
   HarnessUsage,
 } from './harness/harness.ts'

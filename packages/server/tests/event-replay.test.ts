@@ -32,6 +32,7 @@ describe('EventReplay', () => {
 
     expect(getReplaySnapshot('session-1')).toEqual({
       runId: 'run-1',
+      baseNodeId: null,
       events: [
         {
           _tag: 'TextDelta',

@@ -409,7 +409,6 @@ const appendStoppedQueuedInputs = (
         billingMode: 'api-key',
         baseNodeId: request.baseNodeId,
       })
-      yield* storage.completeRun({ id: runId, status: 'interrupted' })
       yield* storage.append(
         sessionId,
         runId,

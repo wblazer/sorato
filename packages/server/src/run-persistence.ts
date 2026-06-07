@@ -91,7 +91,6 @@ export const createPersistenceHook = (
     readonly modelId: string
     readonly billingMode: BillingMode
     readonly cost: CostInfo | undefined
-    readonly startedAt: number | null
   }
 ): HarnessHook<StorageError, SessionStorage> => ({
   name: 'persist',
@@ -121,18 +120,17 @@ export const createPersistenceHook = (
         Match.orElse(() => displayMessages)
       )
 
-      const usage = pricedUsage(
-        event.result.usage,
-        pricing.billingMode,
-        pricing.cost,
-        event.result.contextTokens
-      )
+      const modelCallUsages = event.result.modelCalls.map((modelCall) => ({
+        usage: pricedUsage(
+          modelCall.usage,
+          pricing.billingMode,
+          pricing.cost,
+          modelCall.contextTokens
+        ),
+        startedAt: modelCall.startedAt,
+        finishedAt: modelCall.finishedAt,
+      }))
 
-      yield* storage.completeRun({
-        id: runId,
-        status: event.interrupted ? 'interrupted' : 'completed',
-        usage,
-      })
       if (newMessages.length === 0) return
 
       yield* Effect.logInfo('Persisting run messages', {
@@ -148,23 +146,31 @@ export const createPersistenceHook = (
         newMessages,
         appendBaseNodeId
       )
-      const assistantIndex = newMessages.findLastIndex(
-        (message) => message.role === 'assistant'
+      const assistantNodeIds = newMessages.flatMap((message, index) => {
+        const nodeId = nodeIds[index]
+        return message.role === 'assistant' && nodeId !== undefined
+          ? [nodeId]
+          : []
+      })
+      yield* Effect.forEach(
+        assistantNodeIds,
+        (assistantNodeId, index) => {
+          const modelCallUsage = modelCallUsages[index]
+          if (!modelCallUsage?.usage) return Effect.void
+          return storage.createModelCall({
+            sessionId,
+            runId,
+            assistantNodeId,
+            providerId: pricing.providerId,
+            modelId: pricing.modelId,
+            billingMode: pricing.billingMode,
+            startedAt: modelCallUsage.startedAt,
+            finishedAt: modelCallUsage.finishedAt,
+            ...modelCallUsage.usage,
+          })
+        },
+        { discard: true }
       )
-      const assistantNodeId =
-        assistantIndex === -1 ? undefined : nodeIds[assistantIndex]
-      if (usage && assistantNodeId !== undefined) {
-        yield* storage.createModelCall({
-          sessionId,
-          runId,
-          assistantNodeId,
-          providerId: pricing.providerId,
-          modelId: pricing.modelId,
-          billingMode: pricing.billingMode,
-          startedAt: pricing.startedAt,
-          ...usage,
-        })
-      }
       publish({ _tag: 'MessagesAppended', sessionId })
       publish({ _tag: 'SessionUpdated', sessionId })
     }).pipe(

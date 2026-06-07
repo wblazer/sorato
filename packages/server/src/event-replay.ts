@@ -14,6 +14,7 @@ export type ReplayResetReason =
 interface ActiveReplayState {
   readonly status: 'active'
   readonly runId: string
+  readonly baseNodeId: string | null
   nextEventId: number
   readonly events: ContentEvent[]
 }
@@ -37,10 +38,15 @@ const buffers = new Map<string, ReplayState>()
 const MAX_REPLAY_EVENTS = 5000
 const MAX_FINISHED_STATES = 1000
 
-export function startEventReplay(sessionId: string, runId: string): void {
+export function startEventReplay(
+  sessionId: string,
+  runId: string,
+  baseNodeId: string | null = null
+): void {
   buffers.set(sessionId, {
     status: 'active',
     runId,
+    baseNodeId,
     nextEventId: 1,
     events: [],
   })
@@ -79,14 +85,17 @@ export function endEventReplay(
   }
 }
 
-export function getReplaySnapshot(
-  sessionId: string
-): { readonly runId: string; readonly events: readonly ContentEvent[] } | null {
+export function getReplaySnapshot(sessionId: string): {
+  readonly runId: string
+  readonly baseNodeId: string | null
+  readonly events: readonly ContentEvent[]
+} | null {
   const state = buffers.get(sessionId)
   if (!state || state.status !== 'active') return null
 
   return {
     runId: state.runId,
+    baseNodeId: state.baseNodeId,
     events: [...state.events],
   }
 }
