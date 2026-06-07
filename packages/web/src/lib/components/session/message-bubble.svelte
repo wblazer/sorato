@@ -8,6 +8,7 @@
     type TranscriptItem,
   } from '$lib/transcript.js'
   import * as Accordion from '$lib/components/ui/accordion/index.js'
+  import AssistantTranscript from './assistant-transcript.svelte'
   import MessagePartComponent from './message-part.svelte'
   import ToolCallResult from './tool-call-result.svelte'
 
@@ -35,6 +36,7 @@
 
   const isUser = $derived(role === 'user')
   const isSystem = $derived(role === 'system')
+  const isAssistant = $derived(role === 'assistant')
   const isInterruption = $derived(
     renderParts.length === 1 && renderParts[0]?.type === 'interruption'
   )
@@ -48,51 +50,10 @@
   )
   let systemOpenItems = $state(['content'])
 
-  const transcriptItemKind = (item: TranscriptItem): string => {
-    if (item.type === 'combined-tool') return 'tool'
-    if (item.type === 'message') {
-      return item.part.type === 'tool-call' || item.part.type === 'tool-result'
-        ? 'tool'
-        : item.part.type
-    }
-    return item.type
-  }
-
-  const formatCost = (micros: number): string =>
-    Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: micros === 0 ? 0 : 4,
-    }).format(micros / 1_000_000)
-
-  const formatDuration = (milliseconds: number): string => {
-    const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000))
-    const hours = Math.floor(totalSeconds / 3600)
-    const minutes = Math.floor((totalSeconds % 3600) / 60)
-    const seconds = totalSeconds % 60
-
-    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`
-    if (minutes > 0) return `${minutes}m ${seconds}s`
-    return `${seconds}s`
-  }
-
-  const runtimeLine = $derived.by(() => {
-    if (modelCall === null || role !== 'assistant') return null
-    if (modelCall.startedAt === null) return null
-
-    return formatDuration(modelCall.finishedAt - modelCall.startedAt)
-  })
-
-  const costLine = $derived.by(() => {
-    if (modelCall === null || role !== 'assistant') return null
-    if (modelCall.actualCostMicrosUsd === null) return null
-
-    return formatCost(modelCall.actualCostMicrosUsd)
-  })
 </script>
 
 {#if renderParts.length > 0}
-  <div class="flex flex-col gap-2 py-2.5">
+  <div class={isAssistant ? '' : 'flex flex-col gap-2 py-2.5'}>
     {#if isInterruption}
     <div class="flex items-center gap-3 py-1 text-sm font-medium text-muted-foreground">
       <div class="h-px flex-1 bg-border"></div>
@@ -162,64 +123,7 @@
       </Accordion.Item>
     </Accordion.Root>
     {:else}
-    <div class="assistant-message">
-      {#each renderParts as item}
-        <div class="assistant-transcript-item" data-transcript-kind={transcriptItemKind(item)}>
-          {#if item.type === 'combined-tool'}
-            <ToolCallResult call={item.call} result={item.result} />
-          {:else if item.type === 'interruption'}
-            <div class="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              <div class="h-px flex-1 bg-border"></div>
-              <span>Interrupted</span>
-              <div class="h-px flex-1 bg-border"></div>
-            </div>
-          {:else}
-            <MessagePartComponent part={item.part} monospace={false} />
-          {/if}
-        </div>
-      {/each}
-      {#if modelCall !== null && (runtimeLine !== null || costLine !== null)}
-        <div class="assistant-meta mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-          {#if runtimeLine}
-            <span>{runtimeLine}</span>
-          {/if}
-          {#if costLine}
-            {#if runtimeLine}
-              <span>·</span>
-            {/if}
-            <span>{costLine}</span>
-          {/if}
-        </div>
-      {/if}
-    </div>
+    <AssistantTranscript items={renderParts} {modelCall} />
     {/if}
   </div>
 {/if}
-
-<style>
-  .assistant-transcript-item + .assistant-transcript-item {
-    margin-top: 0.75rem;
-  }
-
-  .assistant-transcript-item[data-transcript-kind='tool']
-    + .assistant-transcript-item[data-transcript-kind='tool'] {
-    margin-top: 0.5rem;
-  }
-
-  .assistant-transcript-item[data-transcript-kind='tool']
-    + .assistant-transcript-item:not([data-transcript-kind='tool']),
-  .assistant-transcript-item:not([data-transcript-kind='tool'])
-    + .assistant-transcript-item[data-transcript-kind='tool'] {
-    margin-top: 1.25rem;
-  }
-
-  .assistant-meta {
-    opacity: 0;
-    transition: opacity 120ms ease;
-  }
-
-  .assistant-message:hover .assistant-meta,
-  .assistant-message:focus-within .assistant-meta {
-    opacity: 1;
-  }
-</style>
