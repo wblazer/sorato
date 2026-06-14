@@ -18,6 +18,18 @@ Bun workspaces. Packages depend on each other via `workspace:*`.
 - `packages/server/` — local coordinator/server: sessions, model availability, runtime config, SSE, HTTP. See `packages/server/DOCS.md`.
 - `packages/web/` — web UI with multi-server connection management. See `packages/web/DOCS.md`.
 
+## Reference Repos
+
+`.reference/` holds read-only clones of upstream projects for consulting real-world source and drawing inspiration. They are gitignored; the pinned refs live in `.reference/manifest.json`. If the directory is missing or stale, run `bun run reference:sync` (see `scripts/sync-reference.ts`).
+
+- `effect-v4` — Effect's own source (effect-smol), pinned to the version we use; the canonical reference for Effect APIs, internals, and idioms.
+- `pi` — Minimal, extensible agent harness. Reference for plugin system and harness patterns
+- `opencode` — Agent harness with very similar client/server architecture. In the process of adopting Effect. Reference for Effect and harness design patterns.
+- `codex` — OpenAI's Codex. Reference for frontier lab coding agent.
+- `t3code` — Web GUI for interacting with other harnesses like Claude Code, Codex, and OpenCode. High quality Effect codebase and Electron app.
+- `alchemy-effect` — Alchemy, infrastructure-as-Effect; reference for structuring services, layers, and resource lifecycles in Effect. Also reference for using Alchemy for deploying resources.
+- `distilled` — Effect-native cloud provider SDKs with exhaustive error typing, retry policies, and streaming pagination; reference for Effect patterns.
+
 ## Development Commands
 
 ```bash

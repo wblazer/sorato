@@ -42,7 +42,11 @@ data
 # benchmark results
 .results
 
-.reference
+# Re-include the dir (a global ~/.config/git/ignore excludes `.reference/`),
+# ignore the cloned repos, but keep the committed manifest.
+!.reference/
+.reference/*
+!.reference/manifest.json
 
 .screenshots
 

@@ -1,0 +1,40 @@
+{
+  "$schema": "./manifest.schema.json",
+  "repos": [
+    {
+      "name": "effect-v4",
+      "url": "https://github.com/effect-TS/effect-smol.git",
+      "ref": "effect@4.0.0-beta.74"
+    },
+    {
+      "name": "opencode",
+      "url": "https://github.com/anomalyco/opencode.git",
+      "ref": "latest"
+    },
+    {
+      "name": "pi",
+      "url": "https://github.com/earendil-works/pi.git",
+      "ref": "latest"
+    },
+    {
+      "name": "t3code",
+      "url": "https://github.com/pingdotgg/t3code.git",
+      "ref": "latest"
+    },
+    {
+      "name": "codex",
+      "url": "https://github.com/openai/codex.git",
+      "ref": "latest"
+    },
+    {
+      "name": "alchemy-effect",
+      "url": "https://github.com/alchemy-run/alchemy-effect.git",
+      "ref": "latest"
+    },
+    {
+      "name": "distilled",
+      "url": "https://github.com/alchemy-run/distilled.git",
+      "ref": "latest"
+    }
+  ]
+}
