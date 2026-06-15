@@ -88,6 +88,11 @@ export interface AnthropicConfig {
   readonly capabilities: AnthropicModelCapabilities
   /** Extended-thinking configuration. Omit to disable thinking. */
   readonly thinking?: AnthropicThinking | undefined
+  /**
+   * Fast mode. When enabled, requests `speed: "fast"` and sends the fast-mode
+   * beta header. Only supported on models that advertise it (Opus 4 family).
+   */
+  readonly fast?: boolean | undefined
   /** Prompt-cache configuration. Defaults to enabled, 5m TTL. */
   readonly cache?: AnthropicCache | undefined
   /** Override max_tokens; defaults to capabilities.maxOutputTokens. */
@@ -97,6 +102,9 @@ export interface AnthropicConfig {
 
 const DEFAULT_API_URL = 'https://api.anthropic.com'
 const DEFAULT_VERSION = '2023-06-01'
+
+// Beta gate for fast mode (`speed: "fast"`), required alongside the body field.
+const FAST_MODE_BETA = 'fast-mode-2026-02-01'
 
 // Anthropic accepts at most 4 explicit cache_control breakpoints per request,
 // across `tools`, `system`, and `messages`. Beyond the cap the API returns a
@@ -597,6 +605,7 @@ const buildPayload = (
     ...(thinking.output_config !== undefined
       ? { output_config: thinking.output_config }
       : {}),
+    ...(config.fast === true ? { speed: 'fast' } : {}),
   }
 }
 
@@ -641,25 +650,58 @@ const usageEncoded = (
 // HTTP
 // =============================================================================
 
-const postMessages = (
+const sendMessages = (
   client: HttpClient.HttpClient,
   config: AnthropicConfig,
-  payload: Record<string, unknown>
+  options: LanguageModel.ProviderOptions,
+  stream: boolean
 ) =>
   HttpClientRequest.post('/v1/messages').pipe(
     HttpClientRequest.prependUrl(config.apiUrl ?? DEFAULT_API_URL),
     HttpClientRequest.setHeaders({
       'x-api-key': config.apiKey,
       'anthropic-version': config.anthropicVersion ?? DEFAULT_VERSION,
+      ...(config.fast === true ? { 'anthropic-beta': FAST_MODE_BETA } : {}),
     }),
-    HttpClientRequest.bodyJsonUnsafe(payload),
+    HttpClientRequest.bodyJsonUnsafe(buildPayload(config, options, stream)),
     client.execute,
     Effect.flatMap(ensureOk('anthropic', 'AnthropicMessages', 'postMessages')),
     Effect.mapError((cause) =>
       AiError.isAiError(cause) ? cause : new AnthropicTransportError({ cause })
-    ),
-    (effect) => retryProviderRequest(effect, config.onRetry)
+    )
   )
+
+/**
+ * Issue a Messages request, transparently falling back to standard speed when
+ * fast mode is rate limited.
+ *
+ * Fast mode has a small dedicated rate-limit pool separate from standard Opus;
+ * exhausting it returns a 429 even for tiny prompts. Per Anthropic's guidance,
+ * the right response is to retry the request without `speed: "fast"` rather
+ * than wait on the fast pool. We make a single fast attempt, then fall back to
+ * the standard-speed request (which carries the normal retry/backoff schedule).
+ */
+const postMessages = (
+  client: HttpClient.HttpClient,
+  config: AnthropicConfig,
+  options: LanguageModel.ProviderOptions,
+  stream: boolean
+) => {
+  const standard = retryProviderRequest(
+    sendMessages(client, { ...config, fast: false }, options, stream),
+    config.onRetry
+  )
+
+  if (config.fast !== true) return standard
+
+  // One fast attempt; on a fast-mode rate limit, drop to standard speed.
+  return sendMessages(client, config, options, stream).pipe(
+    Effect.catchIf(isRateLimitError, () => standard)
+  )
+}
+
+const isRateLimitError = (error: unknown): boolean =>
+  AiError.isAiError(error) && error.reason._tag === 'RateLimitError'
 
 // =============================================================================
 // Streaming hook
@@ -678,10 +720,8 @@ type BlockState =
 const streamHook =
   (client: HttpClient.HttpClient, config: AnthropicConfig) =>
   (options: LanguageModel.ProviderOptions) => {
-    const payload = buildPayload(config, options, true)
-
     const build = Effect.gen(function* () {
-      const response = yield* postMessages(client, config, payload)
+      const response = yield* postMessages(client, config, options, true)
       const timestamp = DateTime.formatIso(yield* DateTime.now)
       const request = {
         method: response.request.method,
@@ -840,8 +880,7 @@ const generateHook =
   (client: HttpClient.HttpClient, config: AnthropicConfig) =>
   (options: LanguageModel.ProviderOptions) =>
     Effect.gen(function* () {
-      const payload = buildPayload(config, options, false)
-      const response = yield* postMessages(client, config, payload)
+      const response = yield* postMessages(client, config, options, false)
       const message = yield* response.json.pipe(
         Effect.flatMap(Schema.decodeUnknownEffect(MessageResponse))
       )

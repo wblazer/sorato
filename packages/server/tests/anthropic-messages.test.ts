@@ -55,15 +55,19 @@ const CANNED_SSE = [
   ``,
 ].join('\n')
 
-const stubHttpClient = (capturedBody: { value: unknown }) =>
+type Captured = {
+  value: unknown
+  headers: Readonly<Record<string, string>>
+}
+
+const stubHttpClient = (captured: Captured) =>
   HttpClient.make((request) =>
     Effect.sync(() => {
-      // Capture the outgoing request body so we can assert the translation.
+      // Capture the outgoing request body + headers to assert the translation.
       if (request.body._tag === 'Uint8Array') {
-        capturedBody.value = JSON.parse(
-          new TextDecoder().decode(request.body.body)
-        )
+        captured.value = JSON.parse(new TextDecoder().decode(request.body.body))
       }
+      captured.headers = request.headers
       return HttpClientResponse.fromWeb(
         request,
         new globalThis.Response(CANNED_SSE, {
@@ -84,7 +88,7 @@ interface RunOptions {
 
 const run = (opts: RunOptions = {}) =>
   Effect.gen(function* () {
-    const captured = { value: undefined as unknown }
+    const captured: Captured = { value: undefined, headers: {} }
     const stream = LanguageModel.streamText({
       prompt: opts.prompt ?? 'Say hello and list files',
       toolkit,
@@ -106,7 +110,7 @@ const run = (opts: RunOptions = {}) =>
         )
       )
     )
-    return { parts, body: captured.value as Body }
+    return { parts, body: captured.value as Body, headers: captured.headers }
   })
 
 // Count cache_control markers across tools, system, and message blocks.
@@ -226,6 +230,96 @@ describe('AnthropicMessages LanguageModel seam', () => {
       })
       expect(body.thinking).toEqual({ type: 'adaptive' })
       expect(body.output_config).toEqual({ effort: 'high' })
+    })
+  )
+
+  it.effect('emits fast mode: speed body field + beta header', () =>
+    Effect.gen(function* () {
+      const { body, headers } = yield* run({ config: { fast: true } })
+      expect(body.speed).toBe('fast')
+      expect(headers['anthropic-beta']).toBe('fast-mode-2026-02-01')
+    })
+  )
+
+  it.effect('omits fast mode by default', () =>
+    Effect.gen(function* () {
+      const { body, headers } = yield* run()
+      expect(body).not.toHaveProperty('speed')
+      expect(headers).not.toHaveProperty('anthropic-beta')
+    })
+  )
+
+  it.effect('falls back to standard speed when fast mode is rate limited', () =>
+    Effect.gen(function* () {
+      const attempts: Array<{
+        readonly body: Body
+        readonly headers: Readonly<Record<string, string>>
+      }> = []
+
+      // Reject the fast attempt with a 429, accept the standard retry.
+      const stub = HttpClient.make((request) =>
+        Effect.sync(() => {
+          const body =
+            request.body._tag === 'Uint8Array'
+              ? (JSON.parse(
+                  new TextDecoder().decode(request.body.body)
+                ) as Body)
+              : ({} as Body)
+          attempts.push({ body, headers: request.headers })
+
+          if (body.speed === 'fast') {
+            return HttpClientResponse.fromWeb(
+              request,
+              new globalThis.Response(
+                JSON.stringify({
+                  type: 'error',
+                  error: { type: 'rate_limit_error', message: 'slow down' },
+                }),
+                {
+                  status: 429,
+                  headers: { 'content-type': 'application/json' },
+                }
+              )
+            )
+          }
+
+          return HttpClientResponse.fromWeb(
+            request,
+            new globalThis.Response(CANNED_SSE, {
+              status: 200,
+              headers: { 'content-type': 'text/event-stream' },
+            })
+          )
+        })
+      )
+
+      const parts = yield* Stream.runCollect(
+        LanguageModel.streamText({ prompt: 'hi', toolkit })
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            anthropicLayer({
+              model: 'claude-opus-4-8',
+              apiKey: 'test-key',
+              capabilities: { maxOutputTokens: 64000 },
+              fast: true,
+            }).pipe(Layer.provide(Layer.succeed(HttpClient.HttpClient, stub))),
+            ToolkitLayer
+          )
+        )
+      )
+
+      // The run completes (no failure) by retrying without fast mode.
+      expect(parts.map((p) => p.type)).toContain('finish')
+
+      // First attempt was fast; the fallback dropped speed + beta header.
+      expect(attempts.length).toBe(2)
+      expect(attempts[0]?.body.speed).toBe('fast')
+      expect(attempts[0]?.headers['anthropic-beta']).toBe(
+        'fast-mode-2026-02-01'
+      )
+      expect(attempts[1]?.body).not.toHaveProperty('speed')
+      expect(attempts[1]?.headers).not.toHaveProperty('anthropic-beta')
     })
   )
 })

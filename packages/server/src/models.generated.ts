@@ -177,6 +177,16 @@ export const MODEL_PROVIDERS = [
             output: 128000,
           },
           modes: ['fast'],
+          modeOverrides: {
+            fast: {
+              body: {
+                speed: 'fast',
+              },
+              headers: {
+                'anthropic-beta': 'fast-mode-2026-02-01',
+              },
+            },
+          },
         },
       },
       {
@@ -237,6 +247,16 @@ export const MODEL_PROVIDERS = [
             output: 128000,
           },
           modes: ['fast'],
+          modeOverrides: {
+            fast: {
+              body: {
+                speed: 'fast',
+              },
+              headers: {
+                'anthropic-beta': 'fast-mode-2026-02-01',
+              },
+            },
+          },
         },
       },
       {
@@ -437,6 +457,16 @@ export const MODEL_PROVIDERS = [
             output: 128000,
           },
           modes: ['fast'],
+          modeOverrides: {
+            fast: {
+              body: {
+                speed: 'fast',
+              },
+              headers: {
+                'anthropic-beta': 'fast-mode-2026-02-01',
+              },
+            },
+          },
         },
       },
       {
@@ -1242,6 +1272,13 @@ export const MODEL_PROVIDERS = [
             output: 128000,
           },
           modes: ['fast'],
+          modeOverrides: {
+            fast: {
+              body: {
+                service_tier: 'priority',
+              },
+            },
+          },
         },
       },
       {
@@ -1270,6 +1307,13 @@ export const MODEL_PROVIDERS = [
             output: 128000,
           },
           modes: ['fast'],
+          modeOverrides: {
+            fast: {
+              body: {
+                service_tier: 'priority',
+              },
+            },
+          },
         },
       },
       {
@@ -1650,6 +1694,13 @@ export const MODEL_PROVIDERS = [
             output: 128000,
           },
           modes: ['fast'],
+          modeOverrides: {
+            fast: {
+              body: {
+                service_tier: 'priority',
+              },
+            },
+          },
         },
       },
     ],

@@ -52,10 +52,58 @@ const modelIds = (provider: ProviderId): ReadonlySet<string> =>
 const anthropicCatalogModels = modelIds('anthropic')
 const openAiModels = modelIds('openai')
 
-const anthropicOutputLimit = (modelId: string) =>
-  MODEL_PROVIDERS.find((item) => item.id === 'anthropic')?.models.find(
+const catalogModel = (provider: ProviderId, modelId: string) =>
+  MODEL_PROVIDERS.find((item) => item.id === provider)?.models.find(
     (model) => model.id === modelId
-  )?.capabilities.limits.output ?? 4096
+  )
+
+const anthropicOutputLimit = (modelId: string) =>
+  catalogModel('anthropic', modelId)?.capabilities.limits.output ?? 4096
+
+type ModeOverride = {
+  readonly body?: Readonly<Record<string, unknown>>
+  readonly headers?: Readonly<Record<string, string>>
+}
+
+const modeOverridesOf = (
+  capabilities: object
+): Readonly<Record<string, ModeOverride>> | undefined =>
+  'modeOverrides' in capabilities
+    ? (capabilities.modeOverrides as Readonly<Record<string, ModeOverride>>)
+    : undefined
+
+/**
+ * The request-body override the catalog declares for the selected mode, sourced
+ * from models.dev `experimental.modes`. Returns undefined when no mode is
+ * selected or the model declares no override for it.
+ *
+ * Modes are model-specific and not interchangeable: e.g. OpenAI's `fast` mode
+ * maps to `service_tier: 'priority'` (not `flex`, which OpenAI rejects with a
+ * 400), while Anthropic's `fast` maps to `speed: 'fast'`. Driving behavior from
+ * this data — rather than guessing — keeps us from sending values a model
+ * rejects.
+ */
+const modeBody = (
+  provider: ProviderId,
+  selection: ModelSelection
+): Readonly<Record<string, unknown>> | undefined => {
+  if (selection.mode === undefined) return undefined
+  const model = catalogModel(provider, selection.id)
+  if (model === undefined) return undefined
+  return modeOverridesOf(model.capabilities)?.[selection.mode]?.body
+}
+
+export const modeServiceTier = (
+  provider: ProviderId,
+  selection: ModelSelection
+): string | undefined => {
+  const tier = modeBody(provider, selection)?.['service_tier']
+  return typeof tier === 'string' ? tier : undefined
+}
+
+/** Whether the selected mode requests Anthropic's `speed: "fast"`. */
+export const modeWantsFastSpeed = (selection: ModelSelection): boolean =>
+  modeBody('anthropic', selection)?.['speed'] === 'fast'
 
 /**
  * Map a model selection onto the Anthropic provider's thinking config, driven
@@ -152,6 +200,7 @@ export const PROVIDER_ADAPTERS = {
       apiKey: string | undefined
     ) => {
       const { thinking } = anthropicThinking(selection)
+      const fast = modeWantsFastSpeed(selection)
       return AnthropicMessages.layer({
         model: selection.id,
         apiKey: apiKey ?? '',
@@ -159,6 +208,7 @@ export const PROVIDER_ADAPTERS = {
           maxOutputTokens: anthropicOutputLimit(selection.id),
         },
         ...(thinking !== undefined ? { thinking } : {}),
+        ...(fast ? { fast: true } : {}),
         onRetry: selection.onRetry,
       }).pipe(Layer.provide(FetchHttpClient.layer))
     },
@@ -176,7 +226,7 @@ export const PROVIDER_ADAPTERS = {
       authStore: ProviderAuthStoreApi
     ) => {
       const reasoning = openAiReasoning(selection)
-      const serviceTier = selection.mode === 'fast' ? 'flex' : undefined
+      const serviceTier = modeServiceTier('openai', selection)
       const isOauth = auth?.type === 'oauth'
 
       return OpenAiResponses.layer({

@@ -32,6 +32,15 @@ type CatalogModel = {
       readonly output: number
     }
     readonly modes: ReadonlyArray<string>
+    readonly modeOverrides?: Readonly<
+      Record<
+        string,
+        {
+          readonly body?: Readonly<Record<string, unknown>>
+          readonly headers?: Readonly<Record<string, string>>
+        }
+      >
+    >
   }
 }
 

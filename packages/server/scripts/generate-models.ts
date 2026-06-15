@@ -45,9 +45,19 @@ type ModelsDevModel = {
   }
   readonly cost?: ModelsDevCost
   readonly experimental?: {
-    readonly modes?: Record<string, unknown>
+    readonly modes?: Record<string, ModelsDevMode>
   }
   readonly status?: 'alpha' | 'beta' | 'deprecated'
+}
+
+// A models.dev "experimental mode" (e.g. `fast`) carries the provider-specific
+// request modifications that activate it. We capture them verbatim so the
+// runtime applies exactly what the catalog declares rather than guessing.
+type ModelsDevMode = {
+  readonly provider?: {
+    readonly body?: Readonly<Record<string, unknown>>
+    readonly headers?: Readonly<Record<string, string>>
+  }
 }
 
 type ModelsDevProvider = {
@@ -103,7 +113,17 @@ type CatalogModel = {
       readonly output: number
     }
     readonly modes: ReadonlyArray<string>
+    // Per-mode provider request modifications, keyed by mode name. Server-only:
+    // the public `modes` list drives the UI toggle, while these drive the
+    // outgoing request (e.g. OpenAI `service_tier`, Anthropic `speed` + beta
+    // header). Omitted when no mode carries a provider override.
+    readonly modeOverrides?: Readonly<Record<string, CatalogModeOverride>>
   }
+}
+
+type CatalogModeOverride = {
+  readonly body?: Readonly<Record<string, unknown>>
+  readonly headers?: Readonly<Record<string, string>>
 }
 
 const toReasoningOptions = (
@@ -155,6 +175,21 @@ const toCatalogCost = (
   }
 }
 
+const toModeOverrides = (
+  modes: Record<string, ModelsDevMode> | undefined
+): Readonly<Record<string, CatalogModeOverride>> | undefined => {
+  const entries = Object.entries(modes ?? {}).flatMap(([name, mode]) => {
+    const body = mode.provider?.body
+    const headers = mode.provider?.headers
+    const override: CatalogModeOverride = {
+      ...(body !== undefined ? { body } : {}),
+      ...(headers !== undefined ? { headers } : {}),
+    }
+    return Object.keys(override).length > 0 ? ([[name, override]] as const) : []
+  })
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined
+}
+
 const toCatalogModel = ([id, model]: [
   string,
   ModelsDevModel,
@@ -162,6 +197,8 @@ const toCatalogModel = ([id, model]: [
   if (model.id !== id) {
     throw new Error(`Model id mismatch: ${id}: ${model.id}`)
   }
+
+  const modeOverrides = toModeOverrides(model.experimental?.modes)
 
   return {
     id,
@@ -180,6 +217,7 @@ const toCatalogModel = ([id, model]: [
         output: model.limit.output,
       },
       modes: Object.keys(model.experimental?.modes ?? {}).sort(),
+      ...(modeOverrides !== undefined ? { modeOverrides } : {}),
     },
   }
 }
