@@ -126,7 +126,7 @@
         <Item.Root
           variant={status.variant}
           size="xs"
-          class="relative z-0 rounded-b-none border-border border-b-0 px-3 py-2 shadow-sm shadow-shadow/30"
+          class="relative z-0 -mb-2 rounded-t-lg border-border px-3 pb-4 pt-2 shadow-sm shadow-shadow/30"
         >
           {#if status.variant === 'danger'}
             <Item.Media variant="icon">
@@ -139,22 +139,15 @@
           </Item.Content>
           {#if status.dismissible}
             <Item.Actions class="ml-auto self-start">
-              <Tooltip.Root>
-                <Tooltip.Trigger>
-                  {#snippet child({ props })}
-                    <Button
-                      variant="ghost-destructive"
-                      size="icon-sm"
-                      onclick={onDismissStatus}
-                      aria-label="Dismiss error"
-                      {...props}
-                    >
-                      <XIcon />
-                    </Button>
-                  {/snippet}
-                </Tooltip.Trigger>
-                <Tooltip.Content>Dismiss error</Tooltip.Content>
-              </Tooltip.Root>
+              <Button
+                variant="ghost-destructive"
+                size="icon-sm"
+                class="hover:bg-danger-muted-hover"
+                onclick={onDismissStatus}
+                aria-label="Dismiss error"
+              >
+                <XIcon />
+              </Button>
             </Item.Actions>
           {/if}
         </Item.Root>
@@ -167,7 +160,7 @@
         {disabled}
         {placeholder}
         rows={1}
-        class={`no-scrollbar relative z-10 min-h-[32px] w-full max-h-[220px] scroll-pb-4 overflow-y-auto border border-border bg-surface px-4 py-4 shadow-sm shadow-shadow/30 outline-none focus-visible:border-ring focus-visible:ring-0 md:text-sm ${status ? 'rounded-b-lg rounded-t-none' : 'rounded-lg'}`}
+        class="no-scrollbar relative z-10 min-h-[32px] w-full max-h-[220px] rounded-lg scroll-pb-4 overflow-y-auto border border-border bg-surface px-4 py-4 shadow-sm shadow-shadow/30 outline-none focus-visible:border-ring focus-visible:ring-0 md:text-sm"
       />
 
       <div
