@@ -18,10 +18,10 @@
  *   bun run reference:sync            # sync all repos
  *   bun run reference:sync effect-v4  # sync only named repos
  */
-import { $ } from "bun"
-import { existsSync } from "node:fs"
-import { dirname, join } from "node:path"
-import { fileURLToPath } from "node:url"
+import { $ } from 'bun'
+import { existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 interface RepoSpec {
   name: string
@@ -34,33 +34,42 @@ interface Manifest {
   repos: RepoSpec[]
 }
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..")
-const referenceDir = join(root, ".reference")
-const manifestPath = join(referenceDir, "manifest.json")
+const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+const referenceDir = join(root, '.reference')
+const manifestPath = join(referenceDir, 'manifest.json')
 
 const manifest = (await Bun.file(manifestPath).json()) as Manifest
 
 const filter = new Set(Bun.argv.slice(2))
-const repos = filter.size > 0 ? manifest.repos.filter((r) => filter.has(r.name)) : manifest.repos
+const repos =
+  filter.size > 0
+    ? manifest.repos.filter((r) => filter.has(r.name))
+    : manifest.repos
 
 if (repos.length === 0) {
-  console.error(filter.size > 0 ? `No repos matched: ${[...filter].join(", ")}` : "No repos in manifest.")
+  console.error(
+    filter.size > 0
+      ? `No repos matched: ${[...filter].join(', ')}`
+      : 'No repos in manifest.'
+  )
   process.exit(1)
 }
 
 /** Resolve a ref to a concrete commit sha against the remote. */
 async function resolveRemoteCommit(url: string, ref: string): Promise<string> {
-  if (ref === "latest") {
+  if (ref === 'latest') {
     const out = await $`git ls-remote --symref ${url} HEAD`.text()
     // First non-symref line: "<sha>\tHEAD"
-    const line = out.split("\n").find((l) => /^[0-9a-f]{40}\s/.test(l))
-    if (!line) throw new Error(`Could not resolve default branch HEAD for ${url}`)
+    const line = out.split('\n').find((l) => /^[0-9a-f]{40}\s/.test(l))
+    if (!line)
+      throw new Error(`Could not resolve default branch HEAD for ${url}`)
     return line.split(/\s+/)[0]!
   }
   if (/^[0-9a-f]{40}$/.test(ref)) return ref
   // Tag or branch: prefer the dereferenced tag object (^{}) if present.
-  const out = await $`git ls-remote ${url} refs/tags/${ref}^{} refs/tags/${ref} refs/heads/${ref}`.text()
-  const lines = out.split("\n").filter(Boolean)
+  const out =
+    await $`git ls-remote ${url} refs/tags/${ref}^{} refs/tags/${ref} refs/heads/${ref}`.text()
+  const lines = out.split('\n').filter(Boolean)
   const deref = lines.find((l) => l.includes(`refs/tags/${ref}^{}`))
   const direct = lines[0]
   const chosen = deref ?? direct
@@ -79,7 +88,7 @@ async function currentCommit(dest: string): Promise<string | null> {
 async function syncRepo(repo: RepoSpec): Promise<void> {
   const dest = join(referenceDir, repo.name)
   const target = await resolveRemoteCommit(repo.url, repo.ref)
-  const have = existsSync(join(dest, ".git")) ? await currentCommit(dest) : null
+  const have = existsSync(join(dest, '.git')) ? await currentCommit(dest) : null
 
   if (have === target) {
     console.log(`✓ ${repo.name} up to date (${target.slice(0, 10)})`)

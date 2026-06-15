@@ -199,9 +199,7 @@ Handle expected tags where there is a real recovery path.
 
 ```ts
 // Delete is idempotent: missing is success.
-deleteResource(id).pipe(
-  Effect.catchTag('ResourceNotFound', () => Effect.void)
-)
+deleteResource(id).pipe(Effect.catchTag('ResourceNotFound', () => Effect.void))
 ```
 
 ```ts
@@ -217,7 +215,9 @@ enableSubdomain(name).pipe(
   Effect.retry({
     while: (error) =>
       error._tag === 'ResourceNotReady' || error._tag === 'InternalServerError',
-    schedule: Schedule.exponential('200 millis').pipe(Schedule.both(Schedule.recurs(8))),
+    schedule: Schedule.exponential('200 millis').pipe(
+      Schedule.both(Schedule.recurs(8))
+    ),
   })
 )
 ```
