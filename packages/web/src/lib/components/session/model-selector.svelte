@@ -102,8 +102,7 @@
     <Button
       type="button"
       variant="ghost"
-      size="sm"
-      class="h-7 min-w-0 justify-between gap-2 text-sm text-foreground"
+      class="min-w-0 justify-between text-foreground"
       role="combobox"
       aria-controls={listboxId}
       aria-expanded={open}
