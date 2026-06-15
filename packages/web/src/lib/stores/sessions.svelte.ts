@@ -264,7 +264,11 @@ function createSessionStore() {
     baseNodeId: string | null,
     afterRunId: string | null,
     modelOptions: ModelOptions = {}
-  ): Promise<{ status: 'started' | 'queued'; runId: string } | null> {
+  ): Promise<{
+    status: 'started' | 'queued'
+    runId: string
+    baseNodeId: string | null
+  } | null> {
     try {
       const client = await getApiClient(connectionsStore.getApiBase())
       const result = await runApi(

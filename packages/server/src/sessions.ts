@@ -391,7 +391,12 @@ function createRunWorker(sessionId: string, queueId: string) {
   )
 }
 
-function startRunWorker(sessionId: string, runId: string, queueId: string) {
+function startRunWorker(
+  sessionId: string,
+  runId: string,
+  queueId: string,
+  baseNodeId: string | null
+) {
   const onWorkerError = releaseQueuedRun(queueId)
 
   return Effect.forkDetach(createRunWorker(sessionId, queueId)).pipe(
@@ -399,7 +404,14 @@ function startRunWorker(sessionId: string, runId: string, queueId: string) {
       Effect.logInfo('Session run worker forked', { sessionId, queueId })
     ),
     Effect.tap((fiber) => registerRunWorker(queueId, fiber)),
-    Effect.map(() => new RunResponse({ status: 'started' as const, runId })),
+    Effect.map(
+      () =>
+        new RunResponse({
+          status: 'started' as const,
+          runId,
+          baseNodeId,
+        })
+    ),
     Effect.onError((cause) =>
       Effect.gen(function* () {
         yield* Effect.logError('Session run worker failed to start', {
@@ -417,13 +429,14 @@ const selectRunResponse = (
   sessionId: string,
   status: 'queued' | 'started',
   runId: string,
-  queueId: string
+  queueId: string,
+  baseNodeId: string | null
 ) =>
   ({
     queued: Effect.succeed(
-      new RunResponse({ status: 'queued' as const, runId })
+      new RunResponse({ status: 'queued' as const, runId, baseNodeId })
     ),
-    started: startRunWorker(sessionId, runId, queueId),
+    started: startRunWorker(sessionId, runId, queueId, baseNodeId),
   })[status]
 
 const appendStoppedQueuedInputs = (
@@ -550,7 +563,13 @@ const enqueueRunRequest = Effect.fn('Sessions.enqueueRunRequest')((
           queuedRunCount: getQueuedRunCount(sessionId),
         }).pipe(
           Effect.andThen(
-            selectRunResponse(sessionId, run.status, run.runId, run.queueId)
+            selectRunResponse(
+              sessionId,
+              run.status,
+              run.runId,
+              run.queueId,
+              target.request.baseNodeId
+            )
           )
         )
       })

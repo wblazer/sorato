@@ -237,7 +237,9 @@ function finalPersistedRunNode(
   )
   const hasGeneratedOutput = runMessages.some(
     (message) =>
-      message.encoded.role === 'assistant' || message.encoded.role === 'tool'
+      message.encoded.role === 'assistant' ||
+      message.encoded.role === 'tool' ||
+      message.encoded.role === 'system'
   )
   if (!hasGeneratedOutput) return null
 

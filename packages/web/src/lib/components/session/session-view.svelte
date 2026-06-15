@@ -274,7 +274,7 @@
             selectedHead.setSelectedHead({
               type: 'run',
               runId: response.runId,
-              baseNodeId,
+              baseNodeId: response.baseNodeId,
             })
 
             if (!wasRunning) {
@@ -283,7 +283,7 @@
               messagesStore.addOptimisticUserMessage(
                 sessionId,
                 input,
-                baseNodeId,
+                response.baseNodeId,
                 response.runId
               )
             }

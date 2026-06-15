@@ -112,6 +112,7 @@ export class MessageNodeResponse extends Schema.Class<MessageNodeResponse>(
 export class RunResponse extends Schema.Class<RunResponse>('RunResponse')({
   status: Schema.Literals(['started', 'queued']),
   runId: Schema.String,
+  baseNodeId: Schema.NullOr(Schema.String),
 }) {}
 
 export class StopResponse extends Schema.Class<StopResponse>('StopResponse')({

@@ -95,9 +95,14 @@
 
       writeSelectedHead(
         selectedHeadStorageKey(connectionsStore.activeConnection?.id, session.id),
-        { type: 'run', runId: response.runId, baseNodeId: null }
+        { type: 'run', runId: response.runId, baseNodeId: response.baseNodeId }
       )
-      messagesStore.addOptimisticUserMessage(session.id, input, null, response.runId)
+      messagesStore.addOptimisticUserMessage(
+        session.id,
+        input,
+        response.baseNodeId,
+        response.runId
+      )
     } finally {
       sending = false
     }
