@@ -108,22 +108,21 @@ const anthropicThinking = (
 /**
  * Map a model selection onto the OpenAI Responses reasoning config.
  *
- * Mirrors the prior `@effect/ai-openai` behavior: each thinking level becomes a
- * reasoning `effort` hint with an automatic summary. Non-reasoning selections
- * disable reasoning entirely.
+ * Each thinking level becomes a reasoning `effort` hint with an automatic
+ * summary. The OpenAI Responses API only accepts `minimal`/`low`/`medium`/
+ * `high`, and Sorato's catalog never offers `xhigh` for OpenAI models, so the
+ * (unreachable) `xhigh` case is clamped to `high` rather than sent verbatim and
+ * rejected. Non-reasoning selections disable reasoning entirely.
  */
 const openAiReasoning = (
   selection: ModelSelection
 ): OpenAiReasoning | undefined => {
   const level = selection.thinkingLevel
-  if (
-    level === 'minimal' ||
-    level === 'low' ||
-    level === 'medium' ||
-    level === 'high' ||
-    level === 'xhigh'
-  ) {
+  if (level === 'minimal' || level === 'low' || level === 'medium') {
     return { effort: level, summary: 'auto' }
+  }
+  if (level === 'high' || level === 'xhigh') {
+    return { effort: 'high', summary: 'auto' }
   }
   return undefined
 }
