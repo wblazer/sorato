@@ -270,6 +270,7 @@
           )
           .then((response) => {
             if (!response) return
+            if (response.status === 'queued') return
 
             selectedHead.setSelectedHead({
               type: 'run',
