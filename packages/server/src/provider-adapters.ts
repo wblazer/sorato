@@ -1,21 +1,6 @@
-import { OpenAiClient, OpenAiLanguageModel } from '@effect/ai-openai'
-import {
-  Config,
-  Effect,
-  Layer,
-  Match,
-  Option,
-  Redacted,
-  Schema,
-  Stream,
-} from 'effect'
+import { Config, Effect, Layer } from 'effect'
 import type { LanguageModel } from 'effect/unstable/ai'
-import {
-  FetchHttpClient,
-  HttpClient,
-  HttpClientRequest,
-  HttpClientResponse,
-} from 'effect/unstable/http'
+import { FetchHttpClient, HttpClientRequest } from 'effect/unstable/http'
 import { MODEL_PROVIDERS } from './models.generated.ts'
 import type { ModelSelection } from './model-catalog.ts'
 import {
@@ -27,9 +12,10 @@ import type { ProviderAuth, ProviderAuthStoreApi } from './provider-auth.ts'
 import type { ProviderId } from './provider-definitions.ts'
 import * as AnthropicMessages from './providers/anthropic-messages.ts'
 import type { AnthropicThinking } from './providers/anthropic-messages.ts'
+import * as OpenAiResponses from './providers/openai-responses.ts'
+import type { OpenAiReasoning } from './providers/openai-responses.ts'
 
 const present = (key: string) => !!process.env[key]?.trim()
-const keepRequest = <A>(item: A) => item
 
 const any = (keys: ReadonlyArray<string>, apiKey: string | undefined) =>
   !!apiKey?.trim() || keys.some(present)
@@ -54,28 +40,6 @@ type ModelServiceLayer = Layer.Layer<
   LanguageModel.LanguageModel,
   Config.ConfigError
 >
-
-const CodexRequestBody = Schema.Struct({
-  instructions: Schema.optional(Schema.String),
-})
-const CodexRequestRecord = Schema.Record(Schema.String, Schema.Unknown)
-const CodexInputItem = Schema.Record(Schema.String, Schema.Unknown)
-const CodexInstructionItem = Schema.Struct({
-  role: Schema.Literals(['system', 'developer']),
-  content: Schema.String,
-})
-
-const removeEmptyRole = (item: unknown): unknown => {
-  const inputItem = Schema.decodeUnknownOption(CodexInputItem)(item)
-  return Option.match(inputItem, {
-    onNone: () => item,
-    onSome: (record) => {
-      if (record.role !== '') return record
-      const { role: _role, ...rest } = record
-      return rest
-    },
-  })
-}
 
 const modelIds = (provider: ProviderId): ReadonlySet<string> =>
   new Set<string>(
@@ -141,83 +105,68 @@ const anthropicThinking = (
   }
 }
 
-const withCodexInstructions = (
-  request: HttpClientRequest.HttpClientRequest
-) => {
-  if (request.body._tag !== 'Uint8Array') return request
-
-  const parsed = JSON.parse(new TextDecoder().decode(request.body.body))
-  const rawBody = Schema.decodeUnknownSync(CodexRequestRecord)(parsed)
-  const body = Schema.decodeUnknownSync(CodexRequestBody)(parsed)
-  const input = Array.isArray(rawBody.input) ? rawBody.input : []
-  const instructionIndex = input.findIndex(
-    (item) =>
-      Schema.is(CodexInstructionItem)(item) && item.content.trim().length > 0
-  )
-  const inputInstructions = Match.value(instructionIndex >= 0).pipe(
-    Match.when(true, () => {
-      const item = input[instructionIndex]
-      return Schema.is(CodexInstructionItem)(item) ? item.content : undefined
-    }),
-    Match.orElse(() => undefined)
-  )
-  const instructions = body.instructions ?? inputInstructions
-
-  if (!instructions) return request
-
-  return request.pipe(
-    HttpClientRequest.bodyJsonUnsafe({
-      ...rawBody,
-      instructions,
-      store: false,
-      input: input
-        .filter((_, index) => index !== instructionIndex)
-        .map(removeEmptyRole),
-    })
-  )
-}
-
-const patchMissingCompletedOutput = (line: string) => {
-  if (!line.startsWith('data: ')) return line
-
-  const payload = line.slice('data: '.length)
+/**
+ * Map a model selection onto the OpenAI Responses reasoning config.
+ *
+ * Mirrors the prior `@effect/ai-openai` behavior: each thinking level becomes a
+ * reasoning `effort` hint with an automatic summary. Non-reasoning selections
+ * disable reasoning entirely.
+ */
+const openAiReasoning = (
+  selection: ModelSelection
+): OpenAiReasoning | undefined => {
+  const level = selection.thinkingLevel
   if (
-    !payload.includes('"type":"response.completed"') ||
-    payload.includes('"output":')
+    level === 'minimal' ||
+    level === 'low' ||
+    level === 'medium' ||
+    level === 'high' ||
+    level === 'xhigh'
   ) {
-    return line
+    return { effort: level, summary: 'auto' }
   }
-
-  return `data: ${payload.replace(
-    '"response":{"id"',
-    '"response":{"output":[],"id"'
-  )}`
+  return undefined
 }
 
-const withCodexResponseCompatibility = (
-  response: HttpClientResponse.HttpClientResponse
-) => {
-  const headers = new globalThis.Headers(response.headers)
-  headers.delete('content-length')
-
-  return HttpClientResponse.fromWeb(
-    response.request,
-    new Response(
-      Stream.toReadableStream(
-        response.stream.pipe(
-          Stream.decodeText(),
-          Stream.splitLines,
-          Stream.map((line) => `${patchMissingCompletedOutput(line)}\n`),
-          Stream.encodeText
-        )
-      ),
-      {
-        headers,
-        status: response.status,
+/**
+ * Per-request transform for the ChatGPT/Codex OAuth transport.
+ *
+ * Rewrites the URL to the Codex backend and injects fresh OAuth credentials
+ * plus the originator/session/account headers. The Codex-specific request
+ * shaping (`store: false`, system prompt hoisted to top-level `instructions`,
+ * encrypted reasoning round-tripping) is owned by the provider via
+ * `systemAsInstructions` + `store`, so no body patching is needed here.
+ */
+const codexTransformRequest =
+  (authStore: ProviderAuthStoreApi, selection: ModelSelection) =>
+  (request: HttpClientRequest.HttpClientRequest) =>
+    Effect.gen(function* () {
+      const current = yield* currentOpenAiOauth(authStore).pipe(Effect.orDie)
+      let next = request.pipe(
+        HttpClientRequest.setUrl(
+          'https://chatgpt.com/backend-api/codex/responses'
+        ),
+        HttpClientRequest.setHeader(
+          'authorization',
+          `Bearer ${current.access}`
+        ),
+        HttpClientRequest.setHeader('originator', ORIGINATOR),
+        HttpClientRequest.setHeader('User-Agent', soratoUserAgent())
+      )
+      if (selection.sessionId !== undefined) {
+        next = HttpClientRequest.setHeader(
+          'session_id',
+          selection.sessionId
+        )(next)
       }
-    )
-  )
-}
+      if (current.accountId !== undefined) {
+        next = HttpClientRequest.setHeader(
+          'ChatGPT-Account-Id',
+          current.accountId
+        )(next)
+      }
+      return next
+    })
 
 export const PROVIDER_ADAPTERS = {
   anthropic: {
@@ -245,6 +194,8 @@ export const PROVIDER_ADAPTERS = {
   },
   openai: {
     available: any,
+    // No generated-enum gate: any catalog model id is accepted, and unknown
+    // ids are forwarded verbatim by the provider.
     supportsModel: (model: string) => openAiModels.has(model),
     layer: (
       _dataDir: string,
@@ -253,105 +204,23 @@ export const PROVIDER_ADAPTERS = {
       apiKey: string | undefined,
       authStore: ProviderAuthStoreApi
     ) => {
-      const reasoning = Match.value(selection.thinkingLevel).pipe(
-        Match.when('minimal', (effort) => ({
-          reasoning: {
-            effort,
-            summary: 'auto' as const,
-          },
-        })),
-        Match.when('low', (effort) => ({
-          reasoning: { effort, summary: 'auto' as const },
-        })),
-        Match.when('medium', (effort) => ({
-          reasoning: { effort, summary: 'auto' as const },
-        })),
-        Match.when('high', (effort) => ({
-          reasoning: { effort, summary: 'auto' as const },
-        })),
-        Match.when('xhigh', (effort) => ({
-          reasoning: { effort, summary: 'auto' as const },
-        })),
-        Match.orElse(() => ({}))
-      )
-      const serviceTier = Match.value(selection.mode).pipe(
-        Match.when('fast', () => ({ service_tier: 'flex' as const })),
-        Match.orElse(() => ({}))
-      )
+      const reasoning = openAiReasoning(selection)
+      const serviceTier = selection.mode === 'fast' ? 'flex' : undefined
+      const isOauth = auth?.type === 'oauth'
 
-      const clientLayer = Match.value(auth?.type).pipe(
-        Match.when('oauth', () =>
-          OpenAiClient.layerConfig({
-            apiKey: Config.succeed(Redacted.make('sorato-chatgpt-oauth')),
-            transformClient: (client) =>
-              client.pipe(
-                HttpClient.mapRequestEffect((request) =>
-                  Effect.gen(function* () {
-                    const current = yield* currentOpenAiOauth(authStore).pipe(
-                      Effect.orDie
-                    )
-
-                    const url = new URL(request.url)
-                    const target =
-                      [
-                        request.url,
-                        'https://chatgpt.com/backend-api/codex/responses',
-                      ][Number(url.pathname.endsWith('/responses'))] ??
-                      request.url
-                    const setSessionId =
-                      [
-                        keepRequest,
-                        HttpClientRequest.setHeader(
-                          'session_id',
-                          selection.sessionId ?? ''
-                        ),
-                      ][Number(selection.sessionId !== undefined)] ??
-                      keepRequest
-                    const setAccountId =
-                      [
-                        keepRequest,
-                        HttpClientRequest.setHeader(
-                          'ChatGPT-Account-Id',
-                          current.accountId ?? ''
-                        ),
-                      ][Number(current.accountId !== undefined)] ?? keepRequest
-
-                    return withCodexInstructions(request).pipe(
-                      HttpClientRequest.setUrl(target),
-                      HttpClientRequest.setHeader(
-                        'authorization',
-                        `Bearer ${current.access}`
-                      ),
-                      HttpClientRequest.setHeader('originator', ORIGINATOR),
-                      HttpClientRequest.setHeader(
-                        'User-Agent',
-                        soratoUserAgent()
-                      ),
-                      setSessionId,
-                      setAccountId
-                    )
-                  })
-                ),
-                HttpClient.transformResponse(
-                  Effect.map(withCodexResponseCompatibility)
-                )
-              ),
-          })
-        ),
-        Match.orElse(() =>
-          OpenAiClient.layerConfig({
-            apiKey: Config.succeed(Redacted.make(apiKey ?? '')),
-          })
-        )
-      )
-
-      return OpenAiLanguageModel.layer({
-        model: selection.id as OpenAiLanguageModel.Model,
-        config: {
-          ...reasoning,
-          ...serviceTier,
-        },
-      }).pipe(Layer.provide(clientLayer), Layer.provide(FetchHttpClient.layer))
+      return OpenAiResponses.layer({
+        model: selection.id,
+        ...(isOauth ? {} : { apiKey: apiKey ?? '' }),
+        ...(reasoning !== undefined ? { reasoning } : {}),
+        ...(serviceTier !== undefined ? { serviceTier } : {}),
+        ...(isOauth
+          ? {
+              store: false,
+              systemAsInstructions: true,
+              transformRequest: codexTransformRequest(authStore, selection),
+            }
+          : {}),
+      }).pipe(Layer.provide(FetchHttpClient.layer))
     },
   },
 } satisfies Record<ProviderId, ProviderAdapter>
