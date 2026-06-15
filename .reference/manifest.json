@@ -35,6 +35,11 @@
       "name": "distilled",
       "url": "https://github.com/alchemy-run/distilled.git",
       "ref": "latest"
+    },
+    {
+      "name": "vercel-ai",
+      "url": "https://github.com/vercel/ai.git",
+      "ref": "latest"
     }
   ]
 }

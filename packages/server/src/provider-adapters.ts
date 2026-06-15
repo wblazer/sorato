@@ -1,8 +1,3 @@
-import {
-  AnthropicClient,
-  AnthropicLanguageModel,
-  Generated as AnthropicGenerated,
-} from '@effect/ai-anthropic'
 import { OpenAiClient, OpenAiLanguageModel } from '@effect/ai-openai'
 import {
   Config,
@@ -30,6 +25,8 @@ import {
 } from './openai-chatgpt-auth.ts'
 import type { ProviderAuth, ProviderAuthStoreApi } from './provider-auth.ts'
 import type { ProviderId } from './provider-definitions.ts'
+import * as AnthropicMessages from './providers/anthropic-messages.ts'
+import type { AnthropicThinking } from './providers/anthropic-messages.ts'
 
 const present = (key: string) => !!process.env[key]?.trim()
 const keepRequest = <A>(item: A) => item
@@ -88,7 +85,6 @@ const modelIds = (provider: ProviderId): ReadonlySet<string> =>
   )
 
 const anthropicCatalogModels = modelIds('anthropic')
-const isAnthropicRuntimeModel = Schema.is(AnthropicGenerated.Model)
 const openAiModels = modelIds('openai')
 
 const supportsAnthropicAdaptiveThinking = (modelId: string) =>
@@ -117,27 +113,20 @@ const anthropicThinkingBudget = (selection: ModelSelection) => {
   return undefined
 }
 
-const anthropicThinkingConfig = (selection: ModelSelection) => {
+/**
+ * Map a model selection onto the new Anthropic provider's thinking config.
+ *
+ * Mirrors the prior `@effect/ai-anthropic` behavior: adaptive effort for models
+ * that support it, otherwise a token budget capped to the model's output limit,
+ * with `max_tokens` sized to leave room above the budget.
+ */
+const anthropicThinking = (
+  selection: ModelSelection
+): { thinking?: AnthropicThinking; maxTokens?: number } => {
   const effort = anthropicAdaptiveEffort(selection)
-  const adaptiveEffort = [undefined, effort][
-    Number(supportsAnthropicAdaptiveThinking(selection.id))
-  ]
-  const adaptiveThinking = Match.value(adaptiveEffort).pipe(
-    Match.when('low', (effort) => ({
-      thinking: { type: 'adaptive' as const },
-      output_config: { effort },
-    })),
-    Match.when('medium', (effort) => ({
-      thinking: { type: 'adaptive' as const },
-      output_config: { effort },
-    })),
-    Match.when('high', (effort) => ({
-      thinking: { type: 'adaptive' as const },
-      output_config: { effort },
-    })),
-    Match.orElse(() => undefined)
-  )
-  if (adaptiveThinking) return adaptiveThinking
+  if (effort !== undefined && supportsAnthropicAdaptiveThinking(selection.id)) {
+    return { thinking: { type: 'adaptive', effort } }
+  }
 
   const targetBudget = anthropicThinkingBudget(selection)
   if (!targetBudget) return {}
@@ -147,8 +136,8 @@ const anthropicThinkingConfig = (selection: ModelSelection) => {
   if (budgetTokens < 1024) return {}
 
   return {
-    max_tokens: Math.min(outputLimit, budgetTokens + 4096),
-    thinking: { type: 'enabled' as const, budget_tokens: budgetTokens },
+    thinking: { type: 'enabled', budgetTokens },
+    maxTokens: Math.min(outputLimit, budgetTokens + 4096),
   }
 }
 
@@ -233,20 +222,25 @@ const withCodexResponseCompatibility = (
 export const PROVIDER_ADAPTERS = {
   anthropic: {
     available: any,
-    supportsModel: (model: string) =>
-      anthropicCatalogModels.has(model) && isAnthropicRuntimeModel(model),
-    layer: (_dataDir: string, selection: ModelSelection) => {
-      return AnthropicLanguageModel.layer({
-        model: selection.id as AnthropicLanguageModel.Model,
-        config: anthropicThinkingConfig(selection),
-      }).pipe(
-        Layer.provide(
-          AnthropicClient.layerConfig({
-            apiKey: Config.redacted('ANTHROPIC_API_KEY'),
-          })
-        ),
-        Layer.provide(FetchHttpClient.layer)
-      )
+    // No generated-enum gate: any catalog model id is accepted, and unknown
+    // ids are forwarded verbatim by the provider.
+    supportsModel: (model: string) => anthropicCatalogModels.has(model),
+    layer: (
+      _dataDir: string,
+      selection: ModelSelection,
+      _auth: ProviderAuth | undefined,
+      apiKey: string | undefined
+    ) => {
+      const { thinking, maxTokens } = anthropicThinking(selection)
+      return AnthropicMessages.layer({
+        model: selection.id,
+        apiKey: apiKey ?? '',
+        capabilities: {
+          maxOutputTokens: anthropicOutputLimit(selection.id),
+        },
+        ...(thinking !== undefined ? { thinking } : {}),
+        ...(maxTokens !== undefined ? { maxTokens } : {}),
+      }).pipe(Layer.provide(FetchHttpClient.layer))
     },
   },
   openai: {

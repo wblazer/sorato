@@ -88,14 +88,16 @@ describe('ModelCatalog', () => {
         expect(models.models.length).toBe(
           supportedCount(anthropic) + supportedCount(openai)
         )
-        expect(models.models[0]?.id).toBe('openai/gpt-5.5-pro')
-        expect(models.models[1]?.id).toBe('openai/gpt-5.5')
+        // claude-opus-4-8 (newest release) is no longer gated by a stale
+        // generated-enum check, so it surfaces and sorts first by release date.
+        expect(models.models[0]?.id).toBe('anthropic/claude-opus-4-8')
+        expect(models.models[1]?.id).toBe('openai/gpt-5.5-pro')
         expect(
           models.models.find((item) => item.id.startsWith('anthropic/'))?.id
-        ).toBe('anthropic/claude-sonnet-4-6')
+        ).toBe('anthropic/claude-opus-4-8')
         expect(
           models.models.some((item) => item.id === 'anthropic/claude-opus-4-8')
-        ).toBe(false)
+        ).toBe(true)
         expect(models.defaultModel).toBe(`openai/${openai.models[0]?.id}`)
 
         restoreEnv('XDG_CONFIG_HOME', prevXdg)
