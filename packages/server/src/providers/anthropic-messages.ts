@@ -51,8 +51,10 @@ export interface AnthropicModelCapabilities {
 export type AnthropicThinking =
   | { readonly type: 'enabled'; readonly budgetTokens: number }
   | {
+      // Free-form effort: the caller passes the model's own catalog value
+      // (e.g. `low`/`medium`/`high`/`xhigh`/`max`) straight through.
       readonly type: 'adaptive'
-      readonly effort?: 'low' | 'medium' | 'high' | undefined
+      readonly effort?: string | undefined
     }
 
 /**

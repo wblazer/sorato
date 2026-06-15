@@ -14,6 +14,7 @@ import * as AnthropicMessages from './providers/anthropic-messages.ts'
 import type { AnthropicThinking } from './providers/anthropic-messages.ts'
 import * as OpenAiResponses from './providers/openai-responses.ts'
 import type { OpenAiReasoning } from './providers/openai-responses.ts'
+import { reasoningOptionsOf, resolveReasoning } from './reasoning-options.ts'
 
 const present = (key: string) => !!process.env[key]?.trim()
 
@@ -51,80 +52,51 @@ const modelIds = (provider: ProviderId): ReadonlySet<string> =>
 const anthropicCatalogModels = modelIds('anthropic')
 const openAiModels = modelIds('openai')
 
-const supportsAnthropicAdaptiveThinking = (modelId: string) =>
-  modelId.includes('claude-sonnet-4-6') ||
-  modelId.includes('claude-opus-4-6') ||
-  modelId.includes('claude-opus-4-7')
-
-const anthropicAdaptiveEffort = (selection: ModelSelection) => {
-  if (selection.thinkingLevel === 'low') return 'low' as const
-  if (selection.thinkingLevel === 'medium') return 'medium' as const
-  if (selection.thinkingLevel === 'high') return 'high' as const
-  return undefined
-}
-
 const anthropicOutputLimit = (modelId: string) =>
   MODEL_PROVIDERS.find((item) => item.id === 'anthropic')?.models.find(
     (model) => model.id === modelId
   )?.capabilities.limits.output ?? 4096
 
-const anthropicThinkingBudget = (selection: ModelSelection) => {
-  if (selection.thinkingLevel === 'minimal') return 1024
-  if (selection.thinkingLevel === 'low') return 2048
-  if (selection.thinkingLevel === 'medium') return 8192
-  if (selection.thinkingLevel === 'high') return 16384
-  if (selection.thinkingLevel === 'xhigh') return 31999
-  return undefined
-}
-
 /**
- * Map a model selection onto the new Anthropic provider's thinking config.
+ * Map a model selection onto the Anthropic provider's thinking config, driven
+ * entirely by the model's captured `reasoningOptions` (no model-id guessing).
  *
- * Mirrors the prior `@effect/ai-anthropic` behavior: adaptive effort for models
- * that support it, otherwise a token budget capped to the model's output limit,
- * with `max_tokens` sized to leave room above the budget.
+ * Effort-type models get adaptive thinking with the selected effort passed
+ * straight through; budget-type models get the named-ladder token budget. The
+ * provider sizes `max_tokens` above the budget on its own.
  */
 const anthropicThinking = (
   selection: ModelSelection
-): { thinking?: AnthropicThinking; maxTokens?: number } => {
-  const effort = anthropicAdaptiveEffort(selection)
-  if (effort !== undefined && supportsAnthropicAdaptiveThinking(selection.id)) {
-    return { thinking: { type: 'adaptive', effort } }
+): { thinking?: AnthropicThinking } => {
+  const request = resolveReasoning(
+    reasoningOptionsOf('anthropic', selection.id),
+    selection.thinkingLevel
+  )
+  if (request.kind === 'effort' && request.effort !== 'none') {
+    return { thinking: { type: 'adaptive', effort: request.effort } }
   }
-
-  const targetBudget = anthropicThinkingBudget(selection)
-  if (!targetBudget) return {}
-
-  const outputLimit = anthropicOutputLimit(selection.id)
-  const budgetTokens = Math.min(targetBudget, outputLimit - 1024)
-  if (budgetTokens < 1024) return {}
-
-  return {
-    thinking: { type: 'enabled', budgetTokens },
-    maxTokens: Math.min(outputLimit, budgetTokens + 4096),
+  if (request.kind === 'budget') {
+    return { thinking: { type: 'enabled', budgetTokens: request.budgetTokens } }
   }
+  return {}
 }
 
 /**
- * Map a model selection onto the OpenAI Responses reasoning config.
- *
- * Each thinking level becomes a reasoning `effort` hint with an automatic
- * summary. The OpenAI Responses API only accepts `minimal`/`low`/`medium`/
- * `high`, and Sorato's catalog never offers `xhigh` for OpenAI models, so the
- * (unreachable) `xhigh` case is clamped to `high` rather than sent verbatim and
- * rejected. Non-reasoning selections disable reasoning entirely.
+ * Map a model selection onto the OpenAI Responses reasoning config, driven
+ * entirely by the model's captured `reasoningOptions`. The selected effort
+ * (one of the model's own values, including `xhigh`/`none`) is passed straight
+ * through with no clamping. `none` disables reasoning without a summary.
  */
 const openAiReasoning = (
   selection: ModelSelection
 ): OpenAiReasoning | undefined => {
-  const level = selection.thinkingLevel
-  if (level === 'minimal' || level === 'low' || level === 'medium') {
-    return { effort: level, summary: 'auto' }
-  }
-  if (level === 'high' || level === 'xhigh') {
-    return { effort: 'high', summary: 'auto' }
-  }
-  return undefined
+  const request = resolveReasoning(
+    reasoningOptionsOf('openai', selection.id),
+    selection.thinkingLevel
+  )
+  if (request.kind !== 'effort') return undefined
+  if (request.effort === 'none') return { effort: 'none' }
+  return { effort: request.effort, summary: 'auto' }
 }
 
 /**
@@ -179,7 +151,7 @@ export const PROVIDER_ADAPTERS = {
       _auth: ProviderAuth | undefined,
       apiKey: string | undefined
     ) => {
-      const { thinking, maxTokens } = anthropicThinking(selection)
+      const { thinking } = anthropicThinking(selection)
       return AnthropicMessages.layer({
         model: selection.id,
         apiKey: apiKey ?? '',
@@ -187,7 +159,6 @@ export const PROVIDER_ADAPTERS = {
           maxOutputTokens: anthropicOutputLimit(selection.id),
         },
         ...(thinking !== undefined ? { thinking } : {}),
-        ...(maxTokens !== undefined ? { maxTokens } : {}),
       }).pipe(Layer.provide(FetchHttpClient.layer))
     },
   },

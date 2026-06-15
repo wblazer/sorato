@@ -41,8 +41,18 @@ export interface Session {
   updatedAt: number
 }
 
+export type ThinkingLevel =
+  | 'off'
+  | 'on'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
+
 export interface ModelOptions {
-  thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+  thinkingLevel?: ThinkingLevel
   mode?: string
 }
 
@@ -55,9 +65,7 @@ export interface AvailableModel {
     reasoning: boolean
     temperature: boolean
     toolCall: boolean
-    thinkingLevels: ReadonlyArray<
-      'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
-    >
+    thinkingLevels: ReadonlyArray<ThinkingLevel>
     modes: ReadonlyArray<string>
     limits: {
       context: number

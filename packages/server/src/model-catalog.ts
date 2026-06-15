@@ -8,6 +8,7 @@ import {
 } from '@sorato/api'
 import { MODEL_PROVIDERS } from './models.generated.ts'
 import { PROVIDER_ADAPTERS } from './provider-adapters.ts'
+import { type ThinkingLevel, thinkingLevelsFor } from './reasoning-options.ts'
 import { RuntimeConfigService } from './runtime-config.ts'
 import {
   getAuth,
@@ -36,13 +37,7 @@ type Entry = {
   readonly capabilities: ModelCapabilities
 }
 
-export type ThinkingLevel =
-  | 'off'
-  | 'minimal'
-  | 'low'
-  | 'medium'
-  | 'high'
-  | 'xhigh'
+export type { ThinkingLevel }
 
 export type ModelOptions = {
   readonly thinkingLevel?: ThinkingLevel
@@ -66,16 +61,6 @@ type ModelCapabilities = {
 export type ModelSelection = ModelOptions & {
   readonly id: string
   readonly sessionId?: string
-}
-
-const thinkingLevels = (
-  provider: string,
-  model: (typeof MODEL_PROVIDERS)[number]['models'][number]
-): ReadonlyArray<ThinkingLevel> => {
-  if (!model.capabilities.reasoning) return ['off']
-  if (provider === 'openai') return ['off', 'minimal', 'low', 'medium', 'high']
-  if (provider === 'anthropic') return ['off', 'low', 'medium', 'high']
-  return ['off']
 }
 
 const openAiOauthModels = new Set([
@@ -155,8 +140,16 @@ const toEntry = Effect.fn('ModelCatalog.toEntry')(function* (
       provider: provider.name,
       releaseDate: model.releaseDate,
       capabilities: {
-        ...model.capabilities,
-        thinkingLevels: thinkingLevels(provider.id, model),
+        attachment: model.capabilities.attachment,
+        reasoning: model.capabilities.reasoning,
+        temperature: model.capabilities.temperature,
+        toolCall: model.capabilities.toolCall,
+        modes: model.capabilities.modes,
+        limits: model.capabilities.limits,
+        thinkingLevels: thinkingLevelsFor(
+          model.capabilities.reasoningOptions,
+          model.capabilities.reasoning
+        ),
       },
     },
   ]

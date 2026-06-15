@@ -264,7 +264,16 @@ export class ModelOption extends Schema.Class<ModelOption>('ModelOption')({
     temperature: Schema.Boolean,
     toolCall: Schema.Boolean,
     thinkingLevels: Schema.Array(
-      Schema.Literals(['off', 'minimal', 'low', 'medium', 'high', 'xhigh'])
+      Schema.Literals([
+        'off',
+        'on',
+        'minimal',
+        'low',
+        'medium',
+        'high',
+        'xhigh',
+        'max',
+      ])
     ),
     modes: Schema.Array(Schema.String),
     limits: Schema.Struct({
@@ -379,11 +388,13 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
             thinkingLevel: Schema.optional(
               Schema.Literals([
                 'off',
+                'on',
                 'minimal',
                 'low',
                 'medium',
                 'high',
                 'xhigh',
+                'max',
               ])
             ),
             mode: Schema.optional(Schema.String),

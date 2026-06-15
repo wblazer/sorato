@@ -20,12 +20,22 @@ type ModelsDevCost = {
   readonly context_over_200k?: ModelsDevCost
 }
 
+type ModelsDevReasoningOption =
+  | { readonly type: 'effort'; readonly values: ReadonlyArray<string> }
+  | {
+      readonly type: 'budget_tokens'
+      readonly min?: number
+      readonly max?: number
+    }
+  | { readonly type: 'toggle' }
+
 type ModelsDevModel = {
   readonly id: string
   readonly name: string
   readonly release_date?: string
   readonly attachment: boolean
   readonly reasoning: boolean
+  readonly reasoning_options?: ReadonlyArray<ModelsDevReasoningOption>
   readonly temperature: boolean
   readonly tool_call: boolean
   readonly limit: {
@@ -65,6 +75,17 @@ type CatalogCost = {
   readonly contextOver200K?: CatalogCost
 }
 
+// Normalized per-model reasoning control sourced from models.dev. `effort`
+// carries the discrete enum; `budget` a token range; `toggle` an on/off knob.
+type CatalogReasoningOption =
+  | { readonly type: 'effort'; readonly values: ReadonlyArray<string> }
+  | {
+      readonly type: 'budget'
+      readonly min: number
+      readonly max: number | undefined
+    }
+  | { readonly type: 'toggle' }
+
 type CatalogModel = {
   readonly id: string
   readonly name: string
@@ -73,6 +94,7 @@ type CatalogModel = {
   readonly capabilities: {
     readonly attachment: boolean
     readonly reasoning: boolean
+    readonly reasoningOptions: ReadonlyArray<CatalogReasoningOption>
     readonly temperature: boolean
     readonly toolCall: boolean
     readonly limits: {
@@ -83,6 +105,19 @@ type CatalogModel = {
     readonly modes: ReadonlyArray<string>
   }
 }
+
+const toReasoningOptions = (
+  options: ReadonlyArray<ModelsDevReasoningOption> | undefined
+): ReadonlyArray<CatalogReasoningOption> =>
+  (options ?? []).map((option) => {
+    if (option.type === 'effort') {
+      return { type: 'effort', values: option.values }
+    }
+    if (option.type === 'budget_tokens') {
+      return { type: 'budget', min: option.min ?? 0, max: option.max }
+    }
+    return { type: 'toggle' }
+  })
 
 const here = dirname(fileURLToPath(import.meta.url))
 const out = join(here, '..', 'src', 'models.generated.ts')
@@ -136,6 +171,7 @@ const toCatalogModel = ([id, model]: [
     capabilities: {
       attachment: model.attachment,
       reasoning: model.reasoning,
+      reasoningOptions: toReasoningOptions(model.reasoning_options),
       temperature: model.temperature,
       toolCall: model.tool_call,
       limits: {

@@ -25,7 +25,7 @@ import {
   StorageUnavailable,
 } from '@sorato/api'
 import { ensureModel } from './model-catalog.ts'
-import type { ModelOptions } from './model-catalog.ts'
+import type { ModelOptions, ThinkingLevel } from './model-catalog.ts'
 import type { RunRequest } from './run-registry.ts'
 import { runAgent } from './run-agent.ts'
 import {
@@ -141,14 +141,7 @@ const toMessageNodeResponse = (m: {
   })
 
 const modelOptions = (options?: {
-  readonly thinkingLevel?:
-    | 'off'
-    | 'minimal'
-    | 'low'
-    | 'medium'
-    | 'high'
-    | 'xhigh'
-    | undefined
+  readonly thinkingLevel?: ThinkingLevel | undefined
   readonly mode?: string | undefined
 }): ModelOptions => ({
   ...Match.value(options?.thinkingLevel).pipe(
