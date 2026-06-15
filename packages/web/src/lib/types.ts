@@ -80,6 +80,23 @@ export interface AvailableModelsResponse {
   defaultModel?: string
 }
 
+export type SessionRunStatus =
+  | {
+      readonly _tag: 'retrying'
+      readonly title: string
+      readonly message: string
+      readonly retryAt: number
+      readonly attempt: number
+      readonly maxAttempts: number
+    }
+  | {
+      readonly _tag: 'failed'
+      readonly title: string
+      readonly message: string
+      readonly detail?: string
+      readonly retryable: boolean
+    }
+
 // ---------------------------------------------------------------------------
 // Message types — mirrors @effect/ai Prompt.MessageEncoded
 // ---------------------------------------------------------------------------

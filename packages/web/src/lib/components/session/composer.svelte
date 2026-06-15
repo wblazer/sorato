@@ -5,7 +5,11 @@
       import { tick } from 'svelte'
       import { Textarea } from '$lib/components/ui/textarea/index.js'
       import * as Select from '$lib/components/ui/select/index.js'
-      import type { AvailableModel, ModelOptions } from '$lib/types.js'
+      import type {
+        AvailableModel,
+        ModelOptions,
+        SessionRunStatus,
+      } from '$lib/types.js'
       import ArrowUpIcon from 'phosphor-svelte/lib/ArrowUpIcon'
       import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
       import StopIcon from 'phosphor-svelte/lib/StopIcon'
@@ -30,7 +34,7 @@
         autoFocus = false,
         focusKey,
         placeholder,
-        sessionError = null,
+        sessionStatus = null,
       }: {
         onSend: (input: string) => void
         onStop?: () => void
@@ -48,11 +52,12 @@
         autoFocus?: boolean
         focusKey?: string | number | null
         placeholder?: string
-        sessionError?: string | null
+        sessionStatus?: SessionRunStatus | null
       } = $props()
 
       let input = $state('')
       let textarea: HTMLTextAreaElement | null = $state(null)
+      let now = $state(Date.now())
 
       const selectedModel = $derived(
         models.find((item) => item.id === model) ?? null
@@ -61,15 +66,27 @@
         modelOptions.thinkingLevel ?? selectedModel?.capabilities.thinkingLevels[0]
       )
       const selectedMode = $derived(modelOptions.mode)
+      const retrySeconds = $derived(
+        sessionStatus?._tag === 'retrying'
+          ? Math.max(0, Math.ceil((sessionStatus.retryAt - now) / 1000))
+          : null
+      )
       const status = $derived(
-        sessionError
+        sessionStatus?._tag === 'failed'
           ? {
               variant: 'danger' as const,
-              title: 'Run failed',
-              description: sessionError,
+              title: sessionStatus.title,
+              description: sessionStatus.message,
               dismissible: true,
             }
-          : isStopping
+          : sessionStatus?._tag === 'retrying'
+            ? {
+                variant: 'muted' as const,
+                title: sessionStatus.title,
+                description: `Retrying in ${retrySeconds ?? 0}s (${sessionStatus.attempt}/${sessionStatus.maxAttempts}).`,
+                dismissible: false,
+              }
+            : isStopping
             ? {
                 variant: 'muted' as const,
                 title: 'Stopping current run',
@@ -115,6 +132,16 @@
         tick().then(() => {
           if (!disabled) textarea?.focus()
         })
+      })
+
+      $effect(() => {
+        if (sessionStatus?._tag !== 'retrying') return
+
+        now = Date.now()
+        const id = setInterval(() => {
+          now = Date.now()
+        }, 250)
+        return () => clearInterval(id)
       })
 
 </script>

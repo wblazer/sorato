@@ -23,6 +23,7 @@ const EVENT_TAGS = [
   'ToolResult',
   'RunStart',
   'RunEnd',
+  'RunRetrying',
   'RunFailed',
   'ReplayReset',
 ] as const

@@ -159,6 +159,7 @@ export const PROVIDER_ADAPTERS = {
           maxOutputTokens: anthropicOutputLimit(selection.id),
         },
         ...(thinking !== undefined ? { thinking } : {}),
+        onRetry: selection.onRetry,
       }).pipe(Layer.provide(FetchHttpClient.layer))
     },
   },
@@ -183,6 +184,7 @@ export const PROVIDER_ADAPTERS = {
         ...(isOauth ? {} : { apiKey: apiKey ?? '' }),
         ...(reasoning !== undefined ? { reasoning } : {}),
         ...(serviceTier !== undefined ? { serviceTier } : {}),
+        onRetry: selection.onRetry,
         ...(isOauth
           ? {
               store: false,

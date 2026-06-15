@@ -38,7 +38,7 @@
       const isRunning = $derived(sessionStore.isRunning(sessionId))
       const isStopping = $derived(sessionStore.isStopping(sessionId))
       const queuedMessages = $derived(sessionStore.queuedMessagesFor(sessionId))
-      const sessionError = $derived(sessionStore.sessionError(sessionId))
+      const sessionStatus = $derived(sessionStore.sessionStatus(sessionId))
       const selectedSession = $derived(
         sessionStore.sessions.find((item) => item.id === sessionId) ?? null
       )
@@ -427,7 +427,7 @@
     {isStopping}
     autoFocus
     focusKey={sessionId}
-    {sessionError}
+    {sessionStatus}
     disabled={isStopping}
   />
 </div>

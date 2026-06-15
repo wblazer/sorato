@@ -8,6 +8,7 @@ import {
 } from '@sorato/api'
 import { MODEL_PROVIDERS } from './models.generated.ts'
 import { PROVIDER_ADAPTERS } from './provider-adapters.ts'
+import type { ProviderRetryInfo } from './providers/provider-errors.ts'
 import { type ThinkingLevel, thinkingLevelsFor } from './reasoning-options.ts'
 import { RuntimeConfigService } from './runtime-config.ts'
 import {
@@ -61,6 +62,7 @@ type ModelCapabilities = {
 export type ModelSelection = ModelOptions & {
   readonly id: string
   readonly sessionId?: string
+  readonly onRetry?: ((info: ProviderRetryInfo) => void) | undefined
 }
 
 const openAiOauthModels = new Set([

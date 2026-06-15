@@ -1,6 +1,6 @@
 import { getApiClient, runApi } from '$lib/api-client.js'
 import { requestErrorMessage } from '$lib/api-errors.js'
-import type { ModelOptions, Session } from '$lib/types.js'
+import type { ModelOptions, Session, SessionRunStatus } from '$lib/types.js'
 import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
 import { messagesStore } from './messages.svelte.js'
@@ -50,7 +50,7 @@ function createSessionStore() {
   let stoppingSessions = $state(new Set<string>())
   let queuedMessages = $state(new Map<string, QueuedMessageDraft[]>())
   let pendingRunStarts = $state(new Map<string, number>())
-  let sessionErrors = $state(new Map<string, string>())
+  let sessionStatuses = $state(new Map<string, SessionRunStatus>())
   let activeRuns = $state(
     new Map<
       string,
@@ -112,16 +112,40 @@ function createSessionStore() {
         s.id === event.sessionId ? { ...s, status: 'running' as const } : s
       )
 
-      if (sessionErrors.has(event.sessionId)) {
-        const next = new Map(sessionErrors)
+      if (sessionStatuses.has(event.sessionId)) {
+        const next = new Map(sessionStatuses)
         next.delete(event.sessionId)
-        sessionErrors = next
+        sessionStatuses = next
       }
+    } else if (event._tag === 'RunRetrying') {
+      const next = new Map(sessionStatuses)
+      next.set(event.sessionId, {
+        _tag: 'retrying',
+        title: event.title,
+        message: event.message,
+        retryAt: event.retryAt,
+        attempt: event.attempt,
+        maxAttempts: event.maxAttempts,
+      })
+      sessionStatuses = next
     } else if (event._tag === 'RunFailed') {
-      const next = new Map(sessionErrors)
-      next.set(event.sessionId, event.message)
-      sessionErrors = next
+      const next = new Map(sessionStatuses)
+      next.set(event.sessionId, {
+        _tag: 'failed',
+        title: event.title ?? 'Run failed',
+        message: event.message,
+        detail: event.detail,
+        retryable: event.retryable ?? false,
+      })
+      sessionStatuses = next
     } else if (event._tag === 'RunEnd') {
+      const existingStatus = sessionStatuses.get(event.sessionId)
+      if (existingStatus?._tag === 'retrying') {
+        const next = new Map(sessionStatuses)
+        next.delete(event.sessionId)
+        sessionStatuses = next
+      }
+
       const nextActiveRuns = new Map(activeRuns)
       nextActiveRuns.delete(event.runId)
       activeRuns = nextActiveRuns
@@ -259,9 +283,14 @@ function createSessionStore() {
       if (!result.ok) {
         const message = result.error.message
         error = message
-        const next = new Map(sessionErrors)
-        next.set(sessionId, message)
-        sessionErrors = next
+        const next = new Map(sessionStatuses)
+        next.set(sessionId, {
+          _tag: 'failed',
+          title: 'Run failed to start',
+          message,
+          retryable: result.error.retryable,
+        })
+        sessionStatuses = next
         return null
       }
 
@@ -293,9 +322,14 @@ function createSessionStore() {
     } catch (e) {
       const message = requestErrorMessage(e, 'Failed to start agent run')
       error = message
-      const next = new Map(sessionErrors)
-      next.set(sessionId, message)
-      sessionErrors = next
+      const next = new Map(sessionStatuses)
+      next.set(sessionId, {
+        _tag: 'failed',
+        title: 'Run failed to start',
+        message,
+        retryable: false,
+      })
+      sessionStatuses = next
       return null
     }
   }
@@ -373,8 +407,8 @@ function createSessionStore() {
     return queuedMessages.get(sessionId) ?? []
   }
 
-  function sessionError(sessionId: string): string | null {
-    return sessionErrors.get(sessionId) ?? null
+  function sessionStatus(sessionId: string): SessionRunStatus | null {
+    return sessionStatuses.get(sessionId) ?? null
   }
 
   function displayTitle(session: Session): string {
@@ -383,10 +417,10 @@ function createSessionStore() {
   }
 
   function clearSessionError(sessionId: string) {
-    if (!sessionErrors.has(sessionId)) return
-    const next = new Map(sessionErrors)
+    if (!sessionStatuses.has(sessionId)) return
+    const next = new Map(sessionStatuses)
     next.delete(sessionId)
-    sessionErrors = next
+    sessionStatuses = next
   }
 
   return {
@@ -432,7 +466,7 @@ function createSessionStore() {
       return latestRunStart
     },
     isStopping,
-    sessionError,
+    sessionStatus,
     displayTitle,
     clearSessionError,
     queuedMessagesFor,

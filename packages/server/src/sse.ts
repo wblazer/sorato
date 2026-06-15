@@ -55,6 +55,7 @@ const formatEvent = Match.type<ServerEvent>().pipe(
     MessagesAppended: formatLifecycleEvent,
     RunEnd: formatLifecycleEvent,
     RunFailed: formatLifecycleEvent,
+    RunRetrying: formatLifecycleEvent,
     RunStart: formatLifecycleEvent,
     SessionUpdated: formatLifecycleEvent,
     ReplayReset: formatLifecycleEvent,
@@ -74,6 +75,7 @@ const isRunStreamEvent = (event: ServerEvent): boolean =>
   event._tag === 'RunStart' ||
   event._tag === 'RunEnd' ||
   event._tag === 'RunFailed' ||
+  event._tag === 'RunRetrying' ||
   event._tag === 'ReplayReset' ||
   isContentEvent(event)
 
@@ -114,6 +116,7 @@ const liveRunStream = (runId: string, cursor: StreamCursor | undefined) =>
             Queue.offerUnsafe(queue, formatEvent(event)),
           RunEnd: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
           RunFailed: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
+          RunRetrying: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
           RunStart: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
           SessionUpdated: (event) =>
             Queue.offerUnsafe(queue, formatEvent(event)),

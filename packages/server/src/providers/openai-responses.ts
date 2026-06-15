@@ -45,6 +45,12 @@ import {
   HttpClientRequest,
   type HttpClientResponse,
 } from 'effect/unstable/http'
+import {
+  ensureOk,
+  retryProviderRequest,
+  type ProviderRetryInfo,
+  toProviderAiError,
+} from './provider-errors.ts'
 
 // =============================================================================
 // Configuration
@@ -100,6 +106,7 @@ export interface OpenAiResponsesConfig {
         response: HttpClientResponse.HttpClientResponse
       ) => HttpClientResponse.HttpClientResponse)
     | undefined
+  readonly onRetry?: ((info: ProviderRetryInfo) => void) | undefined
 }
 
 const DEFAULT_API_URL = 'https://api.openai.com/v1'
@@ -115,13 +122,7 @@ class OpenAiTransportError extends Data.TaggedError('OpenAiTransportError')<{
 const toAiError =
   (method: string) =>
   (cause: unknown): AiError.AiError =>
-    AiError.make({
-      module: 'OpenAiResponses',
-      method,
-      reason: new AiError.InternalProviderError({
-        description: cause instanceof Error ? cause.message : String(cause),
-      }),
-    })
+    toProviderAiError('OpenAiResponses', method)(cause)
 
 // =============================================================================
 // Wire schemas (request side is plain objects; response/SSE decoded)
@@ -619,11 +620,20 @@ const postResponses = (
     if (config.transformRequest !== undefined) {
       request = yield* config.transformRequest(request)
     }
-    const response = yield* HttpClient.filterStatusOk(client).execute(request)
+    const response = yield* client
+      .execute(request)
+      .pipe(
+        Effect.flatMap(ensureOk('openai', 'OpenAiResponses', 'postResponses'))
+      )
     return config.transformResponse !== undefined
       ? config.transformResponse(response)
       : response
-  }).pipe(Effect.mapError((cause) => new OpenAiTransportError({ cause })))
+  }).pipe(
+    Effect.mapError((cause) =>
+      AiError.isAiError(cause) ? cause : new OpenAiTransportError({ cause })
+    ),
+    (effect) => retryProviderRequest(effect, config.onRetry)
+  )
 
 const requestDetails = (
   response: HttpClientResponse.HttpClientResponse

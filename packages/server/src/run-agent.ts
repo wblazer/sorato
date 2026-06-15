@@ -7,8 +7,8 @@
  *   - Persists the conversation to SessionStorage after completion
  *   - Runs as a daemon fiber (fire-and-forget from the HTTP handler)
  */
-import { Cause, Effect, Layer, Match, Option } from 'effect'
-import type { Prompt } from 'effect/unstable/ai'
+import { Cause, Duration, Effect, Layer, Match, Option } from 'effect'
+import { AiError, type Prompt } from 'effect/unstable/ai'
 import { CurrentFiles, CurrentShell, run, Sandbox } from '@sorato/core'
 import { ProjectStorage } from './project/project.ts'
 import { SessionStorage, type SessionId } from './session/session.ts'
@@ -22,6 +22,150 @@ import type { RunRequest } from './run-registry.ts'
 import { generateSessionTitle } from './session-title.ts'
 import { getAuth } from './provider-auth.ts'
 import type { BillingMode } from './session/session.ts'
+
+type RunFailureMessage = {
+  readonly title: string
+  readonly message: string
+  readonly detail?: string | undefined
+  readonly retryable: boolean
+}
+
+const providerLabel = (provider: string | undefined): string =>
+  Match.value(provider).pipe(
+    Match.when('openai', () => 'OpenAI'),
+    Match.when('anthropic', () => 'Anthropic'),
+    Match.orElse(() => 'Provider')
+  )
+
+const aiProviderMetadata = (error: AiError.AiError) => {
+  const metadata = 'metadata' in error.reason ? error.reason.metadata : {}
+  for (const [provider, value] of Object.entries(metadata)) {
+    if (value !== null && typeof value === 'object') {
+      return { provider, facts: value as Record<string, unknown> }
+    }
+  }
+  return { provider: undefined, facts: {} as Record<string, unknown> }
+}
+
+const stringFact = (
+  facts: Readonly<Record<string, unknown>>,
+  key: string
+): string | undefined =>
+  typeof facts[key] === 'string' && facts[key].length > 0
+    ? facts[key]
+    : undefined
+
+const numberFact = (
+  facts: Readonly<Record<string, unknown>>,
+  key: string
+): number | undefined =>
+  typeof facts[key] === 'number' ? facts[key] : undefined
+
+const isProviderOverloaded = (
+  facts: Readonly<Record<string, unknown>>
+): boolean => {
+  const status = numberFact(facts, 'status')
+  return status !== undefined && status >= 500
+}
+
+const aiRunFailureMessage = (error: AiError.AiError): RunFailureMessage => {
+  const { provider, facts } = aiProviderMetadata(error)
+  const providerName = providerLabel(provider)
+  const code = stringFact(facts, 'code') ?? stringFact(facts, 'type')
+  const requestId = stringFact(facts, 'requestId')
+  const detail = [code, requestId && `request ${requestId}`]
+    .filter(Boolean)
+    .join(' · ')
+  const detailValue = detail.length > 0 ? detail : undefined
+
+  switch (error.reason._tag) {
+    case 'RateLimitError':
+      return {
+        title: `${providerName} rate limit reached`,
+        message: 'Try again in a bit.',
+        detail: detailValue,
+        retryable: true,
+      }
+    case 'QuotaExhaustedError':
+      return {
+        title: `${providerName} quota exhausted`,
+        message: `${providerName} reported that the account or billing quota is exhausted. Check billing and usage limits before retrying.`,
+        detail: detailValue,
+        retryable: false,
+      }
+    case 'AuthenticationError':
+      return {
+        title: `${providerName} authentication failed`,
+        message: `${providerName} rejected the configured credentials. Verify the API key or sign in again.`,
+        detail: detailValue,
+        retryable: false,
+      }
+    case 'InvalidRequestError':
+      return {
+        title: `${providerName} rejected the request`,
+        message: error.reason.description
+          ? `${providerName} rejected the request: ${error.reason.description}`
+          : `${providerName} rejected the request as invalid.`,
+        detail: detailValue,
+        retryable: false,
+      }
+    case 'ContentPolicyError':
+      return {
+        title: `${providerName} blocked the request`,
+        message: `${providerName} blocked the request for policy reasons: ${error.reason.description}`,
+        detail: detailValue,
+        retryable: false,
+      }
+    case 'InternalProviderError': {
+      const overloaded = isProviderOverloaded(facts)
+      return {
+        title: overloaded
+          ? `${providerName} is temporarily unavailable`
+          : `${providerName} request failed`,
+        message: overloaded
+          ? 'Try again in a bit.'
+          : `${error.reason.description} Try again in a bit.`,
+        detail: detailValue,
+        retryable: true,
+      }
+    }
+    default:
+      return {
+        title: 'Agent run failed',
+        message: error.message,
+        detail: detailValue,
+        retryable: error.isRetryable,
+      }
+  }
+}
+
+const aiRunRetryingMessage = (error: AiError.AiError): string => {
+  const { provider, facts } = aiProviderMetadata(error)
+  const providerName = providerLabel(provider)
+
+  if (error.reason._tag === 'RateLimitError') {
+    return `${providerName} rate limit reached`
+  }
+  if (isProviderOverloaded(facts)) {
+    return `${providerName} is temporarily unavailable`
+  }
+  return `${providerName} request failed`
+}
+
+const runFailureMessage = (
+  runId: string,
+  cause: Cause.Cause<unknown>
+): RunFailureMessage => {
+  const error = Option.getOrUndefined(Cause.findErrorOption(cause))
+  if (AiError.isAiError(error)) return aiRunFailureMessage(error)
+
+  return {
+    title: 'Agent run failed',
+    message: 'Agent run failed because of an unexpected server error.',
+    detail: `Run ${runId}`,
+    retryable: false,
+  }
+}
 
 export const runAgent = (sessionId: SessionId, request: RunRequest) => {
   const runId = request.runId
@@ -75,6 +219,19 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     const modelServices = yield* modelLayer(dataDir, {
       id: request.model,
       sessionId,
+      onRetry: (info) => {
+        const retryAt = Date.now() + Duration.toMillis(info.delay)
+        publish({
+          _tag: 'RunRetrying',
+          sessionId,
+          runId,
+          title: aiRunRetryingMessage(info.error),
+          message: '',
+          retryAt,
+          attempt: info.attempt,
+          maxAttempts: info.maxAttempts,
+        })
+      },
       ...request.modelOptions,
     }).pipe(
       Effect.flatMap((layer) =>
@@ -222,11 +379,15 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
             runId,
             cause: Cause.pretty(cause),
           })
+          const failure = runFailureMessage(runId, cause)
           publish({
             _tag: 'RunFailed',
             sessionId,
             runId,
-            message: 'Agent run failed. Check the server logs for details.',
+            title: failure.title,
+            message: failure.message,
+            detail: failure.detail,
+            retryable: failure.retryable,
           })
         }
       })

@@ -29,6 +29,12 @@ import {
 } from 'effect/unstable/ai'
 import * as Sse from 'effect/unstable/encoding/Sse'
 import { HttpClient, HttpClientRequest } from 'effect/unstable/http'
+import {
+  ensureOk,
+  retryProviderRequest,
+  type ProviderRetryInfo,
+  toProviderAiError,
+} from './provider-errors.ts'
 
 // =============================================================================
 // Configuration
@@ -86,6 +92,7 @@ export interface AnthropicConfig {
   readonly cache?: AnthropicCache | undefined
   /** Override max_tokens; defaults to capabilities.maxOutputTokens. */
   readonly maxTokens?: number | undefined
+  readonly onRetry?: ((info: ProviderRetryInfo) => void) | undefined
 }
 
 const DEFAULT_API_URL = 'https://api.anthropic.com'
@@ -225,13 +232,7 @@ class AnthropicTransportError extends Data.TaggedError(
 const toAiError =
   (method: string) =>
   (cause: unknown): AiError.AiError =>
-    AiError.make({
-      module: 'AnthropicMessages',
-      method,
-      reason: new AiError.InternalProviderError({
-        description: cause instanceof Error ? cause.message : String(cause),
-      }),
-    })
+    toProviderAiError('AnthropicMessages', method)(cause)
 
 // =============================================================================
 // Prompt cache control
@@ -653,7 +654,11 @@ const postMessages = (
     }),
     HttpClientRequest.bodyJsonUnsafe(payload),
     client.execute,
-    Effect.mapError((cause) => new AnthropicTransportError({ cause }))
+    Effect.flatMap(ensureOk('anthropic', 'AnthropicMessages', 'postMessages')),
+    Effect.mapError((cause) =>
+      AiError.isAiError(cause) ? cause : new AnthropicTransportError({ cause })
+    ),
+    (effect) => retryProviderRequest(effect, config.onRetry)
   )
 
 // =============================================================================

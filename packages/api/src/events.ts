@@ -56,10 +56,22 @@ export const ServerEvent = Schema.Union([
     sessionId: Schema.String,
     runId: Schema.String,
   }),
+  Schema.TaggedStruct('RunRetrying', {
+    sessionId: Schema.String,
+    runId: Schema.String,
+    title: Schema.String,
+    message: Schema.String,
+    retryAt: Schema.Number,
+    attempt: Schema.Number,
+    maxAttempts: Schema.Number,
+  }),
   Schema.TaggedStruct('RunFailed', {
     sessionId: Schema.String,
     runId: Schema.String,
+    title: Schema.optional(Schema.String),
     message: Schema.String,
+    detail: Schema.optional(Schema.String),
+    retryable: Schema.optional(Schema.Boolean),
   }),
   Schema.TaggedStruct('ReplayReset', {
     sessionId: Schema.String,
