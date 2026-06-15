@@ -9,11 +9,15 @@
     modelCall = null,
     isRunning = false,
     reserveMetaSpace = false,
+    accordionState,
+    accordionKey,
   }: {
     items: ReadonlyArray<TranscriptItem>
     modelCall?: ModelCall | null
     isRunning?: boolean
     reserveMetaSpace?: boolean
+    accordionState: Record<string, string[]>
+    accordionKey: string
   } = $props()
 
   const transcriptItemKind = (item: TranscriptItem): string => {
@@ -24,6 +28,14 @@
         : item.part.type
     }
     return item.type
+  }
+
+  const itemAccordionKey = (item: TranscriptItem, index: number): string => {
+    if (item.type === 'combined-tool') return `${accordionKey}:tool:${item.call.id}`
+    if (item.type === 'message' && 'id' in item.part) {
+      return `${accordionKey}:part:${item.part.id}`
+    }
+    return `${accordionKey}:item:${index}`
   }
 
   const formatCost = (micros: number): string =>
@@ -63,10 +75,15 @@
 
 <div class="assistant-message py-2.5">
   {#if items.length > 0}
-    {#each items as item}
+    {#each items as item, index}
       <div class="assistant-transcript-item" data-transcript-kind={transcriptItemKind(item)}>
         {#if item.type === 'combined-tool'}
-          <ToolCallResult call={item.call} result={item.result} />
+          <ToolCallResult
+            call={item.call}
+            result={item.result}
+            {accordionState}
+            accordionKey={itemAccordionKey(item, index)}
+          />
         {:else if item.type === 'interruption'}
           <div class="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
             <div class="h-px flex-1 bg-border"></div>
@@ -74,7 +91,12 @@
             <div class="h-px flex-1 bg-border"></div>
           </div>
         {:else}
-          <MessagePartComponent part={item.part} monospace={false} />
+          <MessagePartComponent
+            part={item.part}
+            monospace={false}
+            {accordionState}
+            accordionKey={itemAccordionKey(item, index)}
+          />
         {/if}
       </div>
     {/each}

@@ -6,14 +6,21 @@
   let {
     call,
     result,
-  }: { call: ToolCallPart; result?: ToolResultPart | undefined } = $props()
+    accordionState,
+    accordionKey,
+  }: {
+    call: ToolCallPart
+    result?: ToolResultPart | undefined
+    accordionState: Record<string, string[]>
+    accordionKey: string
+  } = $props()
 
   const title = $derived(call.header?.title ?? call.name)
   const subtitle = $derived(call.header?.subtitle)
 </script>
 
 {#if result}
-  <ToolResult {call} part={result} />
+  <ToolResult {call} part={result} {accordionState} {accordionKey} />
 {:else}
   <div class="overflow-hidden rounded-md border border-border bg-inset">
     <div

@@ -1,4 +1,7 @@
 <script lang="ts">
+      import { tick } from 'svelte'
+      import { get } from 'svelte/store'
+      import { createVirtualizer } from '@tanstack/svelte-virtual'
       import { messagesStore } from '$lib/stores/messages.svelte.js'
       import { modelsStore } from '$lib/stores/models.svelte.js'
       import { projectStore } from '$lib/stores/projects.svelte.js'
@@ -16,7 +19,6 @@
       import SessionTokenUsage from './session-token-usage.svelte'
       import Composer from './composer.svelte'
       import { Button } from '$lib/components/ui/button/index.js'
-      import { SessionScrollController } from './session-scroll.svelte.js'
       import { SessionSelectedHeadController } from './session-selected-head.svelte.js'
       import * as Item from '$lib/components/ui/item/index.js'
       import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
@@ -25,11 +27,11 @@
         $props()
 
       const selectedHead = new SessionSelectedHeadController(() => sessionId)
-      const scroll = new SessionScrollController(() => {
-        messagesStore.messages.length
-        messagesStore.streamingParts
-        queuedMessages.length
-      })
+      let messagesContainer: HTMLElement | null = $state(null)
+      let isAtLatest = $state(true)
+      let initialScrollSessionId: string | null = null
+      let accordionSessionId: string | null = $state(null)
+      let accordionState = $state<Record<string, string[]>>({})
 
       // Running state is derived from the session store — the single source
       // of truth. The messages store only tracks streaming *content*.
@@ -59,6 +61,22 @@
         readonly modelCall: ModelCall | null
         readonly runId: string | null
       }
+
+      type SessionVirtualRow =
+        | {
+            readonly type: 'message'
+            readonly key: string
+            readonly block: MessageRenderBlock
+          }
+        | {
+            readonly type: 'streaming'
+            readonly key: string
+          }
+        | {
+            readonly type: 'queued'
+            readonly key: string
+            readonly message: (typeof queuedMessages)[number]
+          }
 
       const transcriptSourceMessage = (
         item: TranscriptItem
@@ -131,10 +149,100 @@
         })
       })
 
+      const virtualRows = $derived.by((): ReadonlyArray<SessionVirtualRow> => [
+        ...messageBlocks.map((block) => ({
+          type: 'message' as const,
+          key: `message:${block.key}`,
+          block,
+        })),
+        ...(isRunning || messagesStore.streamingParts.length > 0
+          ? [{ type: 'streaming' as const, key: 'streaming' }]
+          : []),
+        ...queuedMessages.map((message) => ({
+          type: 'queued' as const,
+          key: `queued:${message.id}`,
+          message,
+        })),
+      ])
+
+      const virtualizer = createVirtualizer<HTMLElement, HTMLDivElement>({
+        count: 0,
+        getScrollElement: () => messagesContainer,
+        estimateSize: () => 160,
+        getItemKey: (index) => virtualRows[index]?.key ?? index,
+        anchorTo: 'end',
+        followOnAppend: true,
+        scrollEndThreshold: 80,
+        overscan: 6,
+        paddingStart: 20,
+        paddingEnd: 20,
+        gap: 12,
+        onChange: (instance) => {
+          isAtLatest = instance.isAtEnd(80)
+        },
+      })
+
+      const virtualItems = $derived($virtualizer.getVirtualItems())
+
+      function measureVirtualRow(node: HTMLDivElement) {
+        get(virtualizer).measureElement(node)
+      }
+
+      function updateLatestState() {
+        isAtLatest = get(virtualizer).isAtEnd(80)
+      }
+
+      function jumpToLatest() {
+        get(virtualizer).scrollToEnd()
+        updateLatestState()
+      }
+
+      function scrollToLatestAfterRender() {
+        tick().then(() =>
+          requestAnimationFrame(() => {
+            get(virtualizer).scrollToEnd()
+            updateLatestState()
+          })
+        )
+      }
+
       $effect(() => {
         if (messagesStore.currentSessionId !== sessionId) {
           void messagesStore.loadMessages(sessionId)
         }
+      })
+
+      $effect(() => {
+        if (accordionSessionId === sessionId) return
+        accordionSessionId = sessionId
+        accordionState = {}
+      })
+
+      $effect(() => {
+        get(virtualizer).setOptions({
+          count: virtualRows.length,
+          getScrollElement: () => messagesContainer,
+          estimateSize: () => 160,
+          getItemKey: (index) => virtualRows[index]?.key ?? index,
+          anchorTo: 'end',
+          followOnAppend: true,
+          scrollEndThreshold: 80,
+          overscan: 6,
+          paddingStart: 20,
+          paddingEnd: 20,
+          gap: 12,
+          onChange: (instance) => {
+            isAtLatest = instance.isAtEnd(80)
+          },
+        })
+      })
+
+      $effect(() => {
+        if (messagesStore.currentSessionId !== sessionId) return
+        if (messagesStore.loading || virtualRows.length === 0) return
+        if (initialScrollSessionId === sessionId) return
+        initialScrollSessionId = sessionId
+        scrollToLatestAfterRender()
       })
 
       // Intentionally keep run heads as run heads after completion. Rendering a
@@ -149,7 +257,7 @@
         const afterRunId = selectedHead.selectedAfterRunId
         const wasRunning = sessionStore.isRunning(sessionId)
 
-        scroll.scrollToLatestAfterRender()
+        scrollToLatestAfterRender()
 
         void sessionStore
           .runAgent(
@@ -222,11 +330,10 @@
   <!-- Messages -->
   <div class="relative min-h-0 flex-1 overflow-hidden">
     <ScrollArea
-      bind:viewportRef={scroll.messagesContainer}
+      bind:viewportRef={messagesContainer}
       class="h-full"
       viewportClass="scroll-mask-y scroll-mask-y-from-98%"
-      onViewportScroll={scroll.handleScroll}
-      onViewportWheel={scroll.handleWheel}
+      onViewportScroll={updateLatestState}
     >
       {#if messagesStore.loading}
         <div
@@ -253,33 +360,51 @@
         </div>
       {:else if messagesStore.loaded || isRunning}
         <div
-          bind:this={scroll.messagesContent}
-          class="mx-auto flex w-full max-w-6xl flex-col gap-3 px-4 py-5 sm:px-6"
+          class="mx-auto w-full max-w-6xl"
+          style:height={`${$virtualizer.getTotalSize()}px`}
+          style:position="relative"
         >
-          {#each messageBlocks as block (block.key)}
-            <MessageBubble
-              message={block.message}
-              transcriptItems={block.items}
-              modelCall={block.modelCall}
-            />
-          {/each}
-
-          <StreamingIndicator parts={messagesStore.streamingParts} {isRunning} />
-
-          {#each queuedMessages as message (message.id)}
-            <QueuedMessageBubble {message} />
+          {#each virtualItems as virtualItem (virtualItem.key)}
+            {@const row = virtualRows[virtualItem.index]}
+            {#if row}
+              <div
+                use:measureVirtualRow
+                data-index={virtualItem.index}
+                class="absolute left-0 top-0 w-full px-4 sm:px-6"
+                style:transform={`translateY(${virtualItem.start}px)`}
+              >
+                {#if row.type === 'message'}
+                  <MessageBubble
+                    message={row.block.message}
+                    transcriptItems={row.block.items}
+                    modelCall={row.block.modelCall}
+                    {accordionState}
+                    accordionKey={row.key}
+                  />
+                {:else if row.type === 'streaming'}
+                  <StreamingIndicator
+                    parts={messagesStore.streamingParts}
+                    {isRunning}
+                    {accordionState}
+                    accordionKey={row.key}
+                  />
+                {:else}
+                  <QueuedMessageBubble message={row.message} />
+                {/if}
+              </div>
+            {/if}
           {/each}
         </div>
       {/if}
     </ScrollArea>
 
-    {#if !scroll.isAtBottom}
+    {#if !isAtLatest}
       <div class="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center">
         <Button
           class="pointer-events-auto shadow-md shadow-shadow/30"
           variant="outline"
           size="sm"
-          onclick={scroll.jumpToLatest}
+          onclick={jumpToLatest}
         >
           Jump to latest
         </Button>

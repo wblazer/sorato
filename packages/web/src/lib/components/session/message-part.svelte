@@ -5,10 +5,23 @@
   import MessageIcon from './message-icon.svelte'
   import ToolResult from './tool-result.svelte'
 
-  let { part, monospace = false }: { part: MessagePart; monospace?: boolean } =
-    $props()
+  let {
+    part,
+    monospace = false,
+    accordionState,
+    accordionKey,
+  }: {
+    part: MessagePart
+    monospace?: boolean
+    accordionState: Record<string, string[]>
+    accordionKey: string
+  } = $props()
 
-  let toolCallOpenItems = $state(['content'])
+  const accordionValue = $derived(accordionState[accordionKey] ?? ['content'])
+
+  function handleAccordionValue(value: string[]) {
+    accordionState[accordionKey] = value
+  }
 </script>
 
 {#if part.type === 'text'}
@@ -30,7 +43,8 @@
 {:else if part.type === 'tool-call'}
   <Accordion.Root
     type="multiple"
-    bind:value={toolCallOpenItems}
+    value={accordionValue}
+    onValueChange={handleAccordionValue}
     class="overflow-hidden rounded-md border border-border bg-inset"
   >
     <Accordion.Item value="content" class="bg-inset data-open:bg-inset">
@@ -67,7 +81,7 @@
     </Accordion.Item>
   </Accordion.Root>
 {:else if part.type === 'tool-result'}
-  <ToolResult {part} />
+  <ToolResult {part} {accordionState} {accordionKey} />
 {:else if part.type === 'file'}
   <div class="flex items-center gap-2">
     <span class="inline-block h-1.5 w-1.5 rounded-full bg-inset"></span>

@@ -16,10 +16,14 @@
     message,
     transcriptItems,
     modelCall = message.modelCall,
+    accordionState,
+    accordionKey,
   }: {
     message: MessageNode
     transcriptItems?: ReadonlyArray<TranscriptItem>
     modelCall?: ModelCall | null
+    accordionState: Record<string, string[]>
+    accordionKey: string
   } = $props()
 
   const role = $derived(message.encoded.role)
@@ -48,7 +52,22 @@
   const systemSubtitle = $derived(
     message.encoded.role === 'system' ? message.encoded.display?.subtitle : undefined
   )
-  let systemOpenItems = $state(['content'])
+
+  const systemAccordionKey = $derived(`${accordionKey}:system`)
+  const systemAccordionValue = $derived(
+    accordionState[systemAccordionKey] ?? ['content']
+  )
+  const itemAccordionKey = (item: TranscriptItem, index: number): string => {
+    if (item.type === 'combined-tool') return `${accordionKey}:tool:${item.call.id}`
+    if (item.type === 'message' && 'id' in item.part) {
+      return `${accordionKey}:part:${item.part.id}`
+    }
+    return `${accordionKey}:item:${index}`
+  }
+
+  function handleSystemAccordionValue(value: string[]) {
+    accordionState[systemAccordionKey] = value
+  }
 
 </script>
 
@@ -67,9 +86,14 @@
       class="ml-auto w-fit max-w-[min(42rem,85%)] rounded-lg border border-accent bg-accent text-accent-foreground shadow-sm shadow-shadow/30"
     >
       <div class="flex flex-col gap-3 px-3 py-3">
-        {#each renderParts as item}
+        {#each renderParts as item, index}
           {#if item.type === 'combined-tool'}
-            <ToolCallResult call={item.call} result={item.result} />
+            <ToolCallResult
+              call={item.call}
+              result={item.result}
+              {accordionState}
+              accordionKey={itemAccordionKey(item, index)}
+            />
           {:else if item.type === 'interruption'}
             <div class="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
               <div class="h-px flex-1 bg-border"></div>
@@ -77,7 +101,12 @@
               <div class="h-px flex-1 bg-border"></div>
             </div>
           {:else}
-            <MessagePartComponent part={item.part} monospace={false} />
+            <MessagePartComponent
+              part={item.part}
+              monospace={false}
+              {accordionState}
+              accordionKey={itemAccordionKey(item, index)}
+            />
           {/if}
         {/each}
       </div>
@@ -85,7 +114,8 @@
     {:else if isSystem}
     <Accordion.Root
       type="multiple"
-      bind:value={systemOpenItems}
+      value={systemAccordionValue}
+      onValueChange={handleSystemAccordionValue}
       class="w-full overflow-hidden rounded-lg border border-border bg-surface text-foreground shadow-sm shadow-shadow/30"
     >
       <Accordion.Item value="content" class="bg-surface data-open:bg-surface">
@@ -105,9 +135,14 @@
 
         <Accordion.Content>
           <div class="flex flex-col gap-3 px-3 py-3">
-            {#each renderParts as item}
+            {#each renderParts as item, index}
               {#if item.type === 'combined-tool'}
-                <ToolCallResult call={item.call} result={item.result} />
+                <ToolCallResult
+                  call={item.call}
+                  result={item.result}
+                  {accordionState}
+                  accordionKey={itemAccordionKey(item, index)}
+                />
               {:else if item.type === 'interruption'}
                 <div class="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   <div class="h-px flex-1 bg-border"></div>
@@ -115,7 +150,12 @@
                   <div class="h-px flex-1 bg-border"></div>
                 </div>
               {:else}
-                <MessagePartComponent part={item.part} monospace={true} />
+                <MessagePartComponent
+                  part={item.part}
+                  monospace={true}
+                  {accordionState}
+                  accordionKey={itemAccordionKey(item, index)}
+                />
               {/if}
             {/each}
           </div>
@@ -123,7 +163,12 @@
       </Accordion.Item>
     </Accordion.Root>
     {:else}
-    <AssistantTranscript items={renderParts} {modelCall} />
+    <AssistantTranscript
+      items={renderParts}
+      {modelCall}
+      {accordionState}
+      {accordionKey}
+    />
     {/if}
   </div>
 {/if}

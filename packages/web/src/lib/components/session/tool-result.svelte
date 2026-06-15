@@ -10,7 +10,14 @@
   let {
     call,
     part,
-  }: { call?: ToolCallPart | undefined; part: ToolResultPart } = $props()
+    accordionState,
+    accordionKey,
+  }: {
+    call?: ToolCallPart | undefined
+    part: ToolResultPart
+    accordionState: Record<string, string[]>
+    accordionKey: string
+  } = $props()
 
   const summary = $derived(diffDisplaySummary(part.bodyDisplay))
   const shouldRenderPretty = $derived(
@@ -19,12 +26,17 @@
   const header = $derived(call?.header ?? part.header)
   const title = $derived(header?.title ?? call?.name ?? `${part.name} Result`)
   const subtitle = $derived(header?.subtitle ?? summary?.fileName)
-  let openItems = $state(['content'])
+  const accordionValue = $derived(accordionState[accordionKey] ?? ['content'])
+
+  function handleAccordionValue(value: string[]) {
+    accordionState[accordionKey] = value
+  }
 </script>
 
 <Accordion.Root
   type="multiple"
-  bind:value={openItems}
+  value={accordionValue}
+  onValueChange={handleAccordionValue}
   class="overflow-hidden rounded-md border bg-inset {part.isFailure
     ? 'border-danger'
     : 'border-border'}"

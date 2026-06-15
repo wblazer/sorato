@@ -4,8 +4,17 @@
   import { projectTranscript, streamingSources } from '$lib/transcript.js'
   import AssistantTranscript from './assistant-transcript.svelte'
 
-  let { parts, isRunning }: { parts: MessagePart[]; isRunning: boolean } =
-    $props()
+  let {
+    parts,
+    isRunning,
+    accordionState,
+    accordionKey,
+  }: {
+    parts: MessagePart[]
+    isRunning: boolean
+    accordionState: Record<string, string[]>
+    accordionKey: string
+  } = $props()
 
   // Show this component when the run is active OR when there's still
   // streaming content waiting to be replaced by persisted messages.
@@ -25,5 +34,7 @@
     items={renderParts}
     {isRunning}
     reserveMetaSpace={parts.length > 0}
+    {accordionState}
+    {accordionKey}
   />
 {/if}
