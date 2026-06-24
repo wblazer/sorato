@@ -26,7 +26,12 @@
   const header = $derived(call?.header ?? part.header)
   const title = $derived(header?.title ?? call?.name ?? `${part.name} Result`)
   const subtitle = $derived(header?.subtitle ?? summary?.fileName)
-  const accordionValue = $derived(accordionState[accordionKey] ?? ['content'])
+  const defaultAccordionValue = $derived(
+    clientSettingsStore.shouldExpandTool(part.name) ? ['content'] : []
+  )
+  const accordionValue = $derived(
+    accordionState[accordionKey] ?? defaultAccordionValue
+  )
 
   function handleAccordionValue(value: string[]) {
     accordionState[accordionKey] = value

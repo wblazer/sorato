@@ -11,6 +11,10 @@ export interface SoratoDesktopBootstrap {
 
 interface ClientConfig {
   readonly expand_tool_blocks_by_default?: boolean
+  readonly tool_block_expansion?: {
+    readonly default?: boolean
+    readonly tools?: Record<string, boolean | null>
+  }
   readonly transcript_display_mode?: 'pretty' | 'raw'
 }
 

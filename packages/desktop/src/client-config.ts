@@ -7,27 +7,50 @@ import { Schema } from 'effect'
 export const TranscriptDisplayModeSchema = Schema.Literals(['pretty', 'raw'])
 export type TranscriptDisplayMode = typeof TranscriptDisplayModeSchema.Type
 
+export const ToolExpansionOverrideSchema = Schema.NullOr(Schema.Boolean)
+
+export const ToolBlockExpansionSchema = Schema.Struct({
+  default: Schema.optional(Schema.Boolean),
+  tools: Schema.optional(
+    Schema.Record(Schema.String, ToolExpansionOverrideSchema)
+  ),
+})
+export type ToolBlockExpansion = typeof ToolBlockExpansionSchema.Type
+
+export interface ResolvedToolBlockExpansion {
+  readonly default: boolean
+  readonly tools: Record<string, boolean>
+}
+
 export const ClientConfigSchema = Schema.Struct({
   expand_tool_blocks_by_default: Schema.optional(Schema.Boolean),
+  tool_block_expansion: Schema.optional(ToolBlockExpansionSchema),
   transcript_display_mode: Schema.optional(TranscriptDisplayModeSchema),
 })
 
 export type ClientConfig = typeof ClientConfigSchema.Type
 export type ClientConfigOverride = ClientConfig
 
+export interface ResolvedClientConfigValue {
+  readonly expand_tool_blocks_by_default: boolean
+  readonly tool_block_expansion: ResolvedToolBlockExpansion
+  readonly transcript_display_mode: TranscriptDisplayMode
+}
+
 export interface ResolvedClientConfig {
-  readonly defaults: Required<ClientConfig>
+  readonly defaults: ResolvedClientConfigValue
   readonly file: ClientConfig
   readonly overrides: ClientConfigOverride
-  readonly resolved: Required<ClientConfig>
+  readonly resolved: ResolvedClientConfigValue
   readonly paths: {
     readonly file: string
     readonly overrides: string
   }
 }
 
-const defaultClientConfig = (): Required<ClientConfig> => ({
+const defaultClientConfig = (): ResolvedClientConfigValue => ({
   expand_tool_blocks_by_default: false,
+  tool_block_expansion: { default: false, tools: { Edit: true, Write: true } },
   transcript_display_mode: 'pretty',
 })
 
@@ -168,20 +191,56 @@ const loadClientConfigFile = async (path: string): Promise<ClientConfig> => {
   return text === undefined ? {} : parseClientConfig(text, path)
 }
 
-const mergeClientConfig = <TBase extends ClientConfig>(
+const mergeToolBlockExpansion = (
+  base: ResolvedToolBlockExpansion,
+  override?: ToolBlockExpansion
+): ResolvedToolBlockExpansion => {
+  const tools = { ...base.tools }
+  for (const [name, value] of Object.entries(override?.tools ?? {})) {
+    if (value === null) {
+      delete tools[name]
+    } else {
+      tools[name] = value
+    }
+  }
+
+  return {
+    default: override?.default ?? base.default,
+    tools,
+  }
+}
+
+const mergeClientConfig = <TBase extends ResolvedClientConfigValue>(
   base: TBase,
   override: ClientConfig
-): TBase => ({
-  ...base,
-  ...(override.expand_tool_blocks_by_default === undefined
-    ? {}
-    : {
-        expand_tool_blocks_by_default: override.expand_tool_blocks_by_default,
-      }),
-  ...(override.transcript_display_mode === undefined
-    ? {}
-    : { transcript_display_mode: override.transcript_display_mode }),
-})
+): TBase => {
+  const legacyDefault = override.expand_tool_blocks_by_default
+  const toolOverride =
+    legacyDefault === undefined
+      ? override.tool_block_expansion
+      : {
+          ...override.tool_block_expansion,
+          default: override.tool_block_expansion?.default ?? legacyDefault,
+        }
+
+  return {
+    ...base,
+    ...(legacyDefault === undefined
+      ? {}
+      : { expand_tool_blocks_by_default: legacyDefault }),
+    ...(toolOverride === undefined
+      ? {}
+      : {
+          tool_block_expansion: mergeToolBlockExpansion(
+            base.tool_block_expansion,
+            toolOverride
+          ),
+        }),
+    ...(override.transcript_display_mode === undefined
+      ? {}
+      : { transcript_display_mode: override.transcript_display_mode }),
+  }
+}
 
 const writeJsonFile = async (path: string, value: ClientConfig) => {
   await mkdir(dirname(path), { recursive: true })

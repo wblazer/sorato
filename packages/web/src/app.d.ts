@@ -14,16 +14,33 @@ declare global {
     }
   }
 
+  interface ToolBlockExpansion {
+    readonly default?: boolean
+    readonly tools?: Record<string, boolean | null>
+  }
+
+  interface ResolvedToolBlockExpansion {
+    readonly default: boolean
+    readonly tools: Record<string, boolean>
+  }
+
   interface ClientConfig {
     readonly expand_tool_blocks_by_default?: boolean
+    readonly tool_block_expansion?: ToolBlockExpansion
     readonly transcript_display_mode?: 'pretty' | 'raw'
   }
 
+  interface ResolvedClientConfigValue {
+    readonly expand_tool_blocks_by_default: boolean
+    readonly tool_block_expansion: ResolvedToolBlockExpansion
+    readonly transcript_display_mode: 'pretty' | 'raw'
+  }
+
   interface ResolvedClientConfig {
-    readonly defaults: Required<ClientConfig>
+    readonly defaults: ResolvedClientConfigValue
     readonly file: ClientConfig
     readonly overrides: ClientConfig
-    readonly resolved: Required<ClientConfig>
+    readonly resolved: ResolvedClientConfigValue
     readonly paths: {
       readonly file?: string
       readonly overrides?: string

@@ -11,6 +11,8 @@ import {
   clientConfigService,
   diffClientConfig,
   mergeClientConfig,
+  shouldExpandToolBlock,
+  type ResolvedToolBlockExpansion,
 } from '$lib/client-config/index.js'
 import { getJsonWithSchema, setJsonWithSchema } from '$lib/storage.js'
 
@@ -23,6 +25,10 @@ export const ClientSettingsSchema = Schema.Struct({
    * raw: render separate model-visible transcript bodies while keeping UI headers.
    */
   transcriptDisplayMode: TranscriptDisplayModeSchema,
+  toolBlockExpansion: Schema.Struct({
+    default: Schema.Boolean,
+    tools: Schema.Record(Schema.String, Schema.Boolean),
+  }),
 })
 export type ClientSettings = typeof ClientSettingsSchema.Type
 
@@ -35,6 +41,7 @@ const STORAGE_KEY = 'client-settings'
 
 const DEFAULT_SETTINGS: ClientSettings = {
   transcriptDisplayMode: 'pretty',
+  toolBlockExpansion: { default: false, tools: { Edit: true, Write: true } },
 }
 
 function loadSettings(): ClientSettings {
@@ -62,9 +69,20 @@ function createClientSettingsStore() {
     update({ transcriptDisplayMode: mode })
   }
 
+  function setToolBlockExpansion(expansion: ResolvedToolBlockExpansion) {
+    update({ toolBlockExpansion: expansion })
+  }
+
+  function shouldExpandTool(toolName: string) {
+    return shouldExpandToolBlock(settings.toolBlockExpansion, toolName)
+  }
+
   async function loadFromClientConfig() {
     const config = await Effect.runPromise(clientConfigService.getResolved)
-    setTranscriptDisplayMode(config.resolved.transcript_display_mode)
+    update({
+      transcriptDisplayMode: config.resolved.transcript_display_mode,
+      toolBlockExpansion: config.resolved.tool_block_expansion,
+    })
   }
 
   async function saveTranscriptDisplayMode(mode: TranscriptDisplayMode) {
@@ -101,11 +119,16 @@ function createClientSettingsStore() {
     get transcriptDisplayMode() {
       return settings.transcriptDisplayMode
     },
+    get toolBlockExpansion() {
+      return settings.toolBlockExpansion
+    },
     get prettyTranscript() {
       return settings.transcriptDisplayMode === 'pretty'
     },
     update,
     setTranscriptDisplayMode,
+    setToolBlockExpansion,
+    shouldExpandTool,
     loadFromClientConfig,
     saveTranscriptDisplayMode,
     toggleTranscriptDisplayMode,

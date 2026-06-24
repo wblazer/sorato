@@ -317,6 +317,11 @@ export class DirectoryError extends Schema.TaggedErrorClass<DirectoryError>()(
   { message: Schema.String }
 ) {}
 
+export class ToolInfo extends Schema.Class<ToolInfo>('ToolInfo')({
+  name: Schema.String,
+  displayName: Schema.String,
+}) {}
+
 export class HandshakeResponse extends Schema.Class<HandshakeResponse>(
   'HandshakeResponse'
 )({
@@ -324,6 +329,8 @@ export class HandshakeResponse extends Schema.Class<HandshakeResponse>(
   version: Schema.String,
   /** Server status — 'ok' if healthy */
   status: Schema.Literal('ok'),
+  /** Tools available from this server runtime. */
+  tools: Schema.Array(ToolInfo),
 }) {}
 
 // ── Sessions Group ──────────────────────────────────────────────────

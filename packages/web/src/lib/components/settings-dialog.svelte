@@ -23,9 +23,12 @@
     mergeClientConfig,
     type ClientConfig,
     type ResolvedClientConfig,
+    type ResolvedClientConfigValue,
+    type ResolvedToolBlockExpansion,
     type TranscriptDisplayMode,
   } from '$lib/client-config/index.js'
   import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
+  import { serverInfoStore } from '$lib/stores/server-info.svelte.js'
   import { Effect } from 'effect'
   import { untrack } from 'svelte'
 
@@ -39,13 +42,17 @@
 
   let activeTab = $state<SettingsTab>('general')
   let config = $state<ResolvedClientConfig | null>(null)
-  let expandToolBlocksByDefault = $state(false)
-  let transcriptDisplayMode = $state<TranscriptDisplayMode>('pretty')
+  let toolBlockExpansion = $state<ResolvedToolBlockExpansion>(
+    clientSettingsStore.toolBlockExpansion
+  )
+  let transcriptDisplayMode = $state<TranscriptDisplayMode>(
+    clientSettingsStore.transcriptDisplayMode
+  )
   let error = $state<string | null>(null)
   let loading = $state(false)
   let saving = $state(false)
   let saveInFlight = false
-  let queuedSaveValue: Required<ClientConfig> | null = null
+  let queuedSaveValue: ResolvedClientConfigValue | null = null
 
   const baseConfig = $derived(
     config === null ? null : mergeClientConfig(config.defaults, config.file)
@@ -64,6 +71,21 @@
   const resetLabel = $derived(
     hasFileConfig ? 'Reset to config file' : 'Reset to defaults'
   )
+
+  const toolOptions = $derived.by(() => {
+    const known = serverInfoStore.tools
+    const configuredNames = Object.keys(toolBlockExpansion.tools)
+    const knownNames = new Set(known.map((tool) => tool.name))
+    const unavailable = configuredNames
+      .filter((name) => !knownNames.has(name))
+      .sort()
+      .map((name) => ({ name, displayName: name, unavailable: true }))
+
+    return [
+      ...known.map((tool) => ({ ...tool, unavailable: false })),
+      ...unavailable,
+    ]
+  })
 
   const transcriptDisplayModeOptions: ReadonlyArray<{
     readonly value: TranscriptDisplayMode
@@ -89,6 +111,10 @@
 
   $effect(() => {
     if (!open) return
+    untrack(() => {
+      toolBlockExpansion = clientSettingsStore.toolBlockExpansion
+      transcriptDisplayMode = clientSettingsStore.transcriptDisplayMode
+    })
     void loadConfig()
   })
 
@@ -98,10 +124,13 @@
 
   function applyConfig(nextConfig: ResolvedClientConfig) {
     config = nextConfig
-    expandToolBlocksByDefault = nextConfig.resolved.expand_tool_blocks_by_default
+    toolBlockExpansion = nextConfig.resolved.tool_block_expansion
     transcriptDisplayMode = nextConfig.resolved.transcript_display_mode
     clientSettingsStore.setTranscriptDisplayMode(
       nextConfig.resolved.transcript_display_mode
+    )
+    clientSettingsStore.setToolBlockExpansion(
+      nextConfig.resolved.tool_block_expansion
     )
   }
 
@@ -117,7 +146,7 @@
     }
   }
 
-  function saveResolvedValue(value: Required<ClientConfig>) {
+  function saveResolvedValue(value: ResolvedClientConfigValue) {
     if (config === null || baseConfig === null) return
 
     const overrides = diffClientConfig(baseConfig, value)
@@ -137,11 +166,11 @@
     void flushSave(value)
   }
 
-  async function flushSave(initialValue: Required<ClientConfig>) {
+  async function flushSave(initialValue: ResolvedClientConfigValue) {
     saveInFlight = true
 
     try {
-      let value: Required<ClientConfig> | null = initialValue
+      let value: ResolvedClientConfigValue | null = initialValue
 
       while (value !== null) {
         if (baseConfig === null) return
@@ -167,11 +196,71 @@
     }
   }
 
-  function setExpandToolBlocksByDefault(value: boolean) {
-    expandToolBlocksByDefault = value
+  function saveToolBlockExpansion(value: ResolvedToolBlockExpansion) {
+    toolBlockExpansion = value
+    clientSettingsStore.setToolBlockExpansion(value)
     saveResolvedValue({
-      expand_tool_blocks_by_default: value,
+      expand_tool_blocks_by_default: value.default,
+      tool_block_expansion: value,
       transcript_display_mode: transcriptDisplayMode,
+    })
+  }
+
+  function setToolBlockDefault(value: boolean) {
+    saveToolBlockExpansion({ ...toolBlockExpansion, default: value })
+  }
+
+  const hasOwnToolPreference = (
+    expansion: ResolvedToolBlockExpansion,
+    toolName: string
+  ) => Object.hasOwn(expansion.tools, toolName)
+
+  const effectiveToolExpansion = (
+    expansion: ResolvedToolBlockExpansion,
+    toolName: string
+  ) =>
+    hasOwnToolPreference(expansion, toolName)
+      ? expansion.tools[toolName]
+      : expansion.default
+
+  function toolPreferenceSelection(toolName: string): {
+    readonly value: 'default' | 'expanded' | 'collapsed'
+    readonly label: string
+  } {
+    if (!hasOwnToolPreference(toolBlockExpansion, toolName)) {
+      return {
+        value: 'default',
+        label: `Default (${toolBlockExpansion.default ? 'expanded' : 'collapsed'})`,
+      }
+    }
+    return toolBlockExpansion.tools[toolName]
+      ? { value: 'expanded', label: 'Expanded' }
+      : { value: 'collapsed', label: 'Collapsed' }
+  }
+
+  function setToolBlockTool(toolName: string, value: string) {
+    const nextTools = { ...toolBlockExpansion.tools }
+
+    switch (value) {
+      case 'default': {
+        delete nextTools[toolName]
+        break
+      }
+      case 'expanded': {
+        nextTools[toolName] = true
+        break
+      }
+      case 'collapsed': {
+        nextTools[toolName] = false
+        break
+      }
+      default:
+        return
+    }
+
+    saveToolBlockExpansion({
+      ...toolBlockExpansion,
+      tools: nextTools,
     })
   }
 
@@ -180,7 +269,8 @@
     transcriptDisplayMode = value
     clientSettingsStore.setTranscriptDisplayMode(value)
     saveResolvedValue({
-      expand_tool_blocks_by_default: expandToolBlocksByDefault,
+      expand_tool_blocks_by_default: toolBlockExpansion.default,
+      tool_block_expansion: toolBlockExpansion,
       transcript_display_mode: value,
     })
   }
@@ -294,18 +384,55 @@
           <Tabs.Content value="general" class="text-base">
             <section class="grid gap-10">
               <div class="grid">
-                <div class="flex items-center justify-between gap-8 border-b border-border py-4 first:pt-0">
-                  <div class="min-w-0">
-                    <div class="text-base font-medium">Expand tool blocks by default</div>
-                    <div class="mt-0.5 text-base text-muted-foreground">
-                      Open new tool call and result blocks automatically.
+                <div class="grid gap-4 border-b border-border py-4 first:pt-0">
+                  <div class="flex items-center justify-between gap-8">
+                    <div class="min-w-0">
+                      <div class="text-base font-medium">Expand tool blocks by default</div>
                     </div>
+                    <Switch
+                      checked={toolBlockExpansion.default}
+                      onCheckedChange={setToolBlockDefault}
+                      disabled={loading || config === null}
+                    />
                   </div>
-                  <Switch
-                    checked={expandToolBlocksByDefault}
-                    onCheckedChange={setExpandToolBlocksByDefault}
-                    disabled={loading || config === null}
-                  />
+
+                  <div class="grid gap-2">
+                    <div class="text-sm font-medium text-muted-foreground">Per-tool defaults</div>
+                    {#if serverInfoStore.loading && toolOptions.length === 0}
+                      <div class="text-sm text-muted-foreground">Loading tools…</div>
+                    {:else if toolOptions.length === 0}
+                      <div class="text-sm text-muted-foreground">No server tools found.</div>
+                    {:else}
+                      <div class="grid rounded-md border border-border">
+                        {#each toolOptions as tool}
+                          <div class="flex items-center justify-between gap-8 border-b border-border px-3 py-2.5 last:border-b-0">
+                            <div class="min-w-0">
+                              <div class="text-base font-medium">{tool.displayName}</div>
+                              <div class="mt-0.5 font-mono text-xs text-muted-foreground">
+                                {tool.name}{tool.unavailable ? ' (not on current server)' : ''}
+                              </div>
+                            </div>
+                            <Select.Root
+                              type="single"
+                              value={toolPreferenceSelection(tool.name).value}
+                              onValueChange={(value) =>
+                                setToolBlockTool(tool.name, value)}
+                              disabled={loading || config === null}
+                            >
+                              <Select.Trigger class="w-40">
+                                {toolPreferenceSelection(tool.name).label}
+                              </Select.Trigger>
+                              <Select.Content class="w-44" align="end">
+                                <Select.Item value="default" label={`Default (${toolBlockExpansion.default ? 'expanded' : 'collapsed'})`} />
+                                <Select.Item value="expanded" label="Expanded" />
+                                <Select.Item value="collapsed" label="Collapsed" />
+                              </Select.Content>
+                            </Select.Root>
+                          </div>
+                        {/each}
+                      </div>
+                    {/if}
+                  </div>
                 </div>
 
                 <div class="flex items-center justify-between gap-8 py-4">

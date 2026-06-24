@@ -14,7 +14,7 @@ import { BunHttpServer, BunRuntime, BunServices } from '@effect/platform-bun'
 import { SqliteClient } from '@effect/sql-sqlite-bun'
 import { Effect, FileSystem, Layer, Option } from 'effect'
 import { Api } from '@sorato/api'
-import { AgentLive } from './agent-config.ts'
+import { AgentLive, AllToolInfos } from './agent-config.ts'
 import { AuthLive } from './auth.ts'
 import { DirectoriesLive } from './directories.ts'
 import { LoggingLive, resolveLogFile, resolveLogLevel } from './logging.ts'
@@ -37,7 +37,13 @@ import { HandshakeResponse } from '@sorato/api'
 
 const HandshakeLive = HttpApiBuilder.group(Api, 'handshake', (handlers) =>
   handlers.handle('check', () =>
-    Effect.succeed(new HandshakeResponse({ version: '0.0.1', status: 'ok' }))
+    Effect.succeed(
+      new HandshakeResponse({
+        version: '0.0.1',
+        status: 'ok',
+        tools: [...AllToolInfos],
+      })
+    )
   )
 )
 

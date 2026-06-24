@@ -25,6 +25,15 @@ When the user asks you to do something:
 
 Be concise and direct.`
 
+export const AllToolInfos = [
+  { name: 'Read', displayName: 'Read file' },
+  { name: 'Edit', displayName: 'Edit file' },
+  { name: 'Write', displayName: 'Write file' },
+  { name: 'Bash', displayName: 'Run command' },
+  { name: 'Glob', displayName: 'Find files' },
+  { name: 'Grep', displayName: 'Search files' },
+] as const
+
 export const AllTools = Toolkit.make(Read, Edit, Write, Bash, Glob, Grep)
 
 export const AllToolsLayer = AllTools.toLayer({

@@ -11,6 +11,7 @@
       import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
       import { connectionsStore } from '$lib/stores/connections.svelte.js'
       import { projectStore } from '$lib/stores/projects.svelte.js'
+      import { serverInfoStore } from '$lib/stores/server-info.svelte.js'
       import { sessionStore } from '$lib/stores/sessions.svelte.js'
       import { tabStore } from '$lib/stores/tabs.svelte.js'
       import { onMount } from 'svelte'
@@ -28,6 +29,11 @@
           tabStore.setDraftProject(tabStore.activeTab.id, project.id)
         }
       }
+
+      $effect(() => {
+        connectionsStore.activeConnection
+        void serverInfoStore.refresh()
+      })
 
       onMount(() => {
         void clientSettingsStore.loadFromClientConfig()
