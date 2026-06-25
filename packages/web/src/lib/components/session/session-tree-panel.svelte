@@ -35,11 +35,23 @@
   let activeTab = $state('tree')
 
   type ActiveRun = ReturnType<typeof sessionStore.activeRunsFor>[number]
+  type BranchConnector = 'middle' | 'last' | null
+  type GutterMark = 'blank' | 'vertical' | 'middle' | 'last'
+
+  interface TreeRowLayout {
+    readonly structuralDepth: number
+    readonly visualDepth: number
+    readonly branchConnector: BranchConnector
+    readonly branchGutters: ReadonlyArray<{
+      readonly level: number
+      readonly continues: boolean
+    }>
+  }
+
   type TreeRow =
-    | {
+    | ({
         readonly type: 'node'
         readonly id: string
-        readonly depth: number
         readonly message: MessageNode
         readonly targetNodeId: string
         readonly coveredNodeIds: ReadonlyArray<string>
@@ -48,13 +60,12 @@
         readonly toolCallNames: ReadonlyArray<string>
         readonly unresolvedToolCallCount: number
         readonly canSelect: boolean
-      }
-    | {
+      } & TreeRowLayout)
+    | ({
         readonly type: 'run'
         readonly id: string
-        readonly depth: number
         readonly run: ActiveRun
-      }
+      } & TreeRowLayout)
 
   const tree = $derived(buildMessageTree(messagesStore.messages))
   const activeRuns = $derived(sessionStore.activeRunsFor(sessionId))
@@ -77,14 +88,26 @@
       runsByBase.set(run.baseNodeId, siblings)
     }
 
-    const visit = (node: MessageTreeNode, depth: number) => {
+    const visit = (
+      node: MessageTreeNode,
+      structuralDepth: number,
+      branchGutters: TreeRowLayout['branchGutters'],
+      branchConnector: BranchConnector
+    ) => {
+      const visualDepth = structuralDepth
+
       if (isToolMessage(node.message)) {
-        for (const child of node.children) visit(child, depth)
+        for (const child of node.children) {
+          visit(child, structuralDepth, branchGutters, branchConnector)
+        }
         for (const run of runsByBase.get(node.message.id) ?? []) {
           rows.push({
             type: 'run',
             id: runTreeNodeId(run.runId),
-            depth,
+            structuralDepth,
+            visualDepth,
+            branchConnector: null,
+            branchGutters,
             run,
           })
         }
@@ -106,7 +129,10 @@
       rows.push({
         type: 'node',
         id: node.message.id,
-        depth,
+        structuralDepth,
+        visualDepth,
+        branchConnector,
+        branchGutters,
         message: node.message,
         targetNodeId,
         coveredNodeIds,
@@ -117,24 +143,91 @@
         canSelect: unresolvedToolCallCount === 0,
       })
 
-      const childDepth = depth + (childCount > 1 ? 1 : 0)
-      for (const child of continuationChildren) visit(child, childDepth)
-      for (const run of runsByBase.get(targetNodeId) ?? []) {
-        rows.push({
-          type: 'run',
-          id: runTreeNodeId(run.runId),
-          depth: childDepth,
+      const childStructuralDepth = structuralDepth + (childCount > 1 ? 1 : 0)
+      const childGutters =
+        childCount > 1 && structuralDepth >= 0
+          ? [...branchGutters, { level: structuralDepth, continues: false }]
+          : branchGutters
+      const visibleChildren = continuationChildren.filter(
+        (child) => !isToolMessage(child.message)
+      )
+      const hiddenToolChildren = continuationChildren.filter((child) =>
+        isToolMessage(child.message)
+      )
+      const childEntries: ReadonlyArray<
+        | { readonly type: 'node'; readonly node: MessageTreeNode }
+        | { readonly type: 'run'; readonly run: ActiveRun }
+      > = [
+        ...visibleChildren.map((child) => ({ type: 'node' as const, node: child })),
+        ...hiddenToolChildren.map((child) => ({ type: 'node' as const, node: child })),
+        ...(runsByBase.get(targetNodeId) ?? []).map((run) => ({
+          type: 'run' as const,
           run,
-        })
-      }
+        })),
+      ]
+
+      childEntries.forEach((entry, index) => {
+        const isLastChild = index === childEntries.length - 1
+        const nextGutters =
+          childCount > 1
+            ? childGutters.map((gutter) =>
+                gutter.level === structuralDepth
+                  ? { ...gutter, continues: !isLastChild }
+                  : gutter
+              )
+            : childGutters
+        const childConnector: BranchConnector =
+          childCount > 1 ? (isLastChild ? 'last' : 'middle') : null
+
+        if (entry.type === 'node') {
+          visit(entry.node, childStructuralDepth, nextGutters, childConnector)
+        } else {
+          rows.push({
+            type: 'run',
+            id: runTreeNodeId(entry.run.runId),
+            structuralDepth: childStructuralDepth,
+            visualDepth: childStructuralDepth,
+            branchConnector: childConnector,
+            branchGutters: nextGutters,
+            run: entry.run,
+          })
+        }
+      })
     }
 
     for (const run of runsByBase.get(null) ?? []) {
-      rows.push({ type: 'run', id: runTreeNodeId(run.runId), depth: 0, run })
+      rows.push({
+        type: 'run',
+        id: runTreeNodeId(run.runId),
+        structuralDepth: 0,
+        visualDepth: 0,
+        branchConnector: null,
+        branchGutters: [],
+        run,
+      })
     }
-    for (const root of roots) visit(root, 0)
+    for (const root of roots) visit(root, 0, [], null)
 
     return rows
+  }
+
+  function gutterMarks(row: TreeRow): ReadonlyArray<GutterMark> {
+    const marks: GutterMark[] = Array.from(
+      { length: row.visualDepth },
+      () => 'blank'
+    )
+
+    for (const gutter of row.branchGutters) {
+      if (gutter.level >= 0 && gutter.level < marks.length && gutter.continues) {
+        marks[gutter.level] = 'vertical'
+      }
+    }
+
+    if (row.branchConnector !== null && row.structuralDepth > 0) {
+      marks[row.structuralDepth - 1] = row.branchConnector
+    }
+
+    return marks
   }
 
   function selectNode(nodeId: string) {
@@ -200,7 +293,7 @@
       {:else if rows.length === 0}
         <div class="p-3 text-sm text-muted-foreground">No messages yet.</div>
       {:else}
-        <div class="flex flex-col gap-0.5 p-1.5">
+        <div class="flex flex-col p-1.5">
           {#each rows as row (row.id)}
             {#if row.type === 'node'}
               {@const selected = isSelectedTreeRow(selectedHeadValue, row)}
@@ -210,12 +303,16 @@
               <Button
                 variant="ghost"
                 size="sm"
-                class="h-auto justify-start gap-1.5 px-1.5 py-1 text-left hover:bg-base-hover disabled:opacity-70 {selected ? 'bg-selected text-foreground hover:bg-selected' : ''}"
-                style={`padding-left: ${0.375 + row.depth * 1.1}rem`}
+                class="h-auto justify-start gap-0.5 px-1.5 py-0.5 text-left hover:bg-base-hover disabled:opacity-70 {selected ? 'bg-selected text-foreground hover:bg-selected' : ''}"
                 title={row.canSelect ? row.targetNodeId : 'Tool exchange incomplete'}
                 disabled={!row.canSelect}
                 onclick={() => selectNode(row.targetNodeId)}
               >
+                <span class="flex shrink-0 self-stretch">
+                  {#each gutterMarks(row) as mark}
+                    <span class="tree-gutter" data-mark={mark}></span>
+                  {/each}
+                </span>
                 <span
                   class="flex size-5 shrink-0 items-center justify-center {rowInPath ? 'text-primary' : 'text-foreground'}"
                 >
@@ -242,11 +339,6 @@
                       </span>
                     {/if}
                   {/if}
-                  {#if row.childCount > 1}
-                    <span class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">
-                      {row.childCount}
-                    </span>
-                  {/if}
                 </span>
               </Button>
             {:else}
@@ -254,11 +346,15 @@
               <Button
                 variant="ghost"
                 size="sm"
-                class="h-auto justify-start gap-1.5 px-1.5 py-1 text-left hover:bg-base-hover {selected ? 'bg-selected text-foreground hover:bg-selected' : ''}"
-                style={`padding-left: ${0.375 + row.depth * 1.1}rem`}
+                class="h-auto justify-start gap-0.5 px-1.5 py-0.5 text-left hover:bg-base-hover {selected ? 'bg-selected text-foreground hover:bg-selected' : ''}"
                 title={row.run.runId}
                 onclick={() => selectRun(row.run)}
               >
+                <span class="flex shrink-0 self-stretch">
+                  {#each gutterMarks(row) as mark}
+                    <span class="tree-gutter" data-mark={mark}></span>
+                  {/each}
+                </span>
                 <span class="flex size-5 shrink-0 items-center justify-center text-primary">
                   <CircleNotchIcon class="size-3.5 animate-spin" />
                 </span>
@@ -284,3 +380,50 @@
     </Tabs.Content>
   </Tabs.Root>
 </aside>
+
+<style>
+  .tree-gutter {
+    --tree-branch-line: var(--muted-foreground);
+    --tree-branch-line-width: 2px;
+    position: relative;
+    display: inline-flex;
+    width: 1.375rem;
+    min-height: 1.25rem;
+    flex-shrink: 0;
+  }
+
+  .tree-gutter[data-mark='vertical']::before,
+  .tree-gutter[data-mark='middle']::before,
+  .tree-gutter[data-mark='last']::before {
+    position: absolute;
+    left: calc(0.75rem - (var(--tree-branch-line-width) / 2));
+    width: var(--tree-branch-line-width);
+    border-radius: 9999px;
+    content: '';
+  }
+
+  .tree-gutter[data-mark='vertical']::before,
+  .tree-gutter[data-mark='middle']::before {
+    top: -0.375rem;
+    bottom: -0.375rem;
+    background: var(--tree-branch-line);
+  }
+
+  .tree-gutter[data-mark='last']::before {
+    top: -0.375rem;
+    bottom: 50%;
+    background: var(--tree-branch-line);
+  }
+
+  .tree-gutter[data-mark='middle']::after,
+  .tree-gutter[data-mark='last']::after {
+    position: absolute;
+    top: calc(50% - (var(--tree-branch-line-width) / 2));
+    left: 0.75rem;
+    right: -0.125rem;
+    height: var(--tree-branch-line-width);
+    border-radius: 9999px;
+    background: var(--tree-branch-line);
+    content: '';
+  }
+</style>
