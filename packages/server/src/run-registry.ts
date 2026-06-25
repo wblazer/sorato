@@ -1,6 +1,13 @@
 import type { Fiber } from 'effect'
 import type { ModelOptions } from './model-catalog.ts'
 
+export interface CompactRangeRun {
+  readonly baseHeadNodeId: string
+  readonly startNodeId: string
+  readonly endNodeId: string
+  readonly instructions?: string | undefined
+}
+
 export interface RunRequest {
   readonly runId: string
   readonly inputs: ReadonlyArray<string>
@@ -8,6 +15,7 @@ export interface RunRequest {
   readonly modelOptions: ModelOptions
   readonly baseNodeId: string | null
   readonly afterRunId: string | null
+  readonly compactRange?: CompactRangeRun | undefined
 }
 
 export interface ActiveRunInfo {
@@ -35,6 +43,8 @@ const missingQueueState = (kind: string, queueId: string): never => {
 }
 
 const sameRunBatch = (a: RunRequest, b: RunRequest) =>
+  a.compactRange === undefined &&
+  b.compactRange === undefined &&
   a.model === b.model &&
   a.baseNodeId === b.baseNodeId &&
   a.afterRunId === b.afterRunId &&

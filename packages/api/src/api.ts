@@ -115,6 +115,14 @@ export class RunResponse extends Schema.Class<RunResponse>('RunResponse')({
   baseNodeId: Schema.NullOr(Schema.String),
 }) {}
 
+export class CompactRunResponse extends Schema.Class<CompactRunResponse>(
+  'CompactRunResponse'
+)({
+  status: Schema.Literals(['started', 'queued']),
+  runId: Schema.String,
+  baseNodeId: Schema.NullOr(Schema.String),
+}) {}
+
 export class StopResponse extends Schema.Class<StopResponse>('StopResponse')({
   status: Schema.Literals(['stopped', 'not_running']),
 }) {}
@@ -410,6 +418,28 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
         ),
       }),
       success: RunResponse,
+      error: [
+        StorageUnavailable.pipe(HttpApiSchema.status(503)),
+        ProjectOperationFailed.pipe(HttpApiSchema.status(500)),
+        ProviderCredentialsUnavailable.pipe(HttpApiSchema.status(503)),
+        ProviderNotConfigured.pipe(HttpApiSchema.status(412)),
+        ModelCatalogUnavailable.pipe(HttpApiSchema.status(503)),
+        ModelUnavailable.pipe(HttpApiSchema.status(422)),
+        RunRejected.pipe(HttpApiSchema.status(409)),
+      ],
+    })
+  )
+  .add(
+    HttpApiEndpoint.post('compactRange', '/:id/compact-range', {
+      params: { id: SessionId },
+      payload: Schema.Struct({
+        model: Schema.String,
+        baseHeadNodeId: Schema.String,
+        startNodeId: Schema.String,
+        endNodeId: Schema.String,
+        instructions: Schema.optional(Schema.String),
+      }),
+      success: CompactRunResponse,
       error: [
         StorageUnavailable.pipe(HttpApiSchema.status(503)),
         ProjectOperationFailed.pipe(HttpApiSchema.status(500)),

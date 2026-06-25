@@ -151,6 +151,7 @@ const liveRunStream = (runId: string, cursor: StreamCursor | undefined) =>
           sessionId: replaySnapshot.sessionId,
           runId,
           baseNodeId: replaySnapshot.baseNodeId,
+          kind: replaySnapshot.kind,
         },
       ][
         Number(

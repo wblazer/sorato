@@ -34,6 +34,11 @@
   --success-foreground: var(--foreground);
   --success-muted: oklch(0.26 0.03 145);
   --success-muted-foreground: oklch(0.78 0.09 145);
+  --tree-user: oklch(0.74 0.12 245);
+  --tree-assistant: oklch(0.76 0.11 150);
+  --tree-summary: oklch(0.82 0.13 82);
+  --tree-tool: oklch(0.76 0.1 295);
+  --tree-system: oklch(0.72 0.01 250);
   --warning: oklch(0.76 0.12 78);
   --warning-hover: oklch(0.81 0.13 78);
   --warning-foreground: oklch(0.22 0.04 78);
@@ -72,6 +77,11 @@
   --color-success-foreground: var(--success-foreground);
   --color-success-muted: var(--success-muted);
   --color-success-muted-foreground: var(--success-muted-foreground);
+  --color-tree-user: var(--tree-user);
+  --color-tree-assistant: var(--tree-assistant);
+  --color-tree-summary: var(--tree-summary);
+  --color-tree-tool: var(--tree-tool);
+  --color-tree-system: var(--tree-system);
   --color-warning: var(--warning);
   --color-warning-hover: var(--warning-hover);
   --color-warning-foreground: var(--warning-foreground);

@@ -51,6 +51,7 @@ export const ServerEvent = Schema.Union([
     sessionId: Schema.String,
     runId: Schema.String,
     baseNodeId: Schema.NullOr(Schema.String),
+    kind: Schema.optional(Schema.Literals(['agent', 'summary'])),
   }),
   Schema.TaggedStruct('RunEnd', {
     sessionId: Schema.String,

@@ -227,6 +227,26 @@ function isDescendantOrSame(
   return false
 }
 
+function deepestDescendantLeaf(
+  messages: ReadonlyArray<MessageNode>,
+  nodeId: string
+): MessageNode | null {
+  const childrenByParent = new Map<string | null, MessageNode[]>()
+  for (const message of messages) {
+    const children = childrenByParent.get(message.parentId) ?? []
+    children.push(message)
+    childrenByParent.set(message.parentId, children)
+  }
+
+  let best = messages.find((message) => message.id === nodeId) ?? null
+  const visit = (message: MessageNode) => {
+    best = message
+    for (const child of childrenByParent.get(message.id) ?? []) visit(child)
+  }
+  if (best) visit(best)
+  return best
+}
+
 function finalPersistedRunNode(
   messages: ReadonlyArray<MessageNode>,
   runId: string,
@@ -250,13 +270,21 @@ function finalPersistedRunNode(
       .filter((id): id is string => id !== null && runIds.has(id))
   )
 
-  return (
-    runMessages
-      .toReversed()
-      .find(
-        (message) =>
-          !parentIds.has(message.id) &&
-          isDescendantOrSame(messages, message.id, baseNodeId)
-      ) ?? null
-  )
+  const runLeaf = runMessages
+    .toReversed()
+    .find(
+      (message) =>
+        !parentIds.has(message.id) &&
+        isDescendantOrSame(messages, message.id, baseNodeId)
+    )
+  if (runLeaf) return runLeaf
+
+  const compactedRoot = runMessages
+    .toReversed()
+    .find((message) =>
+      messages.some((candidate) => candidate.parentId === message.id)
+    )
+  return compactedRoot
+    ? deepestDescendantLeaf(messages, compactedRoot.id)
+    : null
 }

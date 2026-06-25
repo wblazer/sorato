@@ -16,6 +16,7 @@ interface ActiveReplayState {
   readonly sessionId: string
   readonly runId: string
   readonly baseNodeId: string | null
+  readonly kind: 'agent' | 'summary'
   nextEventId: number
   readonly events: ContentEvent[]
 }
@@ -43,13 +44,15 @@ const MAX_FINISHED_STATES = 1000
 export function startEventReplay(
   sessionId: string,
   runId: string,
-  baseNodeId: string | null = null
+  baseNodeId: string | null = null,
+  kind: 'agent' | 'summary' = 'agent'
 ): void {
   buffers.set(runId, {
     status: 'active',
     sessionId,
     runId,
     baseNodeId,
+    kind,
     nextEventId: 1,
     events: [],
   })
@@ -92,6 +95,7 @@ export function getReplaySnapshot(runId: string): {
   readonly sessionId: string
   readonly runId: string
   readonly baseNodeId: string | null
+  readonly kind: 'agent' | 'summary'
   readonly events: readonly ContentEvent[]
 } | null {
   const state = buffers.get(runId)
@@ -101,6 +105,7 @@ export function getReplaySnapshot(runId: string): {
     sessionId: state.sessionId,
     runId: state.runId,
     baseNodeId: state.baseNodeId,
+    kind: state.kind,
     events: [...state.events],
   }
 }

@@ -131,7 +131,7 @@
 </script>
 
 {#if renderParts.length > 0}
-  <div class={isAssistant ? '' : 'flex flex-col gap-2 py-2.5'}>
+  <div class={isAssistant ? '' : isSystem ? 'flex flex-col gap-2 py-1' : 'flex flex-col gap-2 py-2.5'}>
     {#if isInterruption}
     <div class="flex items-center gap-3 py-1 text-sm font-medium text-muted-foreground">
       <div class="h-px flex-1 bg-border"></div>

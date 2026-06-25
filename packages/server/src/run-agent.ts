@@ -7,14 +7,28 @@
  *   - Persists the conversation to SessionStorage after completion
  *   - Runs as a daemon fiber (fire-and-forget from the HTTP handler)
  */
-import { Cause, Duration, Effect, Layer, Match, Option } from 'effect'
-import { AiError, type Prompt } from 'effect/unstable/ai'
+import { Cause, Duration, Effect, Layer, Match, Option, Stream } from 'effect'
+import {
+  AiError,
+  Chat,
+  LanguageModel,
+  Prompt,
+  type Response,
+} from 'effect/unstable/ai'
 import { CurrentFiles, CurrentShell, run, Sandbox } from '@sorato/core'
 import { ProjectStorage } from './project/project.ts'
-import { SessionStorage, type SessionId } from './session/session.ts'
+import {
+  SessionStorage,
+  type SessionId,
+  type StoredMessageEncoded,
+} from './session/session.ts'
 import { AllTools, SYSTEM_PROMPT } from './agent-config.ts'
 import { createBusHook, publish } from './event-bus.ts'
-import { endEventReplay, startEventReplay } from './event-replay.ts'
+import {
+  appendReplayEvent,
+  endEventReplay,
+  startEventReplay,
+} from './event-replay.ts'
 import { modelLayer, resolveModel } from './model-catalog.ts'
 import { dataDir } from './data-dir.ts'
 import { createPersistenceHook } from './run-persistence.ts'
@@ -167,6 +181,150 @@ const runFailureMessage = (
   }
 }
 
+const SUMMARY_SYSTEM_PROMPT = `You summarize ranges of coding-agent conversation context for future continuation.
+Return only the summary. Do not include preambles or explanations.
+Preserve the user's goals, constraints, decisions, code/file changes, tool results that matter, unresolved tasks, and exact facts needed to continue.
+Omit redundant chatter and details that are not useful for future work.`
+
+const emptyMessageText = '[empty]'
+
+const messageText = (message: StoredMessageEncoded): string => {
+  const content = message.content
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return emptyMessageText
+  return content
+    .map((part) => {
+      switch (part.type) {
+        case 'text':
+        case 'reasoning':
+          return part.text
+        case 'file':
+          return part.fileName ? `[file: ${part.fileName}]` : '[file]'
+        case 'tool-call':
+          return `[tool call: ${part.name}] ${JSON.stringify(part.params)}`
+        case 'tool-result':
+          return `[tool result: ${part.name}] ${part.result}`
+        case 'tool-approval-request':
+          return `[tool approval request: ${part.name}]`
+        case 'tool-approval-response':
+          return `[tool approval response: ${part.name}] ${part.approved ? 'approved' : 'rejected'}`
+      }
+    })
+    .join('\n')
+}
+
+const summaryPrompt = (
+  messages: ReadonlyArray<StoredMessageEncoded>,
+  instructions: string | undefined
+) =>
+  Prompt.make([
+    { role: 'system' as const, content: SUMMARY_SYSTEM_PROMPT },
+    {
+      role: 'user' as const,
+      content: [
+        instructions && instructions.trim().length > 0
+          ? `<extra-instructions>\n${instructions.trim()}\n</extra-instructions>`
+          : null,
+        '<conversation-range>',
+        ...messages.map(
+          (message, index) =>
+            `<message index="${index + 1}" role="${message.role}">\n${messageText(message)}\n</message>`
+        ),
+        '</conversation-range>',
+      ]
+        .filter((part): part is string => part !== null)
+        .join('\n'),
+    },
+  ])
+
+const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
+  sessionId: SessionId,
+  request: RunRequest,
+  modelServices: Layer.Layer<LanguageModel.LanguageModel> | undefined
+) {
+  const compactRange = request.compactRange
+  if (compactRange === undefined) return false
+
+  const storage = yield* SessionStorage
+
+  startEventReplay(
+    sessionId,
+    request.runId,
+    compactRange.baseHeadNodeId,
+    'summary'
+  )
+  publish({
+    _tag: 'RunStart',
+    sessionId,
+    runId: request.runId,
+    baseNodeId: compactRange.baseHeadNodeId,
+    kind: 'summary',
+  })
+
+  const path = yield* storage.messages(sessionId, compactRange.baseHeadNodeId)
+  const startIndex = path.findIndex(
+    (message) => message.id === compactRange.startNodeId
+  )
+  const endIndex = path.findIndex(
+    (message) => message.id === compactRange.endNodeId
+  )
+  if (startIndex < 0 || endIndex < 0 || startIndex > endIndex) {
+    return yield* Effect.die(
+      new Error('Compact range must be ordered on the selected path')
+    )
+  }
+
+  const chat = yield* Chat.fromPrompt(
+    summaryPrompt(
+      path.slice(startIndex, endIndex + 1).map((message) => message.encoded),
+      compactRange.instructions
+    )
+  )
+
+  if (modelServices === undefined) {
+    return yield* Effect.die(
+      new Error(`Model is not supported by this server: ${request.model}`)
+    )
+  }
+
+  const summary = yield* chat.streamText({ prompt: [] }).pipe(
+    Stream.filter(
+      (
+        part
+      ): part is Extract<
+        Response.StreamPart<Record<string, never>>,
+        { type: 'text-delta' }
+      > => part.type === 'text-delta'
+    ),
+    Stream.tap((part) =>
+      Effect.sync(() =>
+        publish(
+          appendReplayEvent(sessionId, request.runId, {
+            _tag: 'TextDelta',
+            sessionId,
+            runId: request.runId,
+            delta: part.delta,
+          })
+        )
+      )
+    ),
+    Stream.map((part) => part.delta),
+    Stream.mkString,
+    Effect.provide(modelServices)
+  )
+
+  yield* storage.compactRange({
+    sessionId,
+    runId: request.runId,
+    baseHeadNodeId: compactRange.baseHeadNodeId,
+    startNodeId: compactRange.startNodeId,
+    endNodeId: compactRange.endNodeId,
+    summaryContent: summary.trim(),
+  })
+  publish({ _tag: 'MessagesAppended', sessionId })
+  return true
+})
+
 export const runAgent = (sessionId: SessionId, request: RunRequest) => {
   const runId = request.runId
   let runFailed = false
@@ -248,6 +406,9 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     )
     yield* Effect.logInfo('Agent run resolved model layer', { runId })
 
+    const compacted = yield* runCompactRange(sessionId, request, modelServices)
+    if (compacted) return
+
     const existingConversation = yield* storage.conversation(
       sessionId,
       request.baseNodeId
@@ -309,12 +470,13 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       wasEmptySession: isFirstMessage,
     })
     publish({ _tag: 'MessagesAppended', sessionId })
-    startEventReplay(sessionId, runId, request.baseNodeId)
+    startEventReplay(sessionId, runId, request.baseNodeId, 'agent')
     publish({
       _tag: 'RunStart',
       sessionId,
       runId,
       baseNodeId: request.baseNodeId,
+      kind: 'agent',
     })
     yield* Effect.forkDetach(maybeSetTitle)
     yield* Effect.logInfo('Agent run published lifecycle start', { runId })

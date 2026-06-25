@@ -54,7 +54,12 @@ function createSessionStore() {
   let activeRuns = $state(
     new Map<
       string,
-      { sessionId: string; runId: string; baseNodeId: string | null }
+      {
+        sessionId: string
+        runId: string
+        baseNodeId: string | null
+        kind: 'agent' | 'summary'
+      }
     >()
   )
   let latestRunStart = $state<{
@@ -99,6 +104,7 @@ function createSessionStore() {
         sessionId: event.sessionId,
         runId: event.runId,
         baseNodeId: event.baseNodeId,
+        kind: event.kind ?? 'agent',
       })
       activeRuns = nextActiveRuns
       latestRunStart = {
@@ -338,6 +344,59 @@ function createSessionStore() {
     }
   }
 
+  async function compactRange(
+    sessionId: string,
+    model: string,
+    baseHeadNodeId: string,
+    startNodeId: string,
+    endNodeId: string,
+    instructions?: string
+  ): Promise<{
+    status: 'started' | 'queued'
+    runId: string
+    baseNodeId: string | null
+  } | null> {
+    try {
+      const client = await getApiClient(connectionsStore.getApiBase())
+      const result = await runApi(
+        client.sessions.compactRange({
+          params: { id: sessionId },
+          payload: {
+            model,
+            baseHeadNodeId,
+            startNodeId,
+            endNodeId,
+            instructions,
+          },
+        }),
+        'Failed to start summarization'
+      )
+      if (!result.ok) throw new Error(result.error.message)
+
+      sessions = sessions.map((s) =>
+        s.id === sessionId ? { ...s, status: 'running' as const } : s
+      )
+      if (result.value.status === 'started') {
+        const next = new Map(pendingRunStarts)
+        next.set(sessionId, (next.get(sessionId) ?? 0) + 1)
+        pendingRunStarts = next
+      }
+      return result.value
+    } catch (e) {
+      const message = requestErrorMessage(e, 'Failed to start summarization')
+      error = message
+      const next = new Map(sessionStatuses)
+      next.set(sessionId, {
+        _tag: 'failed',
+        title: 'Summarization failed to start',
+        message,
+        retryable: false,
+      })
+      sessionStatuses = next
+      return null
+    }
+  }
+
   /**
    * Stop an active agent run on a session.
    *
@@ -400,6 +459,10 @@ function createSessionStore() {
 
   function activeRunsFor(sessionId: string) {
     return [...activeRuns.values()].filter((run) => run.sessionId === sessionId)
+  }
+
+  function activeRun(runId: string | null) {
+    return runId === null ? null : (activeRuns.get(runId) ?? null)
   }
 
   /** Check if a stop has been requested but hasn't completed yet. */
@@ -466,6 +529,7 @@ function createSessionStore() {
     isRunning,
     isRunActive,
     activeRunsFor,
+    activeRun,
     get latestRunStart() {
       return latestRunStart
     },
@@ -477,6 +541,7 @@ function createSessionStore() {
     startComposing,
     createSession,
     runAgent,
+    compactRange,
     stopAgent,
     fetchSessions,
   }

@@ -61,6 +61,24 @@
         return project?.name ?? null
       })
       const visibleMessages = $derived(selectedHead.visibleMessages)
+      const selectedHeadValue = $derived(selectedHead.renderHead)
+      const followedRun = $derived(
+        selectedHeadValue?.type === 'run'
+          ? sessionStore.activeRun(selectedHeadValue.runId)
+          : null
+      )
+      const isFollowingActiveRun = $derived(followedRun !== null)
+      const followedStreamingParts = $derived(
+        selectedHeadValue?.type === 'run' &&
+          messagesStore.activeRunId === selectedHeadValue.runId
+          ? messagesStore.streamingParts
+          : []
+      )
+      const showStreamingIndicator = $derived(
+        selectedHeadValue?.type === 'run' &&
+          (isFollowingActiveRun ||
+            followedStreamingParts.length > 0)
+      )
 
       const persistedTranscriptItems = $derived.by(() =>
         projectTranscript(persistedSources(visibleMessages), {
@@ -169,7 +187,7 @@
           key: `message:${block.key}`,
           block,
         })),
-        ...(isRunning || messagesStore.streamingParts.length > 0
+        ...(showStreamingIndicator
           ? [{ type: 'streaming' as const, key: 'streaming' }]
           : []),
         ...queuedMessages.map((message) => ({
@@ -190,7 +208,7 @@
         overscan: 6,
         paddingStart: 20,
         paddingEnd: 20,
-        gap: 12,
+        gap: 4,
         onChange: (instance) => {
           isAtLatest = instance.isAtEnd(80)
         },
@@ -244,7 +262,7 @@
           overscan: 6,
           paddingStart: 20,
           paddingEnd: 20,
-          gap: 12,
+          gap: 4,
           onChange: (instance) => {
             isAtLatest = instance.isAtEnd(80)
           },
@@ -526,8 +544,9 @@
                     />
                   {:else if row.type === 'streaming'}
                     <StreamingIndicator
-                      parts={messagesStore.streamingParts}
-                      {isRunning}
+                      parts={followedStreamingParts}
+                      isRunning={isFollowingActiveRun}
+                      variant={followedRun?.kind === 'summary' ? 'system' : 'assistant'}
                       {accordionState}
                       accordionKey={row.key}
                     />
@@ -599,7 +618,7 @@
         <div class="absolute inset-y-0 -left-1 -right-1"></div>
         <div class="h-8 w-1 rounded-full bg-border opacity-0 transition-opacity group-hover:opacity-100"></div>
       </div>
-      <SessionTreePanel {sessionId} {selectedHead} />
+      <SessionTreePanel {sessionId} {selectedHead} model={modelsStore.selectedModel} />
     </div>
   {/if}
 </div>

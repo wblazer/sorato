@@ -134,13 +134,17 @@ export function messageLabel(message: MessageNode): string {
 }
 
 export function messagePreview(message: MessageNode): string {
-  if (message.kind === 'summary') return 'Compacted context summary'
-  return encodedPreview(message.encoded) || '(empty)'
+  return (
+    encodedPreview(message.encoded) ||
+    (message.kind === 'summary' ? 'Summary' : '(empty)')
+  )
 }
 
 export function messageNarrativePreview(message: MessageNode): string {
-  if (message.kind === 'summary') return 'Compacted context summary'
-  return encodedNarrativePreview(message.encoded)
+  return (
+    encodedNarrativePreview(message.encoded) ||
+    (message.kind === 'summary' ? 'Summary' : '')
+  )
 }
 
 function assistantToolCalls(

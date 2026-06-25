@@ -228,6 +228,20 @@ export type StoredMessageEncoded = typeof StoredMessage.Encoded
  *
  * The `SessionStorage` tag resolves to this interface.
  */
+export interface CompactRangeInput {
+  readonly sessionId: SessionId
+  readonly runId: RunId | null
+  readonly baseHeadNodeId: NodeId
+  readonly startNodeId: NodeId
+  readonly endNodeId: NodeId
+  readonly summaryContent: string
+}
+
+export interface CompactRangeResult {
+  readonly summaryNodeId: NodeId
+  readonly headNodeId: NodeId
+}
+
 export interface SessionStorageApi {
   /** Create a new empty session. */
   readonly create: (
@@ -300,6 +314,14 @@ export interface SessionStorageApi {
     messages: ReadonlyArray<StoredMessageEncoded>,
     baseNodeId: NodeId | null
   ) => Effect<ReadonlyArray<NodeId>, StorageError>
+
+  /**
+   * Create a compacted alternate branch by replacing a contiguous range on
+   * baseHeadNodeId's ancestry path with a summary node and shallow-cloned tail.
+   */
+  readonly compactRange: (
+    input: CompactRangeInput
+  ) => Effect<CompactRangeResult, StorageError>
 
   /**
    * Move the head to any message in the tree.

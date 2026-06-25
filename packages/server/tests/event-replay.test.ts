@@ -34,6 +34,7 @@ describe('EventReplay', () => {
       sessionId: 'session-1',
       runId: 'run-1',
       baseNodeId: null,
+      kind: 'agent',
       events: [
         {
           _tag: 'TextDelta',

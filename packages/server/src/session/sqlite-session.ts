@@ -104,6 +104,18 @@ type NodeInsertRow = {
   readonly created_at: string
 }
 
+type CompactNodeInsertRow = {
+  readonly id: string
+  readonly session_id: string
+  readonly parent_node_id: string | null
+  readonly kind: 'message' | 'summary'
+  readonly message_id: string | null
+  readonly summary_id: string | null
+  readonly source_node_id: string | null
+  readonly run_id: string | null
+  readonly created_at: string
+}
+
 const nowIso = () => new Date().toISOString()
 const toMillis = (value: string | null): number | null =>
   value === null ? null : Date.parse(value)
@@ -198,6 +210,20 @@ const decodePromptMessageOption = (
   }
 }
 
+const summaryEncoded = (content: string): StoredMessageEncoded =>
+  Schema.decodeUnknownSync(StoredMessage)({
+    role: 'system',
+    content,
+    source: 'system-prompt',
+    display: { title: 'Summary' },
+  })
+
+const promptSummaryEncoded = (content: string): Prompt.MessageEncoded =>
+  Schema.decodeUnknownSync(Prompt.Message)({
+    role: 'system',
+    content,
+  })
+
 const toMessageNode = (row: NodeRow): MessageNode => ({
   id: row.id,
   sessionId: row.session_id,
@@ -209,9 +235,12 @@ const toMessageNode = (row: NodeRow): MessageNode => ({
   runId: row.run_id,
   run: runFromNodeRow(row),
   modelCall: modelCallFromNodeRow(row),
-  encoded: decodeStoredMessage(
-    row.message_content ?? '{"role":"system","content":""}'
-  ),
+  encoded:
+    row.kind === 'summary'
+      ? summaryEncoded(row.summary_content ?? '')
+      : decodeStoredMessage(
+          row.message_content ?? '{"role":"system","content":""}'
+        ),
   createdAt: Date.parse(row.created_at),
 })
 
@@ -294,6 +323,10 @@ const nodeSelection = (sql: SqlClient) => sql`
     m.role AS message_role,
     m.content AS message_content,
     m.created_at AS message_created_at,
+    s.content AS summary_content,
+    s.source_start_node_id AS summary_source_start_node_id,
+    s.source_end_node_id AS summary_source_end_node_id,
+    s.created_at AS summary_created_at,
     r.created_at AS run_created_at,
     r.base_node_id AS run_base_node_id,
     mc.id AS model_call_id,
@@ -313,6 +346,7 @@ const nodeSelection = (sql: SqlClient) => sql`
     mc.finished_at AS model_call_finished_at
   FROM nodes n
   LEFT JOIN messages m ON m.id = n.message_id
+  LEFT JOIN summaries s ON s.id = n.summary_id
   LEFT JOIN runs r ON r.id = n.run_id
   LEFT JOIN model_calls mc ON mc.assistant_node_id = n.id
 `
@@ -331,6 +365,10 @@ const chainNodeSelection = (sql: SqlClient) => sql`
     m.role AS message_role,
     m.content AS message_content,
     m.created_at AS message_created_at,
+    s.content AS summary_content,
+    s.source_start_node_id AS summary_source_start_node_id,
+    s.source_end_node_id AS summary_source_end_node_id,
+    s.created_at AS summary_created_at,
     r.created_at AS run_created_at,
     r.base_node_id AS run_base_node_id,
     mc.id AS model_call_id,
@@ -350,6 +388,7 @@ const chainNodeSelection = (sql: SqlClient) => sql`
     mc.finished_at AS model_call_finished_at
   FROM chain n
   LEFT JOIN messages m ON m.id = n.message_id
+  LEFT JOIN summaries s ON s.id = n.summary_id
   LEFT JOIN runs r ON r.id = n.run_id
   LEFT JOIN model_calls mc ON mc.assistant_node_id = n.id
 `
@@ -657,8 +696,10 @@ export const SqliteSession = (options: { readonly path: string }) =>
               )
         return Schema.decodeUnknownSync(Prompt.Prompt)({
           content: [...rows].reverse().flatMap((row) => {
-            if (row.kind !== 'message' || row.message_content === null)
-              return []
+            if (row.kind === 'summary') {
+              return [promptSummaryEncoded(row.summary_content ?? '')]
+            }
+            if (row.message_content === null) return []
             const decoded = decodePromptMessageOption(row.message_content)
             return Option.isNone(decoded) ? [] : [decoded.value]
           }),
@@ -746,6 +787,113 @@ export const SqliteSession = (options: { readonly path: string }) =>
         return rows.nodes.map((row) => row.id)
       })
 
+      const compactRange: SessionStorageApi['compactRange'] = Effect.fn(
+        'SessionStorage.compactRange'
+      )(function* (input) {
+        yield* get(input.sessionId)
+        const rows = yield* listNodeChainRows({
+          id: input.baseHeadNodeId,
+        }).pipe(
+          Effect.mapError(
+            sqlFailure(
+              'compactRange',
+              `Failed to load compact range path: ${input.sessionId}`
+            )
+          )
+        )
+        const path = [...rows].reverse()
+        const startIndex = path.findIndex((row) => row.id === input.startNodeId)
+        const endIndex = path.findIndex((row) => row.id === input.endNodeId)
+        if (startIndex < 0 || endIndex < 0 || startIndex > endIndex) {
+          return yield* Effect.fail(
+            notFound(
+              'compactRange',
+              'Compact range must be ordered on the selected head ancestry path'
+            )
+          )
+        }
+
+        const now = nowIso()
+        const summaryId = crypto.randomUUID()
+        const summaryNodeId = crypto.randomUUID()
+        const parentNodeId = path[startIndex]?.parent_node_id ?? null
+        let nextParentNodeId = summaryNodeId
+        const cloneRows: CompactNodeInsertRow[] = []
+
+        for (const row of path.slice(endIndex + 1)) {
+          const nodeId = crypto.randomUUID()
+          cloneRows.push({
+            id: nodeId,
+            session_id: input.sessionId,
+            parent_node_id: nextParentNodeId,
+            kind: row.kind,
+            message_id: row.message_id,
+            summary_id: row.summary_id,
+            source_node_id: row.source_node_id ?? row.id,
+            run_id: row.run_id,
+            created_at: now,
+          })
+          nextParentNodeId = nodeId
+        }
+
+        const summaryNode: CompactNodeInsertRow = {
+          id: summaryNodeId,
+          session_id: input.sessionId,
+          parent_node_id: parentNodeId,
+          kind: 'summary',
+          message_id: null,
+          summary_id: summaryId,
+          source_node_id: null,
+          run_id: input.runId,
+          created_at: now,
+        }
+
+        yield* sql
+          .withTransaction(
+            sql`
+              INSERT INTO summaries (
+                id,
+                session_id,
+                content,
+                source_start_node_id,
+                source_end_node_id,
+                run_id,
+                created_at
+              ) VALUES (
+                ${summaryId},
+                ${input.sessionId},
+                ${input.summaryContent},
+                ${input.startNodeId},
+                ${input.endNodeId},
+                ${input.runId},
+                ${now}
+              )
+            `.pipe(
+              Effect.andThen(
+                sql`INSERT INTO nodes ${sql.insert([summaryNode])}`
+              ),
+              Effect.andThen(
+                cloneRows.length > 0
+                  ? sql`INSERT INTO nodes ${sql.insert(cloneRows)}`
+                  : Effect.void
+              ),
+              Effect.andThen(
+                sql`UPDATE sessions SET updated_at = ${now} WHERE id = ${input.sessionId}`
+              )
+            )
+          )
+          .pipe(
+            Effect.mapError(
+              sqlFailure(
+                'compactRange',
+                `Failed to compact range for session: ${input.sessionId}`
+              )
+            )
+          )
+
+        return { summaryNodeId, headNodeId: nextParentNodeId }
+      })
+
       const leaves: SessionStorageApi['leaves'] = Effect.fn(
         'SessionStorage.leaves'
       )(function* (sessionId) {
@@ -771,6 +919,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
         conversation,
         messages,
         append,
+        compactRange,
         leaves,
       } satisfies SessionStorageApi
     })

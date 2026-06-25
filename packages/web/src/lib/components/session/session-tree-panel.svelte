@@ -27,12 +27,18 @@
   let {
     sessionId,
     selectedHead,
+    model,
   }: {
     sessionId: string
     selectedHead: SessionSelectedHeadController
+    model: string | null
   } = $props()
 
   let activeTab = $state('tree')
+  let compactMode = $state(false)
+  let compactStartNodeId = $state<string | null>(null)
+  let compactEndNodeId = $state<string | null>(null)
+  let compactInstructions = $state('')
 
   type ActiveRun = ReturnType<typeof sessionStore.activeRunsFor>[number]
   type BranchConnector = 'middle' | 'last' | null
@@ -74,6 +80,12 @@
   )
   const selectedHeadValue = $derived(selectedHead.renderHead)
   const rows = $derived.by(() => flattenRows(tree, activeRuns))
+  const selectedPathRows = $derived.by(() =>
+    selectedPath(messagesStore.messages, baseHeadNodeId)
+  )
+  const baseHeadNodeId = $derived.by(() =>
+    selectedHeadValue?.type === 'node' ? selectedHeadValue.nodeId : null
+  )
 
   function flattenRows(
     roots: ReadonlyArray<MessageTreeNode>,
@@ -195,6 +207,7 @@
       })
     }
 
+    for (const root of roots) visit(root, 0, [], null)
     for (const run of runsByBase.get(null) ?? []) {
       rows.push({
         type: 'run',
@@ -206,7 +219,6 @@
         run,
       })
     }
-    for (const root of roots) visit(root, 0, [], null)
 
     return rows
   }
@@ -242,6 +254,91 @@
     })
   }
 
+  function selectedPath(
+    messages: ReadonlyArray<MessageNode>,
+    headNodeId: string | null
+  ): ReadonlyArray<MessageNode> {
+    if (headNodeId === null) return []
+    const byId = new Map(messages.map((message) => [message.id, message]))
+    const path: MessageNode[] = []
+    const seen = new Set<string>()
+    let cursor: string | null = headNodeId
+    while (cursor !== null && !seen.has(cursor)) {
+      seen.add(cursor)
+      const message = byId.get(cursor)
+      if (!message) return []
+      path.push(message)
+      cursor = message.parentId
+    }
+    return path.reverse()
+  }
+
+  function resetCompactMode() {
+    compactMode = false
+    compactStartNodeId = null
+    compactEndNodeId = null
+    compactInstructions = ''
+  }
+
+  function toggleCompactMode() {
+    if (compactMode) {
+      resetCompactMode()
+      return
+    }
+    compactMode = true
+    compactStartNodeId = null
+    compactEndNodeId = null
+  }
+
+  function compactIndex(nodeId: string | null) {
+    if (nodeId === null) return -1
+    return selectedPathRows.findIndex((message) => message.id === nodeId)
+  }
+
+  function isInCompactRange(nodeId: string) {
+    const start = compactIndex(compactStartNodeId)
+    const end = compactIndex(compactEndNodeId)
+    const index = compactIndex(nodeId)
+    if (start < 0 || end < 0 || index < 0) return false
+    return index >= Math.min(start, end) && index <= Math.max(start, end)
+  }
+
+  function selectCompactEndpoint(nodeId: string) {
+    if (compactStartNodeId === null || compactEndNodeId !== null) {
+      compactStartNodeId = nodeId
+      compactEndNodeId = null
+      return
+    }
+    compactEndNodeId = nodeId
+  }
+
+  async function startCompaction() {
+    if (!model || baseHeadNodeId === null || compactStartNodeId === null) return
+    const endNodeId = compactEndNodeId ?? compactStartNodeId
+    const start = compactIndex(compactStartNodeId)
+    const end = compactIndex(endNodeId)
+    if (start < 0 || end < 0) return
+    const startNodeId = selectedPathRows[Math.min(start, end)]?.id
+    const orderedEndNodeId = selectedPathRows[Math.max(start, end)]?.id
+    if (!startNodeId || !orderedEndNodeId) return
+
+    const response = await sessionStore.compactRange(
+      sessionId,
+      model,
+      baseHeadNodeId,
+      startNodeId,
+      orderedEndNodeId,
+      compactInstructions.trim() || undefined
+    )
+    if (!response) return
+    selectedHead.setSelectedHead({
+      type: 'run',
+      runId: response.runId,
+      baseNodeId: response.baseNodeId,
+    })
+    compactMode = false
+  }
+
   function isSelectedTreeRow(head: SelectedHead, row: Extract<TreeRow, { type: 'node' }>) {
     return head?.type === 'node' && row.coveredNodeIds.includes(head.nodeId)
   }
@@ -257,6 +354,13 @@
 
   function toolBadgeNames(row: Extract<TreeRow, { type: 'node' }>) {
     return row.toolCallNames
+  }
+
+  type TreeTone = 'user' | 'assistant' | 'tool' | 'system' | 'summary'
+
+  function messageTone(message: MessageNode): TreeTone {
+    if (message.kind === 'summary') return 'summary'
+    return message.encoded.role
   }
 
   function nodeIcon(row: Extract<TreeRow, { type: 'node' }>) {
@@ -292,7 +396,81 @@
         <div class="p-3 text-sm text-muted-foreground">Loading tree...</div>
       {:else if rows.length === 0}
         <div class="p-3 text-sm text-muted-foreground">No messages yet.</div>
+      {:else if compactMode}
+        <div class="space-y-2 p-2">
+          <div class="flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="text-sm font-medium text-foreground">Compact context</div>
+              <div class="text-xs text-muted-foreground">Select a range on the active path.</div>
+            </div>
+            <Button variant="ghost" size="sm" onclick={resetCompactMode}>Cancel</Button>
+          </div>
+          <div class="rounded border border-border bg-base p-2 text-xs text-muted-foreground">
+            Sorato will generate and install the summary without rewriting existing history.
+          </div>
+          <div class="flex flex-col">
+            {#each selectedPathRows as message (message.id)}
+              {@const selected = message.id === compactStartNodeId || message.id === compactEndNodeId}
+              {@const inRange = isInCompactRange(message.id)}
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-auto justify-start gap-1.5 px-1.5 py-0.5 text-left hover:bg-base-hover {inRange ? 'bg-selected hover:bg-selected' : ''}"
+                onclick={() => selectCompactEndpoint(message.id)}
+              >
+                <span
+                  class="tree-icon flex size-5 shrink-0 items-center justify-center"
+                  data-tone={messageTone(message)}
+                  data-selected={selected}
+                >
+                  {#if message.kind === 'summary'}
+                    <FileTextIcon class="size-3.5" />
+                  {:else if message.encoded.role === 'user'}
+                    <UserIcon class="size-3.5" />
+                  {:else if message.encoded.role === 'assistant'}
+                    <RobotIcon class="size-3.5" />
+                  {:else if message.encoded.role === 'tool'}
+                    <WrenchIcon class="size-3.5" />
+                  {:else}
+                    <ChatCircleTextIcon class="size-3.5" />
+                  {/if}
+                </span>
+                <span
+                  class="tree-preview min-w-0 flex-1 truncate text-sm font-normal text-foreground"
+                  data-tone={messageTone(message)}
+                >
+                  {messagePreview(message)}
+                </span>
+              </Button>
+            {/each}
+          </div>
+          <textarea
+            class="min-h-20 w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-ring"
+            bind:value={compactInstructions}
+            placeholder="Optional summarizer instructions"
+          ></textarea>
+          <Button
+            class="w-full"
+            size="sm"
+            disabled={!model || baseHeadNodeId === null || compactStartNodeId === null}
+            onclick={startCompaction}
+          >
+            Generate summary
+          </Button>
+        </div>
       {:else}
+        <div class="border-b border-border p-2">
+          <Button
+            variant="outline"
+            size="sm"
+            class="w-full gap-1.5"
+            disabled={!model || baseHeadNodeId === null}
+            onclick={toggleCompactMode}
+          >
+            <FileTextIcon class="size-3.5" />
+            Compact
+          </Button>
+        </div>
         <div class="flex flex-col p-1.5">
           {#each rows as row (row.id)}
             {#if row.type === 'node'}
@@ -300,6 +478,7 @@
               {@const rowInPath = row.coveredNodeIds.some((id) => selectedPathIds.has(id))}
               {@const Icon = nodeIcon(row)}
               {@const preview = rowPreview(row)}
+              {@const tone = messageTone(row.message)}
               <Button
                 variant="ghost"
                 size="sm"
@@ -314,13 +493,18 @@
                   {/each}
                 </span>
                 <span
-                  class="flex size-5 shrink-0 items-center justify-center {rowInPath ? 'text-primary' : 'text-foreground'}"
+                  class="tree-icon flex size-5 shrink-0 items-center justify-center"
+                  data-tone={tone}
+                  data-in-path={rowInPath}
                 >
                   <Icon class="size-3.5" />
                 </span>
                 <span class="flex min-w-0 flex-1 items-center gap-1.5">
                   {#if preview.length > 0}
-                    <span class="truncate text-sm font-normal text-foreground">
+                    <span
+                      class="tree-preview truncate text-sm font-normal text-foreground"
+                      data-tone={tone}
+                    >
                       {preview}
                     </span>
                   {/if}
@@ -355,11 +539,18 @@
                     <span class="tree-gutter" data-mark={mark}></span>
                   {/each}
                 </span>
-                <span class="flex size-5 shrink-0 items-center justify-center text-primary">
+                <span
+                  class="tree-icon flex size-5 shrink-0 items-center justify-center"
+                  data-tone={row.run.kind === 'summary' ? 'summary' : 'assistant'}
+                  data-in-path="true"
+                >
                   <CircleNotchIcon class="size-3.5 animate-spin" />
                 </span>
-                <span class="min-w-0 flex-1 truncate text-sm font-normal text-foreground">
-                  Streaming branch
+                <span
+                  class="tree-preview min-w-0 flex-1 truncate text-sm font-normal text-foreground"
+                  data-tone={row.run.kind === 'summary' ? 'summary' : 'assistant'}
+                >
+                  {row.run.kind === 'summary' ? 'Summarizing' : 'Streaming branch'}
                 </span>
               </Button>
             {/if}
@@ -382,6 +573,45 @@
 </aside>
 
 <style>
+  .tree-icon,
+  .tree-preview {
+    --tree-tone: var(--foreground);
+  }
+
+  .tree-icon {
+    color: color-mix(in oklch, var(--tree-tone) 88%, var(--foreground));
+  }
+
+  .tree-icon[data-in-path='true'],
+  .tree-icon[data-selected='true'] {
+    color: var(--tree-tone);
+  }
+
+  .tree-icon[data-tone='user'],
+  .tree-preview[data-tone='user'] {
+    --tree-tone: var(--tree-user);
+  }
+
+  .tree-icon[data-tone='assistant'],
+  .tree-preview[data-tone='assistant'] {
+    --tree-tone: var(--tree-assistant);
+  }
+
+  .tree-icon[data-tone='summary'],
+  .tree-preview[data-tone='summary'] {
+    --tree-tone: var(--tree-summary);
+  }
+
+  .tree-icon[data-tone='tool'],
+  .tree-preview[data-tone='tool'] {
+    --tree-tone: var(--tree-tool);
+  }
+
+  .tree-icon[data-tone='system'],
+  .tree-preview[data-tone='system'] {
+    --tree-tone: var(--tree-system);
+  }
+
   .tree-gutter {
     --tree-branch-line: var(--muted-foreground);
     --tree-branch-line-width: 2px;

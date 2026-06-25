@@ -15,6 +15,7 @@ import {
 } from './session/session.ts'
 import {
   Api,
+  CompactRunResponse,
   MessageNodeResponse,
   RunSummaryResponse,
   RunUsageResponse,
@@ -249,6 +250,26 @@ function isDescendantOrSame(
   return false
 }
 
+function deepestDescendantLeaf(
+  messages: ReadonlyArray<MessageNode>,
+  nodeId: string
+): MessageNode | undefined {
+  const childrenByParent = new Map<string | null, MessageNode[]>()
+  for (const message of messages) {
+    const children = childrenByParent.get(message.parentId) ?? []
+    children.push(message)
+    childrenByParent.set(message.parentId, children)
+  }
+
+  let best = messages.find((message) => message.id === nodeId)
+  const visit = (message: MessageNode) => {
+    best = message
+    for (const child of childrenByParent.get(message.id) ?? []) visit(child)
+  }
+  if (best) visit(best)
+  return best
+}
+
 function finalPersistedRunNode(
   messages: ReadonlyArray<MessageNode>,
   runId: string,
@@ -270,15 +291,23 @@ function finalPersistedRunNode(
       .filter((id): id is string => id !== null && runIds.has(id))
   )
 
-  return (
-    runMessages
-      .toReversed()
-      .find(
-        (message) =>
-          !parentIds.has(message.id) &&
-          isDescendantOrSame(messages, message.id, baseNodeId)
-      ) ?? undefined
-  )
+  const runLeaf = runMessages
+    .toReversed()
+    .find(
+      (message) =>
+        !parentIds.has(message.id) &&
+        isDescendantOrSame(messages, message.id, baseNodeId)
+    )
+  if (runLeaf) return runLeaf
+
+  const compactedRoot = runMessages
+    .toReversed()
+    .find((message) =>
+      messages.some((candidate) => candidate.parentId === message.id)
+    )
+  return compactedRoot
+    ? deepestDescendantLeaf(messages, compactedRoot.id)
+    : undefined
 }
 
 const resolveRunBase = (
@@ -539,16 +568,18 @@ const enqueueRunRequest = Effect.fn('Sessions.enqueueRunRequest')((
   model: string,
   options: ModelOptions,
   baseNodeId: string | null,
-  afterRunId: string | null
+  afterRunId: string | null,
+  compactRange?: RunRequest['compactRange']
 ) => {
   const runId = crypto.randomUUID()
   const initialRequest = {
     runId,
-    inputs: [input],
+    inputs: compactRange === undefined ? [input] : [],
     model,
     modelOptions: options,
     baseNodeId,
     afterRunId,
+    compactRange,
   }
   return resolveRunTarget(storage, sessionId, initialRequest).pipe(
     Effect.mapError(StorageUnavailable.fromStorage),
@@ -675,6 +706,51 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
               payload.baseNodeId,
               payload.afterRunId ?? null
             )
+          )
+        )
+      )
+      .handle('compactRange', ({ params, payload }) =>
+        storage.get(params.id).pipe(
+          Effect.mapError(mapStorageError),
+          Effect.flatMap((session) =>
+            projects.resolvePath(session.projectId).pipe(
+              Effect.mapError(mapProjectError),
+              Effect.tap(() =>
+                projects
+                  .touch(session.projectId)
+                  .pipe(Effect.mapError(mapProjectError))
+              ),
+              Effect.flatMap((projectPath) =>
+                ensureModel(projectPath, payload.model, {
+                  thinkingLevel: 'off',
+                })
+              )
+            )
+          ),
+          Effect.flatMap(() =>
+            enqueueRunRequest(
+              storage,
+              params.id,
+              '',
+              payload.model,
+              { thinkingLevel: 'off' },
+              payload.baseHeadNodeId,
+              null,
+              {
+                baseHeadNodeId: payload.baseHeadNodeId,
+                startNodeId: payload.startNodeId,
+                endNodeId: payload.endNodeId,
+                instructions: payload.instructions,
+              }
+            )
+          ),
+          Effect.map(
+            (response) =>
+              new CompactRunResponse({
+                status: response.status,
+                runId: response.runId,
+                baseNodeId: response.baseNodeId,
+              })
           )
         )
       )
