@@ -1,5 +1,5 @@
 <script lang="ts">
-      import { tick } from 'svelte'
+      import { onDestroy, tick } from 'svelte'
       import { get } from 'svelte/store'
       import { createVirtualizer } from '@tanstack/svelte-virtual'
       import { messagesStore } from '$lib/stores/messages.svelte.js'
@@ -16,13 +16,15 @@
       import MessageBubble from './message-bubble.svelte'
       import QueuedMessageBubble from './queued-message-bubble.svelte'
       import StreamingIndicator from './streaming-indicator.svelte'
-      import SessionTokenUsage from './session-token-usage.svelte'
       import Composer from './composer.svelte'
+      import SessionTreePanel from './session-tree-panel.svelte'
       import { Button } from '$lib/components/ui/button/index.js'
+      import { Badge } from '$lib/components/ui/badge/index.js'
       import { SessionSelectedHeadController } from './session-selected-head.svelte.js'
       import * as Item from '$lib/components/ui/item/index.js'
       import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
       import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
+      import SidebarSimpleIcon from 'phosphor-svelte/lib/SidebarSimpleIcon'
       let { sessionId, title }: { sessionId: string; title: string | null } =
         $props()
 
@@ -32,6 +34,16 @@
       let initialScrollSessionId: string | null = null
       let accordionSessionId: string | null = $state(null)
       let accordionState = $state<Record<string, string[]>>({})
+      let treePanelOpen = $state(true)
+      let sessionLayout: HTMLElement | null = $state(null)
+      let treePanelElement: HTMLElement | null = $state(null)
+      let treePanelWidth = $state(360)
+      let loadedTreePanelWidth = false
+      let treeResizeCleanup: (() => void) | null = null
+
+      const treePanelWidthStorageKey = 'sorato:session-tree-panel-width'
+      const minTreePanelWidth = 260
+      const maxTreePanelWidth = 1200
 
       // Running state is derived from the session store — the single source
       // of truth. The messages store only tracks streaming *content*.
@@ -308,127 +320,268 @@
       function retryMessages() {
         void messagesStore.loadMessages(sessionId)
       }
+
+      $effect(() => {
+        if (loadedTreePanelWidth || typeof window === 'undefined') return
+        loadedTreePanelWidth = true
+
+        const stored = Number(window.localStorage.getItem(treePanelWidthStorageKey))
+        if (Number.isFinite(stored) && stored >= minTreePanelWidth) {
+          treePanelWidth = clampTreePanelWidth(stored)
+        }
+      })
+
+      $effect(() => {
+        sessionLayout?.style.setProperty(
+          '--session-tree-panel-width',
+          `${treePanelWidth}px`
+        )
+      })
+
+      onDestroy(() => {
+        treeResizeCleanup?.()
+      })
+
+      function toggleTreePanel() {
+        treePanelOpen = !treePanelOpen
+      }
+
+      function clampTreePanelWidth(width: number) {
+        const viewportMax =
+          typeof window === 'undefined'
+            ? maxTreePanelWidth
+            : Math.min(maxTreePanelWidth, Math.floor(window.innerWidth * 0.75))
+        return Math.min(Math.max(width, minTreePanelWidth), viewportMax)
+      }
+
+      function startTreePanelResize(event: PointerEvent) {
+        if (!sessionLayout || !treePanelElement) return
+
+        event.preventDefault()
+        treeResizeCleanup?.()
+
+        const handle = event.currentTarget as HTMLElement
+        const startX = event.clientX
+        const startWidth = treePanelElement.getBoundingClientRect().width
+        let currentWidth = startWidth
+        let pendingWidth = startWidth
+        let frame = 0
+        const previousCursor = document.body.style.cursor
+        const previousUserSelect = document.body.style.userSelect
+
+        document.body.style.cursor = 'col-resize'
+        document.body.style.userSelect = 'none'
+        handle.setPointerCapture(event.pointerId)
+
+        const applyWidth = () => {
+          frame = 0
+          currentWidth = pendingWidth
+          sessionLayout?.style.setProperty(
+            '--session-tree-panel-width',
+            `${currentWidth}px`
+          )
+        }
+
+        const handlePointerMove = (moveEvent: PointerEvent) => {
+          if (moveEvent.pointerId !== event.pointerId) return
+          pendingWidth = clampTreePanelWidth(
+            startWidth + startX - moveEvent.clientX
+          )
+          if (frame === 0) frame = requestAnimationFrame(applyWidth)
+        }
+
+        const cleanup = () => {
+          handle.removeEventListener('pointermove', handlePointerMove)
+          handle.removeEventListener('pointerup', handlePointerUp)
+          handle.removeEventListener('pointercancel', handlePointerUp)
+          if (frame !== 0) cancelAnimationFrame(frame)
+          document.body.style.cursor = previousCursor
+          document.body.style.userSelect = previousUserSelect
+          if (handle.hasPointerCapture(event.pointerId)) {
+            handle.releasePointerCapture(event.pointerId)
+          }
+          treeResizeCleanup = null
+        }
+
+        const handlePointerUp = (upEvent: PointerEvent) => {
+          if (upEvent.pointerId !== event.pointerId) return
+          const finalWidth = Math.round(pendingWidth)
+          cleanup()
+          sessionLayout?.style.setProperty(
+            '--session-tree-panel-width',
+            `${finalWidth}px`
+          )
+          treePanelWidth = finalWidth
+          try {
+            window.localStorage.setItem(treePanelWidthStorageKey, String(finalWidth))
+          } catch {
+            // Ignore storage failures.
+          }
+        }
+
+        treeResizeCleanup = cleanup
+        handle.addEventListener('pointermove', handlePointerMove)
+        handle.addEventListener('pointerup', handlePointerUp)
+        handle.addEventListener('pointercancel', handlePointerUp)
+      }
 </script>
 
-<div class="flex h-full flex-col overflow-hidden">
-  <!-- Header -->
-  <div class="border-b border-border py-3.5">
-    <div class="mx-auto flex w-full max-w-6xl items-center gap-2.5 px-4 sm:px-6">
-      <div class="flex min-w-0 flex-1 flex-col gap-1">
-        <h1 class="text-sm leading-tight font-semibold text-foreground">
-          {title ?? 'New Session'}
-        </h1>
-        {#if projectName}
-          <span class="text-sm leading-tight text-muted-foreground">{projectName}</span>
-        {/if}
-      </div>
-
-      <SessionTokenUsage messages={visibleMessages} models={modelsStore.models} />
-
-    </div>
-  </div>
-
-  <!-- Messages -->
-  <div class="relative min-h-0 flex-1 overflow-hidden">
-    <ScrollArea
-      bind:viewportRef={messagesContainer}
-      class="h-full"
-      viewportClass="scroll-mask-y scroll-mask-y-from-98%"
-      onViewportScroll={updateLatestState}
-    >
-      {#if messagesStore.loading}
-        <div
-          class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
-        >
-          <span class="text-sm text-muted-foreground">Loading messages...</span>
+<div
+  bind:this={sessionLayout}
+  class="relative flex h-full overflow-hidden"
+  style={`--session-tree-panel-width: ${treePanelWidth}px; --session-header-height: 48px`}
+>
+  <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
+    <!-- Header -->
+    <div class="h-[var(--session-header-height)] border-b border-border">
+      <div class="flex h-full w-full items-center gap-2 px-3 sm:px-4">
+        <div class="flex min-w-0 flex-1 items-center gap-2">
+          <h1 class="truncate text-base leading-tight font-semibold text-foreground">
+            {title ?? 'New Session'}
+          </h1>
+          {#if projectName}
+            <Badge variant="secondary" class="h-6 max-w-56 truncate px-2.5 text-xs">
+              {projectName}
+            </Badge>
+          {/if}
         </div>
-      {:else if messagesStore.error}
-        <div
-          class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
-        >
-          <Item.Root variant="danger" class="max-w-xl">
-            <Item.Media variant="icon">
-              <WarningCircleIcon />
-            </Item.Media>
-            <Item.Content>
-              <Item.Title>Messages failed to load</Item.Title>
-              <Item.Description>{messagesStore.error}</Item.Description>
-            </Item.Content>
-            <Item.Actions>
-              <Button variant="outline" onclick={retryMessages}>Retry</Button>
-            </Item.Actions>
-          </Item.Root>
-        </div>
-      {:else if messagesStore.loaded || isRunning}
-        <div
-          class="mx-auto w-full max-w-6xl"
-          style:height={`${$virtualizer.getTotalSize()}px`}
-          style:position="relative"
-        >
-          {#each virtualItems as virtualItem (virtualItem.key)}
-            {@const row = virtualRows[virtualItem.index]}
-            {#if row}
-              <div
-                use:measureVirtualRow
-                data-index={virtualItem.index}
-                class="absolute left-0 top-0 w-full px-4 sm:px-6"
-                style:transform={`translateY(${virtualItem.start}px)`}
-              >
-                {#if row.type === 'message'}
-                  <MessageBubble
-                    message={row.block.message}
-                    transcriptItems={row.block.items}
-                    modelCall={row.block.modelCall}
-                    {accordionState}
-                    accordionKey={row.key}
-                  />
-                {:else if row.type === 'streaming'}
-                  <StreamingIndicator
-                    parts={messagesStore.streamingParts}
-                    {isRunning}
-                    {accordionState}
-                    accordionKey={row.key}
-                  />
-                {:else}
-                  <QueuedMessageBubble message={row.message} />
-                {/if}
-              </div>
-            {/if}
-          {/each}
-        </div>
-      {/if}
-    </ScrollArea>
 
-    {#if !isAtLatest}
-      <div class="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center">
         <Button
-          class="pointer-events-auto shadow-md shadow-shadow/30"
-          variant="outline"
-          size="sm"
-          onclick={jumpToLatest}
+          variant="ghost"
+          size="icon-lg"
+          onclick={toggleTreePanel}
+          aria-label={treePanelOpen ? 'Close side panel' : 'Open side panel'}
+          title={treePanelOpen ? 'Close side panel' : 'Open side panel'}
         >
-          Jump to latest
+          <SidebarSimpleIcon />
         </Button>
       </div>
-    {/if}
+    </div>
+
+    <!-- Messages -->
+    <div class="relative min-h-0 flex-1 overflow-hidden">
+      <ScrollArea
+        bind:viewportRef={messagesContainer}
+        class="h-full"
+        viewportClass="scroll-mask-y scroll-mask-y-from-98%"
+        onViewportScroll={updateLatestState}
+      >
+        {#if messagesStore.loading}
+          <div class="mx-auto flex w-full max-w-6xl items-center justify-center p-8">
+            <span class="text-sm text-muted-foreground">Loading messages...</span>
+          </div>
+        {:else if messagesStore.error}
+          <div class="mx-auto flex w-full max-w-6xl items-center justify-center p-8">
+            <Item.Root variant="danger" class="max-w-xl">
+              <Item.Media variant="icon">
+                <WarningCircleIcon />
+              </Item.Media>
+              <Item.Content>
+                <Item.Title>Messages failed to load</Item.Title>
+                <Item.Description>{messagesStore.error}</Item.Description>
+              </Item.Content>
+              <Item.Actions>
+                <Button variant="outline" onclick={retryMessages}>Retry</Button>
+              </Item.Actions>
+            </Item.Root>
+          </div>
+        {:else if messagesStore.loaded || isRunning}
+          <div
+            class="mx-auto w-full max-w-6xl"
+            style:height={`${$virtualizer.getTotalSize()}px`}
+            style:position="relative"
+          >
+            {#each virtualItems as virtualItem (virtualItem.key)}
+              {@const row = virtualRows[virtualItem.index]}
+              {#if row}
+                <div
+                  use:measureVirtualRow
+                  data-index={virtualItem.index}
+                  class="absolute left-0 top-0 w-full px-4 sm:px-6"
+                  style:transform={`translateY(${virtualItem.start}px)`}
+                >
+                  {#if row.type === 'message'}
+                    <MessageBubble
+                      message={row.block.message}
+                      transcriptItems={row.block.items}
+                      modelCall={row.block.modelCall}
+                      {accordionState}
+                      accordionKey={row.key}
+                    />
+                  {:else if row.type === 'streaming'}
+                    <StreamingIndicator
+                      parts={messagesStore.streamingParts}
+                      {isRunning}
+                      {accordionState}
+                      accordionKey={row.key}
+                    />
+                  {:else}
+                    <QueuedMessageBubble message={row.message} />
+                  {/if}
+                </div>
+              {/if}
+            {/each}
+          </div>
+        {/if}
+      </ScrollArea>
+
+      {#if !isAtLatest}
+        <div class="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center">
+          <Button
+            class="pointer-events-auto shadow-md shadow-shadow/30"
+            variant="outline"
+            size="sm"
+            onclick={jumpToLatest}
+          >
+            Jump to latest
+          </Button>
+        </div>
+      {/if}
+    </div>
+
+    <!-- Composer -->
+    <Composer
+      onSend={handleSend}
+      onStop={handleStop}
+      onAttach={handleAttach}
+      onDismissStatus={handleDismissError}
+      onModelChange={handleModel}
+      models={modelsStore.models}
+      model={modelsStore.selectedModel}
+      modelOptions={modelsStore.selectedOptions}
+      modelLoading={modelsStore.loading}
+      {isRunning}
+      {isStopping}
+      autoFocus
+      focusKey={sessionId}
+      {sessionStatus}
+      tokenUsageMessages={visibleMessages}
+      disabled={isStopping}
+    />
   </div>
 
-  <!-- Composer -->
-  <Composer
-    onSend={handleSend}
-    onStop={handleStop}
-    onAttach={handleAttach}
-    onDismissStatus={handleDismissError}
-    onModelChange={handleModel}
-    models={modelsStore.models}
-    model={modelsStore.selectedModel}
-    modelOptions={modelsStore.selectedOptions}
-    modelLoading={modelsStore.loading}
-    {isRunning}
-    {isStopping}
-    autoFocus
-    focusKey={sessionId}
-    {sessionStatus}
-    disabled={isStopping}
-  />
+  {#if treePanelOpen}
+    <div
+      aria-hidden="true"
+      class="h-full shrink-0"
+      style:width="var(--session-tree-panel-width)"
+    ></div>
+    <div
+      bind:this={treePanelElement}
+      class="absolute inset-y-0 right-0 z-10 min-w-0 overflow-hidden"
+      style="width: var(--session-tree-panel-width); contain: layout paint style"
+    >
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize conversation tree"
+        class="group absolute inset-y-0 left-0 z-20 flex w-px cursor-col-resize items-center justify-center bg-border"
+        onpointerdown={startTreePanelResize}
+      >
+        <div class="absolute inset-y-0 -left-1 -right-1"></div>
+        <div class="h-8 w-1 rounded-full bg-border opacity-0 transition-opacity group-hover:opacity-100"></div>
+      </div>
+      <SessionTreePanel {sessionId} {selectedHead} />
+    </div>
+  {/if}
 </div>

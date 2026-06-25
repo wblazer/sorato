@@ -7,6 +7,7 @@
       import * as Select from '$lib/components/ui/select/index.js'
       import type {
         AvailableModel,
+        MessageNode,
         ModelOptions,
         SessionRunStatus,
       } from '$lib/types.js'
@@ -16,6 +17,7 @@
       import XIcon from 'phosphor-svelte/lib/XIcon'
       import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
       import ModelSelector from './model-selector.svelte'
+      import SessionTokenUsage from './session-token-usage.svelte'
 
       let {
         onSend,
@@ -35,6 +37,7 @@
         focusKey,
         placeholder,
         sessionStatus = null,
+        tokenUsageMessages = [],
       }: {
         onSend: (input: string) => void
         onStop?: () => void
@@ -53,6 +56,7 @@
         focusKey?: string | number | null
         placeholder?: string
         sessionStatus?: SessionRunStatus | null
+        tokenUsageMessages?: ReadonlyArray<MessageNode>
       } = $props()
 
       let input = $state('')
@@ -286,6 +290,8 @@
         </div>
 
         <div class="flex shrink-0 items-center gap-2">
+          <SessionTokenUsage messages={tokenUsageMessages} {models} />
+
           {#if isRunning}
             <Button
               onclick={onStop}

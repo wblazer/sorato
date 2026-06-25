@@ -342,7 +342,7 @@
                 {...props}
                 variant="ghost"
                 size="lg"
-                class="w-full justify-start text-muted-foreground data-active:bg-selected data-active:text-foreground"
+                class="w-full justify-start text-muted-foreground data-active:bg-selected data-active:text-foreground data-active:hover:bg-selected"
               >
                 <GearIcon />
                 General
@@ -355,7 +355,7 @@
                 {...props}
                 variant="ghost"
                 size="lg"
-                class="w-full justify-start text-muted-foreground data-active:bg-selected data-active:text-foreground"
+                class="w-full justify-start text-muted-foreground data-active:bg-selected data-active:text-foreground data-active:hover:bg-selected"
               >
                 <KeyboardIcon />
                 Keybinds
