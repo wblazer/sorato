@@ -65,6 +65,59 @@ export function runTreeNodeId(runId: string) {
   return `run:${runId}`
 }
 
+export interface ToolExchangeSummary {
+  readonly targetNodeId: string
+  readonly coveredNodeIds: ReadonlyArray<string>
+  readonly continuationChildren: ReadonlyArray<MessageTreeNode>
+  readonly toolCallCount: number
+  readonly toolCallNames: ReadonlyArray<string>
+  readonly resolvedToolResultCount: number
+}
+
+export function summarizeAssistantToolExchange(
+  node: MessageTreeNode
+): ToolExchangeSummary | null {
+  const toolCalls = assistantToolCalls(node.message)
+  if (toolCalls.length === 0) return null
+
+  const pending = new Set(toolCalls.map((toolCall) => toolCall.id))
+  const coveredNodeIds = [node.message.id]
+  let targetNodeId = node.message.id
+  let continuationChildren = node.children
+  let resolvedToolResultCount = 0
+  let cursor = node
+
+  while (pending.size > 0 && cursor.children.length === 1) {
+    const child = cursor.children[0]
+    if (!child || !isToolMessage(child.message)) break
+
+    const matchingResultIds = toolResultIds(child.message).filter((id) =>
+      pending.has(id)
+    )
+    if (matchingResultIds.length === 0) break
+
+    coveredNodeIds.push(child.message.id)
+    targetNodeId = child.message.id
+    continuationChildren = child.children
+    resolvedToolResultCount += matchingResultIds.length
+    for (const id of matchingResultIds) pending.delete(id)
+    cursor = child
+  }
+
+  return {
+    targetNodeId,
+    coveredNodeIds,
+    continuationChildren,
+    toolCallCount: toolCalls.length,
+    toolCallNames: toolCalls.map((toolCall) => toolCall.name),
+    resolvedToolResultCount,
+  }
+}
+
+export function isToolMessage(message: MessageNode): boolean {
+  return message.kind === 'message' && message.encoded.role === 'tool'
+}
+
 export function messageLabel(message: MessageNode): string {
   if (message.kind === 'summary') return 'Summary'
 
@@ -85,12 +138,44 @@ export function messagePreview(message: MessageNode): string {
   return encodedPreview(message.encoded) || '(empty)'
 }
 
+export function messageNarrativePreview(message: MessageNode): string {
+  if (message.kind === 'summary') return 'Compacted context summary'
+  return encodedNarrativePreview(message.encoded)
+}
+
+function assistantToolCalls(
+  message: MessageNode
+): ReadonlyArray<{ readonly id: string; readonly name: string }> {
+  if (message.kind !== 'message' || message.encoded.role !== 'assistant')
+    return []
+  const content = message.encoded.content
+  if (!Array.isArray(content)) return []
+  return content
+    .filter((part) => part.type === 'tool-call')
+    .map((part) => ({ id: part.id, name: part.name }))
+}
+
+function toolResultIds(message: MessageNode): ReadonlyArray<string> {
+  if (message.kind !== 'message' || message.encoded.role !== 'tool') return []
+  return message.encoded.content
+    .filter((part) => part.type === 'tool-result')
+    .map((part) => part.id)
+}
+
 function encodedPreview(message: MessageEncoded): string {
   if (message.role === 'tool') return partsText(message.content)
   const content = message.content
   if (typeof content === 'string') return compactWhitespace(content)
   if (!content) return ''
   return partsText(content)
+}
+
+function encodedNarrativePreview(message: MessageEncoded): string {
+  if (message.role === 'tool') return ''
+  const content = message.content
+  if (typeof content === 'string') return compactWhitespace(content)
+  if (!content) return ''
+  return narrativePartsText(content)
 }
 
 function partsText(
@@ -119,6 +204,38 @@ function partsText(
             return `[tool call: ${part.name}]`
           case 'tool-result':
             return `[tool result: ${part.name}] ${part.result}`
+        }
+      })
+      .filter((text) => text.length > 0)
+      .join(' ')
+  )
+}
+
+function narrativePartsText(
+  parts: ReadonlyArray<
+    | { readonly type: 'text'; readonly text: string }
+    | { readonly type: 'reasoning'; readonly text: string }
+    | { readonly type: 'file'; readonly fileName?: string }
+    | { readonly type: 'tool-call'; readonly name: string }
+    | {
+        readonly type: 'tool-result'
+        readonly name: string
+        readonly result: string
+      }
+  >
+): string {
+  return compactWhitespace(
+    parts
+      .map((part) => {
+        switch (part.type) {
+          case 'text':
+          case 'reasoning':
+            return part.text
+          case 'file':
+            return part.fileName ? `[file: ${part.fileName}]` : '[file]'
+          case 'tool-call':
+          case 'tool-result':
+            return ''
         }
       })
       .filter((text) => text.length > 0)
