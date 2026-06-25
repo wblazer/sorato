@@ -1,4 +1,4 @@
-import { Layer } from 'effect'
+import { Effect, Layer } from 'effect'
 import {
   Bash,
   BashHandler,
@@ -14,16 +14,34 @@ import {
   Toolkit,
   Write,
   WriteHandler,
+  type Files,
 } from '@sorato/core'
 
 export const SYSTEM_PROMPT = `You are a helpful coding agent. You have access to tools for reading, editing, writing, and searching files, as well as running shell commands. Use them as needed to help the user.
 
-When the user asks you to do something:
-1. Think about what needs to be done
-2. Use the appropriate tools to accomplish the task
-3. Explain what you did
+Guidelines:
+- Be concise and direct.
+- Prefer built-in file and search tools over shell commands when they fit the task.
+- Never revert, overwrite, or discard user changes unless explicitly asked.
+- Never run destructive git commands unless explicitly asked.`
 
-Be concise and direct.`
+export const AGENTS_MD_PATH = 'AGENTS.md'
+
+export const loadAgentsMd = Effect.fn('loadAgentsMd')(function* (files: Files) {
+  const agents = yield* files
+    .readFile(AGENTS_MD_PATH)
+    .pipe(Effect.catch(() => Effect.succeed(undefined)))
+
+  if (agents === undefined || agents.trim() === '') {
+    return undefined
+  }
+
+  return `Project-specific instructions and guidelines:
+
+<project_instructions path="${AGENTS_MD_PATH}">
+${agents}
+</project_instructions>`
+})
 
 export const AllToolInfos = [
   { name: 'Read', displayName: 'Read file' },

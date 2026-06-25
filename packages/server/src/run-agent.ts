@@ -22,7 +22,12 @@ import {
   type SessionId,
   type StoredMessageEncoded,
 } from './session/session.ts'
-import { AllTools, SYSTEM_PROMPT } from './agent-config.ts'
+import {
+  AGENTS_MD_PATH,
+  AllTools,
+  SYSTEM_PROMPT,
+  loadAgentsMd,
+} from './agent-config.ts'
 import { createBusHook, publish } from './event-bus.ts'
 import {
   appendReplayEvent,
@@ -212,6 +217,15 @@ const messageText = (message: StoredMessageEncoded): string => {
     })
     .join('\n')
 }
+
+const hasLoadedInstruction = (
+  messages: ReadonlyArray<StoredMessageEncoded>,
+  path: string
+): boolean =>
+  messages.some(
+    (message) =>
+      message.role === 'system' && message.metadata?.loaded?.path === path
+  )
 
 const summaryPrompt = (
   messages: ReadonlyArray<StoredMessageEncoded>,
@@ -435,63 +449,6 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       ),
       Effect.when(shouldSetTitle)
     )
-    const preamble: Array<Prompt.MessageEncoded> = Match.value(
-      isFirstMessage
-    ).pipe(
-      Match.when(true, () => [
-        {
-          role: 'system' as const,
-          content: SYSTEM_PROMPT,
-          source: 'system-prompt' as const,
-          display: { title: 'System Prompt' },
-        },
-        ...request.inputs.map((input) => ({
-          role: 'user' as const,
-          content: input,
-        })),
-      ]),
-      Match.orElse(() =>
-        request.inputs.map((input) => ({
-          role: 'user' as const,
-          content: input,
-        }))
-      )
-    )
-
-    const preambleNodeIds = yield* storage.append(
-      sessionId,
-      runId,
-      preamble,
-      request.baseNodeId
-    )
-    yield* Effect.logInfo('Agent run appended user input', {
-      runId,
-      appendedMessages: preamble.length,
-      wasEmptySession: isFirstMessage,
-    })
-    publish({ _tag: 'MessagesAppended', sessionId })
-    startEventReplay(sessionId, runId, request.baseNodeId, 'agent')
-    publish({
-      _tag: 'RunStart',
-      sessionId,
-      runId,
-      baseNodeId: request.baseNodeId,
-      kind: 'agent',
-    })
-    yield* Effect.forkDetach(maybeSetTitle)
-    yield* Effect.logInfo('Agent run published lifecycle start', { runId })
-
-    const appendBaseNodeId = preambleNodeIds.at(-1) ?? request.baseNodeId
-    const conversation = yield* storage.conversation(
-      sessionId,
-      appendBaseNodeId
-    )
-    const messageCountBeforeRun = conversation.content.length
-    yield* Effect.logInfo('Agent run starting harness', {
-      runId,
-      messageCountBeforeRun,
-    })
-
     yield* sandbox.acquire(projectPath).pipe(
       Effect.tap(() =>
         Effect.logInfo('Agent run acquired sandbox', {
@@ -500,30 +457,121 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
         })
       ),
       Effect.flatMap(({ shell, files }) =>
-        Effect.provide(
-          run(conversation, {
-            toolkit: AllTools,
-            hooks: [
-              createBusHook(sessionId, runId),
-              createPersistenceHook(
+        storage.messages(sessionId, request.baseNodeId).pipe(
+          Effect.flatMap((storedHistory) => {
+            const shouldLoadAgentsMd = !hasLoadedInstruction(
+              storedHistory.map((message) => message.encoded),
+              AGENTS_MD_PATH
+            )
+            return shouldLoadAgentsMd
+              ? loadAgentsMd(files)
+              : Effect.succeed(undefined)
+          }),
+          Effect.map((agentsMd) => {
+            const preamble: Array<StoredMessageEncoded> = [
+              ...(isFirstMessage
+                ? [
+                    {
+                      role: 'system' as const,
+                      content: SYSTEM_PROMPT,
+                      source: 'system-prompt' as const,
+                      display: { title: 'System Prompt' },
+                    },
+                  ]
+                : []),
+              ...(agentsMd === undefined
+                ? []
+                : [
+                    {
+                      role: 'system' as const,
+                      content: agentsMd,
+                      source: 'agents-md' as const,
+                      display: { title: 'AGENTS.md' },
+                      metadata: { loaded: { path: AGENTS_MD_PATH } },
+                    },
+                  ]),
+              ...request.inputs.map((input) => ({
+                role: 'user' as const,
+                content: input,
+              })),
+            ]
+            return preamble
+          }),
+          Effect.flatMap((preamble) =>
+            storage
+              .append(sessionId, runId, preamble, request.baseNodeId)
+              .pipe(
+                Effect.map((preambleNodeIds) => ({ preamble, preambleNodeIds }))
+              )
+          ),
+          Effect.tap(({ preamble }) =>
+            Effect.logInfo('Agent run appended user input', {
+              runId,
+              appendedMessages: preamble.length,
+              wasEmptySession: isFirstMessage,
+            })
+          ),
+          Effect.tap(() =>
+            Effect.sync(() => {
+              publish({ _tag: 'MessagesAppended', sessionId })
+              startEventReplay(sessionId, runId, request.baseNodeId, 'agent')
+              publish({
+                _tag: 'RunStart',
                 sessionId,
                 runId,
-                messageCountBeforeRun,
+                baseNodeId: request.baseNodeId,
+                kind: 'agent',
+              })
+            })
+          ),
+          Effect.tap(() => Effect.forkDetach(maybeSetTitle)),
+          Effect.tap(() =>
+            Effect.logInfo('Agent run published lifecycle start', { runId })
+          ),
+          Effect.flatMap(({ preambleNodeIds }) => {
+            const appendBaseNodeId =
+              preambleNodeIds.at(-1) ?? request.baseNodeId
+            return storage.conversation(sessionId, appendBaseNodeId).pipe(
+              Effect.map((conversation) => ({
                 appendBaseNodeId,
-                {
-                  providerId: resolvedModel.providerId,
-                  modelId: resolvedModel.modelId,
-                  billingMode,
-                  cost: resolvedModel.model.cost,
-                }
-              ),
-            ],
+                conversation,
+              }))
+            )
           }),
-          Layer.mergeAll(
-            Layer.succeed(CurrentShell, shell),
-            Layer.succeed(CurrentFiles, files),
-            modelServices
-          )
+          Effect.tap(({ conversation }) =>
+            Effect.logInfo('Agent run starting harness', {
+              runId,
+              messageCountBeforeRun: conversation.content.length,
+            })
+          ),
+          Effect.flatMap(({ appendBaseNodeId, conversation }) => {
+            const messageCountBeforeRun = conversation.content.length
+            return Effect.provide(
+              run(conversation, {
+                toolkit: AllTools,
+                hooks: [
+                  createBusHook(sessionId, runId),
+                  createPersistenceHook(
+                    sessionId,
+                    runId,
+                    messageCountBeforeRun,
+                    appendBaseNodeId,
+                    {
+                      providerId: resolvedModel.providerId,
+                      modelId: resolvedModel.modelId,
+                      billingMode,
+                      cost: resolvedModel.model.cost,
+                    }
+                  ),
+                ],
+              }),
+              Layer.mergeAll(
+                Layer.succeed(CurrentShell, shell),
+                Layer.succeed(CurrentFiles, files),
+                modelServices
+              )
+            )
+          })
         )
       ),
       Effect.scoped

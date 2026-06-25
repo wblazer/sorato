@@ -191,6 +191,15 @@ export const StoredSystemMessage = Schema.Struct({
   content: Schema.optionalKey(Schema.String),
   source: Schema.optionalKey(SystemMessageSource),
   display: Schema.optionalKey(MessageHeaderDisplaySchema),
+  metadata: Schema.optionalKey(
+    Schema.Struct({
+      loaded: Schema.optionalKey(
+        Schema.Struct({
+          path: Schema.String,
+        })
+      ),
+    })
+  ),
 })
 
 export const StoredUserMessage = Schema.Struct({

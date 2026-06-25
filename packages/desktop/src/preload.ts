@@ -16,6 +16,7 @@ interface ClientConfig {
     readonly tools?: Record<string, boolean | null>
   }
   readonly transcript_display_mode?: 'pretty' | 'raw'
+  readonly expand_system_messages_by_default?: boolean
 }
 
 contextBridge.exposeInMainWorld('soratoDesktop', {

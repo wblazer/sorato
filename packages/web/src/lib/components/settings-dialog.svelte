@@ -48,6 +48,9 @@
   let transcriptDisplayMode = $state<TranscriptDisplayMode>(
     clientSettingsStore.transcriptDisplayMode
   )
+  let expandSystemMessagesByDefault = $state(
+    clientSettingsStore.expandSystemMessagesByDefault
+  )
   let error = $state<string | null>(null)
   let loading = $state(false)
   let saving = $state(false)
@@ -114,6 +117,8 @@
     untrack(() => {
       toolBlockExpansion = clientSettingsStore.toolBlockExpansion
       transcriptDisplayMode = clientSettingsStore.transcriptDisplayMode
+      expandSystemMessagesByDefault =
+        clientSettingsStore.expandSystemMessagesByDefault
     })
     void loadConfig()
   })
@@ -126,11 +131,16 @@
     config = nextConfig
     toolBlockExpansion = nextConfig.resolved.tool_block_expansion
     transcriptDisplayMode = nextConfig.resolved.transcript_display_mode
+    expandSystemMessagesByDefault =
+      nextConfig.resolved.expand_system_messages_by_default
     clientSettingsStore.setTranscriptDisplayMode(
       nextConfig.resolved.transcript_display_mode
     )
     clientSettingsStore.setToolBlockExpansion(
       nextConfig.resolved.tool_block_expansion
+    )
+    clientSettingsStore.setExpandSystemMessagesByDefault(
+      nextConfig.resolved.expand_system_messages_by_default
     )
   }
 
@@ -203,6 +213,7 @@
       expand_tool_blocks_by_default: value.default,
       tool_block_expansion: value,
       transcript_display_mode: transcriptDisplayMode,
+      expand_system_messages_by_default: expandSystemMessagesByDefault,
     })
   }
 
@@ -272,6 +283,18 @@
       expand_tool_blocks_by_default: toolBlockExpansion.default,
       tool_block_expansion: toolBlockExpansion,
       transcript_display_mode: value,
+      expand_system_messages_by_default: expandSystemMessagesByDefault,
+    })
+  }
+
+  function setExpandSystemMessagesByDefault(value: boolean) {
+    expandSystemMessagesByDefault = value
+    clientSettingsStore.setExpandSystemMessagesByDefault(value)
+    saveResolvedValue({
+      expand_tool_blocks_by_default: toolBlockExpansion.default,
+      tool_block_expansion: toolBlockExpansion,
+      transcript_display_mode: transcriptDisplayMode,
+      expand_system_messages_by_default: value,
     })
   }
 
@@ -384,6 +407,20 @@
           <Tabs.Content value="general" class="text-base">
             <section class="grid gap-10">
               <div class="grid">
+                <div class="flex items-center justify-between gap-8 border-b border-border py-4 first:pt-0">
+                  <div class="min-w-0">
+                    <div class="text-base font-medium">Expand system messages by default</div>
+                    <div class="mt-0.5 text-base text-muted-foreground">
+                      Show system message contents without manually opening each one.
+                    </div>
+                  </div>
+                  <Switch
+                    checked={expandSystemMessagesByDefault}
+                    onCheckedChange={setExpandSystemMessagesByDefault}
+                    disabled={loading || config === null}
+                  />
+                </div>
+
                 <div class="grid gap-4 border-b border-border py-4 first:pt-0">
                   <div class="flex items-center justify-between gap-8">
                     <div class="min-w-0">
@@ -435,7 +472,7 @@
                   </div>
                 </div>
 
-                <div class="flex items-center justify-between gap-8 py-4">
+                <div class="flex items-center justify-between gap-8 border-b border-border py-4">
                   <div class="min-w-0">
                     <div class="text-base font-medium">Transcript display mode</div>
                     <div class="mt-0.5 text-base text-muted-foreground">
@@ -458,6 +495,7 @@
                     </Select.Content>
                   </Select.Root>
                 </div>
+
               </div>
 
               {#if hasOverrides}

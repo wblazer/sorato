@@ -82,7 +82,8 @@
 
   const systemAccordionKey = $derived(`${accordionKey}:system`)
   const systemAccordionValue = $derived(
-    accordionState[systemAccordionKey] ?? ['content']
+    accordionState[systemAccordionKey] ??
+      (clientSettingsStore.expandSystemMessagesByDefault ? ['content'] : [])
   )
   const itemAccordionKey = (item: TranscriptItem, index: number): string => {
     if (item.type === 'combined-tool') return `${accordionKey}:tool:${item.call.id}`

@@ -26,6 +26,7 @@ export const ClientConfigSchema = Schema.Struct({
   expand_tool_blocks_by_default: Schema.optional(Schema.Boolean),
   tool_block_expansion: Schema.optional(ToolBlockExpansionSchema),
   transcript_display_mode: Schema.optional(TranscriptDisplayModeSchema),
+  expand_system_messages_by_default: Schema.optional(Schema.Boolean),
 })
 
 export type ClientConfig = typeof ClientConfigSchema.Type
@@ -35,6 +36,7 @@ export interface ResolvedClientConfigValue {
   readonly expand_tool_blocks_by_default: boolean
   readonly tool_block_expansion: ResolvedToolBlockExpansion
   readonly transcript_display_mode: TranscriptDisplayMode
+  readonly expand_system_messages_by_default: boolean
 }
 
 export interface ResolvedClientConfig {
@@ -52,6 +54,7 @@ const defaultClientConfig = (): ResolvedClientConfigValue => ({
   expand_tool_blocks_by_default: false,
   tool_block_expansion: { default: false, tools: { Edit: true, Write: true } },
   transcript_display_mode: 'pretty',
+  expand_system_messages_by_default: false,
 })
 
 const configRoot = () =>
@@ -239,6 +242,12 @@ const mergeClientConfig = <TBase extends ResolvedClientConfigValue>(
     ...(override.transcript_display_mode === undefined
       ? {}
       : { transcript_display_mode: override.transcript_display_mode }),
+    ...(override.expand_system_messages_by_default === undefined
+      ? {}
+      : {
+          expand_system_messages_by_default:
+            override.expand_system_messages_by_default,
+        }),
   }
 }
 

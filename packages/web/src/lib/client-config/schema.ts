@@ -27,6 +27,7 @@ export const ClientConfigSchema = Schema.Struct({
   expand_tool_blocks_by_default: Schema.optional(Schema.Boolean),
   tool_block_expansion: Schema.optional(ToolBlockExpansionSchema),
   transcript_display_mode: Schema.optional(TranscriptDisplayModeSchema),
+  expand_system_messages_by_default: Schema.optional(Schema.Boolean),
 })
 
 export type ClientConfig = typeof ClientConfigSchema.Type
@@ -57,6 +58,7 @@ export const defaultClientConfig = (): ResolvedClientConfigValue => ({
   expand_tool_blocks_by_default: false,
   tool_block_expansion: defaultToolBlockExpansion(),
   transcript_display_mode: 'pretty',
+  expand_system_messages_by_default: false,
 })
 
 const mergeToolBlockExpansion = (
@@ -107,6 +109,12 @@ export const mergeClientConfig = <TBase extends ResolvedClientConfigValue>(
     ...(override.transcript_display_mode === undefined
       ? {}
       : { transcript_display_mode: override.transcript_display_mode }),
+    ...(override.expand_system_messages_by_default === undefined
+      ? {}
+      : {
+          expand_system_messages_by_default:
+            override.expand_system_messages_by_default,
+        }),
   }
 }
 
@@ -152,6 +160,13 @@ export const diffClientConfig = (
     ...(value.transcript_display_mode === base.transcript_display_mode
       ? {}
       : { transcript_display_mode: value.transcript_display_mode }),
+    ...(value.expand_system_messages_by_default ===
+    base.expand_system_messages_by_default
+      ? {}
+      : {
+          expand_system_messages_by_default:
+            value.expand_system_messages_by_default,
+        }),
   }
 }
 

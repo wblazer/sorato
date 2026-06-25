@@ -29,11 +29,13 @@ export const ClientSettingsSchema = Schema.Struct({
     default: Schema.Boolean,
     tools: Schema.Record(Schema.String, Schema.Boolean),
   }),
+  expandSystemMessagesByDefault: Schema.Boolean,
 })
 export type ClientSettings = typeof ClientSettingsSchema.Type
 
 const PersistedClientSettingsSchema = Schema.Struct({
   transcriptDisplayMode: Schema.optionalKey(TranscriptDisplayModeSchema),
+  expandSystemMessagesByDefault: Schema.optionalKey(Schema.Boolean),
 })
 type PersistedClientSettings = typeof PersistedClientSettingsSchema.Type
 
@@ -42,6 +44,7 @@ const STORAGE_KEY = 'client-settings'
 const DEFAULT_SETTINGS: ClientSettings = {
   transcriptDisplayMode: 'pretty',
   toolBlockExpansion: { default: false, tools: { Edit: true, Write: true } },
+  expandSystemMessagesByDefault: false,
 }
 
 function loadSettings(): ClientSettings {
@@ -73,6 +76,10 @@ function createClientSettingsStore() {
     update({ toolBlockExpansion: expansion })
   }
 
+  function setExpandSystemMessagesByDefault(value: boolean) {
+    update({ expandSystemMessagesByDefault: value })
+  }
+
   function shouldExpandTool(toolName: string) {
     return shouldExpandToolBlock(settings.toolBlockExpansion, toolName)
   }
@@ -82,6 +89,8 @@ function createClientSettingsStore() {
     update({
       transcriptDisplayMode: config.resolved.transcript_display_mode,
       toolBlockExpansion: config.resolved.tool_block_expansion,
+      expandSystemMessagesByDefault:
+        config.resolved.expand_system_messages_by_default,
     })
   }
 
@@ -125,9 +134,13 @@ function createClientSettingsStore() {
     get prettyTranscript() {
       return settings.transcriptDisplayMode === 'pretty'
     },
+    get expandSystemMessagesByDefault() {
+      return settings.expandSystemMessagesByDefault
+    },
     update,
     setTranscriptDisplayMode,
     setToolBlockExpansion,
+    setExpandSystemMessagesByDefault,
     shouldExpandTool,
     loadFromClientConfig,
     saveTranscriptDisplayMode,

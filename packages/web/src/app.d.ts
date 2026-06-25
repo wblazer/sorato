@@ -28,12 +28,14 @@ declare global {
     readonly expand_tool_blocks_by_default?: boolean
     readonly tool_block_expansion?: ToolBlockExpansion
     readonly transcript_display_mode?: 'pretty' | 'raw'
+    readonly expand_system_messages_by_default?: boolean
   }
 
   interface ResolvedClientConfigValue {
     readonly expand_tool_blocks_by_default: boolean
     readonly tool_block_expansion: ResolvedToolBlockExpansion
     readonly transcript_display_mode: 'pretty' | 'raw'
+    readonly expand_system_messages_by_default: boolean
   }
 
   interface ResolvedClientConfig {
