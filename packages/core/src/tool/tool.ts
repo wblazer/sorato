@@ -29,3 +29,6 @@ export { Glob, GlobHandler } from './glob.ts'
 
 // Grep — regex content search
 export { Grep, GrepHandler } from './grep.ts'
+
+// WebFetch — web content retrieval
+export { WebFetch, WebFetchHandler, WebFetchError } from './web-fetch.ts'

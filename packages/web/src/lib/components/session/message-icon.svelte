@@ -5,6 +5,7 @@
   import FileMagnifyingGlassIcon from 'phosphor-svelte/lib/FileMagnifyingGlassIcon'
   import FilePlusIcon from 'phosphor-svelte/lib/FilePlusIcon'
   import FileTextIcon from 'phosphor-svelte/lib/FileTextIcon'
+  import GlobeIcon from 'phosphor-svelte/lib/GlobeIcon'
   import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon'
   import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon'
   import TerminalIcon from 'phosphor-svelte/lib/TerminalIcon'
@@ -27,6 +28,7 @@
     'file-search': FileMagnifyingGlassIcon,
     edit: PencilSimpleIcon,
     terminal: TerminalIcon,
+    globe: GlobeIcon,
   } satisfies Record<MessageIconName, Component>
 
 </script>

@@ -65,3 +65,6 @@ export { Glob, GlobHandler } from './tool/glob.ts'
 
 // Tool — grep (regex content search)
 export { Grep, GrepHandler } from './tool/grep.ts'
+
+// Tool — web fetch (web content retrieval)
+export { WebFetch, WebFetchHandler, WebFetchError } from './tool/web-fetch.ts'

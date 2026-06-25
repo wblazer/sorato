@@ -18,6 +18,7 @@ export const MessageIconNameSchema = Schema.Literals([
   'file-search',
   'edit',
   'terminal',
+  'globe',
 ])
 export type MessageIconName = typeof MessageIconNameSchema.Type
 
@@ -114,6 +115,8 @@ const ToolCallHeaderParams = Schema.Struct({
   pattern: Schema.optionalKey(Schema.String),
   include: Schema.optionalKey(Schema.String),
   cwd: Schema.optionalKey(Schema.String),
+  url: Schema.optionalKey(Schema.String),
+  format: Schema.optionalKey(Schema.String),
 })
 
 type ToolCallHeaderParams = typeof ToolCallHeaderParams.Type
@@ -177,6 +180,8 @@ const displaySubtitle = (
           return globSubtitle(params)
         case 'grep':
           return grepSubtitle(params)
+        case 'webfetch':
+          return trimToUndefined(params.url)
         default:
           return fileSubtitle(params)
       }
@@ -191,6 +196,7 @@ const toolIcons: Partial<Record<string, MessageIconName>> = {
   bash: 'terminal',
   glob: 'file-search',
   grep: 'search',
+  webfetch: 'globe',
 }
 
 const toolIcon = (toolName: string): MessageIconName | undefined =>

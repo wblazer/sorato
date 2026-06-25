@@ -1,4 +1,5 @@
 import { Effect, Layer } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
 import {
   Bash,
   BashHandler,
@@ -14,6 +15,8 @@ import {
   Toolkit,
   Write,
   WriteHandler,
+  WebFetch,
+  WebFetchHandler,
   type Files,
 } from '@sorato/core'
 
@@ -50,9 +53,18 @@ export const AllToolInfos = [
   { name: 'Bash', displayName: 'Run command' },
   { name: 'Glob', displayName: 'Find files' },
   { name: 'Grep', displayName: 'Search files' },
+  { name: 'WebFetch', displayName: 'Fetch web page' },
 ] as const
 
-export const AllTools = Toolkit.make(Read, Edit, Write, Bash, Glob, Grep)
+export const AllTools = Toolkit.make(
+  Read,
+  Edit,
+  Write,
+  Bash,
+  Glob,
+  Grep,
+  WebFetch
+)
 
 export const AllToolsLayer = AllTools.toLayer({
   ...ReadHandler,
@@ -61,6 +73,11 @@ export const AllToolsLayer = AllTools.toLayer({
   ...BashHandler,
   ...GlobHandler,
   ...GrepHandler,
+  ...WebFetchHandler,
 })
 
-export const AgentLive = Layer.mergeAll(AllToolsLayer, LocalSandboxLive)
+export const AgentLive = Layer.mergeAll(
+  AllToolsLayer,
+  LocalSandboxLive,
+  FetchHttpClient.layer
+)
