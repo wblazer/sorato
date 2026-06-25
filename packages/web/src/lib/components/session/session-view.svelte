@@ -38,6 +38,8 @@
       let sessionLayout: HTMLElement | null = $state(null)
       let treePanelElement: HTMLElement | null = $state(null)
       let treePanelWidth = $state(360)
+      let composerDraftText = $state('')
+      let composerDraftKey = $state<string | null>(null)
       let loadedTreePanelWidth = false
       let treeResizeCleanup: (() => void) | null = null
 
@@ -313,6 +315,19 @@
 
       function handleAttach() {}
 
+      function handleEditRetry(message: MessageNode, text: string) {
+        selectedHead.setSelectedHead(
+          message.parentId === null
+            ? null
+            : {
+                type: 'node',
+                nodeId: message.parentId,
+              }
+        )
+        composerDraftText = text
+        composerDraftKey = `${message.id}:${Date.now()}`
+      }
+
       function handleDismissError() {
         sessionStore.clearSessionError(sessionId)
       }
@@ -507,6 +522,7 @@
                       modelCall={row.block.modelCall}
                       {accordionState}
                       accordionKey={row.key}
+                      onEditRetry={handleEditRetry}
                     />
                   {:else if row.type === 'streaming'}
                     <StreamingIndicator
@@ -554,6 +570,8 @@
       {isStopping}
       autoFocus
       focusKey={sessionId}
+      draftText={composerDraftText}
+      draftKey={composerDraftKey}
       {sessionStatus}
       tokenUsageMessages={visibleMessages}
       disabled={isStopping}

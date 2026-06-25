@@ -35,6 +35,8 @@
         disabled = false,
         autoFocus = false,
         focusKey,
+        draftText,
+        draftKey,
         placeholder,
         sessionStatus = null,
         tokenUsageMessages = [],
@@ -54,6 +56,8 @@
         disabled?: boolean
         autoFocus?: boolean
         focusKey?: string | number | null
+        draftText?: string
+        draftKey?: string | number | null
         placeholder?: string
         sessionStatus?: SessionRunStatus | null
         tokenUsageMessages?: ReadonlyArray<MessageNode>
@@ -135,6 +139,18 @@
 
         tick().then(() => {
           if (!disabled) textarea?.focus()
+        })
+      })
+
+      $effect(() => {
+        if (draftKey === undefined || draftKey === null) return
+        input = draftText ?? ''
+
+        tick().then(() => {
+          if (disabled) return
+          textarea?.focus()
+          const end = textarea?.value.length ?? 0
+          textarea?.setSelectionRange(end, end)
         })
       })
 
