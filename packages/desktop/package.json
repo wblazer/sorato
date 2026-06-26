@@ -6,7 +6,7 @@
   "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "bun run --parallel dev:web dev:bundle dev:electron",
-    "dev:web": "bun run --filter @sorato/web dev --host 127.0.0.1 --port 5173",
+    "dev:web": "bun run --filter @sorato/web dev --host ${SORATO_WEB_HOST:-127.0.0.1} --port ${SORATO_WEB_PORT:-5173} --strictPort",
     "dev:bundle": "tsdown --watch",
     "dev:electron": "node scripts/dev-electron.mjs",
     "build": "tsdown",

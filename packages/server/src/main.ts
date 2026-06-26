@@ -12,7 +12,7 @@ import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { HttpMiddleware, HttpRouter, HttpServer } from 'effect/unstable/http'
 import { BunHttpServer, BunRuntime, BunServices } from '@effect/platform-bun'
 import { SqliteClient } from '@effect/sql-sqlite-bun'
-import { Effect, FileSystem, Layer, Option } from 'effect'
+import { Config, Effect, FileSystem, Layer, Option } from 'effect'
 import { Api } from '@sorato/api'
 import { AgentLive, AllToolInfos } from './agent-config.ts'
 import { AuthLive } from './auth.ts'
@@ -79,6 +79,13 @@ const ProviderAuthLive = SqliteProviderAuthStore({
 
 // ── Serve ───────────────────────────────────────────────────────────
 
+const serverHost = Config.string('SORATO_SERVER_HOST').pipe(
+  Config.orElse(() => Config.succeed('127.0.0.1'))
+)
+const serverPort = Config.int('SORATO_SERVER_PORT').pipe(
+  Config.orElse(() => Config.succeed(3100))
+)
+
 const AppLive = Layer.merge(ApiLive, SseLive)
 
 const HttpLive = HttpRouter.toHttpEffect(AppLive).pipe(
@@ -95,7 +102,9 @@ const HttpLive = HttpRouter.toHttpEffect(AppLive).pipe(
   Layer.provide(AgentLive),
   Layer.provide(HttpRouter.layer),
   Layer.provide(BunServices.layer),
-  Layer.provide(BunHttpServer.layer({ port: 3100 }))
+  Layer.provide(
+    BunHttpServer.layerConfig({ hostname: serverHost, port: serverPort })
+  )
 )
 
 const server = Command.make('sorato-server', {}, () =>

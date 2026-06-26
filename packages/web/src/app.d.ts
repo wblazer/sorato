@@ -4,7 +4,6 @@ declare global {
   interface Window {
     soratoDesktop?: {
       getBootstrap: () => {
-        readonly serverUrl: string
         readonly platform: NodeJS.Platform
       }
       getClientConfig: () => Promise<ResolvedClientConfig>

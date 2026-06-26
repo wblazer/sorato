@@ -5,7 +5,6 @@ import {
 } from './ipc-channels.ts'
 
 export interface SoratoDesktopBootstrap {
-  readonly serverUrl: string
   readonly platform: NodeJS.Platform
 }
 
@@ -21,7 +20,6 @@ interface ClientConfig {
 
 contextBridge.exposeInMainWorld('soratoDesktop', {
   getBootstrap: (): SoratoDesktopBootstrap => ({
-    serverUrl: process.env.SORATO_SERVER_URL?.trim() || 'http://localhost:3100',
     platform: process.platform,
   }),
   getClientConfig: () => ipcRenderer.invoke(CLIENT_CONFIG_GET_CHANNEL),

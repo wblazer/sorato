@@ -24,35 +24,13 @@ export interface Connection {
 const STORAGE_KEY = 'connections'
 const ACTIVE_KEY = 'activeConnectionId'
 
-function getDesktopBootstrap() {
-  if (typeof window === 'undefined') return null
-  return window.soratoDesktop?.getBootstrap() ?? null
-}
-
 function getInitialState(): {
   readonly connections: Connection[]
   readonly activeConnectionId: string | null
 } {
-  const connections = getJson<Connection[]>(STORAGE_KEY, [])
-  const activeConnectionId = getJson<string | null>(ACTIVE_KEY, null)
-  const desktopBootstrap = getDesktopBootstrap()
-
-  if (!desktopBootstrap || connections.length > 0) {
-    return { connections, activeConnectionId }
-  }
-
-  const now = Date.now()
-  const desktopConnection: Connection = {
-    id: 'desktop-local',
-    url: desktopBootstrap.serverUrl,
-    name: 'Local Sorato',
-    createdAt: now,
-    lastUsedAt: now,
-  }
-
   return {
-    connections: [desktopConnection],
-    activeConnectionId: desktopConnection.id,
+    connections: getJson<Connection[]>(STORAGE_KEY, []),
+    activeConnectionId: getJson<string | null>(ACTIVE_KEY, null),
   }
 }
 

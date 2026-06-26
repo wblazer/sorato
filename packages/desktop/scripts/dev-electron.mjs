@@ -8,8 +8,10 @@ import { waitForResources } from './wait-for-resources.mjs'
 
 const require = createRequire(import.meta.url)
 const desktopDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const webHost = process.env.SORATO_WEB_HOST?.trim() || '127.0.0.1'
+const webPort = process.env.SORATO_WEB_PORT?.trim() || '5173'
 const devServerUrl =
-  process.env.VITE_DEV_SERVER_URL?.trim() || 'http://127.0.0.1:5173'
+  process.env.VITE_DEV_SERVER_URL?.trim() || `http://${webHost}:${webPort}`
 
 const devServer = new URL(devServerUrl)
 const port = Number.parseInt(devServer.port, 10)
@@ -26,7 +28,10 @@ await waitForResources({
   tcpPort: port,
 })
 
-const childEnv = { ...process.env, VITE_DEV_SERVER_URL: devServerUrl }
+const childEnv = {
+  ...process.env,
+  VITE_DEV_SERVER_URL: devServerUrl,
+}
 delete childEnv.ELECTRON_RUN_AS_NODE
 
 const electronPath = process.env.ELECTRON_BINARY?.trim() || require('electron')
