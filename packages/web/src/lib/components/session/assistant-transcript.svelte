@@ -72,9 +72,16 @@
   })
 
   const hasMeta = $derived(runtimeLine !== null || costLine !== null)
+  const startsWithTool = $derived(
+    items[0] !== undefined && transcriptItemKind(items[0]) === 'tool',
+  )
 </script>
 
-<div class="assistant-message py-2.5">
+<div
+  class={startsWithTool
+    ? 'assistant-message pt-0.5 pb-2.5'
+    : 'assistant-message py-2.5'}
+>
   {#if items.length > 0}
     {#each items as item, index}
       <div

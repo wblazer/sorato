@@ -141,14 +141,17 @@
   })
 </script>
 
-<div class="flex w-full min-w-0 items-center gap-2">
+<div class="w-full min-w-0">
   <Popover bind:open={popoverOpen}>
-    <PopoverTrigger>
+    <PopoverTrigger class="block w-full min-w-0">
       <button
         type="button"
-        class="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-base-hover hover:text-foreground"
+        title={connectionsStore.activeConnection
+          ? displayName(connectionsStore.activeConnection)
+          : 'No connection'}
+        class="flex h-8 w-full min-w-0 items-center gap-1.5 rounded-md px-2.5 text-sm/relaxed font-medium text-muted-foreground hover:bg-base-hover hover:text-foreground"
       >
-        <span class="relative flex h-2 w-2">
+        <span class="flex size-4 shrink-0 items-center justify-center">
           {#if connectionsStore.activeConnection}
             <span class="relative inline-flex h-2 w-2 rounded-full bg-success"
             ></span>
@@ -158,7 +161,7 @@
             ></span>
           {/if}
         </span>
-        <span class="min-w-0 flex-1 truncate">
+        <span class="min-w-0 flex-1 truncate text-left">
           {#if connectionsStore.activeConnection}
             {displayName(connectionsStore.activeConnection)}
           {:else}
@@ -189,12 +192,13 @@
         {:else}
           <div class="grid gap-1 p-2">
             {#each connectionsStore.connections as connection (connection.id)}
-              <div class="flex items-center gap-1">
+              <div class="flex min-w-0 items-center gap-1">
                 <button
                   type="button"
+                  title={displayName(connection)}
                   onclick={() => handleActivate(connection.id)}
                   aria-current={isActive(connection) ? 'true' : undefined}
-                  class="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left hover:bg-base-hover"
+                  class="flex h-7 min-w-0 flex-1 overflow-hidden items-center gap-2 rounded-md px-2 text-left hover:bg-base-hover"
                 >
                   {#if isActive(connection)}
                     <span class="h-2 w-2 shrink-0 rounded-full bg-success"
@@ -204,7 +208,9 @@
                       class="h-2 w-2 shrink-0 rounded-full border border-muted-foreground/50"
                     ></span>
                   {/if}
-                  <span class="min-w-0 flex-1 truncate text-sm font-medium">
+                  <span
+                    class="block min-w-0 flex-1 truncate text-sm font-medium"
+                  >
                     {displayName(connection)}
                   </span>
                 </button>
