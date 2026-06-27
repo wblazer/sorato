@@ -62,6 +62,7 @@ function createAppRuntime() {
         projectStore.fetchProjects(),
         sessionStore.fetchSessions(),
       ])
+      tabStore.reconcileSessions(sessionStore.sessions)
       if (connectionsStore.activeConnection?.id !== prepared.id) return
       if (connectionsStore.activeConnection.url !== prepared.url) return
 

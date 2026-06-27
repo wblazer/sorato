@@ -1,4 +1,10 @@
+import { Schema } from 'effect'
 import type { AppTab, Session } from '$lib/types.js'
+import {
+  getJsonWithSchema,
+  setJsonWithSchema,
+  storageKey,
+} from '$lib/storage.js'
 import { connectionsStore } from './connections.svelte.js'
 import { messagesStore } from './messages.svelte.js'
 
@@ -6,6 +12,26 @@ interface TabSet {
   readonly tabs: AppTab[]
   readonly activeTabId: string | null
 }
+
+const tabsKey = (connectionId: string | undefined) =>
+  storageKey('connection', connectionId, 'tabs')
+
+const AppTabSchema = Schema.Struct({
+  id: Schema.String,
+  sessionId: Schema.NullOr(Schema.String),
+  projectId: Schema.NullOr(Schema.String),
+  title: Schema.NullOr(Schema.String),
+  kind: Schema.Literals(['new', 'session']),
+  createdAt: Schema.Number,
+  updatedAt: Schema.Number,
+})
+
+const TabSetSchema = Schema.Struct({
+  tabs: Schema.Array(AppTabSchema),
+  activeTabId: Schema.NullOr(Schema.String),
+})
+
+type PersistedTabSet = typeof TabSetSchema.Type
 
 const newTab = (): AppTab => {
   const now = Date.now()
@@ -28,6 +54,11 @@ function createTabStore() {
     return connectionsStore.activeConnection?.id ?? '__no_connection__'
   }
 
+  function activeStorageKey(): string | null {
+    const id = connectionsStore.activeConnection?.id
+    return id ? tabsKey(id) : null
+  }
+
   function initialTabSet(): TabSet {
     const tab = newTab()
     return { tabs: [tab], activeTabId: tab.id }
@@ -37,21 +68,74 @@ function createTabStore() {
     return tabSets[activeConnectionKey()] ?? fallbackTabSet
   }
 
+  function normalizeTabSet(
+    value: PersistedTabSet | TabSet | null
+  ): TabSet | undefined {
+    if (!value || value.tabs.length === 0) return undefined
+
+    const ids = new Set<string>()
+    const tabs = value.tabs.filter((tab) => {
+      if (ids.has(tab.id)) return false
+      ids.add(tab.id)
+      return true
+    })
+    if (tabs.length === 0) return undefined
+
+    const activeTabId = tabs.some((tab) => tab.id === value.activeTabId)
+      ? value.activeTabId
+      : tabs[0].id
+    return { tabs, activeTabId }
+  }
+
+  function readPersistedTabSet(): TabSet | undefined {
+    const key = activeStorageKey()
+    if (!key) return undefined
+    return normalizeTabSet(
+      getJsonWithSchema(key, Schema.NullOr(TabSetSchema), null)
+    )
+  }
+
+  function persistTabSet(tabSet: TabSet) {
+    const key = activeStorageKey()
+    if (!key) return
+    setJsonWithSchema(
+      key,
+      TabSetSchema,
+      normalizeTabSet(tabSet) ?? initialTabSet()
+    )
+  }
+
   function ensureTabSet(): TabSet {
     const key = activeConnectionKey()
     const existing = tabSets[key]
     if (existing) return existing
-    const created = initialTabSet()
+    const created = readPersistedTabSet() ?? initialTabSet()
     tabSets = { ...tabSets, [key]: created }
     return created
   }
 
   function setTabSet(next: TabSet) {
-    tabSets = { ...tabSets, [activeConnectionKey()]: next }
+    const normalized = normalizeTabSet(next) ?? initialTabSet()
+    tabSets = { ...tabSets, [activeConnectionKey()]: normalized }
+    persistTabSet(normalized)
   }
 
   function ensureActiveConnectionTabSet() {
     ensureTabSet()
+  }
+
+  function reconcileSessions(sessions: ReadonlyArray<Session>) {
+    const state = ensureTabSet()
+    const knownSessionIds = new Set(sessions.map((session) => session.id))
+    const tabs = state.tabs.filter(
+      (tab) => tab.sessionId === null || knownSessionIds.has(tab.sessionId)
+    )
+    if (tabs.length === state.tabs.length) return
+
+    const activeTabId = tabs.some((tab) => tab.id === state.activeTabId)
+      ? state.activeTabId
+      : (tabs[0]?.id ?? null)
+    setTabSet(tabs.length === 0 ? initialTabSet() : { tabs, activeTabId })
   }
 
   function loadActiveTabMessages(): Promise<void> {
@@ -222,6 +306,7 @@ function createTabStore() {
     attachSession,
     updateSessionTitle,
     ensureActiveConnectionTabSet,
+    reconcileSessions,
     loadActiveTabMessages,
   }
 }
