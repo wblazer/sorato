@@ -18,6 +18,8 @@ function createModelsStore() {
   let loading = $state(false)
   let error = $state<string | null>(null)
   let projectId = $state<string | null>(null)
+  let preferredModel = $state<string | null>(null)
+  let preferredOptions = $state<ModelOptions>({})
   let selectedModel = $state<string | null>(null)
   let selectedOptions = $state<ModelOptions>({})
   let req = 0
@@ -29,6 +31,8 @@ function createModelsStore() {
     loading = false
     error = null
     projectId = null
+    preferredModel = null
+    preferredOptions = {}
     selectedModel = null
     selectedOptions = {}
   }
@@ -47,18 +51,46 @@ function createModelsStore() {
   }
 
   function select(model: string, options: ModelOptions = {}) {
+    preferredModel = model
+    preferredOptions = options
     selectedModel = model
     selectedOptions = options
     remember(model, options)
   }
 
+  function resolvePreferred() {
+    if (preferredModel !== null) {
+      return { model: preferredModel, options: preferredOptions }
+    }
+
+    const stored = recent()
+    if (!stored) return null
+    preferredModel = stored.model
+    preferredOptions = stored.options
+    return stored
+  }
+
   function pick() {
     const ids = new Set(models.map((item) => item.id))
-    const last = recent()
+    const preferred = resolvePreferred()
 
-    if (last && ids.has(last.model)) return last.model
+    if (preferred && ids.has(preferred.model)) return preferred.model
     if (defaultModel && ids.has(defaultModel)) return defaultModel
     return models[0]?.id ?? null
+  }
+
+  function reconcileSelection() {
+    const ids = new Set(models.map((item) => item.id))
+    const preferred = resolvePreferred()
+
+    if (preferred && ids.has(preferred.model)) {
+      selectedModel = preferred.model
+      selectedOptions = preferred.options
+      return
+    }
+
+    selectedModel = pick()
+    selectedOptions = {}
   }
 
   function displayName(providerId: string, modelId: string) {
@@ -93,21 +125,13 @@ function createModelsStore() {
     if (result.ok) {
       models = result.value.models
       defaultModel = result.value.defaultModel ?? null
-      const ids = new Set(models.map((item) => item.id))
-      if (!selectedModel || !ids.has(selectedModel)) {
-        const stored = recent()
-        if (stored && ids.has(stored.model)) {
-          selectedModel = stored.model
-          selectedOptions = stored.options
-        } else {
-          selectedModel = pick()
-          selectedOptions = {}
-        }
-      }
+      reconcileSelection()
     } else {
       if (!hasExistingForProject) {
         models = []
         defaultModel = null
+        selectedModel = null
+        selectedOptions = {}
       }
       error = result.error.message
     }

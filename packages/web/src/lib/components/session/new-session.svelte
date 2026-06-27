@@ -60,7 +60,11 @@
   }
 
   function handleProject(projectId: string) {
-    sessionStore.selectProject(projectId)
+    const tabId = tabStore.activeTab?.id
+    if (!tabId) return
+
+    tabStore.setDraftProject(tabId, projectId)
+    void modelsStore.load(projectId)
   }
 
   function openSession(sessionId: string) {
@@ -75,11 +79,17 @@
   }
 
   async function handleSend(input: string) {
-    const model = modelsStore.selectedModel
-    if (sending || !model || !activeProjectId) return
+    if (sending || !activeProjectId) return
     sending = true
 
     try {
+      if (modelsStore.projectId !== activeProjectId || modelsStore.loading) {
+        await modelsStore.load(activeProjectId)
+      }
+
+      const model = modelsStore.selectedModel
+      if (!model) return
+
       const session = await sessionStore.createSession(activeProjectId)
       if (!session) return
 
@@ -227,10 +237,7 @@
     modelOptions={modelsStore.selectedOptions}
     modelLoading={modelsStore.loading}
     modelDisabled={sending || !activeProjectId}
-    disabled={sending ||
-      modelsStore.loading ||
-      !modelsStore.selectedModel ||
-      !activeProjectId}
+    disabled={sending || !modelsStore.selectedModel || !activeProjectId}
     autoFocus
     focusKey={tabStore.activeTabId}
     placeholder={activeProjectId

@@ -89,8 +89,8 @@
   }
 
   const triggerLabel = $derived.by(() => {
-    if (loading) return 'Loading models...'
     if (selectedModel) return selectedModel.name
+    if (loading) return 'Loading models...'
     if (missing && value) return `${value} (unavailable)`
     if (models.length === 0) return 'No models'
     return 'Select model'
