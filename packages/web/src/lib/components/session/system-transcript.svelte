@@ -1,0 +1,96 @@
+<script lang="ts">
+  import type { TranscriptItem } from '$lib/transcript.js'
+  import * as Accordion from '$lib/components/ui/accordion/index.js'
+  import MessagePartComponent from './message-part.svelte'
+  import ToolCallResult from './tool-call-result.svelte'
+
+  let {
+    items,
+    title = 'System',
+    subtitle = undefined,
+    defaultOpen = false,
+    accordionState,
+    accordionKey,
+  }: {
+    items: ReadonlyArray<TranscriptItem>
+    title?: string
+    subtitle?: string | undefined
+    defaultOpen?: boolean
+    accordionState: Record<string, string[]>
+    accordionKey: string
+  } = $props()
+
+  const accordionValue = $derived(
+    accordionState[accordionKey] ?? (defaultOpen ? ['content'] : []),
+  )
+
+  const itemAccordionKey = (item: TranscriptItem, index: number): string => {
+    if (item.type === 'combined-tool')
+      return `${accordionKey}:tool:${item.call.id}`
+    if (item.type === 'message' && 'id' in item.part) {
+      return `${accordionKey}:part:${item.part.id}`
+    }
+    return `${accordionKey}:item:${index}`
+  }
+
+  function handleAccordionValue(value: string[]) {
+    accordionState[accordionKey] = value
+  }
+</script>
+
+<div class="flex flex-col gap-2 py-1">
+  <Accordion.Root
+    type="multiple"
+    value={accordionValue}
+    onValueChange={handleAccordionValue}
+    class="w-full overflow-hidden rounded-lg border border-border bg-surface text-foreground shadow-sm shadow-shadow/30"
+  >
+    <Accordion.Item value="content" class="bg-surface data-open:bg-surface">
+      <Accordion.Trigger
+        level={4}
+        class="flex w-full items-center gap-x-2 gap-y-1 border-0 border-b border-border px-3 py-2 text-sm font-normal no-underline hover:bg-surface-hover hover:no-underline"
+      >
+        <span
+          class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1"
+        >
+          <span class="font-semibold">{title}</span>
+          {#if subtitle}
+            <span class="min-w-0 truncate font-mono text-muted-foreground">
+              {subtitle}
+            </span>
+          {/if}
+        </span>
+      </Accordion.Trigger>
+
+      <Accordion.Content>
+        <div class="flex flex-col gap-3 px-3 py-3">
+          {#each items as item, index}
+            {#if item.type === 'combined-tool'}
+              <ToolCallResult
+                call={item.call}
+                result={item.result}
+                {accordionState}
+                accordionKey={itemAccordionKey(item, index)}
+              />
+            {:else if item.type === 'interruption'}
+              <div
+                class="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+              >
+                <div class="h-px flex-1 bg-border"></div>
+                <span>Interrupted</span>
+                <div class="h-px flex-1 bg-border"></div>
+              </div>
+            {:else}
+              <MessagePartComponent
+                part={item.part}
+                monospace={true}
+                {accordionState}
+                accordionKey={itemAccordionKey(item, index)}
+              />
+            {/if}
+          {/each}
+        </div>
+      </Accordion.Content>
+    </Accordion.Item>
+  </Accordion.Root>
+</div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte'
   import type { ToolCallPart, ToolResultPart } from '$lib/types.js'
   import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
   import * as Accordion from '$lib/components/ui/accordion/index.js'
@@ -26,14 +27,16 @@
   const header = $derived(call?.header ?? part.header)
   const title = $derived(header?.title ?? call?.name ?? `${part.name} Result`)
   const subtitle = $derived(header?.subtitle ?? summary?.fileName)
-  const defaultAccordionValue = $derived(
-    clientSettingsStore.shouldExpandTool(part.name) ? ['content'] : [],
-  )
-  const accordionValue = $derived(
-    accordionState[accordionKey] ?? defaultAccordionValue,
+  let accordionValue = $state(
+    untrack(() =>
+      clientSettingsStore.shouldExpandTool(call?.name ?? part.name)
+        ? ['content']
+        : [],
+    ),
   )
 
   function handleAccordionValue(value: string[]) {
+    accordionValue = value
     accordionState[accordionKey] = value
   }
 </script>

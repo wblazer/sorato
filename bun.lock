@@ -80,7 +80,6 @@
         "@sorato/api": "workspace:*",
         "@sorato/core": "workspace:*",
         "@tanstack/hotkeys": "^0.8.0",
-        "@tanstack/svelte-virtual": "^3.13.13",
         "effect": "4.0.0-beta.74",
       },
       "devDependencies": {
@@ -369,10 +368,6 @@
     "@tanstack/hotkeys": ["@tanstack/hotkeys@0.8.0", "", { "dependencies": { "@tanstack/store": "^0.11.0" } }, "sha512-vqH7X9nb0MTJ/O08++dB5bP9jgj4+BIPOUu/U+6myG86lDsirZSVSobpq5UQpE7nBuk62i8eIYeOhd+OMl/UrA=="],
 
     "@tanstack/store": ["@tanstack/store@0.11.0", "", {}, "sha512-WlzzCt3xi0G6pCAJu1U+2jiECwabETDpQDi3hfkFZvJii9AuZqEKbOiVarX1/bWhTNjU486yQtJCCasi/0q+Cw=="],
-
-    "@tanstack/svelte-virtual": ["@tanstack/svelte-virtual@3.13.28", "", { "dependencies": { "@tanstack/virtual-core": "3.17.0" }, "peerDependencies": { "svelte": "^3.48.0 || ^4.0.0 || ^5.0.0" } }, "sha512-8gI6SVgnWV6uxje8HyFtYK3xDO8UFxiEcKvWCliyz1QYsqM0wScA5vD6vvKJotPwKR4HKmrfLhb5OlDesbgqZw=="],
-
-    "@tanstack/virtual-core": ["@tanstack/virtual-core@3.17.0", "", {}, "sha512-gOxY/hFkPh/XQYhnThBHzkbkX3Ed+z/iushyz+R+JAr213aXxUDgQoTgTdrDpBSRsjFM73P/KfUyWmaF9WHMkQ=="],
 
     "@tybys/wasm-util": ["@tybys/wasm-util@0.10.2", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-RoBvJ2X0wuKlWFIjrwffGw1IqZHKQqzIchKaadZZfnNpsAYp2mM0h36JtPCjNDAHGgYez/15uMBpfGwchhiMgg=="],
 

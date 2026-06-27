@@ -8,7 +8,6 @@
     projectTranscript,
     type TranscriptItem,
   } from '$lib/transcript.js'
-  import * as Accordion from '$lib/components/ui/accordion/index.js'
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Tooltip from '$lib/components/ui/tooltip/index.js'
   import { createTimedAction } from '$lib/timed-action.svelte.js'
@@ -17,6 +16,7 @@
   import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon'
   import AssistantTranscript from './assistant-transcript.svelte'
   import MessagePartComponent from './message-part.svelte'
+  import SystemTranscript from './system-transcript.svelte'
   import ToolCallResult from './tool-call-result.svelte'
 
   let {
@@ -85,11 +85,6 @@
       : undefined,
   )
 
-  const systemAccordionKey = $derived(`${accordionKey}:system`)
-  const systemAccordionValue = $derived(
-    accordionState[systemAccordionKey] ??
-      (clientSettingsStore.expandSystemMessagesByDefault ? ['content'] : []),
-  )
   const itemAccordionKey = (item: TranscriptItem, index: number): string => {
     if (item.type === 'combined-tool')
       return `${accordionKey}:tool:${item.call.id}`
@@ -97,10 +92,6 @@
       return `${accordionKey}:part:${item.part.id}`
     }
     return `${accordionKey}:item:${index}`
-  }
-
-  function handleSystemAccordionValue(value: string[]) {
-    accordionState[systemAccordionKey] = value
   }
 
   function formatTimestamp(value: number): string {
@@ -142,7 +133,7 @@
       ? ''
       : isSystem
         ? 'flex flex-col gap-2 py-1'
-        : 'flex flex-col gap-2 py-2.5'}
+        : 'flex flex-col gap-2 pt-2.5 pb-1'}
   >
     {#if isInterruption}
       <div
@@ -189,7 +180,7 @@
         </div>
 
         <div
-          class="mt-0.5 flex min-h-6 max-w-[min(42rem,85%)] items-center justify-end gap-1 text-xs text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/user-message:opacity-100 focus-within:opacity-100"
+          class="mt-1 flex min-h-6 max-w-[min(42rem,85%)] items-center justify-end gap-1 text-xs text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/user-message:opacity-100 focus-within:opacity-100"
         >
           {#if userTimestamp}
             <span class="mr-1 cursor-default select-none tabular-nums"
@@ -245,60 +236,14 @@
         </div>
       </div>
     {:else if isSystem}
-      <Accordion.Root
-        type="multiple"
-        value={systemAccordionValue}
-        onValueChange={handleSystemAccordionValue}
-        class="w-full overflow-hidden rounded-lg border border-border bg-surface text-foreground shadow-sm shadow-shadow/30"
-      >
-        <Accordion.Item value="content" class="bg-surface data-open:bg-surface">
-          <Accordion.Trigger
-            level={4}
-            class="flex w-full items-center gap-x-2 gap-y-1 border-0 border-b border-border px-3 py-2 text-sm font-normal no-underline hover:bg-surface-hover hover:no-underline"
-          >
-            <span
-              class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1"
-            >
-              <span class="font-semibold">{systemTitle}</span>
-              {#if systemSubtitle}
-                <span class="min-w-0 truncate font-mono text-muted-foreground">
-                  {systemSubtitle}
-                </span>
-              {/if}
-            </span>
-          </Accordion.Trigger>
-
-          <Accordion.Content>
-            <div class="flex flex-col gap-3 px-3 py-3">
-              {#each renderParts as item, index}
-                {#if item.type === 'combined-tool'}
-                  <ToolCallResult
-                    call={item.call}
-                    result={item.result}
-                    {accordionState}
-                    accordionKey={itemAccordionKey(item, index)}
-                  />
-                {:else if item.type === 'interruption'}
-                  <div
-                    class="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
-                  >
-                    <div class="h-px flex-1 bg-border"></div>
-                    <span>Interrupted</span>
-                    <div class="h-px flex-1 bg-border"></div>
-                  </div>
-                {:else}
-                  <MessagePartComponent
-                    part={item.part}
-                    monospace={true}
-                    {accordionState}
-                    accordionKey={itemAccordionKey(item, index)}
-                  />
-                {/if}
-              {/each}
-            </div>
-          </Accordion.Content>
-        </Accordion.Item>
-      </Accordion.Root>
+      <SystemTranscript
+        items={renderParts}
+        title={systemTitle}
+        subtitle={systemSubtitle}
+        defaultOpen={clientSettingsStore.expandSystemMessagesByDefault}
+        {accordionState}
+        accordionKey={`${accordionKey}:system`}
+      />
     {:else}
       <AssistantTranscript
         items={renderParts}

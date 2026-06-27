@@ -1,15 +1,12 @@
 <script lang="ts">
   import { FileDiff, type FileDiffMetadata } from '@pierre/diffs'
-  import { onDestroy, onMount } from 'svelte'
   import type { ToolResultDisplay } from '$lib/types.js'
-  import { parseToolDiff } from '$lib/tool-output.js'
+  import { parseToolDiff, toolDiffTheme } from '$lib/tool-output.js'
 
   let { display }: { display: Extract<ToolResultDisplay, { type: 'diff' }> } =
     $props()
 
-  let wrapper = $state<HTMLDivElement>()
   let fileDiff: FileDiffMetadata = $derived(parseToolDiff(display))
-  let instance: FileDiff | undefined
 
   const renderOptions = {
     diffStyle: 'unified' as const,
@@ -17,10 +14,7 @@
     hunkSeparators: 'line-info-basic' as const,
     diffIndicators: 'bars' as const,
     overflow: 'scroll' as const,
-    theme: {
-      dark: 'pierre-dark' as const,
-      light: 'pierre-light' as const,
-    },
+    theme: toolDiffTheme,
     themeType: 'system' as const,
     unsafeCSS: `
       :host {
@@ -61,9 +55,7 @@
     `,
   }
 
-  function renderDiff() {
-    if (!wrapper) return
-    instance ??= new FileDiff(renderOptions)
+  function renderDiff(wrapper: HTMLDivElement, instance: FileDiff) {
     instance.render({
       fileDiff,
       containerWrapper: wrapper,
@@ -71,21 +63,22 @@
     })
   }
 
-  onMount(() => {
-    renderDiff()
-  })
+  function diffRenderer(wrapper: HTMLDivElement, _fileDiff: FileDiffMetadata) {
+    const instance = new FileDiff(renderOptions)
+    renderDiff(wrapper, instance)
 
-  $effect(() => {
-    fileDiff
-    renderDiff()
-  })
-
-  onDestroy(() => {
-    instance?.cleanUp()
-  })
+    return {
+      update() {
+        renderDiff(wrapper, instance)
+      },
+      destroy() {
+        instance.cleanUp()
+      },
+    }
+  }
 </script>
 
-<div bind:this={wrapper} class="tool-diff overflow-hidden"></div>
+<div use:diffRenderer={fileDiff} class="tool-diff overflow-hidden"></div>
 
 <style>
   .tool-diff {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ModelCall } from '$lib/types.js'
+  import { modelsStore } from '$lib/stores/models.svelte.js'
   import type { TranscriptItem } from '$lib/transcript.js'
   import MessagePartComponent from './message-part.svelte'
   import ToolCallResult from './tool-call-result.svelte'
@@ -8,14 +9,12 @@
     items,
     modelCall = null,
     isRunning = false,
-    reserveMetaSpace = false,
     accordionState,
     accordionKey,
   }: {
     items: ReadonlyArray<TranscriptItem>
     modelCall?: ModelCall | null
     isRunning?: boolean
-    reserveMetaSpace?: boolean
     accordionState: Record<string, string[]>
     accordionKey: string
   } = $props()
@@ -70,20 +69,37 @@
 
     return formatCost(modelCall.actualCostMicrosUsd)
   })
+  const modelLine = $derived(
+    modelCall === null
+      ? null
+      : modelsStore.displayName(modelCall.providerId, modelCall.modelId),
+  )
 
-  const hasMeta = $derived(runtimeLine !== null || costLine !== null)
+  const metaItems = $derived(
+    [modelLine, runtimeLine, costLine].filter((item) => item !== null),
+  )
+  const hasMeta = $derived(metaItems.length > 0)
+  const itemRendersContent = (item: TranscriptItem): boolean => {
+    if (item.type !== 'message') return true
+    if (item.part.type !== 'text' && item.part.type !== 'reasoning') return true
+    return item.part.text.trim().length > 0
+  }
+  const visibleItems = $derived(
+    items.filter((item) => itemRendersContent(item)),
+  )
   const startsWithTool = $derived(
-    items[0] !== undefined && transcriptItemKind(items[0]) === 'tool',
+    visibleItems[0] !== undefined &&
+      transcriptItemKind(visibleItems[0]) === 'tool',
   )
 </script>
 
 <div
   class={startsWithTool
-    ? 'assistant-message pt-0.5 pb-2.5'
+    ? 'assistant-message pb-2.5'
     : 'assistant-message py-2.5'}
 >
-  {#if items.length > 0}
-    {#each items as item, index}
+  {#if visibleItems.length > 0}
+    {#each visibleItems as item, index}
       <div
         class="assistant-transcript-item"
         data-transcript-kind={transcriptItemKind(item)}
@@ -115,22 +131,20 @@
     {/each}
   {/if}
 
-  {#if hasMeta || isRunning || reserveMetaSpace}
+  {#if visibleItems.length > 0 || hasMeta || isRunning}
     <div
-      class="assistant-meta flex h-4 items-center gap-1.5 text-xs text-muted-foreground"
+      class={visibleItems.length > 0
+        ? 'assistant-meta flex min-h-5 items-center gap-1.5 text-xs/5 text-muted-foreground'
+        : 'assistant-meta flex min-h-5 items-center gap-1.5 text-xs/5 text-muted-foreground'}
       class:assistant-meta-visible={isRunning}
-      class:mt-2={items.length > 0}
     >
       {#if hasMeta}
-        {#if runtimeLine}
-          <span>{runtimeLine}</span>
-        {/if}
-        {#if costLine}
-          {#if runtimeLine}
+        {#each metaItems as item, index}
+          {#if index > 0}
             <span>·</span>
           {/if}
-          <span>{costLine}</span>
-        {/if}
+          <span>{item}</span>
+        {/each}
       {:else if isRunning}
         <span class="sr-only">Streaming</span>
         <span

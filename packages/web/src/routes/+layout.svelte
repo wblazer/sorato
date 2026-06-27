@@ -10,8 +10,14 @@
   import NoConnections from '$lib/components/no-connections.svelte'
   import * as Tooltip from '$lib/components/ui/tooltip/index.js'
   import { appRuntime } from '$lib/stores/app-runtime.svelte.js'
+  import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
+  import { onMount } from 'svelte'
 
   let { children } = $props()
+
+  onMount(() => {
+    void clientSettingsStore.loadFromClientConfig()
+  })
 
   $effect(() => {
     const activeConnection = connectionsStore.activeConnection
@@ -38,7 +44,9 @@
 <GlobalActionHost />
 
 <Tooltip.Provider>
-  {#if connectionsStore.hasConnections}
+  {#if !clientSettingsStore.loaded}
+    <AppLoading />
+  {:else if connectionsStore.hasConnections}
     <div class="flex h-screen overflow-hidden">
       <Sidebar />
       <main class="relative min-w-0 flex-1 overflow-hidden">

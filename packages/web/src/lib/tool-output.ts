@@ -1,5 +1,17 @@
-import { parseDiffFromFile, type FileDiffMetadata } from '@pierre/diffs'
-import type { ToolResultDisplay } from '$lib/types.js'
+import {
+  getFiletypeFromFileName,
+  getHighlighterOptions,
+  parseDiffFromFile,
+  preloadHighlighter,
+  type FileDiffMetadata,
+} from '@pierre/diffs'
+import type { MessageNode, ToolResultDisplay } from '$lib/types.js'
+import { messageParts } from '$lib/transcript.js'
+
+export const toolDiffTheme = {
+  dark: 'pierre-dark' as const,
+  light: 'pierre-light' as const,
+}
 
 export interface DiffStats {
   additions: number
@@ -39,4 +51,32 @@ export function diffDisplaySummary(
       }
     }
   }
+}
+
+export async function preloadMessageToolDiffs(
+  messages: ReadonlyArray<MessageNode>
+) {
+  const displays = messages.flatMap((message) =>
+    messageParts(message).flatMap((part) =>
+      part.type === 'tool-result' && part.bodyDisplay?.type === 'diff'
+        ? [part.bodyDisplay]
+        : []
+    )
+  )
+
+  await Promise.allSettled(displays.map(preloadToolDiffDisplay))
+}
+
+async function preloadToolDiffDisplay(
+  display: Extract<ToolResultDisplay, { type: 'diff' }>
+) {
+  const fileDiff = parseToolDiff(display)
+  await preloadHighlighter(
+    getHighlighterOptions(
+      fileDiff.lang ?? getFiletypeFromFileName(fileDiff.name),
+      {
+        theme: toolDiffTheme,
+      }
+    )
+  )
 }

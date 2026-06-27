@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { tick } from 'svelte'
-  import { get } from 'svelte/store'
-  import { createVirtualizer } from '@tanstack/svelte-virtual'
+  import { onDestroy, tick } from 'svelte'
   import LoadingState from '$lib/components/loading-state.svelte'
+  import { MessageScrollerController } from '$lib/components/message-scroller/message-scroller.svelte.js'
+  import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import { messagesStore } from '$lib/stores/messages.svelte.js'
   import { modelsStore } from '$lib/stores/models.svelte.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
@@ -24,19 +24,21 @@
   import { Badge } from '$lib/components/ui/badge/index.js'
   import { SessionSelectedHeadController } from './session-selected-head.svelte.js'
   import * as Item from '$lib/components/ui/item/index.js'
-  import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
   let { sessionId, title }: { sessionId: string; title: string | null } =
     $props()
 
   const selectedHead = new SessionSelectedHeadController(() => sessionId)
-  let messagesContainer: HTMLElement | null = $state(null)
-  let isAtLatest = $state(true)
+  const scroller = new MessageScrollerController({
+    autoScroll: true,
+    defaultScrollPosition: 'last-anchor',
+    scrollEdgeThreshold: 80,
+  })
   let initialScrollSessionId: string | null = null
-  let accordionSessionId: string | null = $state(null)
   let accordionState = $state<Record<string, string[]>>({})
   let composerDraftText = $state('')
   let composerDraftKey = $state<string | null>(null)
+  let viewportElement = $state<HTMLElement | null>(null)
 
   // Running state is derived from the session store — the single source
   // of truth. The messages store only tracks streaming *content*.
@@ -122,7 +124,10 @@
     for (let index = 0; index < messages.length; index++) {
       const message = messages[index]
 
-      if (message.encoded.role === 'assistant') {
+      if (
+        message.encoded.role === 'assistant' ||
+        message.encoded.role === 'tool'
+      ) {
         const group = [message]
         let cursor = index + 1
         while (
@@ -171,7 +176,7 @@
     })
   })
 
-  const virtualRows = $derived.by(
+  const transcriptRows = $derived.by(
     (): ReadonlyArray<SessionVirtualRow> => [
       ...messageBlocks.map((block) => ({
         type: 'message' as const,
@@ -189,43 +194,14 @@
     ],
   )
 
-  const virtualizer = createVirtualizer<HTMLElement, HTMLDivElement>({
-    count: 0,
-    getScrollElement: () => messagesContainer,
-    estimateSize: () => 160,
-    getItemKey: (index) => virtualRows[index]?.key ?? index,
-    anchorTo: 'end',
-    followOnAppend: true,
-    scrollEndThreshold: 80,
-    overscan: 6,
-    paddingStart: 20,
-    paddingEnd: 20,
-    gap: 4,
-    onChange: (instance) => {
-      isAtLatest = instance.isAtEnd(80)
-    },
-  })
-
-  const virtualItems = $derived($virtualizer.getVirtualItems())
-
-  function measureVirtualRow(node: HTMLDivElement) {
-    get(virtualizer).measureElement(node)
-  }
-
-  function updateLatestState() {
-    isAtLatest = get(virtualizer).isAtEnd(80)
-  }
-
   function jumpToLatest() {
-    get(virtualizer).scrollToEnd()
-    updateLatestState()
+    scroller.jumpToEnd()
   }
 
   function scrollToLatestAfterRender() {
     tick().then(() =>
       requestAnimationFrame(() => {
-        get(virtualizer).scrollToEnd()
-        updateLatestState()
+        scroller.jumpToEnd('auto')
       }),
     )
   }
@@ -237,33 +213,26 @@
   })
 
   $effect(() => {
-    if (accordionSessionId === sessionId) return
-    accordionSessionId = sessionId
-    accordionState = {}
-  })
+    const viewport = viewportElement
+    if (!viewport) return
 
-  $effect(() => {
-    get(virtualizer).setOptions({
-      count: virtualRows.length,
-      getScrollElement: () => messagesContainer,
-      estimateSize: () => 160,
-      getItemKey: (index) => virtualRows[index]?.key ?? index,
-      anchorTo: 'end',
-      followOnAppend: true,
-      scrollEndThreshold: 80,
-      overscan: 6,
-      paddingStart: 20,
-      paddingEnd: 20,
-      gap: 4,
-      onChange: (instance) => {
-        isAtLatest = instance.isAtEnd(80)
-      },
-    })
+    viewport.setAttribute('role', 'region')
+    viewport.setAttribute('aria-label', 'Messages')
+    viewport.tabIndex = 0
+
+    const binding = scroller.viewport(viewport as HTMLDivElement)
+
+    return () => {
+      binding.destroy()
+      viewport.removeAttribute('role')
+      viewport.removeAttribute('aria-label')
+      viewport.removeAttribute('tabindex')
+    }
   })
 
   $effect(() => {
     if (messagesStore.currentSessionId !== sessionId) return
-    if (messagesStore.loading || virtualRows.length === 0) return
+    if (messagesStore.loading || transcriptRows.length === 0) return
     if (initialScrollSessionId === sessionId) return
     initialScrollSessionId = sessionId
     scrollToLatestAfterRender()
@@ -280,8 +249,6 @@
     const baseNodeId = selectedHead.selectedBaseNodeId
     const afterRunId = selectedHead.selectedAfterRunId
     const wasRunning = sessionStore.isRunning(sessionId)
-
-    scrollToLatestAfterRender()
 
     void sessionStore
       .runAgent(
@@ -345,6 +312,8 @@
   function retryMessages() {
     void messagesStore.loadMessages(sessionId)
   }
+
+  onDestroy(() => scroller.destroy())
 </script>
 
 <SessionShell title={title ?? 'New Session'}>
@@ -365,45 +334,52 @@
   {/snippet}
 
   <div class="relative min-h-0 flex-1 overflow-hidden">
-    <ScrollArea
-      bind:viewportRef={messagesContainer}
-      class="h-full"
-      viewportClass="scroll-mask-y scroll-mask-y-from-98%"
-      onViewportScroll={updateLatestState}
+    <div
+      use:scroller.root
+      class="relative flex h-full flex-col overflow-hidden"
     >
-      {#if messagesStore.loading}
-        <LoadingState />
-      {:else if messagesStore.error}
-        <div
-          class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
-        >
-          <Item.Root variant="danger" class="max-w-xl">
-            <Item.Media variant="icon">
-              <WarningCircleIcon />
-            </Item.Media>
-            <Item.Content>
-              <Item.Title>Messages failed to load</Item.Title>
-              <Item.Description>{messagesStore.error}</Item.Description>
-            </Item.Content>
-            <Item.Actions>
-              <Button variant="outline" onclick={retryMessages}>Retry</Button>
-            </Item.Actions>
-          </Item.Root>
-        </div>
-      {:else if messagesStore.loaded || isRunning}
-        <div
-          class="mx-auto w-full max-w-6xl"
-          style:height={`${$virtualizer.getTotalSize()}px`}
-          style:position="relative"
-        >
-          {#each virtualItems as virtualItem (virtualItem.key)}
-            {@const row = virtualRows[virtualItem.index]}
-            {#if row}
+      <ScrollArea
+        bind:viewportRef={viewportElement}
+        orientation="vertical"
+        class="mr-0.5 h-full"
+        viewportClass="scroll-mask-y scroll-mask-y-from-98% outline-none"
+      >
+        {#if messagesStore.loading}
+          <LoadingState />
+        {:else if messagesStore.error}
+          <div
+            class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
+          >
+            <Item.Root variant="danger" class="max-w-xl">
+              <Item.Media variant="icon">
+                <WarningCircleIcon />
+              </Item.Media>
+              <Item.Content>
+                <Item.Title>Messages failed to load</Item.Title>
+                <Item.Description>{messagesStore.error}</Item.Description>
+              </Item.Content>
+              <Item.Actions>
+                <Button variant="outline" onclick={retryMessages}>Retry</Button>
+              </Item.Actions>
+            </Item.Root>
+          </div>
+        {:else if messagesStore.loaded || isRunning}
+          <div
+            use:scroller.content
+            role="log"
+            aria-relevant="additions"
+            aria-busy={isRunning}
+            class="mx-auto flex min-h-full w-full max-w-6xl flex-col gap-1 px-4 py-5 sm:px-6"
+          >
+            {#each transcriptRows as row (row.key)}
               <div
-                use:measureVirtualRow
-                data-index={virtualItem.index}
-                class="absolute left-0 top-0 w-full px-4 sm:px-6"
-                style:transform={`translateY(${virtualItem.start}px)`}
+                use:scroller.item={{
+                  messageId: row.key,
+                  scrollAnchor:
+                    row.type === 'message' &&
+                    row.block.message.encoded.role === 'user',
+                }}
+                class="[contain-intrinsic-size:0_160px] [content-visibility:auto]"
               >
                 {#if row.type === 'message'}
                   <MessageBubble
@@ -428,13 +404,19 @@
                   <QueuedMessageBubble message={row.message} />
                 {/if}
               </div>
-            {/if}
-          {/each}
-        </div>
-      {/if}
-    </ScrollArea>
+            {/each}
+            <div
+              use:scroller.spacer
+              aria-hidden="true"
+              data-message-scroller-spacer=""
+              hidden
+            ></div>
+          </div>
+        {/if}
+      </ScrollArea>
+    </div>
 
-    {#if !isAtLatest}
+    {#if scroller.canScrollToEnd}
       <div
         class="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center"
       >

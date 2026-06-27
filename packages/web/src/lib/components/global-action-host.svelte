@@ -8,7 +8,6 @@
   import SessionSearchDialog from './session/session-search-dialog.svelte'
   import { actionStore } from '$lib/stores/actions.svelte.js'
   import { authStore } from '$lib/stores/auth.svelte.js'
-  import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
   import { serverInfoStore } from '$lib/stores/server-info.svelte.js'
@@ -36,8 +35,6 @@
   })
 
   onMount(() => {
-    void clientSettingsStore.loadFromClientConfig()
-
     const unregister = [
       actionStore.register({
         id: 'provider.connect',

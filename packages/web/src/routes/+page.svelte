@@ -20,7 +20,9 @@
 {:else if projectStore.projects.length === 0}
   <ProjectRequired />
 {:else if selectedSession}
-  <SessionView sessionId={selectedSession.id} title={selectedSession.title} />
+  {#key selectedSession.id}
+    <SessionView sessionId={selectedSession.id} title={selectedSession.title} />
+  {/key}
 {:else}
   <NewSession />
 {/if}

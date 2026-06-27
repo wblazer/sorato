@@ -9,6 +9,7 @@ import { getApiClient, runApi } from '$lib/api-client.js'
 import { requestErrorMessage } from '$lib/api-errors.js'
 import type { MessageNode, MessagePart, StreamCursor } from '$lib/types.js'
 import { connectSse, type SseConnection } from '$lib/sse.js'
+import { preloadMessageToolDiffs } from '$lib/tool-output.js'
 import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
 import { requestSessionRefresh } from './session-refresh-bus.js'
@@ -236,6 +237,10 @@ function createMessagesStore() {
       if (!result.ok) throw new Error(result.error.message)
 
       const serverMessages: MessageNode[] = result.value as MessageNode[]
+      await preloadMessageToolDiffs(serverMessages)
+
+      if (currentSessionId !== sessionId) return
+
       if (!(hasExisting && serverMessages.length === 0)) {
         messages = serverMessages
       }
@@ -309,6 +314,8 @@ function createMessagesStore() {
         return
       }
       const fresh: MessageNode[] = result.value as MessageNode[]
+      await preloadMessageToolDiffs(fresh)
+
       if (currentSessionId === sessionId) {
         messages = fresh
         if (

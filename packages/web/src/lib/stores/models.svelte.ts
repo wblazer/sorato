@@ -61,6 +61,14 @@ function createModelsStore() {
     return models[0]?.id ?? null
   }
 
+  function displayName(providerId: string, modelId: string) {
+    return (
+      models.find(
+        (item) => item.id === modelId || item.id === `${providerId}/${modelId}`
+      )?.name ?? modelId
+    )
+  }
+
   async function load(nextProjectId: string) {
     const api = connectionsStore.getApiBase()
     if (!api) {
@@ -132,6 +140,7 @@ function createModelsStore() {
     clear,
     load,
     pick,
+    displayName,
     select,
     recent,
     remember,

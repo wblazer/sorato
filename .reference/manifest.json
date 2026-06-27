@@ -40,6 +40,11 @@
       "name": "vercel-ai",
       "url": "https://github.com/vercel/ai.git",
       "ref": "latest"
+    },
+    {
+      "name": "shadcn-ui",
+      "url": "https://github.com/shadcn-ui/ui.git",
+      "ref": "latest"
     }
   ]
 }

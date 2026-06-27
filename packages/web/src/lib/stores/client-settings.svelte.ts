@@ -35,6 +35,12 @@ export type ClientSettings = typeof ClientSettingsSchema.Type
 
 const PersistedClientSettingsSchema = Schema.Struct({
   transcriptDisplayMode: Schema.optionalKey(TranscriptDisplayModeSchema),
+  toolBlockExpansion: Schema.optionalKey(
+    Schema.Struct({
+      default: Schema.Boolean,
+      tools: Schema.Record(Schema.String, Schema.Boolean),
+    })
+  ),
   expandSystemMessagesByDefault: Schema.optionalKey(Schema.Boolean),
 })
 type PersistedClientSettings = typeof PersistedClientSettingsSchema.Type
@@ -58,6 +64,10 @@ function loadSettings(): ClientSettings {
 
 function createClientSettingsStore() {
   let settings = $state<ClientSettings>(loadSettings())
+  let loading = $state(false)
+  let loaded = $state(false)
+  let error = $state<string | null>(null)
+  let loadPromise: Promise<void> | null = null
 
   function persist() {
     setJsonWithSchema(STORAGE_KEY, ClientSettingsSchema, settings)
@@ -84,14 +94,34 @@ function createClientSettingsStore() {
     return shouldExpandToolBlock(settings.toolBlockExpansion, toolName)
   }
 
-  async function loadFromClientConfig() {
-    const config = await Effect.runPromise(clientConfigService.getResolved)
-    update({
-      transcriptDisplayMode: config.resolved.transcript_display_mode,
-      toolBlockExpansion: config.resolved.tool_block_expansion,
-      expandSystemMessagesByDefault:
-        config.resolved.expand_system_messages_by_default,
-    })
+  function loadFromClientConfig() {
+    if (loadPromise !== null) return loadPromise
+
+    loading = true
+    error = null
+    loadPromise = Effect.runPromise(clientConfigService.getResolved)
+      .then((config) => {
+        update({
+          transcriptDisplayMode: config.resolved.transcript_display_mode,
+          toolBlockExpansion: config.resolved.tool_block_expansion,
+          expandSystemMessagesByDefault:
+            config.resolved.expand_system_messages_by_default,
+        })
+        loaded = true
+      })
+      .catch((cause: unknown) => {
+        error =
+          cause instanceof Error
+            ? cause.message
+            : 'Failed to load client config'
+        throw cause
+      })
+      .finally(() => {
+        loading = false
+        loadPromise = null
+      })
+
+    return loadPromise
   }
 
   async function saveTranscriptDisplayMode(mode: TranscriptDisplayMode) {
@@ -136,6 +166,15 @@ function createClientSettingsStore() {
     },
     get expandSystemMessagesByDefault() {
       return settings.expandSystemMessagesByDefault
+    },
+    get loading() {
+      return loading
+    },
+    get loaded() {
+      return loaded
+    },
+    get error() {
+      return error
     },
     update,
     setTranscriptDisplayMode,
