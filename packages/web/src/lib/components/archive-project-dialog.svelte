@@ -7,6 +7,7 @@
   import { projectStore } from '$lib/stores/projects.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { tabStore } from '$lib/stores/tabs.svelte.js'
+  import { Effect } from 'effect'
   import FolderOpenIcon from 'phosphor-svelte/lib/FolderOpenIcon'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
 
@@ -50,10 +51,12 @@
     archiving = true
     error = null
     try {
-      const ok = await projectStore.archiveProject(projectId, includeSessions)
+      const ok = await Effect.runPromise(
+        projectStore.archiveProject(projectId, includeSessions),
+      )
       if (ok) {
         tabStore.clearProject(projectId)
-        await sessionStore.fetchSessions()
+        await Effect.runPromise(sessionStore.fetchSessions())
         open = false
       }
     } finally {

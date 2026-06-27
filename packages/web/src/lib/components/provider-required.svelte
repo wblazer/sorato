@@ -5,6 +5,7 @@
   import * as Item from '$lib/components/ui/item/index.js'
   import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import { authStore } from '$lib/stores/auth.svelte.js'
+  import { Effect } from 'effect'
   import KeyIcon from 'phosphor-svelte/lib/KeyIcon'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
 
@@ -14,7 +15,7 @@
   }
 
   const retry = () => {
-    void authStore.load()
+    void Effect.runPromise(authStore.load())
   }
 </script>
 

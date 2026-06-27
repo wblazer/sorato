@@ -4,6 +4,7 @@
   "module": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./message": "./src/message.ts",
     "./sandbox": "./src/sandbox/sandbox.ts",
     "./harness": "./src/harness/harness.ts",
     "./presentation": "./src/presentation.ts",

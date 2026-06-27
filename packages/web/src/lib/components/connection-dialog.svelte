@@ -1,9 +1,10 @@
 <script lang="ts">
   import * as Dialog from '$lib/components/ui/dialog/index.js'
   import Button from '$lib/components/ui/button/button.svelte'
-  import { getApiClient, runApi } from '$lib/api-client.js'
+  import { apiClient, runApiEffect } from '$lib/api-client.js'
   import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
   import type { Connection } from '$lib/stores/connections.svelte.js'
+  import { Effect } from 'effect'
   import { untrack } from 'svelte'
 
   interface Props {
@@ -64,20 +65,33 @@
     checkStatus = 'loading'
 
     try {
-      const client = await getApiClient(url)
-      const result = await runApi(client.handshake.check(), 'Handshake failed')
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const client = yield* apiClient(url)
+          return yield* runApiEffect(
+            client.handshake.check(),
+            'Handshake failed',
+          )
+        }),
+      )
 
-      if (result.ok && result.value.status === 'ok') {
+      if (result.status === 'ok') {
         checkStatus = 'success'
         return true
       } else {
         checkStatus = 'error'
-        urlError = result.ok ? 'Invalid server response' : result.error.message
+        urlError = 'Invalid server response'
         return false
       }
-    } catch {
+    } catch (cause) {
       checkStatus = 'error'
-      urlError = 'Could not connect to server'
+      urlError =
+        typeof cause === 'object' &&
+        cause !== null &&
+        'message' in cause &&
+        typeof cause.message === 'string'
+          ? cause.message
+          : 'Could not connect to server'
       return false
     } finally {
       isChecking = false

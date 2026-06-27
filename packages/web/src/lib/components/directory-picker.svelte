@@ -1,10 +1,11 @@
 <script lang="ts">
   import { CommandPalette } from '$lib/components/ui/command-palette/index.js'
-  import { getApiClient, runApi } from '$lib/api-client.js'
+  import { apiClient, runApiEffect } from '$lib/api-client.js'
   import FolderIcon from 'phosphor-svelte/lib/FolderIcon'
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
   import { cn } from '$lib/utils.js'
   import type { DirectoryEntry } from '@sorato/api'
+  import { Effect } from 'effect'
 
   interface Props {
     open: boolean
@@ -62,36 +63,40 @@
 
   let requestId = 0
 
-  async function fetchEntries(path: string) {
-    const id = ++requestId
-    loading = true
-    error = null
+  function fetchEntries(path: string) {
+    return Effect.gen(function* () {
+      const id = ++requestId
+      yield* Effect.sync(() => {
+        loading = true
+        error = null
+      })
 
-    try {
-      const client = await getApiClient(connectionsStore.getApiBase())
-      const result = await runApi(
+      const client = yield* apiClient(connectionsStore.getApiBase())
+      const result = yield* runApiEffect(
         client.directories.list({ query: { path } }),
         'Failed to list directories',
+      ).pipe(
+        Effect.catch((cause) =>
+          Effect.sync(() => {
+            if (id !== requestId) return null
+            error = cause.message
+            entries = []
+            return null
+          }),
+        ),
       )
-      if (id !== requestId) return
 
-      if (!result.ok) {
-        error = result.error.message
-        entries = []
-        return
-      }
-
-      resolvedPath = result.value.resolved
-      homeDir = result.value.home
-      entries = [...result.value.entries]
-      selectedIndex = 0
-    } catch (e) {
-      if (id !== requestId) return
-      error = e instanceof Error ? e.message : 'Failed to fetch'
-      entries = []
-    } finally {
-      if (id === requestId) loading = false
-    }
+      yield* Effect.sync(() => {
+        if (id !== requestId) return
+        if (result) {
+          resolvedPath = result.resolved
+          homeDir = result.home
+          entries = [...result.entries]
+          selectedIndex = 0
+        }
+        loading = false
+      })
+    })
   }
 
   // Re-fetch when the parent portion of the query changes.
@@ -101,7 +106,7 @@
     const { parent } = parseQuery(query)
     if (parent !== lastFetchedParent) {
       lastFetchedParent = parent
-      fetchEntries(parent)
+      void Effect.runPromise(fetchEntries(parent))
     }
   })
 

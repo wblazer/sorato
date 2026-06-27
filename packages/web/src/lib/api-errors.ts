@@ -22,10 +22,6 @@ export interface UiApiError {
   readonly retryable: boolean
 }
 
-export type ApiResult<A> =
-  | { readonly ok: true; readonly value: A }
-  | { readonly ok: false; readonly error: UiApiError }
-
 const decodeApiErrorPayload = Schema.decodeUnknownOption(ApiErrorPayload)
 
 const knownErrorTitles: Record<string, string> = {

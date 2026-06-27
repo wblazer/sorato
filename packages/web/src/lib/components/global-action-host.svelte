@@ -13,6 +13,7 @@
   import { serverInfoStore } from '$lib/stores/server-info.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { tabStore } from '$lib/stores/tabs.svelte.js'
+  import { Effect } from 'effect'
   import { onMount } from 'svelte'
 
   let open = $state(false)
@@ -23,7 +24,9 @@
   let settingsOpen = $state(false)
 
   async function handleProjectPath(path: string) {
-    const project = await projectStore.createLocalProject(path)
+    const project = await Effect.runPromise(
+      projectStore.createLocalProject(path),
+    )
     if (project && tabStore.activeTab) {
       tabStore.setDraftProject(tabStore.activeTab.id, project.id)
     }
@@ -31,7 +34,7 @@
 
   $effect(() => {
     connectionsStore.activeConnection
-    void serverInfoStore.refresh()
+    void Effect.runPromise(serverInfoStore.refresh())
   })
 
   onMount(() => {

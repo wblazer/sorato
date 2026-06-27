@@ -50,6 +50,20 @@ export type {
   ToolOutputRegistryApi,
 } from './tool/tool-output.ts'
 
+// Stored prompt messages
+export {
+  StoredAssistantMessage,
+  StoredMessage,
+  StoredPart,
+  StoredSystemMessage,
+  StoredToolCallPart,
+  StoredToolMessage,
+  StoredToolResultPart,
+  StoredUserMessage,
+  SystemMessageSource,
+} from './message.ts'
+export type { StoredMessageEncoded } from './message.ts'
+
 // Tool — hashline bundle (content-hash anchored read + edit)
 export { Toolkit } from 'effect/unstable/ai'
 export { Read, ReadHandler, Edit, EditHandler } from './tool/hashline/index.ts'

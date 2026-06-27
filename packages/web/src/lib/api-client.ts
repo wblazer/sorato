@@ -14,24 +14,17 @@ import {
 import { Cause, Effect, Schema } from 'effect'
 import { HttpClientError } from 'effect/unstable/http'
 import { HttpApiClient } from 'effect/unstable/httpapi'
-import type { ApiResult, UiApiError } from '$lib/api-errors.js'
+import type { UiApiError } from '$lib/api-errors.js'
 import { requestError } from '$lib/api-errors.js'
 
 export type SoratoApiClient = HttpApiClient.ForApi<typeof Api>
 
-const clientCache = new Map<string, Promise<SoratoApiClient>>()
-
-export function getApiClient(baseUrl: string): Promise<SoratoApiClient> {
-  const existing = clientCache.get(baseUrl)
-  if (existing) return existing
-
-  const created = Effect.runPromise(
-    HttpApiClient.make(Api, { baseUrl }).pipe(
-      Effect.provide(BrowserHttpClient.layerFetch)
-    )
+export function apiClient(
+  baseUrl: string
+): Effect.Effect<SoratoApiClient, never, never> {
+  return HttpApiClient.make(Api, { baseUrl }).pipe(
+    Effect.provide(BrowserHttpClient.layerFetch)
   )
-  clientCache.set(baseUrl, created)
-  return created
 }
 
 const knownErrorTitles: Record<string, string> = {
@@ -128,17 +121,20 @@ function defectToUi(cause: Cause.Cause<unknown>, context: string): UiApiError {
   return requestError(Cause.pretty(cause), context)
 }
 
-export async function runApi<A, E>(
-  effect: Parameters<typeof Effect.runPromiseExit<A, E>>[0],
+export function runApiEffect<A, E, R>(
+  effect: Effect.Effect<A, E, R>,
   context: string
-): Promise<ApiResult<A>> {
-  const exit = await Effect.runPromiseExit(effect)
-  if (exit._tag === 'Success') return { ok: true, value: exit.value }
+): Effect.Effect<A, UiApiError, R> {
+  return Effect.exit(effect).pipe(
+    Effect.flatMap((exit) => {
+      if (exit._tag === 'Success') return Effect.succeed(exit.value)
 
-  const failure = Cause.findErrorOption(exit.cause)
-  if (failure._tag === 'Some') {
-    return { ok: false, error: apiFailureToUi(failure.value, context) }
-  }
+      const failure = Cause.findErrorOption(exit.cause)
+      if (failure._tag === 'Some') {
+        return Effect.fail(apiFailureToUi(failure.value, context))
+      }
 
-  return { ok: false, error: defectToUi(exit.cause, context) }
+      return Effect.fail(defectToUi(exit.cause, context))
+    })
+  )
 }

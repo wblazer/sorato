@@ -24,6 +24,7 @@
   import { Badge } from '$lib/components/ui/badge/index.js'
   import { SessionSelectedHeadController } from './session-selected-head.svelte.js'
   import * as Item from '$lib/components/ui/item/index.js'
+  import { Effect } from 'effect'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
   let {
     tabId,
@@ -226,7 +227,7 @@
   $effect(() => {
     if (!active) return
     if (!messagesLoaded && !messagesLoading) {
-      void messagesStore.loadMessages(tabId, sessionId)
+      void Effect.runPromise(messagesStore.loadMessages(tabId, sessionId))
     }
   })
 
@@ -268,41 +269,41 @@
     const afterRunId = selectedHead.selectedAfterRunId
     const wasRunning = sessionStore.isRunning(sessionId)
 
-    void sessionStore
-      .runAgent(
+    void Effect.runPromise(
+      sessionStore.runAgent(
         sessionId,
         input,
         model,
         baseNodeId,
         afterRunId,
         modelsStore.selectedOptions,
-      )
-      .then((response) => {
-        if (!response) return
-        if (response.status === 'queued') return
+      ),
+    ).then((response) => {
+      if (!response) return
+      if (response.status === 'queued') return
 
-        selectedHead.setSelectedHead({
-          type: 'run',
-          runId: response.runId,
-          baseNodeId: response.baseNodeId,
-        })
-
-        if (!wasRunning) {
-          // Show the user's message immediately — don't wait for the server
-          // round-trip. The optimistic node is replaced on the next refresh.
-          messagesStore.addOptimisticUserMessage(
-            tabId,
-            sessionId,
-            input,
-            response.baseNodeId,
-            response.runId,
-          )
-        }
+      selectedHead.setSelectedHead({
+        type: 'run',
+        runId: response.runId,
+        baseNodeId: response.baseNodeId,
       })
+
+      if (!wasRunning) {
+        // Show the user's message immediately — don't wait for the server
+        // round-trip. The optimistic node is replaced on the next refresh.
+        messagesStore.addOptimisticUserMessage(
+          tabId,
+          sessionId,
+          input,
+          response.baseNodeId,
+          response.runId,
+        )
+      }
+    })
   }
 
   function handleStop() {
-    sessionStore.stopAgent(sessionId)
+    void Effect.runPromise(sessionStore.stopAgent(sessionId))
   }
 
   function handleModel(value: string, modelOptions = {}) {
@@ -329,7 +330,9 @@
   }
 
   function retryMessages() {
-    void messagesStore.loadMessages(tabId, sessionId, { force: true })
+    void Effect.runPromise(
+      messagesStore.loadMessages(tabId, sessionId, { force: true }),
+    )
   }
 
   onDestroy(() => scroller.destroy())

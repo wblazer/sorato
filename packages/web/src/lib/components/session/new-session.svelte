@@ -18,6 +18,7 @@
     selectedHeadStorageKey,
     writeSelectedHead,
   } from '$lib/selected-head-storage.js'
+  import { Effect } from 'effect'
 
   let sending = $state(false)
   let sessionSearchOpen = $state(false)
@@ -64,7 +65,7 @@
     if (!tabId) return
 
     tabStore.setDraftProject(tabId, projectId)
-    void modelsStore.load(projectId)
+    void Effect.runPromise(modelsStore.load(projectId))
   }
 
   function openSession(sessionId: string) {
@@ -75,7 +76,8 @@
   function handleAttach() {}
 
   function retryModels() {
-    if (activeProjectId) void modelsStore.load(activeProjectId)
+    if (activeProjectId)
+      void Effect.runPromise(modelsStore.load(activeProjectId))
   }
 
   async function handleSend(input: string) {
@@ -87,24 +89,28 @@
 
     try {
       if (modelsStore.projectId !== activeProjectId || modelsStore.loading) {
-        await modelsStore.load(activeProjectId)
+        await Effect.runPromise(modelsStore.load(activeProjectId))
       }
 
       const model = modelsStore.selectedModel
       if (!model) return
 
-      const session = await sessionStore.createSession(activeProjectId, tabId)
+      const session = await Effect.runPromise(
+        sessionStore.createSession(activeProjectId, tabId),
+      )
       if (!session) return
 
       messagesStore.prepareSession(tabId, session.id)
 
-      const response = await sessionStore.runAgent(
-        session.id,
-        input,
-        model,
-        null,
-        null,
-        modelsStore.selectedOptions,
+      const response = await Effect.runPromise(
+        sessionStore.runAgent(
+          session.id,
+          input,
+          model,
+          null,
+          null,
+          modelsStore.selectedOptions,
+        ),
       )
       if (!response) return
 

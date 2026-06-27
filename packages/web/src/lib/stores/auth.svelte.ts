@@ -1,5 +1,7 @@
-import { getApiClient, runApi } from '$lib/api-client.js'
+import { apiClient, runApiEffect } from '$lib/api-client.js'
+import type { UiApiError } from '$lib/api-errors.js'
 import type { AuthProviderStatus } from '@sorato/api'
+import { Effect } from 'effect'
 import { connectionsStore } from './connections.svelte.js'
 
 function createAuthStore() {
@@ -14,39 +16,52 @@ function createAuthStore() {
       loadedConnectionId === connectionsStore.activeConnection.id
   )
 
-  async function load() {
-    const id = ++requestId
-    const connectionId = connectionsStore.activeConnection?.id ?? null
-    const api = connectionsStore.getApiBase()
-    if (!api) {
-      providers = []
-      loading = false
-      error = null
-      loadedConnectionId = null
-      return
-    }
+  function load() {
+    return Effect.gen(function* () {
+      const id = ++requestId
+      const connectionId = connectionsStore.activeConnection?.id ?? null
+      const api = connectionsStore.getApiBase()
+      if (!api) {
+        yield* Effect.sync(() => {
+          providers = []
+          loading = false
+          error = null
+          loadedConnectionId = null
+        })
+        return
+      }
 
-    loading = true
-    loadedConnectionId = null
-    error = null
+      yield* Effect.sync(() => {
+        loading = true
+        loadedConnectionId = null
+        error = null
+      })
 
-    const client = await getApiClient(api)
-    const result = await runApi(
-      client.auth.status(),
-      'Failed to check provider credentials'
+      const client = yield* apiClient(api)
+      const result = yield* runApiEffect(
+        client.auth.status(),
+        'Failed to check provider credentials'
+      )
+
+      yield* Effect.sync(() => {
+        if (id !== requestId) return
+        providers = [...result.providers]
+        loadedConnectionId = connectionId
+      })
+    }).pipe(
+      Effect.catch((cause: UiApiError) =>
+        Effect.sync(() => {
+          providers = []
+          error = cause.message
+          loadedConnectionId = connectionsStore.activeConnection?.id ?? null
+        })
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          loading = false
+        })
+      )
     )
-
-    if (id !== requestId) return
-    if (result.ok) {
-      providers = [...result.value.providers]
-      loadedConnectionId = connectionId
-    } else {
-      providers = []
-      error = result.error.message
-      loadedConnectionId = connectionId
-    }
-
-    if (id === requestId) loading = false
   }
 
   return {

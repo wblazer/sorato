@@ -5,6 +5,7 @@ import { sessionStore } from './sessions.svelte.js'
 import { messagesStore } from './messages.svelte.js'
 import { sseStore } from './sse.svelte.js'
 import { tabStore } from './tabs.svelte.js'
+import { Effect } from 'effect'
 
 function createAppRuntime() {
   let activatedConnectionKey = $state<string | null>(null)
@@ -54,19 +55,19 @@ function createAppRuntime() {
       sseStore.connect()
 
       activationMessage = 'Loading workspace…'
-      await authStore.load()
+      await Effect.runPromise(authStore.load())
       if (connectionsStore.activeConnection?.id !== prepared.id) return
       if (connectionsStore.activeConnection.url !== prepared.url) return
 
       await Promise.all([
-        projectStore.fetchProjects(),
-        sessionStore.fetchSessions(),
+        Effect.runPromise(projectStore.fetchProjects()),
+        Effect.runPromise(sessionStore.fetchSessions()),
       ])
       tabStore.reconcileSessions(sessionStore.sessions)
       if (connectionsStore.activeConnection?.id !== prepared.id) return
       if (connectionsStore.activeConnection.url !== prepared.url) return
 
-      await tabStore.loadActiveTabMessages()
+      await Effect.runPromise(tabStore.loadActiveTabMessages())
       if (connectionsStore.activeConnection?.id !== prepared.id) return
       if (connectionsStore.activeConnection.url !== prepared.url) return
 

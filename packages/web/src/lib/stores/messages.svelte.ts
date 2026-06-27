@@ -5,9 +5,10 @@
  * Heavy content SSE is run-scoped: `/events?runId=...&since=...`. The global
  * SSE stream still carries lifecycle events used by the session store.
  */
-import { getApiClient, runApi } from '$lib/api-client.js'
-import { requestErrorMessage } from '$lib/api-errors.js'
+import { apiClient, runApiEffect } from '$lib/api-client.js'
+import type { UiApiError } from '$lib/api-errors.js'
 import type { MessageNode, MessagePart, StreamCursor } from '$lib/types.js'
+import { Effect } from 'effect'
 import { connectSse, type SseConnection } from '$lib/sse.js'
 import { preloadMessageToolDiffs } from '$lib/tool-output.js'
 import { sseStore } from './sse.svelte.js'
@@ -104,7 +105,7 @@ function createMessagesStore() {
             streamedRunBaseNodeId = event.baseNodeId
             streamingParts = []
             setRunCursor(event.runId)
-            refreshMessages(tabId, sessionId)
+            void Effect.runPromise(refreshMessages(tabId, sessionId))
             break
 
           case 'TextDelta':
@@ -148,7 +149,11 @@ function createMessagesStore() {
             break
 
           case 'RunEnd':
-            refreshMessages(tabId, sessionId, { clearPartsForRun: event.runId })
+            void Effect.runPromise(
+              refreshMessages(tabId, sessionId, {
+                clearPartsForRun: event.runId,
+              })
+            )
             break
 
           case 'RunFailed':
@@ -157,13 +162,19 @@ function createMessagesStore() {
 
           case 'ReplayReset':
             requestSessionRefresh(sessionId)
-            refreshMessages(tabId, sessionId, { clearPartsForRun: event.runId })
+            void Effect.runPromise(
+              refreshMessages(tabId, sessionId, {
+                clearPartsForRun: event.runId,
+              })
+            )
             break
 
           case 'MessagesAppended':
-            refreshMessages(tabId, sessionId, {
-              clearStreamingPartsForRun: event.runId,
-            })
+            void Effect.runPromise(
+              refreshMessages(tabId, sessionId, {
+                clearStreamingPartsForRun: event.runId,
+              })
+            )
             break
 
           case 'SessionUpdated':
@@ -247,72 +258,83 @@ function createMessagesStore() {
     if (streamedTabId === tabId) clearActiveStream()
   }
 
-  async function loadMessages(
+  function loadMessages(
     tabId: string,
     sessionId: string,
     opts?: { readonly force?: boolean }
   ) {
-    const existing = stateFor(tabId)
-    const hasExisting =
-      existing.sessionId === sessionId && existing.loaded === true
-    if (hasExisting && !opts?.force) return
+    return Effect.gen(function* () {
+      const existing = stateFor(tabId)
+      const hasExisting =
+        existing.sessionId === sessionId && existing.loaded === true
+      if (hasExisting && !opts?.force) return
 
-    if (streamedTabId === tabId) {
-      streamingParts = []
-      resetCursor()
-      streamedTabId = null
-      streamedSessionId = null
-      streamedRunId = null
-      streamedRunBaseNodeId = null
-      closeRunStream()
-    }
+      yield* Effect.sync(() => {
+        if (streamedTabId === tabId) {
+          streamingParts = []
+          resetCursor()
+          streamedTabId = null
+          streamedSessionId = null
+          streamedRunId = null
+          streamedRunBaseNodeId = null
+          closeRunStream()
+        }
 
-    if (!hasExisting) {
-      updateTabState(tabId, (state) => ({
-        ...state,
-        sessionId,
-        loading: true,
-        loaded: false,
-        error: null,
-      }))
-    } else {
-      updateTabState(tabId, (state) => ({ ...state, error: null }))
-    }
+        if (!hasExisting) {
+          updateTabState(tabId, (state) => ({
+            ...state,
+            sessionId,
+            loading: true,
+            loaded: false,
+            error: null,
+          }))
+        } else {
+          updateTabState(tabId, (state) => ({ ...state, error: null }))
+        }
+      })
 
-    try {
-      const client = await getApiClient(connectionsStore.getApiBase())
-      const result = await runApi(
+      const client = yield* apiClient(connectionsStore.getApiBase())
+      const response = yield* runApiEffect(
         client.sessions.messages({ params: { id: sessionId } }),
         'Failed to load messages'
       )
+      const serverMessages = [...response]
+      yield* Effect.promise(() => preloadMessageToolDiffs(serverMessages))
 
-      if (!result.ok) throw new Error(result.error.message)
-
-      const serverMessages: MessageNode[] = result.value as MessageNode[]
-      await preloadMessageToolDiffs(serverMessages)
-
-      if (!(hasExisting && serverMessages.length === 0)) {
-        updateTabState(tabId, (state) => ({
-          ...state,
-          sessionId,
-          messages: serverMessages,
-        }))
-      }
-    } catch (e) {
-      updateTabState(tabId, (state) => ({
-        ...state,
-        sessionId,
-        messages: hasExisting ? state.messages : [],
-        error: requestErrorMessage(e, 'Failed to load messages'),
-      }))
-    } finally {
-      updateTabState(tabId, (state) => ({
-        ...state,
-        sessionId,
-        loading: false,
-        loaded: true,
-      }))
-    }
+      yield* Effect.sync(() => {
+        if (!(hasExisting && serverMessages.length === 0)) {
+          updateTabState(tabId, (state) => ({
+            ...state,
+            sessionId,
+            messages: serverMessages,
+          }))
+        }
+      })
+    }).pipe(
+      Effect.catch((cause: UiApiError) =>
+        Effect.sync(() => {
+          const existing = stateFor(tabId)
+          const hasExisting =
+            existing.sessionId === sessionId && existing.loaded === true
+          updateTabState(tabId, (state) => ({
+            ...state,
+            sessionId,
+            messages: hasExisting ? state.messages : [],
+            error: cause.message,
+          }))
+        })
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          updateTabState(tabId, (state) => ({
+            ...state,
+            sessionId,
+            loading: false,
+            loaded: true,
+          }))
+        })
+      )
+    )
   }
 
   function addOptimisticUserMessage(
@@ -365,52 +387,57 @@ function createMessagesStore() {
     }))
   }
 
-  async function refreshMessages(
+  function refreshMessages(
     tabId: string,
     sessionId: string,
     opts?: { clearPartsForRun?: string; clearStreamingPartsForRun?: string }
   ) {
-    if (stateFor(tabId).sessionId !== sessionId) return
+    return Effect.gen(function* () {
+      if (stateFor(tabId).sessionId !== sessionId) return
 
-    try {
-      const client = await getApiClient(connectionsStore.getApiBase())
-      const result = await runApi(
+      const client = yield* apiClient(connectionsStore.getApiBase())
+      const response = yield* runApiEffect(
         client.sessions.messages({ params: { id: sessionId } }),
         'Failed to refresh messages'
       )
-      if (!result.ok) {
-        console.error('Failed to refresh messages', result.error)
-        return
-      }
-      const fresh: MessageNode[] = result.value as MessageNode[]
-      await preloadMessageToolDiffs(fresh)
+      const fresh = [...response]
+      yield* Effect.promise(() => preloadMessageToolDiffs(fresh))
 
-      updateTabState(tabId, (state) => ({
-        ...state,
-        sessionId,
-        messages: fresh,
-        loaded: true,
-        error: null,
-      }))
+      yield* Effect.sync(() => {
+        updateTabState(tabId, (state) => ({
+          ...state,
+          sessionId,
+          messages: fresh,
+          loaded: true,
+          error: null,
+        }))
 
-      if (streamedTabId === tabId && streamedSessionId === sessionId) {
-        if (
-          opts?.clearStreamingPartsForRun &&
-          streamedRunId === opts.clearStreamingPartsForRun
-        ) {
-          streamingParts = []
+        if (streamedTabId === tabId && streamedSessionId === sessionId) {
+          if (
+            opts?.clearStreamingPartsForRun &&
+            streamedRunId === opts.clearStreamingPartsForRun
+          ) {
+            streamingParts = []
+          }
+          if (
+            opts?.clearPartsForRun &&
+            streamedRunId === opts.clearPartsForRun
+          ) {
+            streamingParts = []
+            resetCursor(opts.clearPartsForRun)
+            streamedRunId = null
+            streamedRunBaseNodeId = null
+            closeRunStream()
+          }
         }
-        if (opts?.clearPartsForRun && streamedRunId === opts.clearPartsForRun) {
-          streamingParts = []
-          resetCursor(opts.clearPartsForRun)
-          streamedRunId = null
-          streamedRunBaseNodeId = null
-          closeRunStream()
-        }
-      }
-    } catch (cause) {
-      console.error('Failed to refresh messages', cause)
-    }
+      })
+    }).pipe(
+      Effect.catch((cause: UiApiError) =>
+        Effect.sync(() => {
+          console.error('Failed to refresh messages', cause)
+        })
+      )
+    )
   }
 
   sseStore.onEvent((event) => {
@@ -419,9 +446,11 @@ function createMessagesStore() {
       streamedTabId !== null &&
       streamedSessionId === event.sessionId
     ) {
-      refreshMessages(streamedTabId, event.sessionId, {
-        clearStreamingPartsForRun: event.runId,
-      })
+      void Effect.runPromise(
+        refreshMessages(streamedTabId, event.sessionId, {
+          clearStreamingPartsForRun: event.runId,
+        })
+      )
     }
   })
 

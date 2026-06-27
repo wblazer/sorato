@@ -11,6 +11,7 @@ import {
   HttpApiSchema,
 } from 'effect/unstable/httpapi'
 import { Effect, Schema } from 'effect'
+import { StoredMessage } from '@sorato/core/message'
 
 export const ProjectId = Schema.String
 export type ProjectId = string
@@ -105,7 +106,7 @@ export class MessageNodeResponse extends Schema.Class<MessageNodeResponse>(
       finishedAt: Schema.Number,
     })
   ),
-  encoded: Schema.Unknown,
+  encoded: Schema.toEncoded(StoredMessage),
   createdAt: Schema.Number,
 }) {}
 

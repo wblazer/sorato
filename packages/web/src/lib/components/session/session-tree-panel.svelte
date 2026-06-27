@@ -24,6 +24,7 @@
     type MessageTreeNode,
   } from './session-tree.js'
   import type { SessionSelectedHeadController } from './session-selected-head.svelte.js'
+  import { Effect } from 'effect'
 
   let {
     tabId,
@@ -338,13 +339,15 @@
     const orderedEndNodeId = selectedPathRows[Math.max(start, end)]?.id
     if (!startNodeId || !orderedEndNodeId) return
 
-    const response = await sessionStore.compactRange(
-      sessionId,
-      model,
-      baseHeadNodeId,
-      startNodeId,
-      orderedEndNodeId,
-      compactInstructions.trim() || undefined,
+    const response = await Effect.runPromise(
+      sessionStore.compactRange(
+        sessionId,
+        model,
+        baseHeadNodeId,
+        startNodeId,
+        orderedEndNodeId,
+        compactInstructions.trim() || undefined,
+      ),
     )
     if (!response) return
     selectedHead.setSelectedHead({

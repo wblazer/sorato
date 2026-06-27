@@ -1,5 +1,6 @@
 import type { FileContents } from '@pierre/diffs'
 import type { MessageIconName } from '@sorato/core/presentation'
+import type { StoredMessageEncoded } from '@sorato/core/message'
 
 export type { ServerEvent, StreamCursor } from '@sorato/api'
 
@@ -152,13 +153,8 @@ export interface MessageNode {
   createdAt: number
 }
 
-/** Discriminated union of message roles. */
-export type MessageEncoded =
-  | SystemMessage
-  | SystemUiMessage
-  | UserMessage
-  | AssistantMessage
-  | ToolMessage
+/** Discriminated union of persisted message roles. */
+export type MessageEncoded = StoredMessageEncoded
 
 export interface SystemMessage {
   role: 'system'

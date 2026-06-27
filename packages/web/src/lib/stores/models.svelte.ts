@@ -1,8 +1,10 @@
-import { getApiClient, runApi } from '$lib/api-client.js'
+import { apiClient, runApiEffect } from '$lib/api-client.js'
+import type { UiApiError } from '$lib/api-errors.js'
 import type { ModelsResponse as AvailableModelsResponse } from '@sorato/api'
 import type { ModelOptions } from '$lib/types.js'
 import { connectionsStore } from './connections.svelte.js'
 import { getJson, setJson, storageKey } from '$lib/storage.js'
+import { Effect } from 'effect'
 
 type StoredModelSelection = {
   readonly model: string
@@ -101,42 +103,53 @@ function createModelsStore() {
     )
   }
 
-  async function load(nextProjectId: string) {
-    const api = connectionsStore.getApiBase()
-    if (!api) {
-      clear()
-      return
-    }
-
-    const id = ++req
-    const hasExistingForProject =
-      projectId === nextProjectId && models.length > 0
-    projectId = nextProjectId
-    loading = true
-    error = null
-
-    const client = await getApiClient(api)
-    const result = await runApi(
-      client.models.list({ query: { projectId: nextProjectId } }),
-      'Failed to load models'
-    )
-
-    if (id !== req) return
-    if (result.ok) {
-      models = result.value.models
-      defaultModel = result.value.defaultModel ?? null
-      reconcileSelection()
-    } else {
-      if (!hasExistingForProject) {
-        models = []
-        defaultModel = null
-        selectedModel = null
-        selectedOptions = {}
+  function load(nextProjectId: string) {
+    return Effect.gen(function* () {
+      const api = connectionsStore.getApiBase()
+      if (!api) {
+        yield* Effect.sync(clear)
+        return
       }
-      error = result.error.message
-    }
 
-    if (id === req) loading = false
+      const id = ++req
+      const hasExistingForProject =
+        projectId === nextProjectId && models.length > 0
+      yield* Effect.sync(() => {
+        projectId = nextProjectId
+        loading = true
+        error = null
+      })
+
+      const client = yield* apiClient(api)
+      const result = yield* runApiEffect(
+        client.models.list({ query: { projectId: nextProjectId } }),
+        'Failed to load models'
+      ).pipe(
+        Effect.catch((cause: UiApiError) =>
+          Effect.sync(() => {
+            if (id !== req) return null
+            if (!hasExistingForProject) {
+              models = []
+              defaultModel = null
+              selectedModel = null
+              selectedOptions = {}
+            }
+            error = cause.message
+            return null
+          })
+        )
+      )
+
+      yield* Effect.sync(() => {
+        if (id !== req) return
+        if (result) {
+          models = result.models
+          defaultModel = result.defaultModel ?? null
+          reconcileSelection()
+        }
+        loading = false
+      })
+    })
   }
 
   return {

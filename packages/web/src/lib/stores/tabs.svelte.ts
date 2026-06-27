@@ -7,6 +7,7 @@ import {
 } from '$lib/storage.js'
 import { connectionsStore } from './connections.svelte.js'
 import { messagesStore } from './messages.svelte.js'
+import { Effect } from 'effect'
 
 interface TabSet {
   readonly tabs: AppTab[]
@@ -138,10 +139,10 @@ function createTabStore() {
     setTabSet(tabs.length === 0 ? initialTabSet() : { tabs, activeTabId })
   }
 
-  function loadActiveTabMessages(): Promise<void> {
+  function loadActiveTabMessages() {
     const tab = activeTab()
     if (tab?.sessionId) return messagesStore.loadMessages(tab.id, tab.sessionId)
-    return Promise.resolve()
+    return Effect.void
   }
 
   function activeTab(): AppTab | null {

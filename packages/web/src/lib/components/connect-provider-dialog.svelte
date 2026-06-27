@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getApiClient, runApi } from '$lib/api-client.js'
+  import { apiClient, runApiEffect } from '$lib/api-client.js'
   import { requestErrorMessage } from '$lib/api-errors.js'
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Command from '$lib/components/ui/command/index.js'
@@ -11,6 +11,7 @@
   import { authStore } from '$lib/stores/auth.svelte.js'
   import { modelsStore } from '$lib/stores/models.svelte.js'
   import { useId } from 'bits-ui'
+  import { Effect } from 'effect'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
 
   interface Props {
@@ -37,6 +38,18 @@
   let error = $state<string | null>(null)
   const keyInputId = useId()
 
+  function effectErrorMessage(cause: unknown, context: string): string {
+    if (
+      typeof cause === 'object' &&
+      cause !== null &&
+      'message' in cause &&
+      typeof cause.message === 'string'
+    ) {
+      return cause.message
+    }
+    return requestErrorMessage(cause, context)
+  }
+
   $effect(() => {
     if (!open) return
     provider = null
@@ -53,20 +66,24 @@
     saving = true
     error = null
     try {
-      const client = await getApiClient(api)
-      const result = await runApi(
-        client.auth.set({
-          params: { provider: providerId },
-          payload: { key: apiKey },
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const client = yield* apiClient(api)
+          yield* runApiEffect(
+            client.auth.set({
+              params: { provider: providerId },
+              payload: { key: apiKey },
+            }),
+            'Failed to connect provider',
+          )
+          yield* authStore.load()
+          if (modelsStore.projectId)
+            yield* modelsStore.load(modelsStore.projectId)
         }),
-        'Failed to connect provider',
       )
-      if (!result.ok) throw new Error(result.error.message)
-      await authStore.load()
       open = false
-      if (modelsStore.projectId) void modelsStore.load(modelsStore.projectId)
-    } catch (err) {
-      error = requestErrorMessage(err, 'Failed to connect provider')
+    } catch (cause) {
+      error = effectErrorMessage(cause, 'Failed to connect provider')
     } finally {
       saving = false
     }
@@ -79,19 +96,24 @@
     oauthSaving = true
     error = null
     try {
-      const client = await getApiClient(api)
-      const result = await runApi(
-        client.auth.oauthAuthorize({ params: { provider: 'openai' } }),
-        'Failed to start ChatGPT sign-in',
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const client = yield* apiClient(api)
+          return yield* runApiEffect(
+            client.auth.oauthAuthorize({ params: { provider: 'openai' } }),
+            'Failed to start ChatGPT sign-in',
+          )
+        }),
       )
-      if (!result.ok) throw new Error(result.error.message)
-      window.open(result.value.url, '_blank', 'noopener,noreferrer')
+      window.open(result.url, '_blank', 'noopener,noreferrer')
       window.setTimeout(() => {
-        void authStore.load()
-        if (modelsStore.projectId) void modelsStore.load(modelsStore.projectId)
+        void Effect.runPromise(authStore.load())
+        if (modelsStore.projectId) {
+          void Effect.runPromise(modelsStore.load(modelsStore.projectId))
+        }
       }, 2500)
-    } catch (err) {
-      error = requestErrorMessage(err, 'Failed to start ChatGPT sign-in')
+    } catch (cause) {
+      error = effectErrorMessage(cause, 'Failed to start ChatGPT sign-in')
     } finally {
       oauthSaving = false
     }

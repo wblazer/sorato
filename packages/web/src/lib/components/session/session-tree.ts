@@ -183,17 +183,10 @@ function encodedNarrativePreview(message: MessageEncoded): string {
 }
 
 function partsText(
-  parts: ReadonlyArray<
-    | { readonly type: 'text'; readonly text: string }
-    | { readonly type: 'reasoning'; readonly text: string }
-    | { readonly type: 'file'; readonly fileName?: string }
-    | { readonly type: 'tool-call'; readonly name: string }
-    | {
-        readonly type: 'tool-result'
-        readonly name: string
-        readonly result: string
-      }
-  >
+  parts: ReadonlyArray<{
+    readonly type: string
+    readonly [key: string]: unknown
+  }>
 ): string {
   return compactWhitespace(
     parts
@@ -201,13 +194,21 @@ function partsText(
         switch (part.type) {
           case 'text':
           case 'reasoning':
-            return part.text
+            return typeof part.text === 'string' ? part.text : ''
           case 'file':
-            return part.fileName ? `[file: ${part.fileName}]` : '[file]'
+            return typeof part.fileName === 'string'
+              ? `[file: ${part.fileName}]`
+              : '[file]'
           case 'tool-call':
-            return `[tool call: ${part.name}]`
+            return typeof part.name === 'string'
+              ? `[tool call: ${part.name}]`
+              : '[tool call]'
           case 'tool-result':
-            return `[tool result: ${part.name}] ${part.result}`
+            return typeof part.name === 'string'
+              ? `[tool result: ${part.name}] ${displayUnknown(part.result)}`
+              : `[tool result] ${displayUnknown(part.result)}`
+          default:
+            return ''
         }
       })
       .filter((text) => text.length > 0)
@@ -216,17 +217,10 @@ function partsText(
 }
 
 function narrativePartsText(
-  parts: ReadonlyArray<
-    | { readonly type: 'text'; readonly text: string }
-    | { readonly type: 'reasoning'; readonly text: string }
-    | { readonly type: 'file'; readonly fileName?: string }
-    | { readonly type: 'tool-call'; readonly name: string }
-    | {
-        readonly type: 'tool-result'
-        readonly name: string
-        readonly result: string
-      }
-  >
+  parts: ReadonlyArray<{
+    readonly type: string
+    readonly [key: string]: unknown
+  }>
 ): string {
   return compactWhitespace(
     parts
@@ -234,17 +228,27 @@ function narrativePartsText(
         switch (part.type) {
           case 'text':
           case 'reasoning':
-            return part.text
+            return typeof part.text === 'string' ? part.text : ''
           case 'file':
-            return part.fileName ? `[file: ${part.fileName}]` : '[file]'
+            return typeof part.fileName === 'string'
+              ? `[file: ${part.fileName}]`
+              : '[file]'
           case 'tool-call':
           case 'tool-result':
+          default:
             return ''
         }
       })
       .filter((text) => text.length > 0)
       .join(' ')
   )
+}
+
+function displayUnknown(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean')
+    return String(value)
+  return ''
 }
 
 function compactWhitespace(text: string): string {

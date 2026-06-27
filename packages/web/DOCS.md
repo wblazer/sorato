@@ -9,6 +9,15 @@ SvelteKit SPA for the local Sorato server.
 - Route files should stay thin.
 - Multiple server connections are first-class; keep connection concerns centralized.
 
+## Data Fetching
+
+- Use the shared `@sorato/api` `HttpApi` contract through `src/lib/api-client.ts`.
+- Store actions that perform HTTP work should return `Effect`, not `Promise`.
+- Run Effects only at UI/runtime boundaries with `Effect.runPromise` or `Effect.runPromiseExit`.
+- Do not call raw `fetch` for Sorato API requests.
+- Keep user-facing API error mapping centralized in `src/lib/api-client.ts` / `src/lib/api-errors.ts`.
+- SSE is currently the exception: `/events` is consumed through `EventSource` in `src/lib/sse.ts` until it is modeled as an Effect `Stream` or shared API endpoint.
+
 ## Pointers
 
 - `src/lib/stores/connections.svelte.ts` - active server connection

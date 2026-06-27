@@ -1,5 +1,7 @@
-import { getApiClient, runApi } from '$lib/api-client.js'
+import { apiClient, runApiEffect } from '$lib/api-client.js'
+import type { UiApiError } from '$lib/api-errors.js'
 import { connectionsStore } from '$lib/stores/connections.svelte.js'
+import { Effect } from 'effect'
 
 export interface ServerToolInfo {
   readonly name: string
@@ -13,33 +15,46 @@ function createServerInfoStore() {
   let loading = $state(false)
   let error = $state<string | null>(null)
 
-  async function refresh() {
-    const connection = connectionsStore.activeConnection
-    connectionId = connection?.id ?? null
-    version = null
-    tools = []
-    error = null
+  function refresh() {
+    return Effect.gen(function* () {
+      const connection = connectionsStore.activeConnection
+      yield* Effect.sync(() => {
+        connectionId = connection?.id ?? null
+        version = null
+        tools = []
+        error = null
+      })
 
-    if (!connection) return
+      if (!connection) return
 
-    loading = true
-    try {
-      const client = await getApiClient(connection.url)
-      const result = await runApi(client.handshake.check(), 'Handshake failed')
-      if (connectionId !== connection.id) return
+      yield* Effect.sync(() => {
+        loading = true
+      })
 
-      if (result.ok) {
-        version = result.value.version
-        tools = result.value.tools
-      } else {
-        error = result.error.message
-      }
-    } catch (cause) {
-      error =
-        cause instanceof Error ? cause.message : 'Failed to load server info.'
-    } finally {
-      if (connectionId === connection.id) loading = false
-    }
+      const client = yield* apiClient(connection.url)
+      const result = yield* runApiEffect(
+        client.handshake.check(),
+        'Handshake failed'
+      )
+
+      yield* Effect.sync(() => {
+        if (connectionId !== connection.id) return
+        version = result.version
+        tools = result.tools
+      })
+    }).pipe(
+      Effect.catch((cause: UiApiError) =>
+        Effect.sync(() => {
+          error = cause.message
+        })
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          const active = connectionsStore.activeConnection
+          if (active && connectionId === active.id) loading = false
+        })
+      )
+    )
   }
 
   return {

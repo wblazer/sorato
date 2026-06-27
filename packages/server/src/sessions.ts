@@ -10,7 +10,6 @@ import { ProjectStorage } from './project/project.ts'
 import {
   SessionStorage,
   type MessageNode,
-  type ModelCall,
   type SessionStorageApi,
 } from './session/session.ts'
 import {
@@ -73,37 +72,7 @@ const toSessionResponse = (s: {
   })
 }
 
-const toMessageNodeResponse = (m: {
-  readonly id: string
-  readonly sessionId: string
-  readonly parentId: string | null
-  readonly kind: 'message' | 'summary'
-  readonly messageId: string | null
-  readonly summaryId: string | null
-  readonly sourceNodeId: string | null
-  readonly runId: string | null
-  readonly run: {
-    readonly id: string
-    readonly status: 'running' | 'completed' | 'interrupted' | 'failed'
-    readonly providerId: string
-    readonly modelId: string
-    readonly billingMode: 'api-key' | 'subscription'
-    readonly inputTokens: number | null
-    readonly outputTokens: number | null
-    readonly reasoningTokens: number | null
-    readonly cacheReadTokens: number | null
-    readonly cacheWriteTokens: number | null
-    readonly totalTokens: number | null
-    readonly contextWindowTokens: number | null
-    readonly actualCostMicrosUsd: number | null
-    readonly listPriceMicrosUsd: number | null
-    readonly createdAt: number
-    readonly completedAt: number | null
-  } | null
-  readonly modelCall: ModelCall | null
-  readonly encoded: unknown
-  readonly createdAt: number
-}) =>
+const toMessageNodeResponse = (m: MessageNode) =>
   new MessageNodeResponse({
     id: m.id,
     sessionId: m.sessionId,

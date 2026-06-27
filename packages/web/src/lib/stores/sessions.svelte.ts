@@ -1,6 +1,7 @@
-import { getApiClient, runApi } from '$lib/api-client.js'
-import { requestErrorMessage } from '$lib/api-errors.js'
+import { apiClient, runApiEffect } from '$lib/api-client.js'
+import type { UiApiError } from '$lib/api-errors.js'
 import type { ModelOptions, Session, SessionRunStatus } from '$lib/types.js'
+import { Effect } from 'effect'
 import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
 import { messagesStore } from './messages.svelte.js'
@@ -63,7 +64,7 @@ function createSessionStore() {
   let runStartSequence = 0
 
   onSessionRefreshRequest((sessionId) => {
-    void refreshSession(sessionId)
+    void Effect.runPromise(refreshSession(sessionId))
   })
 
   sseStore.onEvent((event) => {
@@ -163,109 +164,111 @@ function createSessionStore() {
   })
 
   /** Re-fetch a single session's metadata (background, silent). */
-  async function refreshSession(sessionId: string) {
-    try {
-      const client = await getApiClient(connectionsStore.getApiBase())
-      const result = await runApi(
+  function refreshSession(sessionId: string) {
+    return Effect.gen(function* () {
+      const client = yield* apiClient(connectionsStore.getApiBase())
+      const fresh = yield* runApiEffect(
         client.sessions.get({ params: { id: sessionId } }),
         'Failed to refresh session'
       )
-      if (!result.ok) return
-      const fresh: Session = result.value
-      sessions = sessions.map((s) => (s.id === sessionId ? fresh : s))
-      tabStore.updateSessionTitle(fresh.id, fresh.title)
 
-      if (fresh.status === 'idle') {
-        const nextQueued = new Map(queuedMessages)
-        nextQueued.delete(sessionId)
-        queuedMessages = nextQueued
+      yield* Effect.sync(() => {
+        sessions = sessions.map((s) => (s.id === sessionId ? fresh : s))
+        tabStore.updateSessionTitle(fresh.id, fresh.title)
 
-        const nextPending = new Map(pendingRunStarts)
-        nextPending.delete(sessionId)
-        pendingRunStarts = nextPending
-      }
-    } catch {
-      // Silent
-    }
+        if (fresh.status === 'idle') {
+          const nextQueued = new Map(queuedMessages)
+          nextQueued.delete(sessionId)
+          queuedMessages = nextQueued
+
+          const nextPending = new Map(pendingRunStarts)
+          nextPending.delete(sessionId)
+          pendingRunStarts = nextPending
+        }
+      })
+    }).pipe(Effect.catch(() => Effect.void))
   }
 
   // ── Public API ────────────────────────────────────────────────────
 
-  async function fetchSessions() {
-    loading = true
-    error = null
-    try {
-      const client = await getApiClient(connectionsStore.getApiBase())
-      const result = await runApi(
+  function fetchSessions() {
+    return Effect.gen(function* () {
+      yield* Effect.sync(() => {
+        loading = true
+        error = null
+      })
+
+      const client = yield* apiClient(connectionsStore.getApiBase())
+      const result = yield* runApiEffect(
         client.sessions.list(),
         'Failed to load sessions'
       )
-      if (!result.ok) {
-        error = result.error.message
-        return
-      }
-      sessions = [...result.value]
-    } catch (e) {
-      error = requestErrorMessage(e, 'Failed to load sessions')
-    } finally {
-      loading = false
-    }
+
+      yield* Effect.sync(() => {
+        sessions = [...result]
+      })
+    }).pipe(
+      Effect.catch((cause: UiApiError) =>
+        Effect.sync(() => {
+          error = cause.message
+        })
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          loading = false
+        })
+      )
+    )
   }
 
   /**
    * Create a new session in the selected project.
    * Returns the new session, or null on error.
    */
-  async function createSession(
-    projectId?: string,
-    tabId = tabStore.activeTab?.id
-  ): Promise<Session | null> {
-    const resolvedProjectId =
-      projectId ??
-      tabStore.activeTab?.projectId ??
-      projectStore.selectedProjectId
-    if (!resolvedProjectId) return null
+  function createSession(projectId?: string, tabId = tabStore.activeTab?.id) {
+    return Effect.gen(function* () {
+      const resolvedProjectId =
+        projectId ??
+        tabStore.activeTab?.projectId ??
+        projectStore.selectedProjectId
+      if (!resolvedProjectId) return null
 
-    try {
-      const client = await getApiClient(connectionsStore.getApiBase())
-      const result = await runApi(
+      const client = yield* apiClient(connectionsStore.getApiBase())
+      const session = yield* runApiEffect(
         client.sessions.create({ payload: { projectId: resolvedProjectId } }),
         'Failed to create session'
       )
-      if (!result.ok) {
-        error = result.error.message
-        return null
-      }
 
-      const session: Session = result.value
-      sessions = [session, ...sessions]
-      if (tabId) tabStore.attachSession(tabId, session)
-      return session
-    } catch (e) {
-      error = requestErrorMessage(e, 'Failed to create session')
-      return null
-    }
+      return yield* Effect.sync(() => {
+        sessions = [session, ...sessions]
+        if (tabId) tabStore.attachSession(tabId, session)
+        return session
+      })
+    }).pipe(
+      Effect.catch((cause: UiApiError) =>
+        Effect.sync(() => {
+          error = cause.message
+          return null
+        })
+      )
+    )
   }
 
   /**
    * Start an agent run on a session.
    * Fire-and-forget — events stream via SSE.
    */
-  async function runAgent(
+  function runAgent(
     sessionId: string,
     input: string,
     model: string,
     baseNodeId: string | null,
     afterRunId: string | null,
     modelOptions: ModelOptions = {}
-  ): Promise<{
-    status: 'started' | 'queued'
-    runId: string
-    baseNodeId: string | null
-  } | null> {
-    try {
-      const client = await getApiClient(connectionsStore.getApiBase())
-      const result = await runApi(
+  ) {
+    return Effect.gen(function* () {
+      const client = yield* apiClient(connectionsStore.getApiBase())
+      const data = yield* runApiEffect(
         client.sessions.run({
           params: { id: sessionId },
           payload: {
@@ -278,75 +281,62 @@ function createSessionStore() {
         }),
         'Failed to start agent run'
       )
-      if (!result.ok) {
-        const message = result.error.message
-        error = message
-        const next = new Map(sessionStatuses)
-        next.set(sessionId, {
-          _tag: 'failed',
-          title: 'Run failed to start',
-          message,
-          retryable: result.error.retryable,
-        })
-        sessionStatuses = next
-        return null
-      }
 
-      const data = result.value
+      return yield* Effect.sync(() => {
+        sessions = sessions.map((s) =>
+          s.id === sessionId ? { ...s, status: 'running' as const } : s
+        )
 
-      sessions = sessions.map((s) =>
-        s.id === sessionId ? { ...s, status: 'running' as const } : s
-      )
+        if (data.status === 'started') {
+          const next = new Map(pendingRunStarts)
+          next.set(sessionId, (next.get(sessionId) ?? 0) + 1)
+          pendingRunStarts = next
+        } else {
+          const next = new Map(queuedMessages)
+          next.set(sessionId, [
+            ...(next.get(sessionId) ?? []),
+            {
+              id: crypto.randomUUID(),
+              runId: data.runId,
+              content: input,
+              createdAt: Date.now(),
+            },
+          ])
+          queuedMessages = next
+        }
 
-      if (data.status === 'started') {
-        const next = new Map(pendingRunStarts)
-        next.set(sessionId, (next.get(sessionId) ?? 0) + 1)
-        pendingRunStarts = next
-      } else {
-        const next = new Map(queuedMessages)
-        next.set(sessionId, [
-          ...(next.get(sessionId) ?? []),
-          {
-            id: crypto.randomUUID(),
-            runId: data.runId,
-            content: input,
-            createdAt: Date.now(),
-          },
-        ])
-        queuedMessages = next
-      }
-
-      return data
-    } catch (e) {
-      const message = requestErrorMessage(e, 'Failed to start agent run')
-      error = message
-      const next = new Map(sessionStatuses)
-      next.set(sessionId, {
-        _tag: 'failed',
-        title: 'Run failed to start',
-        message,
-        retryable: false,
+        return data
       })
-      sessionStatuses = next
-      return null
-    }
+    }).pipe(
+      Effect.catch((cause: UiApiError) =>
+        Effect.sync(() => {
+          const message = cause.message
+          error = message
+          const next = new Map(sessionStatuses)
+          next.set(sessionId, {
+            _tag: 'failed',
+            title: 'Run failed to start',
+            message,
+            retryable: cause.retryable,
+          })
+          sessionStatuses = next
+          return null
+        })
+      )
+    )
   }
 
-  async function compactRange(
+  function compactRange(
     sessionId: string,
     model: string,
     baseHeadNodeId: string,
     startNodeId: string,
     endNodeId: string,
     instructions?: string
-  ): Promise<{
-    status: 'started' | 'queued'
-    runId: string
-    baseNodeId: string | null
-  } | null> {
-    try {
-      const client = await getApiClient(connectionsStore.getApiBase())
-      const result = await runApi(
+  ) {
+    return Effect.gen(function* () {
+      const client = yield* apiClient(connectionsStore.getApiBase())
+      const result = yield* runApiEffect(
         client.sessions.compactRange({
           params: { id: sessionId },
           payload: {
@@ -359,30 +349,35 @@ function createSessionStore() {
         }),
         'Failed to start summarization'
       )
-      if (!result.ok) throw new Error(result.error.message)
 
-      sessions = sessions.map((s) =>
-        s.id === sessionId ? { ...s, status: 'running' as const } : s
-      )
-      if (result.value.status === 'started') {
-        const next = new Map(pendingRunStarts)
-        next.set(sessionId, (next.get(sessionId) ?? 0) + 1)
-        pendingRunStarts = next
-      }
-      return result.value
-    } catch (e) {
-      const message = requestErrorMessage(e, 'Failed to start summarization')
-      error = message
-      const next = new Map(sessionStatuses)
-      next.set(sessionId, {
-        _tag: 'failed',
-        title: 'Summarization failed to start',
-        message,
-        retryable: false,
+      return yield* Effect.sync(() => {
+        sessions = sessions.map((s) =>
+          s.id === sessionId ? { ...s, status: 'running' as const } : s
+        )
+        if (result.status === 'started') {
+          const next = new Map(pendingRunStarts)
+          next.set(sessionId, (next.get(sessionId) ?? 0) + 1)
+          pendingRunStarts = next
+        }
+        return result
       })
-      sessionStatuses = next
-      return null
-    }
+    }).pipe(
+      Effect.catch((cause: UiApiError) =>
+        Effect.sync(() => {
+          const message = cause.message
+          error = message
+          const next = new Map(sessionStatuses)
+          next.set(sessionId, {
+            _tag: 'failed',
+            title: 'Summarization failed to start',
+            message,
+            retryable: cause.retryable,
+          })
+          sessionStatuses = next
+          return null
+        })
+      )
+    )
   }
 
   /**
@@ -393,39 +388,43 @@ function createSessionStore() {
    * RunEnd arrives via SSE, not when the HTTP response returns —
    * this ensures the UI stays in "stopping" until the run is truly done.
    */
-  async function stopAgent(
-    sessionId: string
-  ): Promise<'stopped' | 'not_running' | 'error'> {
+  function stopAgent(sessionId: string) {
     // Guard: don't send duplicate stop requests.
-    if (stoppingSessions.has(sessionId)) return 'stopped'
+    if (stoppingSessions.has(sessionId))
+      return Effect.succeed('stopped' as const)
 
     // Optimistic: mark as stopping immediately for UI feedback.
     stoppingSessions = new Set([...stoppingSessions, sessionId])
 
-    try {
-      const client = await getApiClient(connectionsStore.getApiBase())
-      const result = await runApi(
+    return Effect.gen(function* () {
+      const client = yield* apiClient(connectionsStore.getApiBase())
+      const data = yield* runApiEffect(
         client.sessions.stop({ params: { id: sessionId } }),
         'Failed to stop agent run'
       )
-      if (!result.ok) throw new Error(result.error.message)
-      const data = result.value
-      // If the server says it wasn't running, clear stopping state
-      // immediately (no RunEnd will arrive).
-      if (data.status === 'not_running') {
-        const next = new Set(stoppingSessions)
-        next.delete(sessionId)
-        stoppingSessions = next
-      }
-      return data.status
-    } catch (e) {
-      // On error, clear stopping state so the user can retry.
-      const next = new Set(stoppingSessions)
-      next.delete(sessionId)
-      stoppingSessions = next
-      error = requestErrorMessage(e, 'Failed to stop agent run')
-      return 'error'
-    }
+
+      return yield* Effect.sync(() => {
+        // If the server says it wasn't running, clear stopping state
+        // immediately (no RunEnd will arrive).
+        if (data.status === 'not_running') {
+          const next = new Set(stoppingSessions)
+          next.delete(sessionId)
+          stoppingSessions = next
+        }
+        return data.status
+      })
+    }).pipe(
+      Effect.catch((cause: UiApiError) =>
+        Effect.sync(() => {
+          // On error, clear stopping state so the user can retry.
+          const next = new Set(stoppingSessions)
+          next.delete(sessionId)
+          stoppingSessions = next
+          error = cause.message
+          return 'error' as const
+        })
+      )
+    )
   }
 
   /** Check if a session currently has an active run. */
@@ -495,7 +494,7 @@ function createSessionStore() {
       if (!session || !tab) return
 
       tabStore.attachSession(tab.id, session)
-      void messagesStore.loadMessages(tab.id, id)
+      void Effect.runPromise(messagesStore.loadMessages(tab.id, id))
     },
     isRunning,
     isRunActive,
