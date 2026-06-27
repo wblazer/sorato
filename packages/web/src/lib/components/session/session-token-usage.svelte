@@ -11,11 +11,13 @@
   } = $props()
 
   const compactNumber = (value: number): string =>
-    Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(
-      value
-    )
+    Intl.NumberFormat(undefined, {
+      notation: 'compact',
+      maximumFractionDigits: 1,
+    }).format(value)
 
-  const fullNumber = (value: number): string => Intl.NumberFormat().format(value)
+  const fullNumber = (value: number): string =>
+    Intl.NumberFormat().format(value)
 
   const formatCost = (micros: number): string =>
     Intl.NumberFormat(undefined, {
@@ -26,7 +28,7 @@
 
   const usage = $derived.by(() => {
     const modelCalls = messages.flatMap((message) =>
-      message.modelCall === null ? [] : [message.modelCall]
+      message.modelCall === null ? [] : [message.modelCall],
     )
 
     let totalTokens = 0
@@ -42,7 +44,8 @@
         (call.inputTokens ?? 0) +
         (call.cacheReadTokens ?? 0) +
         (call.cacheWriteTokens ?? 0)
-      totalOutputTokens += (call.outputTokens ?? 0) + (call.reasoningTokens ?? 0)
+      totalOutputTokens +=
+        (call.outputTokens ?? 0) + (call.reasoningTokens ?? 0)
       totalCostMicros += call.actualCostMicrosUsd ?? 0
 
       if (call.contextWindowTokens !== null) {
@@ -56,7 +59,9 @@
     const model = models.find((item) => item.id === latestModelKey) ?? null
     const maxContextTokens = model?.capabilities.limits.context ?? null
     const contextPercent =
-      latestContextTokens !== null && maxContextTokens !== null && maxContextTokens > 0
+      latestContextTokens !== null &&
+      maxContextTokens !== null &&
+      maxContextTokens > 0
         ? Math.min(100, (latestContextTokens / maxContextTokens) * 100)
         : null
 
@@ -72,20 +77,23 @@
   })
 
   const percentNumberLabel = $derived.by(() => {
-    if (usage?.contextPercent === null || usage?.contextPercent === undefined) return null
+    if (usage?.contextPercent === null || usage?.contextPercent === undefined)
+      return null
     return `${Math.round(usage.contextPercent)}`
   })
 
   const percentLabel = $derived(
-    percentNumberLabel === null ? null : `${percentNumberLabel}%`
+    percentNumberLabel === null ? null : `${percentNumberLabel}%`,
   )
 
   const normalizedPercent = $derived(
-    Math.max(0, Math.min(100, usage?.contextPercent ?? 0))
+    Math.max(0, Math.min(100, usage?.contextPercent ?? 0)),
   )
   const radius = 9.75
   const circumference = 2 * Math.PI * radius
-  const dashOffset = $derived(circumference - (normalizedPercent / 100) * circumference)
+  const dashOffset = $derived(
+    circumference - (normalizedPercent / 100) * circumference,
+  )
 </script>
 
 {#if usage}
@@ -138,12 +146,14 @@
         {/snippet}
       </Tooltip.Trigger>
 
-      <Tooltip.Content side="bottom" sideOffset={8} class="max-w-none px-3 py-2 text-sm">
+      <Tooltip.Content
+        side="bottom"
+        sideOffset={8}
+        class="max-w-none px-3 py-2 text-sm"
+      >
         <div class="space-y-2 leading-tight">
           <div class="space-y-1">
-            <div class="font-medium text-muted-foreground">
-              Context Window
-            </div>
+            <div class="font-medium text-muted-foreground">Context Window</div>
 
             <div class="whitespace-nowrap font-medium text-foreground">
               {#if usage.currentContextTokens !== null && usage.maxContextTokens !== null && percentLabel}
@@ -151,7 +161,8 @@
                 <span class="mx-0.5">·</span>
                 <span>{compactNumber(usage.currentContextTokens)}</span>
                 <span>/</span>
-                <span>{compactNumber(usage.maxContextTokens)} context used</span>
+                <span>{compactNumber(usage.maxContextTokens)} context used</span
+                >
               {:else if usage.currentContextTokens !== null}
                 <span>{fullNumber(usage.currentContextTokens)} tokens</span>
               {:else}
@@ -161,12 +172,12 @@
           </div>
 
           <div class="space-y-1">
-            <div class="font-medium text-muted-foreground">
-              Session Total
-            </div>
+            <div class="font-medium text-muted-foreground">Session Total</div>
 
             <div class="whitespace-nowrap font-medium text-foreground">
-              {compactNumber(usage.totalInputTokens)} in · {compactNumber(usage.totalOutputTokens)} out · {formatCost(usage.totalCostMicros)}
+              {compactNumber(usage.totalInputTokens)} in · {compactNumber(
+                usage.totalOutputTokens,
+              )} out · {formatCost(usage.totalCostMicros)}
             </div>
           </div>
         </div>

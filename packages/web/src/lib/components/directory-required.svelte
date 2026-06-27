@@ -20,7 +20,8 @@
       </Empty.Media>
       <Empty.Title>Add a project</Empty.Title>
       <Empty.Description>
-        Sessions are scoped to a project so tools and model context have a concrete workspace.
+        Sessions are scoped to a project so tools and model context have a
+        concrete workspace.
       </Empty.Description>
     </Empty.Header>
 

@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 import {
   CLIENT_CONFIG_GET_CHANNEL,
   CLIENT_CONFIG_SET_OVERRIDES_CHANNEL,
+  INTEGRATED_SERVER_START_CHANNEL,
+  INTEGRATED_SERVER_STOP_CHANNEL,
 } from './ipc-channels.ts'
 
 export interface SoratoDesktopBootstrap {
@@ -25,4 +27,8 @@ contextBridge.exposeInMainWorld('soratoDesktop', {
   getClientConfig: () => ipcRenderer.invoke(CLIENT_CONFIG_GET_CHANNEL),
   setClientConfigOverrides: (overrides: ClientConfig) =>
     ipcRenderer.invoke(CLIENT_CONFIG_SET_OVERRIDES_CHANNEL, overrides),
+  startIntegratedServer: () =>
+    ipcRenderer.invoke(INTEGRATED_SERVER_START_CHANNEL),
+  stopIntegratedServer: () =>
+    ipcRenderer.invoke(INTEGRATED_SERVER_STOP_CHANNEL),
 })

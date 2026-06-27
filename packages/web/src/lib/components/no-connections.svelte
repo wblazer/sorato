@@ -1,53 +1,108 @@
 <script lang="ts">
-  import Button from '$lib/components/ui/button/button.svelte'
-      import { actionStore } from '$lib/stores/actions.svelte.js'
-      import { connectionsStore } from '$lib/stores/connections.svelte.js'
-      import HardDrivesIcon from 'phosphor-svelte/lib/HardDrivesIcon'
-      import ConnectionDialog from './connection-dialog.svelte'
-      import { onMount } from 'svelte'
+  import {
+    canStartIntegratedServer,
+    startAndConnectIntegratedServer,
+  } from '$lib/desktop-server.js'
+  import { actionStore } from '$lib/stores/actions.svelte.js'
+  import { connectionsStore } from '$lib/stores/connections.svelte.js'
+  import CloudIcon from 'phosphor-svelte/lib/CloudIcon'
+  import DesktopTowerIcon from 'phosphor-svelte/lib/DesktopTowerIcon'
+  import HardDrivesIcon from 'phosphor-svelte/lib/HardDrivesIcon'
+  import { onMount } from 'svelte'
+  import ConnectionDialog from './connection-dialog.svelte'
 
-      let dialogOpen = $state(false)
+  let dialogOpen = $state(false)
+  let startingIntegratedServer = $state(false)
+  let integratedServerError = $state('')
 
-      function handleSave(data: { url: string; name?: string }) {
-        const newConnection = connectionsStore.add(data)
-        connectionsStore.activate(newConnection.id)
-        dialogOpen = false
-      }
+  function handleSave(data: { url: string; name?: string }) {
+    const newConnection = connectionsStore.add({ ...data, source: 'remote' })
+    connectionsStore.activate(newConnection.id)
+    dialogOpen = false
+  }
 
-      onMount(() => {
-        return actionStore.register({
-          id: 'connection.add',
-          title: 'Add Connection',
-          category: 'Connections',
-          description: 'Add a Sorato server to the connection list.',
-          keywords: ['server', 'endpoint', 'url'],
-          run: () => {
-            dialogOpen = true
-          },
-        })
-      })
+  async function handleStartIntegratedServer() {
+    integratedServerError = ''
+    startingIntegratedServer = true
+    try {
+      await startAndConnectIntegratedServer()
+    } catch (error) {
+      integratedServerError =
+        error instanceof Error
+          ? error.message
+          : 'Could not start the local server.'
+    } finally {
+      startingIntegratedServer = false
+    }
+  }
+
+  onMount(() => {
+    return actionStore.register({
+      id: 'connection.add',
+      title: 'Add Connection',
+      category: 'Connections',
+      description: 'Add a Sorato server to the connection list.',
+      keywords: ['server', 'endpoint', 'url'],
+      run: () => {
+        dialogOpen = true
+      },
+    })
+  })
 </script>
 
-<div class="flex h-full flex-col items-center justify-center p-8">
-  <div class="flex h-16 w-16 items-center justify-center rounded-full bg-surface">
-    <HardDrivesIcon class="h-8 w-8 text-muted-foreground" />
-  </div>
-
-  <h2 class="mt-4 text-lg font-semibold">No Server Connection</h2>
-  <p class="mt-2 max-w-sm text-center text-sm text-muted-foreground">
-    You need to connect to a Sorato server to get started. Add a connection to
-    your local server or a remote instance.
-  </p>
-
-  <Button class="mt-6" onclick={() => (dialogOpen = true)}>
-    Add Connection
-  </Button>
-
-  <p class="mt-4 text-xs text-muted-foreground">
-    Example: <code class="rounded bg-inset px-1 py-0.5"
-      >http://localhost:3100</code
+<div class="grid min-h-screen place-items-center p-6">
+  <div class="flex w-full max-w-3xl flex-col items-center text-center">
+    <div
+      class="flex h-16 w-16 items-center justify-center rounded-full bg-surface"
     >
-  </p>
+      <HardDrivesIcon class="h-8 w-8 text-muted-foreground" />
+    </div>
+
+    <h2 class="mt-4 text-lg font-semibold">No Server Connection</h2>
+
+    <div class="mt-6 inline-flex flex-col gap-2">
+      {#if canStartIntegratedServer()}
+        <button
+          type="button"
+          onclick={handleStartIntegratedServer}
+          disabled={startingIntegratedServer}
+          class="flex min-w-64 items-center gap-3 rounded-lg border bg-surface px-4 py-3 text-left transition hover:border-primary-muted hover:bg-base-hover disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <DesktopTowerIcon class="h-5 w-5 shrink-0 text-primary" />
+          <div class="min-w-0">
+            <div class="text-sm font-medium">
+              {startingIntegratedServer
+                ? 'Starting server…'
+                : 'Spawn Local Server'}
+            </div>
+            <div class="text-xs text-muted-foreground">
+              Start a local Sorato server.
+            </div>
+          </div>
+        </button>
+      {/if}
+
+      <button
+        type="button"
+        onclick={() => (dialogOpen = true)}
+        class="flex min-w-64 items-center gap-3 rounded-lg border bg-surface px-4 py-3 text-left transition hover:border-primary-muted hover:bg-base-hover"
+      >
+        <CloudIcon class="h-5 w-5 shrink-0 text-muted-foreground" />
+        <div class="min-w-0">
+          <div class="text-sm font-medium">Connect With URL</div>
+          <div class="text-xs text-muted-foreground">
+            Use an existing local or cloud server.
+          </div>
+        </div>
+      </button>
+    </div>
+
+    {#if integratedServerError}
+      <p class="mt-4 max-w-lg text-sm text-danger-muted-foreground">
+        {integratedServerError}
+      </p>
+    {/if}
+  </div>
 </div>
 
 <ConnectionDialog

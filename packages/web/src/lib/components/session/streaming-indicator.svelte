@@ -29,12 +29,12 @@
   const renderParts = $derived.by(() =>
     projectTranscript(streamingSources(parts), {
       pretty: clientSettingsStore.prettyTranscript,
-    })
+    }),
   )
 
   const systemAccordionKey = $derived(`${accordionKey}:system-streaming`)
   const systemAccordionValue = $derived(
-    accordionState[systemAccordionKey] ?? ['content']
+    accordionState[systemAccordionKey] ?? ['content'],
   )
 
   function handleSystemAccordionValue(value: string[]) {
@@ -56,7 +56,9 @@
             level={4}
             class="flex w-full items-center gap-x-2 gap-y-1 border-0 border-b border-border px-3 py-2 text-sm font-normal no-underline hover:bg-surface-hover hover:no-underline"
           >
-            <span class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+            <span
+              class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1"
+            >
               <span class="font-semibold">Summary</span>
             </span>
           </Accordion.Trigger>

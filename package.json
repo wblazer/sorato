@@ -8,8 +8,8 @@
     "prepare": "effect-language-service patch",
     "test": "bun run --filter '*' test",
     "typecheck": "bun --filter '*' typecheck && bun run --filter @sorato/web check",
-    "format": "oxfmt . --write",
-    "format:check": "oxfmt . --check",
+    "format": "oxfmt . --write && prettier --write \"packages/web/**/*.svelte\"",
+    "format:check": "oxfmt . --check && prettier --check \"packages/web/**/*.svelte\"",
     "lint": "oxlint .",
     "lint:fix": "oxlint . --fix",
     "effect:diagnostics": "effect-language-service diagnostics --project tsconfig.json --format text --severity warning,error --strict",
@@ -29,6 +29,8 @@
     "effect-solutions": "^0.5.3",
     "oxfmt": "^0.52.0",
     "oxlint": "^1.67.0",
+    "prettier": "^3.8.5",
+    "prettier-plugin-svelte": "^4.1.1",
     "typescript": "^6"
   }
 }

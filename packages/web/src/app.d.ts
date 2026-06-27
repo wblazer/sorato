@@ -10,6 +10,11 @@ declare global {
       setClientConfigOverrides: (
         overrides: ClientConfig
       ) => Promise<ResolvedClientConfig>
+      startIntegratedServer: () => Promise<{
+        readonly url: string
+        readonly pid?: number
+      }>
+      stopIntegratedServer: () => Promise<void>
     }
   }
 

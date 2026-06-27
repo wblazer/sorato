@@ -55,8 +55,11 @@
     try {
       const client = await getApiClient(api)
       const result = await runApi(
-        client.auth.set({ params: { provider: providerId }, payload: { key: apiKey } }),
-        'Failed to connect provider'
+        client.auth.set({
+          params: { provider: providerId },
+          payload: { key: apiKey },
+        }),
+        'Failed to connect provider',
       )
       if (!result.ok) throw new Error(result.error.message)
       await authStore.load()
@@ -79,7 +82,7 @@
       const client = await getApiClient(api)
       const result = await runApi(
         client.auth.oauthAuthorize({ params: { provider: 'openai' } }),
-        'Failed to start ChatGPT sign-in'
+        'Failed to start ChatGPT sign-in',
       )
       if (!result.ok) throw new Error(result.error.message)
       window.open(result.value.url, '_blank', 'noopener,noreferrer')
@@ -111,7 +114,9 @@
     </Dialog.DialogHeader>
 
     {#if !provider}
-      <Command.Root class="gap-2 overflow-visible rounded-none bg-transparent p-0 [&_[data-slot=command-input-wrapper]]:p-0">
+      <Command.Root
+        class="gap-2 overflow-visible rounded-none bg-transparent p-0 [&_[data-slot=command-input-wrapper]]:p-0"
+      >
         <Command.Input placeholder="Search providers..." />
         <Command.List class="max-h-60 px-0 pb-0">
           <Command.Empty>No providers found.</Command.Empty>
@@ -132,12 +137,21 @@
         </Command.List>
       </Command.Root>
     {:else}
-      <form class="space-y-4" onsubmit={(event) => { event.preventDefault(); void submit() }}>
+      <form
+        class="space-y-4"
+        onsubmit={(event) => {
+          event.preventDefault()
+          void submit()
+        }}
+      >
         {#if provider.id === 'openai'}
           <div class="rounded-lg border border-border p-3">
-            <p class="text-sm font-medium text-foreground">ChatGPT subscription</p>
+            <p class="text-sm font-medium text-foreground">
+              ChatGPT subscription
+            </p>
             <p class="mt-1 text-xs text-muted-foreground">
-              Use your ChatGPT Plus, Pro, Team, Edu, or Enterprise access for Sorato.
+              Use your ChatGPT Plus, Pro, Team, Edu, or Enterprise access for
+              Sorato.
             </p>
             <Button
               class="mt-3 w-full"
@@ -159,7 +173,12 @@
 
         <div class="space-y-2.5">
           <Label for={keyInputId}>{provider.name} API key</Label>
-          <Input id={keyInputId} bind:value={key} type="password" autocomplete="off" />
+          <Input
+            id={keyInputId}
+            bind:value={key}
+            type="password"
+            autocomplete="off"
+          />
         </div>
 
         {#if error}
@@ -175,7 +194,11 @@
         {/if}
 
         <Dialog.DialogFooter>
-          <Button type="button" variant="ghost" onclick={() => (provider = null)}>
+          <Button
+            type="button"
+            variant="ghost"
+            onclick={() => (provider = null)}
+          >
             Back
           </Button>
           <Button type="submit" disabled={saving || !key.trim()}>

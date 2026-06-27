@@ -1,89 +1,89 @@
 <script lang="ts">
   import { CommandPalette } from '$lib/components/ui/command-palette/index.js'
-      import {
-        actionStore,
-        type ActionRegistration,
-      } from '$lib/stores/actions.svelte.js'
-      import { cn } from '$lib/utils.js'
+  import {
+    actionStore,
+    type ActionRegistration,
+  } from '$lib/stores/actions.svelte.js'
+  import { cn } from '$lib/utils.js'
 
-      interface Props {
-        open: boolean
-      }
+  interface Props {
+    open: boolean
+  }
 
-      let { open = $bindable(false) }: Props = $props()
+  let { open = $bindable(false) }: Props = $props()
 
-      let query = $state('')
-      let selectedIndex = $state(0)
+  let query = $state('')
+  let selectedIndex = $state(0)
 
   function rank(action: ActionRegistration, term: string): number {
-        if (!term) return 0
+    if (!term) return 0
 
-        const title = action.title.toLowerCase()
-        const category = action.category.toLowerCase()
-        const description = action.description?.toLowerCase() ?? ''
-        const keywords = action.keywords?.join(' ').toLowerCase() ?? ''
+    const title = action.title.toLowerCase()
+    const category = action.category.toLowerCase()
+    const description = action.description?.toLowerCase() ?? ''
+    const keywords = action.keywords?.join(' ').toLowerCase() ?? ''
 
-        if (title === term) return 400
-        if (title.startsWith(term)) return 300
-        if (keywords.includes(term)) return 200
-        if (title.includes(term)) return 160
-        if (description.includes(term)) return 120
-        if (category.includes(term)) return 80
-        return -1
-      }
+    if (title === term) return 400
+    if (title.startsWith(term)) return 300
+    if (keywords.includes(term)) return 200
+    if (title.includes(term)) return 160
+    if (description.includes(term)) return 120
+    if (category.includes(term)) return 80
+    return -1
+  }
 
-      const filteredActions = $derived.by(() => {
-        const term = query.trim().toLowerCase()
+  const filteredActions = $derived.by(() => {
+    const term = query.trim().toLowerCase()
 
-        return actionStore.paletteActions
-          .map((action, index) => ({
-            action,
-            index,
-            score: rank(action, term),
-          }))
-          .filter((item) => !term || item.score >= 0)
-          .sort((a, b) => {
-            if (a.score !== b.score) return b.score - a.score
-            return a.index - b.index
-          })
-          .map((item) => item.action)
+    return actionStore.paletteActions
+      .map((action, index) => ({
+        action,
+        index,
+        score: rank(action, term),
+      }))
+      .filter((item) => !term || item.score >= 0)
+      .sort((a, b) => {
+        if (a.score !== b.score) return b.score - a.score
+        return a.index - b.index
       })
+      .map((item) => item.action)
+  })
 
-      $effect(() => {
-        if (!open) return
-        query = ''
-        selectedIndex = 0
-      })
+  $effect(() => {
+    if (!open) return
+    query = ''
+    selectedIndex = 0
+  })
 
-      $effect(() => {
-        const count = filteredActions.length
-        if (count === 0) {
-          selectedIndex = 0
-          return
-        }
+  $effect(() => {
+    const count = filteredActions.length
+    if (count === 0) {
+      selectedIndex = 0
+      return
+    }
 
-        if (selectedIndex >= count) {
-          selectedIndex = count - 1
-        }
-      })
+    if (selectedIndex >= count) {
+      selectedIndex = count - 1
+    }
+  })
 
-      function runAction(action: ActionRegistration) {
-        open = false
-        queueMicrotask(() => {
-          actionStore.trigger(action.id)
-        })
-      }
+  function runAction(action: ActionRegistration) {
+    open = false
+    queueMicrotask(() => {
+      actionStore.trigger(action.id)
+    })
+  }
 
-      function handleItemMouseEnter(index: number) {
-        selectedIndex = index
-      }
+  function handleItemMouseEnter(index: number) {
+    selectedIndex = index
+  }
 
-      function handleConfirm() {
-        const action = filteredActions[selectedIndex]
-        if (action) {
-          runAction(action)
-        }
-      }
+  function handleConfirm() {
+    const action = filteredActions[selectedIndex]
+    if (action) {
+      runAction(action)
+    }
+  }
 </script>
 
 <CommandPalette
@@ -103,7 +103,7 @@
           'flex w-full items-start gap-3 rounded-md px-3 py-2 text-left',
           index === selectedIndex
             ? 'bg-selected text-foreground'
-            : 'hover:bg-base-hover'
+            : 'hover:bg-base-hover',
         )}
         onclick={() => runAction(action)}
         onmouseenter={() => handleItemMouseEnter(index)}

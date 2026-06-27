@@ -34,9 +34,7 @@
   </div>
 {:else if part.type === 'reasoning'}
   <div class="text-muted-foreground">
-    <div
-      class="whitespace-pre-wrap break-words border-l-3 border-muted pl-3"
-    >
+    <div class="whitespace-pre-wrap break-words border-l-3 border-muted pl-3">
       {part.text}
     </div>
   </div>
@@ -52,7 +50,9 @@
         level={4}
         class="flex w-full items-center gap-x-2 gap-y-1 border-0 border-b border-border px-2.5 py-2 text-sm font-normal text-foreground no-underline hover:bg-inset-hover hover:no-underline"
       >
-        <span class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+        <span
+          class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1"
+        >
           <MessageIcon name={part.header?.icon} />
           <span class="font-semibold">{part.header?.title ?? part.name}</span>
           {#if part.header?.subtitle}
@@ -71,10 +71,10 @@
             viewportClass="max-h-48 rounded-none"
           >
             <pre class="min-w-max px-2.5 py-3 text-sm">{JSON.stringify(
-              part.params,
-              null,
-              2
-            )}</pre>
+                part.params,
+                null,
+                2,
+              )}</pre>
           </ScrollArea>
         {/if}
       </Accordion.Content>

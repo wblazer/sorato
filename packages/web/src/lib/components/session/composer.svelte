@@ -1,169 +1,169 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js'
-      import * as Item from '$lib/components/ui/item/index.js'
-      import * as Tooltip from '$lib/components/ui/tooltip/index.js'
-      import { tick } from 'svelte'
-      import { Textarea } from '$lib/components/ui/textarea/index.js'
-      import * as Select from '$lib/components/ui/select/index.js'
-      import type {
-        AvailableModel,
-        MessageNode,
-        ModelOptions,
-        SessionRunStatus,
-      } from '$lib/types.js'
-      import ArrowUpIcon from 'phosphor-svelte/lib/ArrowUpIcon'
-      import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
-      import StopIcon from 'phosphor-svelte/lib/StopIcon'
-      import XIcon from 'phosphor-svelte/lib/XIcon'
-      import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
-      import ModelSelector from './model-selector.svelte'
-      import SessionTokenUsage from './session-token-usage.svelte'
+  import * as Item from '$lib/components/ui/item/index.js'
+  import * as Tooltip from '$lib/components/ui/tooltip/index.js'
+  import { tick } from 'svelte'
+  import { Textarea } from '$lib/components/ui/textarea/index.js'
+  import * as Select from '$lib/components/ui/select/index.js'
+  import type {
+    AvailableModel,
+    MessageNode,
+    ModelOptions,
+    SessionRunStatus,
+  } from '$lib/types.js'
+  import ArrowUpIcon from 'phosphor-svelte/lib/ArrowUpIcon'
+  import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
+  import StopIcon from 'phosphor-svelte/lib/StopIcon'
+  import XIcon from 'phosphor-svelte/lib/XIcon'
+  import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
+  import ModelSelector from './model-selector.svelte'
+  import SessionTokenUsage from './session-token-usage.svelte'
 
-      let {
-        onSend,
-        onStop,
-        onAttach,
-        onDismissStatus,
-        onModelChange,
-        models = [],
-        model = null,
-        modelOptions = {},
-        modelLoading = false,
-        modelDisabled = false,
-        isRunning = false,
-        isStopping = false,
-        disabled = false,
-        autoFocus = false,
-        focusKey,
-        draftText,
-        draftKey,
-        placeholder,
-        sessionStatus = null,
-        tokenUsageMessages = [],
-      }: {
-        onSend: (input: string) => void
-        onStop?: () => void
-        onAttach?: () => void
-        onDismissStatus?: () => void
-        onModelChange?: (value: string, options?: ModelOptions) => void
-        models?: ReadonlyArray<AvailableModel>
-        model?: string | null
-        modelOptions?: ModelOptions
-        modelLoading?: boolean
-        modelDisabled?: boolean
-        isRunning?: boolean
-        isStopping?: boolean
-        disabled?: boolean
-        autoFocus?: boolean
-        focusKey?: string | number | null
-        draftText?: string
-        draftKey?: string | number | null
-        placeholder?: string
-        sessionStatus?: SessionRunStatus | null
-        tokenUsageMessages?: ReadonlyArray<MessageNode>
-      } = $props()
+  let {
+    onSend,
+    onStop,
+    onAttach,
+    onDismissStatus,
+    onModelChange,
+    models = [],
+    model = null,
+    modelOptions = {},
+    modelLoading = false,
+    modelDisabled = false,
+    isRunning = false,
+    isStopping = false,
+    disabled = false,
+    autoFocus = false,
+    focusKey,
+    draftText,
+    draftKey,
+    placeholder,
+    sessionStatus = null,
+    tokenUsageMessages = [],
+  }: {
+    onSend: (input: string) => void
+    onStop?: () => void
+    onAttach?: () => void
+    onDismissStatus?: () => void
+    onModelChange?: (value: string, options?: ModelOptions) => void
+    models?: ReadonlyArray<AvailableModel>
+    model?: string | null
+    modelOptions?: ModelOptions
+    modelLoading?: boolean
+    modelDisabled?: boolean
+    isRunning?: boolean
+    isStopping?: boolean
+    disabled?: boolean
+    autoFocus?: boolean
+    focusKey?: string | number | null
+    draftText?: string
+    draftKey?: string | number | null
+    placeholder?: string
+    sessionStatus?: SessionRunStatus | null
+    tokenUsageMessages?: ReadonlyArray<MessageNode>
+  } = $props()
 
-      let input = $state('')
-      let textarea: HTMLTextAreaElement | null = $state(null)
-      let now = $state(Date.now())
+  let input = $state('')
+  let textarea: HTMLTextAreaElement | null = $state(null)
+  let now = $state(Date.now())
 
-      const selectedModel = $derived(
-        models.find((item) => item.id === model) ?? null
-      )
-      const thinkingLevel = $derived(
-        modelOptions.thinkingLevel ?? selectedModel?.capabilities.thinkingLevels[0]
-      )
-      const selectedMode = $derived(modelOptions.mode)
-      const retrySeconds = $derived(
-        sessionStatus?._tag === 'retrying'
-          ? Math.max(0, Math.ceil((sessionStatus.retryAt - now) / 1000))
-          : null
-      )
-      const status = $derived(
-        sessionStatus?._tag === 'failed'
-          ? {
-              variant: 'danger' as const,
-              title: sessionStatus.title,
-              description: sessionStatus.message,
-              dismissible: true,
-            }
-          : sessionStatus?._tag === 'retrying'
-            ? {
-                variant: 'muted' as const,
-                title: sessionStatus.title,
-                description: `Retrying in ${retrySeconds ?? 0}s (${sessionStatus.attempt}/${sessionStatus.maxAttempts}).`,
-                dismissible: false,
-              }
-            : isStopping
-            ? {
-                variant: 'muted' as const,
-                title: 'Stopping current run',
-                description: 'Waiting for the server to confirm the stop request.',
-                dismissible: false,
-              }
-            : null
-      )
-
-      function selectThinking(level: NonNullable<ModelOptions['thinkingLevel']>) {
-        if (!model) return
-        onModelChange?.(model, {
-          ...modelOptions,
-          thinkingLevel: level,
-        })
-      }
-
-      function selectMode(mode: string | undefined) {
-        if (!model) return
-        const next = { ...modelOptions, mode }
-        if (!mode) delete next.mode
-        onModelChange?.(model, next)
-      }
-
-      function handleSubmit() {
-        const trimmed = input.trim()
-        if (!trimmed || disabled) return
-        onSend(trimmed)
-        input = ''
-      }
-
-      function handleKeydown(e: KeyboardEvent) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault()
-          handleSubmit()
+  const selectedModel = $derived(
+    models.find((item) => item.id === model) ?? null,
+  )
+  const thinkingLevel = $derived(
+    modelOptions.thinkingLevel ?? selectedModel?.capabilities.thinkingLevels[0],
+  )
+  const selectedMode = $derived(modelOptions.mode)
+  const retrySeconds = $derived(
+    sessionStatus?._tag === 'retrying'
+      ? Math.max(0, Math.ceil((sessionStatus.retryAt - now) / 1000))
+      : null,
+  )
+  const status = $derived(
+    sessionStatus?._tag === 'failed'
+      ? {
+          variant: 'danger' as const,
+          title: sessionStatus.title,
+          description: sessionStatus.message,
+          dismissible: true,
         }
-      }
+      : sessionStatus?._tag === 'retrying'
+        ? {
+            variant: 'muted' as const,
+            title: sessionStatus.title,
+            description: `Retrying in ${retrySeconds ?? 0}s (${sessionStatus.attempt}/${sessionStatus.maxAttempts}).`,
+            dismissible: false,
+          }
+        : isStopping
+          ? {
+              variant: 'muted' as const,
+              title: 'Stopping current run',
+              description:
+                'Waiting for the server to confirm the stop request.',
+              dismissible: false,
+            }
+          : null,
+  )
 
-      $effect(() => {
-        focusKey
-        if (!autoFocus || disabled) return
+  function selectThinking(level: NonNullable<ModelOptions['thinkingLevel']>) {
+    if (!model) return
+    onModelChange?.(model, {
+      ...modelOptions,
+      thinkingLevel: level,
+    })
+  }
 
-        tick().then(() => {
-          if (!disabled) textarea?.focus()
-        })
-      })
+  function selectMode(mode: string | undefined) {
+    if (!model) return
+    const next = { ...modelOptions, mode }
+    if (!mode) delete next.mode
+    onModelChange?.(model, next)
+  }
 
-      $effect(() => {
-        if (draftKey === undefined || draftKey === null) return
-        input = draftText ?? ''
+  function handleSubmit() {
+    const trimmed = input.trim()
+    if (!trimmed || disabled) return
+    onSend(trimmed)
+    input = ''
+  }
 
-        tick().then(() => {
-          if (disabled) return
-          textarea?.focus()
-          const end = textarea?.value.length ?? 0
-          textarea?.setSelectionRange(end, end)
-        })
-      })
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit()
+    }
+  }
 
-      $effect(() => {
-        if (sessionStatus?._tag !== 'retrying') return
+  $effect(() => {
+    focusKey
+    if (!autoFocus || disabled) return
 
-        now = Date.now()
-        const id = setInterval(() => {
-          now = Date.now()
-        }, 250)
-        return () => clearInterval(id)
-      })
+    tick().then(() => {
+      if (!disabled) textarea?.focus()
+    })
+  })
 
+  $effect(() => {
+    if (draftKey === undefined || draftKey === null) return
+    input = draftText ?? ''
+
+    tick().then(() => {
+      if (disabled) return
+      textarea?.focus()
+      const end = textarea?.value.length ?? 0
+      textarea?.setSelectionRange(end, end)
+    })
+  })
+
+  $effect(() => {
+    if (sessionStatus?._tag !== 'retrying') return
+
+    now = Date.now()
+    const id = setInterval(() => {
+      now = Date.now()
+    }, 250)
+    return () => clearInterval(id)
+  })
 </script>
 
 <div class="bg-background pb-5 pt-0">
@@ -249,7 +249,9 @@
               type="single"
               value={thinkingLevel}
               onValueChange={(value) =>
-                selectThinking(value as NonNullable<ModelOptions['thinkingLevel']>)}
+                selectThinking(
+                  value as NonNullable<ModelOptions['thinkingLevel']>,
+                )}
             >
               <Tooltip.Root>
                 <Tooltip.Trigger>
@@ -278,7 +280,8 @@
             <Select.Root
               type="single"
               value={selectedMode ?? 'default'}
-              onValueChange={(value) => selectMode(value === 'default' ? undefined : value)}
+              onValueChange={(value) =>
+                selectMode(value === 'default' ? undefined : value)}
             >
               <Tooltip.Root>
                 <Tooltip.Trigger>

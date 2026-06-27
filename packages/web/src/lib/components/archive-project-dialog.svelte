@@ -25,9 +25,9 @@
   const selectedProjectSessionCount = $derived(
     selectedProjectId
       ? sessionStore.sessions.filter(
-          (session) => session.projectId === selectedProjectId
+          (session) => session.projectId === selectedProjectId,
         ).length
-      : 0
+      : 0,
   )
 
   $effect(() => {
@@ -40,8 +40,9 @@
   })
 
   function sessionCount(projectId: string): number {
-    return sessionStore.sessions.filter((session) => session.projectId === projectId)
-      .length
+    return sessionStore.sessions.filter(
+      (session) => session.projectId === projectId,
+    ).length
   }
 
   async function archiveProject(projectId: string, includeSessions: boolean) {
@@ -85,7 +86,8 @@
       </Dialog.DialogTitle>
       <Dialog.DialogDescription>
         {#if selectedProject}
-          This hides the project from project selectors. Files on disk are not changed.
+          This hides the project from project selectors. Files on disk are not
+          changed.
         {:else}
           Choose a project to hide from Sorato.
         {/if}
@@ -93,7 +95,9 @@
     </Dialog.DialogHeader>
 
     {#if !selectedProject}
-      <Command.Root class="gap-2 overflow-visible rounded-none bg-transparent p-0 [&_[data-slot=command-input-wrapper]]:p-0">
+      <Command.Root
+        class="gap-2 overflow-visible rounded-none bg-transparent p-0 [&_[data-slot=command-input-wrapper]]:p-0"
+      >
         <Command.Input placeholder="Search projects..." />
         <Command.List class="max-h-72 px-0 pb-0">
           <Command.Empty>No projects found.</Command.Empty>
@@ -137,14 +141,19 @@
           </div>
         </div>
 
-        <label class="flex items-start gap-3 rounded-lg border border-border p-3">
+        <label
+          class="flex items-start gap-3 rounded-lg border border-border p-3"
+        >
           <Checkbox.Root bind:checked={archiveSessions} />
           <span class="space-y-1 text-left">
             <span class="block text-sm font-medium text-foreground">
               Also archive sessions in this project
             </span>
             <span class="block text-xs text-muted-foreground">
-              {selectedProjectSessionCount} active {selectedProjectSessionCount === 1 ? 'session' : 'sessions'} will be hidden from session search.
+              {selectedProjectSessionCount} active {selectedProjectSessionCount ===
+              1
+                ? 'session'
+                : 'sessions'} will be hidden from session search.
             </span>
           </span>
         </label>

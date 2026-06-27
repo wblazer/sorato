@@ -21,16 +21,16 @@
 
   const summary = $derived(diffDisplaySummary(part.bodyDisplay))
   const shouldRenderPretty = $derived(
-    clientSettingsStore.prettyTranscript && part.bodyDisplay !== undefined
+    clientSettingsStore.prettyTranscript && part.bodyDisplay !== undefined,
   )
   const header = $derived(call?.header ?? part.header)
   const title = $derived(header?.title ?? call?.name ?? `${part.name} Result`)
   const subtitle = $derived(header?.subtitle ?? summary?.fileName)
   const defaultAccordionValue = $derived(
-    clientSettingsStore.shouldExpandTool(part.name) ? ['content'] : []
+    clientSettingsStore.shouldExpandTool(part.name) ? ['content'] : [],
   )
   const accordionValue = $derived(
-    accordionState[accordionKey] ?? defaultAccordionValue
+    accordionState[accordionKey] ?? defaultAccordionValue,
   )
 
   function handleAccordionValue(value: string[]) {
@@ -64,7 +64,8 @@
       </span>
       {#if summary}
         <span class="flex shrink-0 items-center gap-1 font-mono text-xs">
-          <span class="text-success-muted-foreground">+{summary.additions}</span>
+          <span class="text-success-muted-foreground">+{summary.additions}</span
+          >
           <span class="text-danger-muted-foreground">-{summary.deletions}</span>
         </span>
       {/if}
@@ -79,9 +80,7 @@
           class="max-h-64"
           viewportClass="max-h-64 rounded-none"
         >
-          <pre class="min-w-max px-2.5 py-3 text-sm"
-            >{part.result}</pre
-          >
+          <pre class="min-w-max px-2.5 py-3 text-sm">{part.result}</pre>
         </ScrollArea>
       {/if}
     </Accordion.Content>

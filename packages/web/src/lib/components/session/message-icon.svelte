@@ -30,7 +30,6 @@
     terminal: TerminalIcon,
     globe: GlobeIcon,
   } satisfies Record<MessageIconName, Component>
-
 </script>
 
 {#if name}

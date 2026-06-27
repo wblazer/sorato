@@ -1,125 +1,107 @@
 <script lang="ts">
   import * as Dialog from '$lib/components/ui/dialog/index.js'
-      import Button from '$lib/components/ui/button/button.svelte'
-      import { getApiClient, runApi } from '$lib/api-client.js'
-      import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
-      import type { Connection } from '$lib/stores/connections.svelte.js'
-      import { untrack } from 'svelte'
+  import Button from '$lib/components/ui/button/button.svelte'
+  import { getApiClient, runApi } from '$lib/api-client.js'
+  import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
+  import type { Connection } from '$lib/stores/connections.svelte.js'
+  import { untrack } from 'svelte'
 
-      interface Props {
-        open: boolean
-        connection?: Connection | null
-        onSave: (data: { url: string; name?: string }) => void
-        onClose: () => void
+  interface Props {
+    open: boolean
+    connection?: Connection | null
+    onSave: (data: { url: string; name?: string }) => void
+    onClose: () => void
+  }
+
+  let {
+    open = $bindable(false),
+    connection = null,
+    onSave,
+    onClose,
+  }: Props = $props()
+
+  // Form state
+  let url = $state('')
+  let name = $state('')
+  let urlError = $state('')
+  let isChecking = $state(false)
+  let checkStatus = $state<'idle' | 'loading' | 'success' | 'error'>('idle')
+
+  $effect(() => {
+    if (!open) return
+    untrack(() => hotkeyStore.pushScope('connection-dialog'))
+    return () => untrack(() => hotkeyStore.popScope('connection-dialog'))
+  })
+
+  // Reset form when connection changes or dialog opens
+  $effect(() => {
+    if (open) {
+      url = connection?.url ?? ''
+      name = connection?.name ?? ''
+      urlError = ''
+      checkStatus = 'idle'
+    }
+  })
+
+  async function checkUrl(): Promise<boolean> {
+    if (!url.trim()) {
+      urlError = 'URL is required'
+      checkStatus = 'error'
+      return false
+    }
+
+    // Basic URL validation
+    try {
+      new URL(url)
+    } catch {
+      urlError = 'Invalid URL format'
+      checkStatus = 'error'
+      return false
+    }
+
+    urlError = ''
+    isChecking = true
+    checkStatus = 'loading'
+
+    try {
+      const client = await getApiClient(url)
+      const result = await runApi(client.handshake.check(), 'Handshake failed')
+
+      if (result.ok && result.value.status === 'ok') {
+        checkStatus = 'success'
+        return true
+      } else {
+        checkStatus = 'error'
+        urlError = result.ok ? 'Invalid server response' : result.error.message
+        return false
       }
+    } catch {
+      checkStatus = 'error'
+      urlError = 'Could not connect to server'
+      return false
+    } finally {
+      isChecking = false
+    }
+  }
 
-      let {
-        open = $bindable(false),
-        connection = null,
-        onSave,
-        onClose,
-      }: Props = $props()
+  async function handleSave() {
+    const valid = await checkUrl()
+    if (!valid) return
+    doSave()
+  }
 
-      // Form state
-      let url = $state('')
-      let name = $state('')
-      let urlError = $state('')
-      let isChecking = $state(false)
-      let checkStatus = $state<'idle' | 'loading' | 'success' | 'error'>('idle')
+  function doSave() {
+    onSave({
+      url: url.trim(),
+      name: name.trim() || undefined,
+    })
+    onClose()
+  }
 
-      $effect(() => {
-        if (!open) return
-        untrack(() => hotkeyStore.pushScope('connection-dialog'))
-        return () => untrack(() => hotkeyStore.popScope('connection-dialog'))
-      })
-
-      // Reset form when connection changes or dialog opens
-      $effect(() => {
-        if (open) {
-          url = connection?.url ?? ''
-          name = connection?.name ?? ''
-          urlError = ''
-          checkStatus = 'idle'
-        }
-      })
-
-      async function checkUrl() {
-        if (!url.trim()) {
-          urlError = 'URL is required'
-          checkStatus = 'error'
-          return
-        }
-
-        // Basic URL validation
-        try {
-          new URL(url)
-        } catch {
-          urlError = 'Invalid URL format'
-          checkStatus = 'error'
-          return
-        }
-
-        urlError = ''
-        isChecking = true
-        checkStatus = 'loading'
-
-        try {
-          const client = await getApiClient(url)
-          const result = await runApi(client.handshake.check(), 'Handshake failed')
-
-          if (result.ok && result.value.status === 'ok') {
-            checkStatus = 'success'
-          } else {
-            checkStatus = 'error'
-            urlError = result.ok ? 'Invalid server response' : result.error.message
-          }
-        } catch {
-          checkStatus = 'error'
-          urlError = 'Could not connect to server'
-        } finally {
-          isChecking = false
-        }
-      }
-
-      function handleUrlBlur() {
-        if (url.trim()) {
-          checkUrl()
-        }
-      }
-
-      function handleSave() {
-        if (checkStatus !== 'success' && url.trim()) {
-          // Try to validate before saving
-          checkUrl().then(() => {
-            if (checkStatus === 'success') {
-              doSave()
-            }
-          })
-        } else {
-          doSave()
-        }
-      }
-
-      function doSave() {
-        onSave({
-          url: url.trim(),
-          name: name.trim() || undefined,
-        })
-        onClose()
-      }
-
-      function getStatusIcon() {
-        switch (checkStatus) {
-          case 'success':
-            return '✓'
-          case 'error':
-            return '✗'
-          case 'loading':
-            return '⟳'
-          default:
-            return '○'
-        }
-      }
+  function handleUrlInput() {
+    urlError = ''
+    checkStatus = 'idle'
+  }
 </script>
 
 <Dialog.Root bind:open>
@@ -146,33 +128,21 @@
             type="text"
             placeholder="http://localhost:3100"
             bind:value={url}
-            onblur={handleUrlBlur}
+            oninput={handleUrlInput}
             class="flex h-9 w-full rounded-md border border-border bg-surface px-3 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed"
           />
-          <div
-            class="absolute right-3 top-1/2 -translate-y-1/2 {checkStatus === 'success'
-              ? 'text-success-muted-foreground'
-              : checkStatus === 'error'
-                ? 'text-danger-muted-foreground'
-                : checkStatus === 'loading'
-                  ? 'text-warning'
-                  : 'text-muted-foreground'}"
-          >
-            {#if checkStatus === 'loading'}
-              <span class="animate-spin">{getStatusIcon()}</span>
-            {:else}
-              {getStatusIcon()}
-            {/if}
-          </div>
         </div>
-        {#if urlError}
-          <p class="text-xs text-danger-muted-foreground">{urlError}</p>
-        {:else if checkStatus === 'success'}
-          <p class="text-xs text-success-muted-foreground">Server connected successfully</p>
-        {/if}
-        <p class="text-xs text-muted-foreground">
-          The server URL will be checked when you unfocus the field.
-        </p>
+        <div class="min-h-4 text-xs">
+          {#if urlError}
+            <p class="text-danger-muted-foreground">{urlError}</p>
+          {:else if checkStatus === 'success'}
+            <p class="text-success-muted-foreground">Server is reachable.</p>
+          {:else}
+            <p class="text-muted-foreground">
+              Sorato will verify the server before saving this connection.
+            </p>
+          {/if}
+        </div>
       </div>
 
       <div class="grid gap-2">
@@ -195,7 +165,11 @@
         onclick={handleSave}
         disabled={!url.trim() || checkStatus === 'loading'}
       >
-        {connection ? 'Save Changes' : 'Add Connection'}
+        {#if checkStatus === 'loading'}
+          Checking…
+        {:else}
+          {connection ? 'Save Changes' : 'Add Connection'}
+        {/if}
       </Button>
     </Dialog.Footer>
   </Dialog.Content>

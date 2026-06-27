@@ -9,7 +9,7 @@
 
   const activeTab = $derived(tabStore.activeTab)
   const selectedSession = $derived(
-    sessionStore.sessions.find((s) => s.id === activeTab?.sessionId)
+    sessionStore.sessions.find((s) => s.id === activeTab?.sessionId),
   )
 </script>
 

@@ -1,187 +1,189 @@
 <script lang="ts">
   import { CommandPalette } from '$lib/components/ui/command-palette/index.js'
-      import { getApiClient, runApi } from '$lib/api-client.js'
-      import FolderIcon from 'phosphor-svelte/lib/FolderIcon'
-      import { connectionsStore } from '$lib/stores/connections.svelte.js'
-      import { cn } from '$lib/utils.js'
-      import type { DirectoryEntry } from '@sorato/api'
+  import { getApiClient, runApi } from '$lib/api-client.js'
+  import FolderIcon from 'phosphor-svelte/lib/FolderIcon'
+  import { connectionsStore } from '$lib/stores/connections.svelte.js'
+  import { cn } from '$lib/utils.js'
+  import type { DirectoryEntry } from '@sorato/api'
 
-      interface Props {
-        open: boolean
-        onSelect: (path: string) => void
-      }
+  interface Props {
+    open: boolean
+    onSelect: (path: string) => void
+  }
 
-      let { open = $bindable(false), onSelect }: Props = $props()
+  let { open = $bindable(false), onSelect }: Props = $props()
 
-      let query = $state('')
-      let entries = $state<DirectoryEntry[]>([])
-      let resolvedPath = $state('')
-      let homeDir = $state('')
-      let loading = $state(false)
-      let error = $state<string | null>(null)
-      let selectedIndex = $state(0)
+  let query = $state('')
+  let entries = $state<DirectoryEntry[]>([])
+  let resolvedPath = $state('')
+  let homeDir = $state('')
+  let loading = $state(false)
+  let error = $state<string | null>(null)
+  let selectedIndex = $state(0)
 
   // ── Query parsing ───────────────────────────────────────────────
-      //
-      // Split query into the parent directory to list and an incomplete
-      // tail segment to filter by.
-      //
-      //   ""           → parent "" (home),  tail ""
-      //   "d"          → parent "" (home),  tail "d"
-      //   "dev"        → parent "" (home),  tail "dev"
-      //   "~/dev/"     → parent "~/dev/",   tail ""
-      //   "~/dev/ag"   → parent "~/dev/",   tail "ag"
-      //   "/etc/"      → parent "/etc/",    tail ""
-      //   "/etc/ss"    → parent "/etc/",    tail "ss"
-      //
-      // Key insight: bare strings with no slash are always a filter
-      // against the home directory, never a path to resolve.
+  //
+  // Split query into the parent directory to list and an incomplete
+  // tail segment to filter by.
+  //
+  //   ""           → parent "" (home),  tail ""
+  //   "d"          → parent "" (home),  tail "d"
+  //   "dev"        → parent "" (home),  tail "dev"
+  //   "~/dev/"     → parent "~/dev/",   tail ""
+  //   "~/dev/ag"   → parent "~/dev/",   tail "ag"
+  //   "/etc/"      → parent "/etc/",    tail ""
+  //   "/etc/ss"    → parent "/etc/",    tail "ss"
+  //
+  // Key insight: bare strings with no slash are always a filter
+  // against the home directory, never a path to resolve.
 
-      function parseQuery(raw: string): { parent: string; tail: string } {
-        // ~ alone means home directory, not a filter for "~"
-        if (raw === '~') return { parent: '~', tail: '' }
-        const lastSlash = raw.lastIndexOf('/')
-        if (lastSlash < 0) return { parent: '', tail: raw }
-        return {
-          parent: raw.slice(0, lastSlash + 1),
-          tail: raw.slice(lastSlash + 1),
-        }
+  function parseQuery(raw: string): { parent: string; tail: string } {
+    // ~ alone means home directory, not a filter for "~"
+    if (raw === '~') return { parent: '~', tail: '' }
+    const lastSlash = raw.lastIndexOf('/')
+    if (lastSlash < 0) return { parent: '', tail: raw }
+    return {
+      parent: raw.slice(0, lastSlash + 1),
+      tail: raw.slice(lastSlash + 1),
+    }
+  }
+
+  // Filter entries by the incomplete tail segment (case-insensitive prefix match).
+  // Clamp selectedIndex when the list shrinks so it's never out of bounds.
+  const directories = $derived.by(() => {
+    const { tail } = parseQuery(query)
+    const dirs = entries.filter((e) => e.type === 'directory')
+    return !tail
+      ? dirs
+      : dirs.filter((e) => e.name.toLowerCase().startsWith(tail.toLowerCase()))
+  })
+
+  // ── Fetching ────────────────────────────────────────────────────
+
+  let requestId = 0
+
+  async function fetchEntries(path: string) {
+    const id = ++requestId
+    loading = true
+    error = null
+
+    try {
+      const client = await getApiClient(connectionsStore.getApiBase())
+      const result = await runApi(
+        client.directories.list({ query: { path } }),
+        'Failed to list directories',
+      )
+      if (id !== requestId) return
+
+      if (!result.ok) {
+        error = result.error.message
+        entries = []
+        return
       }
 
-      // Filter entries by the incomplete tail segment (case-insensitive prefix match).
-      // Clamp selectedIndex when the list shrinks so it's never out of bounds.
-      const directories = $derived.by(() => {
-        const { tail } = parseQuery(query)
-        const dirs = entries.filter((e) => e.type === 'directory')
-        return !tail
-          ? dirs
-          : dirs.filter((e) => e.name.toLowerCase().startsWith(tail.toLowerCase()))
-      })
+      resolvedPath = result.value.resolved
+      homeDir = result.value.home
+      entries = [...result.value.entries]
+      selectedIndex = 0
+    } catch (e) {
+      if (id !== requestId) return
+      error = e instanceof Error ? e.message : 'Failed to fetch'
+      entries = []
+    } finally {
+      if (id === requestId) loading = false
+    }
+  }
 
-      // ── Fetching ────────────────────────────────────────────────────
+  // Re-fetch when the parent portion of the query changes.
+  // Tail-only changes filter client-side without a server round-trip.
+  let lastFetchedParent: string | null = null
+  $effect(() => {
+    const { parent } = parseQuery(query)
+    if (parent !== lastFetchedParent) {
+      lastFetchedParent = parent
+      fetchEntries(parent)
+    }
+  })
 
-      let requestId = 0
+  // ── Path display ────────────────────────────────────────────────
+  //
+  // Alias home dir as ~ unless the user explicitly typed an absolute
+  // path (starts with /). Respect the user's notation.
 
-      async function fetchEntries(path: string) {
-        const id = ++requestId
-        loading = true
-        error = null
+  /** Whether the user is in "absolute path" mode */
+  const absoluteMode = $derived(query.startsWith('/'))
 
-        try {
-          const client = await getApiClient(connectionsStore.getApiBase())
-          const result = await runApi(
-            client.directories.list({ query: { path } }),
-            'Failed to list directories'
-          )
-          if (id !== requestId) return
+  function toDisplayPath(absolutePath: string): string {
+    if (absoluteMode || !homeDir) return absolutePath
+    if (absolutePath === homeDir) return '~'
+    if (absolutePath.startsWith(`${homeDir}/`)) {
+      return `~${absolutePath.slice(homeDir.length)}`
+    }
+    return absolutePath
+  }
 
-          if (!result.ok) {
-            error = result.error.message
-            entries = []
-            return
-          }
+  function displayPath(entry: DirectoryEntry): {
+    dim: string
+    bright: string
+  } {
+    const display = toDisplayPath(entry.path)
+    const lastSlash = display.lastIndexOf('/')
+    const dir = lastSlash >= 0 ? display.slice(0, lastSlash + 1) : ''
+    const name = lastSlash >= 0 ? display.slice(lastSlash + 1) : display
+    return { dim: dir, bright: name }
+  }
 
-          resolvedPath = result.value.resolved
-          homeDir = result.value.home
-          entries = [...result.value.entries]
-          selectedIndex = 0
-        } catch (e) {
-          if (id !== requestId) return
-          error = e instanceof Error ? e.message : 'Failed to fetch'
-          entries = []
-        } finally {
-          if (id === requestId) loading = false
-        }
-      }
+  // ── Tab complete / selection ────────────────────────────────────
+  //
+  // Build the completed path in the user's notation — tilde when
+  // they're in default/tilde mode, absolute when they typed /
 
-      // Re-fetch when the parent portion of the query changes.
-      // Tail-only changes filter client-side without a server round-trip.
-      let lastFetchedParent: string | null = null
-      $effect(() => {
-        const { parent } = parseQuery(query)
-        if (parent !== lastFetchedParent) {
-          lastFetchedParent = parent
-          fetchEntries(parent)
-        }
-      })
+  function entryAsQuery(entry: DirectoryEntry): string {
+    return toDisplayPath(entry.path)
+  }
 
-      // ── Path display ────────────────────────────────────────────────
-      //
-      // Alias home dir as ~ unless the user explicitly typed an absolute
-      // path (starts with /). Respect the user's notation.
+  function closePicker() {
+    open = false
+  }
 
-      /** Whether the user is in "absolute path" mode */
-      const absoluteMode = $derived(query.startsWith('/'))
+  function handlePick(path: string) {
+    onSelect(path)
+    closePicker()
+  }
 
-      function toDisplayPath(absolutePath: string): string {
-        if (absoluteMode || !homeDir) return absolutePath
-        if (absolutePath === homeDir) return '~'
-        if (absolutePath.startsWith(`${homeDir}/`)) {
-          return `~${absolutePath.slice(homeDir.length)}`
-        }
-        return absolutePath
-      }
+  function handleKeydown(e: KeyboardEvent): boolean | undefined {
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      const entry = directories[selectedIndex]
+      if (entry) query = `${entryAsQuery(entry)}/`
+      return true
+    }
+  }
 
-      function displayPath(entry: DirectoryEntry): {
-        dim: string
-        bright: string
-      } {
-        const display = toDisplayPath(entry.path)
-        const lastSlash = display.lastIndexOf('/')
-        const dir = lastSlash >= 0 ? display.slice(0, lastSlash + 1) : ''
-        const name = lastSlash >= 0 ? display.slice(lastSlash + 1) : display
-        return { dim: dir, bright: name }
-      }
+  function handleConfirm() {
+    const entry = directories[selectedIndex]
+    if (entry) {
+      handlePick(entry.path)
+    } else if (resolvedPath && !parseQuery(query).tail) {
+      // Only fall back to the listed directory when there's no
+      // unmatched tail — otherwise Enter on a non-matching filter
+      // would silently select the parent directory.
+      handlePick(resolvedPath)
+    }
+  }
 
-      // ── Tab complete / selection ────────────────────────────────────
-      //
-      // Build the completed path in the user's notation — tilde when
-      // they're in default/tilde mode, absolute when they typed /
+  function entryButtonClass(isSelected: boolean) {
+    return cn(
+      'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm',
+      isSelected
+        ? 'bg-selected text-foreground'
+        : 'text-foreground hover:bg-base-hover',
+    )
+  }
 
-      function entryAsQuery(entry: DirectoryEntry): string {
-        return toDisplayPath(entry.path)
-      }
-
-      function closePicker() {
-        open = false
-      }
-
-      function handlePick(path: string) {
-        onSelect(path)
-        closePicker()
-      }
-
-      function handleKeydown(e: KeyboardEvent): boolean | undefined {
-        if (e.key === 'Tab') {
-          e.preventDefault()
-          const entry = directories[selectedIndex]
-          if (entry) query = `${entryAsQuery(entry)}/`
-          return true
-        }
-      }
-
-      function handleConfirm() {
-        const entry = directories[selectedIndex]
-        if (entry) {
-          handlePick(entry.path)
-        } else if (resolvedPath && !parseQuery(query).tail) {
-          // Only fall back to the listed directory when there's no
-          // unmatched tail — otherwise Enter on a non-matching filter
-          // would silently select the parent directory.
-          handlePick(resolvedPath)
-        }
-      }
-
-      function entryButtonClass(isSelected: boolean) {
-        return cn(
-          'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm',
-          isSelected ? 'bg-selected text-foreground' : 'text-foreground hover:bg-base-hover'
-        )
-      }
-
-      function handleEntryMouseEnter(index: number) {
-        selectedIndex = index
-      }
+  function handleEntryMouseEnter(index: number) {
+    selectedIndex = index
+  }
 </script>
 
 <CommandPalette
@@ -211,9 +213,8 @@
         >
           <FolderIcon class="size-4 shrink-0 text-muted-foreground" />
           <span class="min-w-0 truncate">
-            <span class="text-muted-foreground">{displayPath(entry).dim}</span><span
-              class="font-medium">{displayPath(entry).bright}</span
-            >
+            <span class="text-muted-foreground">{displayPath(entry).dim}</span
+            ><span class="font-medium">{displayPath(entry).bright}</span>
           </span>
         </button>
       {/each}

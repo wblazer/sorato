@@ -89,8 +89,17 @@
 
 <style>
   .tool-diff {
-    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco,
-        Consolas, 'Liberation Mono', 'Courier New', monospace);
+    font-family: var(
+      --font-mono,
+      ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      'Liberation Mono',
+      'Courier New',
+      monospace
+    );
     font-size: 0.8125rem;
     line-height: 1.5;
   }

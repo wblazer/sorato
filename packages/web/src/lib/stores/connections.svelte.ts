@@ -17,6 +17,7 @@ export interface Connection {
   id: string
   url: string
   name?: string
+  source?: 'remote' | 'integrated'
   createdAt: number
   lastUsedAt: number
 }
@@ -40,11 +41,6 @@ function createConnectionsStore() {
   let connections = $state<Connection[]>(initialState.connections)
   let activeConnectionId = $state<string | null>(
     initialState.activeConnectionId
-  )
-
-  // Derived: sorted by lastUsedAt (most recent first), fallback to createdAt
-  const sortedConnections = $derived(
-    [...connections].sort((a, b) => b.lastUsedAt - a.lastUsedAt)
   )
 
   const activeConnection = $derived(
@@ -77,6 +73,45 @@ function createConnectionsStore() {
     }
     persist()
     return newConnection
+  }
+
+  function upsertIntegrated(url: string): Connection {
+    const now = Date.now()
+    const existing = connections.find(
+      (connection) => connection.source === 'integrated'
+    )
+
+    if (existing) {
+      connections = connections.map((connection) =>
+        connection.id === existing.id
+          ? {
+              ...connection,
+              url,
+              name: 'Local Server',
+              source: 'integrated',
+              lastUsedAt: now,
+            }
+          : connection
+      )
+      activeConnectionId = existing.id
+      persist()
+      return {
+        ...existing,
+        url,
+        name: 'Local Server',
+        source: 'integrated',
+        lastUsedAt: now,
+      }
+    }
+
+    const connection = add({
+      url,
+      name: 'Local Server',
+      source: 'integrated',
+    })
+    activeConnectionId = connection.id
+    persist()
+    return connection
   }
 
   function update(
@@ -129,7 +164,7 @@ function createConnectionsStore() {
   return {
     // Getters for reactive state
     get connections() {
-      return sortedConnections
+      return connections
     },
     get activeConnection() {
       return activeConnection
@@ -140,6 +175,7 @@ function createConnectionsStore() {
 
     // Actions
     add,
+    upsertIntegrated,
     update,
     remove,
     activate,

@@ -19,52 +19,54 @@
 </script>
 
 <ScrollArea class="h-full">
-<main class="flex min-h-full items-center justify-center px-6 py-10">
-  <Empty.Root>
-    <Empty.Header>
-      <Empty.Media variant="icon">
-        <KeyIcon />
-      </Empty.Media>
-      {#if authStore.error}
-        <Empty.Title>Couldn’t check provider credentials</Empty.Title>
-        <Empty.Description>
-          Sorato couldn’t reach the server endpoint that reports configured model
-          providers. Retry the check before connecting a provider.
-        </Empty.Description>
-      {:else}
-        <Empty.Title>Connect a model provider</Empty.Title>
-        <Empty.Description>
-          Sorato needs provider credentials before it can list models, open project
-          workspaces, or start sessions.
-        </Empty.Description>
-      {/if}
-    </Empty.Header>
+  <main class="flex min-h-full items-center justify-center px-6 py-10">
+    <Empty.Root>
+      <Empty.Header>
+        <Empty.Media variant="icon">
+          <KeyIcon />
+        </Empty.Media>
+        {#if authStore.error}
+          <Empty.Title>Couldn’t check provider credentials</Empty.Title>
+          <Empty.Description>
+            Sorato couldn’t reach the server endpoint that reports configured
+            model providers. Retry the check before connecting a provider.
+          </Empty.Description>
+        {:else}
+          <Empty.Title>Connect a model provider</Empty.Title>
+          <Empty.Description>
+            Sorato needs provider credentials before it can list models, open
+            project workspaces, or start sessions.
+          </Empty.Description>
+        {/if}
+      </Empty.Header>
 
-    <Empty.Content>
-      {#if authStore.loading}
-        <p class="text-sm text-muted-foreground">Checking provider credentials…</p>
-      {:else if authStore.error}
-        <Item.Root variant="danger" class="max-w-lg text-left">
-          <Item.Media variant="icon">
-            <WarningCircleIcon />
-          </Item.Media>
-          <Item.Content>
-            <Item.Title>Provider check failed</Item.Title>
-            <Item.Description>{authStore.error}</Item.Description>
-          </Item.Content>
-          <Item.Actions>
-            <Button variant="outline" onclick={retry}>Retry</Button>
-          </Item.Actions>
-        </Item.Root>
-      {:else}
-        <Button size="lg" onclick={openDialog}>
-          <KeyIcon class="size-4" />
-          Connect Provider
-        </Button>
-      {/if}
-    </Empty.Content>
-  </Empty.Root>
-</main>
+      <Empty.Content>
+        {#if authStore.loading}
+          <p class="text-sm text-muted-foreground">
+            Checking provider credentials…
+          </p>
+        {:else if authStore.error}
+          <Item.Root variant="danger" class="max-w-lg text-left">
+            <Item.Media variant="icon">
+              <WarningCircleIcon />
+            </Item.Media>
+            <Item.Content>
+              <Item.Title>Provider check failed</Item.Title>
+              <Item.Description>{authStore.error}</Item.Description>
+            </Item.Content>
+            <Item.Actions>
+              <Button variant="outline" onclick={retry}>Retry</Button>
+            </Item.Actions>
+          </Item.Root>
+        {:else}
+          <Button size="lg" onclick={openDialog}>
+            <KeyIcon class="size-4" />
+            Connect Provider
+          </Button>
+        {/if}
+      </Empty.Content>
+    </Empty.Root>
+  </main>
 </ScrollArea>
 
 {#if open}

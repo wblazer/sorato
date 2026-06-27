@@ -43,13 +43,13 @@
   let activeTab = $state<SettingsTab>('general')
   let config = $state<ResolvedClientConfig | null>(null)
   let toolBlockExpansion = $state<ResolvedToolBlockExpansion>(
-    clientSettingsStore.toolBlockExpansion
+    clientSettingsStore.toolBlockExpansion,
   )
   let transcriptDisplayMode = $state<TranscriptDisplayMode>(
-    clientSettingsStore.transcriptDisplayMode
+    clientSettingsStore.transcriptDisplayMode,
   )
   let expandSystemMessagesByDefault = $state(
-    clientSettingsStore.expandSystemMessagesByDefault
+    clientSettingsStore.expandSystemMessagesByDefault,
   )
   let error = $state<string | null>(null)
   let loading = $state(false)
@@ -58,21 +58,21 @@
   let queuedSaveValue: ResolvedClientConfigValue | null = null
 
   const baseConfig = $derived(
-    config === null ? null : mergeClientConfig(config.defaults, config.file)
+    config === null ? null : mergeClientConfig(config.defaults, config.file),
   )
 
   const customConfig = $derived(
-    config === null ? {} : diffClientConfig(config.defaults, config.resolved)
+    config === null ? {} : diffClientConfig(config.defaults, config.resolved),
   )
 
   const hasFileConfig = $derived(
-    config !== null && Object.keys(config.file).length > 0
+    config !== null && Object.keys(config.file).length > 0,
   )
   const hasOverrides = $derived(
-    config !== null && Object.keys(config.overrides).length > 0
+    config !== null && Object.keys(config.overrides).length > 0,
   )
   const resetLabel = $derived(
-    hasFileConfig ? 'Reset to config file' : 'Reset to defaults'
+    hasFileConfig ? 'Reset to config file' : 'Reset to defaults',
   )
 
   const toolOptions = $derived.by(() => {
@@ -100,8 +100,8 @@
 
   const transcriptDisplayModeLabel = $derived(
     transcriptDisplayModeOptions.find(
-      (option) => option.value === transcriptDisplayMode
-    )?.label ?? transcriptDisplayMode
+      (option) => option.value === transcriptDisplayMode,
+    )?.label ?? transcriptDisplayMode,
   )
 
   const copySettingsAction = createTimedAction({ run: copyChangedSettings })
@@ -134,13 +134,13 @@
     expandSystemMessagesByDefault =
       nextConfig.resolved.expand_system_messages_by_default
     clientSettingsStore.setTranscriptDisplayMode(
-      nextConfig.resolved.transcript_display_mode
+      nextConfig.resolved.transcript_display_mode,
     )
     clientSettingsStore.setToolBlockExpansion(
-      nextConfig.resolved.tool_block_expansion
+      nextConfig.resolved.tool_block_expansion,
     )
     clientSettingsStore.setExpandSystemMessagesByDefault(
-      nextConfig.resolved.expand_system_messages_by_default
+      nextConfig.resolved.expand_system_messages_by_default,
     )
   }
 
@@ -187,7 +187,7 @@
 
         const overrides = diffClientConfig(baseConfig, value)
         const savedConfig = await Effect.runPromise(
-          clientConfigService.setOverrides(overrides)
+          clientConfigService.setOverrides(overrides),
         )
 
         value = queuedSaveValue
@@ -223,12 +223,12 @@
 
   const hasOwnToolPreference = (
     expansion: ResolvedToolBlockExpansion,
-    toolName: string
+    toolName: string,
   ) => Object.hasOwn(expansion.tools, toolName)
 
   const effectiveToolExpansion = (
     expansion: ResolvedToolBlockExpansion,
-    toolName: string
+    toolName: string,
   ) =>
     hasOwnToolPreference(expansion, toolName)
       ? expansion.tools[toolName]
@@ -316,7 +316,7 @@
 
           try {
             applyConfig(
-              await Effect.runPromise(clientConfigService.setOverrides({}))
+              await Effect.runPromise(clientConfigService.setOverrides({})),
             )
             close()
           } catch (cause) {
@@ -342,7 +342,6 @@
   async function copyChangedSettings() {
     await copyText(encodeClientConfig(customConfig))
   }
-
 </script>
 
 <Dialog.Root bind:open>
@@ -358,7 +357,10 @@
     >
       <aside class="border-r border-border p-3">
         <Dialog.Title class="sr-only">Settings</Dialog.Title>
-        <Tabs.List variant="default" class="flex w-full flex-col items-stretch gap-1 bg-transparent p-0">
+        <Tabs.List
+          variant="default"
+          class="flex w-full flex-col items-stretch gap-1 bg-transparent p-0"
+        >
           <Tabs.Trigger value="general">
             {#snippet child({ props })}
               <Button
@@ -390,192 +392,234 @@
 
       <main class="relative min-h-0 overflow-hidden">
         <ScrollArea class="h-full" viewportClass="p-6 pr-14">
-        <Button
-          variant="ghost"
-          size="icon"
-          class="absolute right-2 top-2"
-          data-slot="dialog-close"
-          aria-label="Close settings"
-          onclick={() => (open = false)}
-        >
-          <XIcon />
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            class="absolute right-2 top-2"
+            data-slot="dialog-close"
+            aria-label="Close settings"
+            onclick={() => (open = false)}
+          >
+            <XIcon />
+          </Button>
 
-        {#if loading && config === null}
-          <div class="text-base text-muted-foreground">Loading settings…</div>
-        {:else}
-          <Tabs.Content value="general" class="text-base">
-            <section class="grid gap-10">
-              <div class="grid">
-                <div class="flex items-center justify-between gap-8 border-b border-border py-4 first:pt-0">
-                  <div class="min-w-0">
-                    <div class="text-base font-medium">Expand system messages by default</div>
-                    <div class="mt-0.5 text-base text-muted-foreground">
-                      Show system message contents without manually opening each one.
-                    </div>
-                  </div>
-                  <Switch
-                    checked={expandSystemMessagesByDefault}
-                    onCheckedChange={setExpandSystemMessagesByDefault}
-                    disabled={loading || config === null}
-                  />
-                </div>
-
-                <div class="grid gap-4 border-b border-border py-4 first:pt-0">
-                  <div class="flex items-center justify-between gap-8">
+          {#if loading && config === null}
+            <div class="text-base text-muted-foreground">Loading settings…</div>
+          {:else}
+            <Tabs.Content value="general" class="text-base">
+              <section class="grid gap-10">
+                <div class="grid">
+                  <div
+                    class="flex items-center justify-between gap-8 border-b border-border py-4 first:pt-0"
+                  >
                     <div class="min-w-0">
-                      <div class="text-base font-medium">Expand tool blocks by default</div>
+                      <div class="text-base font-medium">
+                        Expand system messages by default
+                      </div>
+                      <div class="mt-0.5 text-base text-muted-foreground">
+                        Show system message contents without manually opening
+                        each one.
+                      </div>
                     </div>
                     <Switch
-                      checked={toolBlockExpansion.default}
-                      onCheckedChange={setToolBlockDefault}
+                      checked={expandSystemMessagesByDefault}
+                      onCheckedChange={setExpandSystemMessagesByDefault}
                       disabled={loading || config === null}
                     />
                   </div>
 
-                  <div class="grid gap-2">
-                    <div class="text-sm font-medium text-muted-foreground">Per-tool defaults</div>
-                    {#if serverInfoStore.loading && toolOptions.length === 0}
-                      <div class="text-sm text-muted-foreground">Loading tools…</div>
-                    {:else if toolOptions.length === 0}
-                      <div class="text-sm text-muted-foreground">No server tools found.</div>
-                    {:else}
-                      <div class="grid rounded-md border border-border">
-                        {#each toolOptions as tool}
-                          <div class="flex items-center justify-between gap-8 border-b border-border px-3 py-2.5 last:border-b-0">
-                            <div class="min-w-0">
-                              <div class="text-base font-medium">{tool.displayName}</div>
-                              <div class="mt-0.5 font-mono text-xs text-muted-foreground">
-                                {tool.name}{tool.unavailable ? ' (not on current server)' : ''}
-                              </div>
-                            </div>
-                            <Select.Root
-                              type="single"
-                              value={toolPreferenceSelection(tool.name).value}
-                              onValueChange={(value) =>
-                                setToolBlockTool(tool.name, value)}
-                              disabled={loading || config === null}
-                            >
-                              <Select.Trigger class="w-40">
-                                {toolPreferenceSelection(tool.name).label}
-                              </Select.Trigger>
-                              <Select.Content class="w-44" align="end">
-                                <Select.Item value="default" label={`Default (${toolBlockExpansion.default ? 'expanded' : 'collapsed'})`} />
-                                <Select.Item value="expanded" label="Expanded" />
-                                <Select.Item value="collapsed" label="Collapsed" />
-                              </Select.Content>
-                            </Select.Root>
-                          </div>
-                        {/each}
-                      </div>
-                    {/if}
-                  </div>
-                </div>
-
-                <div class="flex items-center justify-between gap-8 border-b border-border py-4">
-                  <div class="min-w-0">
-                    <div class="text-base font-medium">Transcript display mode</div>
-                    <div class="mt-0.5 text-base text-muted-foreground">
-                      Choose between rich rendering and the raw model-visible transcript.
-                    </div>
-                  </div>
-                  <Select.Root
-                    type="single"
-                    value={transcriptDisplayMode}
-                    onValueChange={setTranscriptDisplayMode}
-                    disabled={loading || config === null}
+                  <div
+                    class="grid gap-4 border-b border-border py-4 first:pt-0"
                   >
-                    <Select.Trigger class="w-32">
-                      {transcriptDisplayModeLabel}
-                    </Select.Trigger>
-                    <Select.Content class="w-40" align="end">
-                      {#each transcriptDisplayModeOptions as option}
-                        <Select.Item value={option.value} label={option.label} />
-                      {/each}
-                    </Select.Content>
-                  </Select.Root>
-                </div>
-
-              </div>
-
-              {#if hasOverrides}
-                <div class="grid gap-4">
-                  <h2 class="text-lg font-semibold">Local changes</h2>
-                  <div class="grid">
-                    <div class="flex items-center justify-between gap-8 border-b border-border py-4 first:pt-0">
+                    <div class="flex items-center justify-between gap-8">
                       <div class="min-w-0">
-                        <div class="text-base font-medium">Copy settings</div>
-                        <div class="mt-0.5 text-base text-muted-foreground">
-                          Copy non-default settings as JSON.
+                        <div class="text-base font-medium">
+                          Expand tool blocks by default
                         </div>
                       </div>
-                      <Button
-                        variant="outline"
-                        onclick={copySettingsAction.run}
-                        disabled={loading ||
-                          config === null ||
-                          copySettingsAction.pending}
-                      >
-                        <ButtonStableLabel value={copySettingsAction.state}>
-                          {#snippet idle()}
-                            <CopyIcon />
-                            Copy Settings
-                          {/snippet}
-                          {#snippet pending()}
-                            Copying…
-                          {/snippet}
-                          {#snippet success()}
-                            <CheckIcon />
-                            Copied!
-                          {/snippet}
-                        </ButtonStableLabel>
-                      </Button>
+                      <Switch
+                        checked={toolBlockExpansion.default}
+                        onCheckedChange={setToolBlockDefault}
+                        disabled={loading || config === null}
+                      />
                     </div>
 
-                    <div class="flex items-center justify-between gap-8 py-4">
-                      <div class="min-w-0">
-                        <div class="text-base font-medium">{resetLabel}</div>
-                        <div class="mt-0.5 text-base text-muted-foreground">
-                          {hasFileConfig
-                            ? 'Discard local changes and use your config file.'
-                            : 'Discard local changes and use the default settings.'}
-                        </div>
+                    <div class="grid gap-2">
+                      <div class="text-sm font-medium text-muted-foreground">
+                        Per-tool defaults
                       </div>
-                      <Button
-                        variant="outline-destructive"
-                        onclick={confirmClearOverrides}
-                        disabled={loading || saving}
-                      >
-                        {resetLabel}
-                      </Button>
+                      {#if serverInfoStore.loading && toolOptions.length === 0}
+                        <div class="text-sm text-muted-foreground">
+                          Loading tools…
+                        </div>
+                      {:else if toolOptions.length === 0}
+                        <div class="text-sm text-muted-foreground">
+                          No server tools found.
+                        </div>
+                      {:else}
+                        <div class="grid rounded-md border border-border">
+                          {#each toolOptions as tool}
+                            <div
+                              class="flex items-center justify-between gap-8 border-b border-border px-3 py-2.5 last:border-b-0"
+                            >
+                              <div class="min-w-0">
+                                <div class="text-base font-medium">
+                                  {tool.displayName}
+                                </div>
+                                <div
+                                  class="mt-0.5 font-mono text-xs text-muted-foreground"
+                                >
+                                  {tool.name}{tool.unavailable
+                                    ? ' (not on current server)'
+                                    : ''}
+                                </div>
+                              </div>
+                              <Select.Root
+                                type="single"
+                                value={toolPreferenceSelection(tool.name).value}
+                                onValueChange={(value) =>
+                                  setToolBlockTool(tool.name, value)}
+                                disabled={loading || config === null}
+                              >
+                                <Select.Trigger class="w-40">
+                                  {toolPreferenceSelection(tool.name).label}
+                                </Select.Trigger>
+                                <Select.Content class="w-44" align="end">
+                                  <Select.Item
+                                    value="default"
+                                    label={`Default (${toolBlockExpansion.default ? 'expanded' : 'collapsed'})`}
+                                  />
+                                  <Select.Item
+                                    value="expanded"
+                                    label="Expanded"
+                                  />
+                                  <Select.Item
+                                    value="collapsed"
+                                    label="Collapsed"
+                                  />
+                                </Select.Content>
+                              </Select.Root>
+                            </div>
+                          {/each}
+                        </div>
+                      {/if}
                     </div>
                   </div>
+
+                  <div
+                    class="flex items-center justify-between gap-8 border-b border-border py-4"
+                  >
+                    <div class="min-w-0">
+                      <div class="text-base font-medium">
+                        Transcript display mode
+                      </div>
+                      <div class="mt-0.5 text-base text-muted-foreground">
+                        Choose between rich rendering and the raw model-visible
+                        transcript.
+                      </div>
+                    </div>
+                    <Select.Root
+                      type="single"
+                      value={transcriptDisplayMode}
+                      onValueChange={setTranscriptDisplayMode}
+                      disabled={loading || config === null}
+                    >
+                      <Select.Trigger class="w-32">
+                        {transcriptDisplayModeLabel}
+                      </Select.Trigger>
+                      <Select.Content class="w-40" align="end">
+                        {#each transcriptDisplayModeOptions as option}
+                          <Select.Item
+                            value={option.value}
+                            label={option.label}
+                          />
+                        {/each}
+                      </Select.Content>
+                    </Select.Root>
+                  </div>
                 </div>
-              {/if}
-            </section>
-          </Tabs.Content>
 
-          <Tabs.Content value="keybinds" class="text-base">
-            <section class="grid gap-3">
-              <h2 class="text-base font-medium">Keybinds</h2>
-              <p class="text-base text-muted-foreground">
-                Keybind settings are coming soon. This tab is here to establish the settings layout.
-              </p>
-            </section>
-          </Tabs.Content>
-        {/if}
+                {#if hasOverrides}
+                  <div class="grid gap-4">
+                    <h2 class="text-lg font-semibold">Local changes</h2>
+                    <div class="grid">
+                      <div
+                        class="flex items-center justify-between gap-8 border-b border-border py-4 first:pt-0"
+                      >
+                        <div class="min-w-0">
+                          <div class="text-base font-medium">Copy settings</div>
+                          <div class="mt-0.5 text-base text-muted-foreground">
+                            Copy non-default settings as JSON.
+                          </div>
+                        </div>
+                        <Button
+                          variant="outline"
+                          onclick={copySettingsAction.run}
+                          disabled={loading ||
+                            config === null ||
+                            copySettingsAction.pending}
+                        >
+                          <ButtonStableLabel value={copySettingsAction.state}>
+                            {#snippet idle()}
+                              <CopyIcon />
+                              Copy Settings
+                            {/snippet}
+                            {#snippet pending()}
+                              Copying…
+                            {/snippet}
+                            {#snippet success()}
+                              <CheckIcon />
+                              Copied!
+                            {/snippet}
+                          </ButtonStableLabel>
+                        </Button>
+                      </div>
 
-        {#if error}
-          <Item.Root variant="danger" class="mt-6">
-            <Item.Media variant="icon">
-              <WarningCircleIcon />
-            </Item.Media>
-            <Item.Content>
-              <Item.Title>Settings error</Item.Title>
-              <Item.Description>{error}</Item.Description>
-            </Item.Content>
-          </Item.Root>
-        {/if}
+                      <div class="flex items-center justify-between gap-8 py-4">
+                        <div class="min-w-0">
+                          <div class="text-base font-medium">{resetLabel}</div>
+                          <div class="mt-0.5 text-base text-muted-foreground">
+                            {hasFileConfig
+                              ? 'Discard local changes and use your config file.'
+                              : 'Discard local changes and use the default settings.'}
+                          </div>
+                        </div>
+                        <Button
+                          variant="outline-destructive"
+                          onclick={confirmClearOverrides}
+                          disabled={loading || saving}
+                        >
+                          {resetLabel}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                {/if}
+              </section>
+            </Tabs.Content>
+
+            <Tabs.Content value="keybinds" class="text-base">
+              <section class="grid gap-3">
+                <h2 class="text-base font-medium">Keybinds</h2>
+                <p class="text-base text-muted-foreground">
+                  Keybind settings are coming soon. This tab is here to
+                  establish the settings layout.
+                </p>
+              </section>
+            </Tabs.Content>
+          {/if}
+
+          {#if error}
+            <Item.Root variant="danger" class="mt-6">
+              <Item.Media variant="icon">
+                <WarningCircleIcon />
+              </Item.Media>
+              <Item.Content>
+                <Item.Title>Settings error</Item.Title>
+                <Item.Description>{error}</Item.Description>
+              </Item.Content>
+            </Item.Root>
+          {/if}
         </ScrollArea>
       </main>
     </Tabs.Root>

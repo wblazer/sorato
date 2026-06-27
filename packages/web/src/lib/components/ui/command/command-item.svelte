@@ -1,14 +1,14 @@
 <script lang="ts">
   import { Command as CommandPrimitive } from 'bits-ui'
-      import { cn } from '$lib/utils.js'
-      import CheckIcon from 'phosphor-svelte/lib/Check'
+  import { cn } from '$lib/utils.js'
+  import CheckIcon from 'phosphor-svelte/lib/Check'
 
-      let {
-        ref = $bindable(null),
-        class: className,
-        children,
-        ...restProps
-      }: CommandPrimitive.ItemProps = $props()
+  let {
+    ref = $bindable(null),
+    class: className,
+    children,
+    ...restProps
+  }: CommandPrimitive.ItemProps = $props()
 </script>
 
 <CommandPrimitive.Item
@@ -16,7 +16,7 @@
   data-slot="command-item"
   class={cn(
     "group/command-item relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-selected:bg-selected data-selected:text-foreground data-selected:*:[svg]:text-foreground in-data-[slot=dialog-content]:rounded-lg! data-[disabled=true]:pointer-events-none data-[disabled=true]:text-muted-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-    className
+    className,
   )}
   {...restProps}
 >

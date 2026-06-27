@@ -1,5 +1,11 @@
 import type { AppTab, Session } from '$lib/types.js'
+import { connectionsStore } from './connections.svelte.js'
 import { messagesStore } from './messages.svelte.js'
+
+interface TabSet {
+  readonly tabs: AppTab[]
+  readonly activeTabId: string | null
+}
 
 const newTab = (): AppTab => {
   const now = Date.now()
@@ -15,52 +21,97 @@ const newTab = (): AppTab => {
 }
 
 function createTabStore() {
-  let tabs = $state<AppTab[]>([newTab()])
-  let activeTabId = $state<string | null>(tabs[0]?.id ?? null)
+  let tabSets = $state<Record<string, TabSet>>({})
+  const fallbackTabSet = initialTabSet()
 
-  const activeTab = $derived(
-    activeTabId ? (tabs.find((tab) => tab.id === activeTabId) ?? null) : null
-  )
+  function activeConnectionKey(): string {
+    return connectionsStore.activeConnection?.id ?? '__no_connection__'
+  }
+
+  function initialTabSet(): TabSet {
+    const tab = newTab()
+    return { tabs: [tab], activeTabId: tab.id }
+  }
+
+  function getTabSet(): TabSet {
+    return tabSets[activeConnectionKey()] ?? fallbackTabSet
+  }
+
+  function ensureTabSet(): TabSet {
+    const key = activeConnectionKey()
+    const existing = tabSets[key]
+    if (existing) return existing
+    const created = initialTabSet()
+    tabSets = { ...tabSets, [key]: created }
+    return created
+  }
+
+  function setTabSet(next: TabSet) {
+    tabSets = { ...tabSets, [activeConnectionKey()]: next }
+  }
+
+  function ensureActiveConnectionTabSet() {
+    ensureTabSet()
+  }
+
+  function loadActiveTabMessages() {
+    const tab = activeTab()
+    if (tab?.sessionId) void messagesStore.loadMessages(tab.sessionId)
+    if (!tab?.sessionId) messagesStore.clear()
+  }
+
+  function activeTab(): AppTab | null {
+    const state = getTabSet()
+    return state.activeTabId
+      ? (state.tabs.find((tab) => tab.id === state.activeTabId) ?? null)
+      : null
+  }
 
   function setActiveTab(id: string) {
-    activeTabId = id
-    const tab = tabs.find((item) => item.id === id)
+    const state = ensureTabSet()
+    setTabSet({ ...state, activeTabId: id })
+    const tab = state.tabs.find((item) => item.id === id)
     if (tab?.sessionId) void messagesStore.loadMessages(tab.sessionId)
     if (!tab?.sessionId) messagesStore.clear()
   }
 
   function openNewTab() {
+    const state = ensureTabSet()
     const tab = newTab()
-    tabs = [tab, ...tabs]
-    activeTabId = tab.id
+    setTabSet({ tabs: [tab, ...state.tabs], activeTabId: tab.id })
     messagesStore.clear()
   }
 
   function closeTab(id: string) {
-    const index = tabs.findIndex((tab) => tab.id === id)
+    const state = ensureTabSet()
+    const index = state.tabs.findIndex((tab) => tab.id === id)
     if (index < 0) return
 
-    const next = tabs.filter((tab) => tab.id !== id)
-    tabs = next
+    const next = state.tabs.filter((tab) => tab.id !== id)
 
-    if (activeTabId === id) {
+    if (state.activeTabId === id) {
       const replacement = next[Math.max(0, index - 1)] ?? next[0] ?? null
       if (replacement) {
+        setTabSet({ tabs: next, activeTabId: replacement.id })
         setActiveTab(replacement.id)
       } else {
-        activeTabId = null
+        setTabSet({ tabs: next, activeTabId: null })
         messagesStore.clear()
       }
+    } else {
+      setTabSet({ ...state, tabs: next })
     }
   }
 
   function activateAdjacentTab(direction: 1 | -1) {
-    if (tabs.length < 2) return
-    const index = tabs.findIndex((tab) => tab.id === activeTabId)
+    const state = ensureTabSet()
+    if (state.tabs.length < 2) return
+    const index = state.tabs.findIndex((tab) => tab.id === state.activeTabId)
     if (index < 0) return
 
-    const nextIndex = (index + direction + tabs.length) % tabs.length
-    setActiveTab(tabs[nextIndex].id)
+    const nextIndex =
+      (index + direction + state.tabs.length) % state.tabs.length
+    setActiveTab(state.tabs[nextIndex].id)
   }
 
   function activateNextTab() {
@@ -72,71 +123,91 @@ function createTabStore() {
   }
 
   function setDraftProject(tabId: string, projectId: string | null) {
-    tabs = tabs.map((tab) =>
-      tab.id === tabId ? { ...tab, projectId, updatedAt: Date.now() } : tab
-    )
+    const state = ensureTabSet()
+    setTabSet({
+      ...state,
+      tabs: state.tabs.map((tab) =>
+        tab.id === tabId ? { ...tab, projectId, updatedAt: Date.now() } : tab
+      ),
+    })
   }
 
   function resetActiveTabToNewSession() {
-    if (!activeTabId) {
+    const state = ensureTabSet()
+    if (!state.activeTabId) {
       openNewTab()
       return
     }
 
-    tabs = tabs.map((tab) =>
-      tab.id === activeTabId
-        ? {
-            ...tab,
-            sessionId: null,
-            title: null,
-            kind: 'new' as const,
-            updatedAt: Date.now(),
-          }
-        : tab
-    )
+    setTabSet({
+      ...state,
+      tabs: state.tabs.map((tab) =>
+        tab.id === state.activeTabId
+          ? {
+              ...tab,
+              sessionId: null,
+              title: null,
+              kind: 'new' as const,
+              updatedAt: Date.now(),
+            }
+          : tab
+      ),
+    })
     messagesStore.clear()
   }
 
   function clearProject(projectId: string) {
-    tabs = tabs.map((tab) =>
-      tab.projectId === projectId && tab.sessionId === null
-        ? { ...tab, projectId: null, updatedAt: Date.now() }
-        : tab
-    )
+    const state = ensureTabSet()
+    setTabSet({
+      ...state,
+      tabs: state.tabs.map((tab) =>
+        tab.projectId === projectId && tab.sessionId === null
+          ? { ...tab, projectId: null, updatedAt: Date.now() }
+          : tab
+      ),
+    })
   }
 
   function attachSession(tabId: string, session: Session) {
-    tabs = tabs.map((tab) =>
-      tab.id === tabId
-        ? {
-            ...tab,
-            kind: 'session',
-            sessionId: session.id,
-            projectId: session.projectId,
-            title: session.title,
-            updatedAt: Date.now(),
-          }
-        : tab
-    )
+    const state = ensureTabSet()
+    setTabSet({
+      ...state,
+      tabs: state.tabs.map((tab) =>
+        tab.id === tabId
+          ? {
+              ...tab,
+              kind: 'session',
+              sessionId: session.id,
+              projectId: session.projectId,
+              title: session.title,
+              updatedAt: Date.now(),
+            }
+          : tab
+      ),
+    })
   }
 
   function updateSessionTitle(sessionId: string, title: string | null) {
-    tabs = tabs.map((tab) =>
-      tab.sessionId === sessionId
-        ? { ...tab, title, updatedAt: Date.now() }
-        : tab
-    )
+    const state = ensureTabSet()
+    setTabSet({
+      ...state,
+      tabs: state.tabs.map((tab) =>
+        tab.sessionId === sessionId
+          ? { ...tab, title, updatedAt: Date.now() }
+          : tab
+      ),
+    })
   }
 
   return {
     get tabs() {
-      return tabs
+      return getTabSet().tabs
     },
     get activeTabId() {
-      return activeTabId
+      return getTabSet().activeTabId
     },
     get activeTab() {
-      return activeTab
+      return activeTab()
     },
     setActiveTab,
     openNewTab,
@@ -148,6 +219,8 @@ function createTabStore() {
     clearProject,
     attachSession,
     updateSessionTitle,
+    ensureActiveConnectionTabSet,
+    loadActiveTabMessages,
   }
 }
 

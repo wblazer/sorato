@@ -1,6 +1,7 @@
 import { app, BrowserWindow, shell } from 'electron'
 import { access } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { stopIntegratedServer } from './integrated-server.ts'
 import { registerIpcHandlers } from './ipc.ts'
 
 const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL)
@@ -96,4 +97,8 @@ if (!gotSingleInstanceLock) {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  stopIntegratedServer()
 })

@@ -26,10 +26,13 @@
           timestamp: session.lastUserMessageAt ?? session.updatedAt,
         }
       })
-      .sort((a, b) => b.timestamp - a.timestamp)
+      .sort((a, b) => b.timestamp - a.timestamp),
   )
 
-  function rankSession(item: (typeof sessionOptions)[number], term: string): number {
+  function rankSession(
+    item: (typeof sessionOptions)[number],
+    term: string,
+  ): number {
     if (!term) return 0
 
     const title = item.title.toLowerCase()
@@ -109,7 +112,7 @@
 <CommandPalette
   bind:open
   bind:query
-  bind:selectedIndex={selectedIndex}
+  bind:selectedIndex
   placeholder="Search sessions..."
   itemCount={filteredSessions.length}
   loading={sessionStore.loading && sessionStore.sessions.length === 0}
@@ -125,7 +128,7 @@
           'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left outline-hidden',
           index === selectedIndex
             ? 'bg-selected text-foreground'
-            : 'hover:bg-base-hover'
+            : 'hover:bg-base-hover',
         )}
         onclick={() => openSession(item.session.id)}
         onmouseenter={() => (selectedIndex = index)}

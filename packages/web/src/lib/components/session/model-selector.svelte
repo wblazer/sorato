@@ -1,100 +1,100 @@
 <script lang="ts">
   import { tick } from 'svelte'
-      import { useId } from 'bits-ui'
-      import { Button } from '$lib/components/ui/button/index.js'
-      import * as Command from '$lib/components/ui/command/index.js'
-      import * as Popover from '$lib/components/ui/popover/index.js'
-      import { actionStore } from '$lib/stores/actions.svelte.js'
-      import type { AvailableModel } from '$lib/types.js'
-      import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon'
-      import PlugIcon from 'phosphor-svelte/lib/PlugIcon'
+  import { useId } from 'bits-ui'
+  import { Button } from '$lib/components/ui/button/index.js'
+  import * as Command from '$lib/components/ui/command/index.js'
+  import * as Popover from '$lib/components/ui/popover/index.js'
+  import { actionStore } from '$lib/stores/actions.svelte.js'
+  import type { AvailableModel } from '$lib/types.js'
+  import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon'
+  import PlugIcon from 'phosphor-svelte/lib/PlugIcon'
 
-      interface Props {
-        models: ReadonlyArray<AvailableModel>
-        value: string | null
-        loading?: boolean
-        disabled?: boolean
-        onChange?: (value: string) => void
+  interface Props {
+    models: ReadonlyArray<AvailableModel>
+    value: string | null
+    loading?: boolean
+    disabled?: boolean
+    onChange?: (value: string) => void
+  }
+
+  let {
+    models,
+    value,
+    loading = false,
+    disabled = false,
+    onChange,
+  }: Props = $props()
+
+  let open = $state(false)
+  let triggerRef: HTMLButtonElement | null = $state(null)
+  const listboxId = useId()
+
+  const missing = $derived(
+    value ? !models.some((item) => item.id === value) : false,
+  )
+
+  const selectedModel = $derived(
+    models.find((item) => item.id === value) ?? null,
+  )
+
+  const modelsByProvider = $derived.by(() => {
+    const groups = new Map<string, Array<AvailableModel>>()
+
+    for (const model of models) {
+      const provider = model.provider.trim() || 'Unknown'
+      const providerModels = groups.get(provider)
+
+      if (providerModels) {
+        providerModels.push(model)
+        continue
       }
 
-      let {
-        models,
-        value,
-        loading = false,
-        disabled = false,
-        onChange,
-      }: Props = $props()
+      groups.set(provider, [model])
+    }
 
-      let open = $state(false)
-      let triggerRef: HTMLButtonElement | null = $state(null)
-      const listboxId = useId()
+    return Array.from(groups.entries(), ([provider, items]) => ({
+      provider,
+      items,
+    }))
+  })
 
-      const missing = $derived(
-        value ? !models.some((item) => item.id === value) : false
-      )
+  function closeAndFocusTrigger() {
+    open = false
+    tick().then(() => triggerRef?.focus())
+  }
 
-      const selectedModel = $derived(
-        models.find((item) => item.id === value) ?? null
-      )
+  function selectModel(id: string) {
+    onChange?.(id)
+    closeAndFocusTrigger()
+  }
 
-      const modelsByProvider = $derived.by(() => {
-        const groups = new Map<string, Array<AvailableModel>>()
+  function connectProvider() {
+    open = false
+    queueMicrotask(() => actionStore.trigger('provider.connect'))
+  }
 
-        for (const model of models) {
-          const provider = model.provider.trim() || 'Unknown'
-          const providerModels = groups.get(provider)
+  function filterModel(
+    itemValue: string,
+    search: string,
+    keywords: Array<string> = [],
+  ) {
+    const query = search.trim().toLowerCase()
 
-          if (providerModels) {
-            providerModels.push(model)
-            continue
-          }
+    if (!query) return 1
 
-          groups.set(provider, [model])
-        }
+    const haystack = [itemValue, ...keywords].join(' ').toLowerCase()
+    const terms = query.split(/\s+/)
 
-        return Array.from(groups.entries(), ([provider, items]) => ({
-          provider,
-          items,
-        }))
-      })
+    return terms.every((term) => haystack.includes(term)) ? 1 : 0
+  }
 
-      function closeAndFocusTrigger() {
-        open = false
-        tick().then(() => triggerRef?.focus())
-      }
-
-      function selectModel(id: string) {
-        onChange?.(id)
-        closeAndFocusTrigger()
-      }
-
-      function connectProvider() {
-        open = false
-        queueMicrotask(() => actionStore.trigger('provider.connect'))
-      }
-
-      function filterModel(
-        itemValue: string,
-        search: string,
-        keywords: Array<string> = []
-      ) {
-        const query = search.trim().toLowerCase()
-
-        if (!query) return 1
-
-        const haystack = [itemValue, ...keywords].join(' ').toLowerCase()
-        const terms = query.split(/\s+/)
-
-        return terms.every((term) => haystack.includes(term)) ? 1 : 0
-      }
-
-      const triggerLabel = $derived.by(() => {
-        if (loading) return 'Loading models...'
-        if (selectedModel) return selectedModel.name
-        if (missing && value) return `${value} (unavailable)`
-        if (models.length === 0) return 'No models'
-        return 'Select model'
-      })
+  const triggerLabel = $derived.by(() => {
+    if (loading) return 'Loading models...'
+    if (selectedModel) return selectedModel.name
+    if (missing && value) return `${value} (unavailable)`
+    if (models.length === 0) return 'No models'
+    return 'Select model'
+  })
 </script>
 
 <Popover.Root bind:open>
@@ -154,7 +154,10 @@
         {/if}
       </Command.List>
       <div class="-mx-1 border-t px-1.5 pt-1.5 pb-1">
-        <Command.Item value="connect provider api key" onSelect={connectProvider}>
+        <Command.Item
+          value="connect provider api key"
+          onSelect={connectProvider}
+        >
           <PlugIcon class="text-muted-foreground" />
           <span class="truncate">Connect provider</span>
         </Command.Item>

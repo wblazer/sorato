@@ -18,12 +18,14 @@
       {#if projectStore.error}
         <Empty.Title>Couldn’t load projects</Empty.Title>
         <Empty.Description>
-          Sorato couldn’t check the server workspace list. Retry before adding a project.
+          Sorato couldn’t check the server workspace list. Retry before adding a
+          project.
         </Empty.Description>
       {:else}
         <Empty.Title>Add a project</Empty.Title>
         <Empty.Description>
-          Projects are durable server workspaces. For now, a project is a local directory.
+          Projects are durable server workspaces. For now, a project is a local
+          directory.
         </Empty.Description>
       {/if}
     </Empty.Header>
@@ -41,7 +43,10 @@
             <Item.Description>{projectStore.error}</Item.Description>
           </Item.Content>
           <Item.Actions>
-            <Button variant="outline" onclick={() => void projectStore.fetchProjects()}>
+            <Button
+              variant="outline"
+              onclick={() => void projectStore.fetchProjects()}
+            >
               Retry
             </Button>
           </Item.Actions>

@@ -40,7 +40,9 @@
   <button
     type="button"
     bind:this={triggerEl}
-    class={cn('flex w-full items-center gap-3 rounded-md px-3 py-2.5 hover:bg-base-hover text-left')}
+    class={cn(
+      'flex w-full items-center gap-3 rounded-md px-3 py-2.5 hover:bg-base-hover text-left',
+    )}
     onclick={() => (open = !open)}
   >
     <div class="min-w-0 flex-1">
@@ -59,13 +61,17 @@
   </button>
 
   {#if open}
-    <div class="absolute top-full left-0 z-50 mt-1 w-full rounded-md border bg-popover p-1 shadow-md shadow-shadow/40">
+    <div
+      class="absolute top-full left-0 z-50 mt-1 w-full rounded-md border bg-popover p-1 shadow-md shadow-shadow/40"
+    >
       {#each projectStore.projects as project (project.id)}
         <button
           type="button"
           class={cn(
             'flex w-full flex-col rounded-sm px-2.5 py-2 text-left',
-            project.id === projectStore.selectedProjectId ? 'bg-selected text-foreground' : 'hover:bg-base-hover'
+            project.id === projectStore.selectedProjectId
+              ? 'bg-selected text-foreground'
+              : 'hover:bg-base-hover',
           )}
           onclick={() => {
             sessionStore.selectProject(project.id)
@@ -73,7 +79,9 @@
           }}
         >
           <span class="truncate text-sm font-medium">{project.name}</span>
-          <span class="truncate text-xs text-muted-foreground">{project.path}</span>
+          <span class="truncate text-xs text-muted-foreground"
+            >{project.path}</span
+          >
         </button>
       {/each}
 

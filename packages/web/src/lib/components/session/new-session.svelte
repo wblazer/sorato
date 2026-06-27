@@ -21,7 +21,7 @@
   let sessionSearchOpen = $state(false)
 
   const activeProjectId = $derived(
-    tabStore.activeTab?.projectId ?? projectStore.selectedProjectId
+    tabStore.activeTab?.projectId ?? projectStore.selectedProjectId,
   )
   function handleModel(value: string, options = {}) {
     modelsStore.select(value, options)
@@ -40,7 +40,7 @@
           timestamp: session.lastUserMessageAt ?? session.updatedAt,
         }
       })
-      .sort((a, b) => b.timestamp - a.timestamp)
+      .sort((a, b) => b.timestamp - a.timestamp),
   )
 
   const recentSessions = $derived(sessionOptions.slice(0, 6))
@@ -89,19 +89,22 @@
         model,
         null,
         null,
-        modelsStore.selectedOptions
+        modelsStore.selectedOptions,
       )
       if (!response) return
 
       writeSelectedHead(
-        selectedHeadStorageKey(connectionsStore.activeConnection?.id, session.id),
-        { type: 'run', runId: response.runId, baseNodeId: response.baseNodeId }
+        selectedHeadStorageKey(
+          connectionsStore.activeConnection?.id,
+          session.id,
+        ),
+        { type: 'run', runId: response.runId, baseNodeId: response.baseNodeId },
       )
       messagesStore.addOptimisticUserMessage(
         session.id,
         input,
         response.baseNodeId,
-        response.runId
+        response.runId,
       )
     } finally {
       sending = false
@@ -112,7 +115,9 @@
 <SessionSearchDialog bind:open={sessionSearchOpen} />
 
 <div class="flex h-full flex-col">
-  <div class="mx-auto flex min-h-0 w-full max-w-6xl flex-1 items-center justify-center px-6 py-6">
+  <div
+    class="mx-auto flex min-h-0 w-full max-w-6xl flex-1 items-center justify-center px-6 py-6"
+  >
     <div class="flex w-full flex-col items-center gap-10">
       {#if sessionStore.sessions.length > 0}
         <div class="w-full max-w-md space-y-2">
@@ -157,7 +162,9 @@
           </div>
         </div>
 
-        <div class="flex w-full max-w-sm items-center gap-3 text-sm font-medium text-muted-foreground">
+        <div
+          class="flex w-full max-w-sm items-center gap-3 text-sm font-medium text-muted-foreground"
+        >
           <div class="h-px flex-1 bg-border"></div>
           <span>or</span>
           <div class="h-px flex-1 bg-border"></div>
@@ -195,7 +202,9 @@
             </Item.Media>
             <Item.Content>
               <Item.Title>No models available</Item.Title>
-              <Item.Description>Connect provider credentials or choose a different project.</Item.Description>
+              <Item.Description
+                >Connect provider credentials or choose a different project.</Item.Description
+              >
             </Item.Content>
           </Item.Root>
         {/if}
@@ -212,9 +221,16 @@
     modelOptions={modelsStore.selectedOptions}
     modelLoading={modelsStore.loading}
     modelDisabled={sending || !activeProjectId}
-    disabled={sending || modelsStore.loading || !modelsStore.selectedModel || !activeProjectId}
+    disabled={sending ||
+      modelsStore.loading ||
+      !modelsStore.selectedModel ||
+      !activeProjectId}
     autoFocus
     focusKey={tabStore.activeTabId}
-    placeholder={activeProjectId ? (sending ? 'Creating session...' : 'What would you like to do?') : 'Choose a project to start'}
+    placeholder={activeProjectId
+      ? sending
+        ? 'Creating session...'
+        : 'What would you like to do?'
+      : 'Choose a project to start'}
   />
 </div>

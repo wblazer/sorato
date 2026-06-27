@@ -31,7 +31,7 @@
   const listboxId = useId()
 
   const selectedProject = $derived(
-    projects.find((project) => project.id === value) ?? null
+    projects.find((project) => project.id === value) ?? null,
   )
 
   function closeAndFocusTrigger() {
@@ -52,7 +52,7 @@
   function filterProject(
     itemValue: string,
     search: string,
-    keywords: Array<string> = []
+    keywords: Array<string> = [],
   ) {
     const query = search.trim().toLowerCase()
     if (!query) return 1
@@ -87,7 +87,9 @@
         <span class="min-w-0 flex-1">
           <span class="block truncate font-medium">{triggerLabel}</span>
           {#if selectedProject}
-            <span class="block truncate text-sm font-normal text-muted-foreground">
+            <span
+              class="block truncate text-sm font-normal text-muted-foreground"
+            >
               {selectedProject.path}
             </span>
           {/if}
@@ -129,7 +131,10 @@
         {/if}
       </Command.List>
       <div class="-mx-1 border-t px-1.5 pt-1.5 pb-1">
-        <Command.Item value="new add project local folder" onSelect={addProject}>
+        <Command.Item
+          value="new add project local folder"
+          onSelect={addProject}
+        >
           <PlusIcon class="text-muted-foreground" />
           <span class="truncate">New Project</span>
         </Command.Item>

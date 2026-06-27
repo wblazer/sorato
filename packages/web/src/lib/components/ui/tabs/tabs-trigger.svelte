@@ -1,12 +1,12 @@
 <script lang="ts">
   import { Tabs as TabsPrimitive } from 'bits-ui'
-      import { cn } from '$lib/utils.js'
+  import { cn } from '$lib/utils.js'
 
-      let {
-        ref = $bindable(null),
-        class: className,
-        ...restProps
-      }: TabsPrimitive.TriggerProps = $props()
+  let {
+    ref = $bindable(null),
+    class: className,
+    ...restProps
+  }: TabsPrimitive.TriggerProps = $props()
 </script>
 
 <TabsPrimitive.Trigger
@@ -17,7 +17,7 @@
     'group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent group-data-[variant=line]/tabs-list:data-active:border-transparent',
     'data-active:bg-selected data-active:border-border data-active:text-foreground',
     'after:absolute after:hidden after:bg-foreground group-data-[orientation=horizontal]/tabs:after:inset-x-0 group-data-[orientation=horizontal]/tabs:after:bottom-[-5px] group-data-[orientation=horizontal]/tabs:after:h-0.5 group-data-[orientation=vertical]/tabs:after:inset-y-0 group-data-[orientation=vertical]/tabs:after:-right-1 group-data-[orientation=vertical]/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:block',
-    className
+    className,
   )}
   {...restProps}
 />

@@ -23,7 +23,7 @@
   <span
     class={cn(
       'col-start-1 row-start-1 inline-flex items-center justify-center gap-[inherit]',
-      value !== 'idle' && 'invisible'
+      value !== 'idle' && 'invisible',
     )}
   >
     {@render idle()}
@@ -31,7 +31,7 @@
   <span
     class={cn(
       'col-start-1 row-start-1 inline-flex items-center justify-center gap-[inherit]',
-      value !== 'pending' && 'invisible'
+      value !== 'pending' && 'invisible',
     )}
   >
     {@render pending()}
@@ -39,7 +39,7 @@
   <span
     class={cn(
       'col-start-1 row-start-1 inline-flex items-center justify-center gap-[inherit]',
-      value !== 'success' && 'invisible'
+      value !== 'success' && 'invisible',
     )}
   >
     {@render success()}

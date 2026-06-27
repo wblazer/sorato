@@ -22,7 +22,12 @@
 
 <div class="flex min-h-0 flex-1 flex-col" data-slot="session-list">
   <div class="px-3 py-2">
-    <Button variant="outline" size="lg" class="w-full" onclick={tabStore.openNewTab}>
+    <Button
+      variant="outline"
+      size="lg"
+      class="w-full"
+      onclick={tabStore.openNewTab}
+    >
       <PlusIcon class="size-4" />
       New Tab
     </Button>
@@ -31,7 +36,9 @@
   <div class="no-scrollbar min-h-0 flex-1 overflow-y-auto">
     <div class="px-2 pb-2">
       {#if sessionStore.loading && sessionStore.sessions.length === 0}
-        <p class="px-3 py-4 text-center text-xs text-muted-foreground">Loading sessions…</p>
+        <p class="px-3 py-4 text-center text-xs text-muted-foreground">
+          Loading sessions…
+        </p>
       {:else if sessionStore.error}
         <div class="px-1 py-2">
           <Item.Root variant="danger" size="xs">
@@ -43,21 +50,28 @@
               <Item.Description>{sessionStore.error}</Item.Description>
             </Item.Content>
             <Item.Actions>
-              <Button variant="outline" onclick={() => void sessionStore.fetchSessions()}>
+              <Button
+                variant="outline"
+                onclick={() => void sessionStore.fetchSessions()}
+              >
                 Retry
               </Button>
             </Item.Actions>
           </Item.Root>
         </div>
       {:else if sessionStore.filteredSessions.length === 0}
-        <p class="px-3 py-4 text-center text-xs text-muted-foreground">No sessions yet</p>
+        <p class="px-3 py-4 text-center text-xs text-muted-foreground">
+          No sessions yet
+        </p>
       {:else}
         {#each sessionStore.filteredSessions as session (session.id)}
           <button
             type="button"
             class={cn(
               'flex w-full flex-col rounded-md px-3 py-2 text-left',
-              session.id === tabStore.activeTab?.sessionId ? 'bg-selected text-foreground' : 'hover:bg-base-hover'
+              session.id === tabStore.activeTab?.sessionId
+                ? 'bg-selected text-foreground'
+                : 'hover:bg-base-hover',
             )}
             onclick={() => sessionStore.selectSession(session.id)}
           >
@@ -66,10 +80,14 @@
                 {sessionStore.displayTitle(session)}
               </span>
               {#if session.status === 'running'}
-                <span class="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent"></span>
+                <span
+                  class="inline-block h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent"
+                ></span>
               {/if}
             </div>
-            <span class="text-xs text-muted-foreground">{formatRelativeTime(session.updatedAt)}</span>
+            <span class="text-xs text-muted-foreground"
+              >{formatRelativeTime(session.updatedAt)}</span
+            >
           </button>
         {/each}
       {/if}

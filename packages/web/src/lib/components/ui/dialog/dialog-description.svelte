@@ -1,12 +1,12 @@
 <script lang="ts">
   import { Dialog as DialogPrimitive } from 'bits-ui'
-      import { cn } from '$lib/utils.js'
+  import { cn } from '$lib/utils.js'
 
-      let {
-        ref = $bindable(null),
-        class: className,
-        ...restProps
-      }: DialogPrimitive.DescriptionProps = $props()
+  let {
+    ref = $bindable(null),
+    class: className,
+    ...restProps
+  }: DialogPrimitive.DescriptionProps = $props()
 </script>
 
 <DialogPrimitive.Description
@@ -14,7 +14,7 @@
   data-slot="dialog-description"
   class={cn(
     'text-muted-foreground text-sm/relaxed *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground',
-    className
+    className,
   )}
   {...restProps}
 />
