@@ -18,6 +18,10 @@
     selectedHeadStorageKey,
     writeSelectedHead,
   } from '$lib/selected-head-storage.js'
+  import {
+    composerDraftStorageKey,
+    composerHistoryStorageKey,
+  } from '$lib/composer-storage.js'
   import { Effect } from 'effect'
 
   let sending = $state(false)
@@ -25,6 +29,15 @@
 
   const activeProjectId = $derived(
     tabStore.activeTab?.projectId ?? projectStore.selectedProjectId,
+  )
+  const draftStorageKey = $derived(
+    composerDraftStorageKey(
+      connectionsStore.activeConnection?.id,
+      tabStore.activeTab?.id,
+    ),
+  )
+  const historyStorageKey = $derived(
+    composerHistoryStorageKey(connectionsStore.activeConnection?.id),
   )
   function handleModel(value: string, options = {}) {
     modelsStore.select(value, options)
@@ -81,10 +94,10 @@
       void Effect.runPromise(modelsStore.load(activeProjectId))
   }
 
-  async function handleSend(input: string) {
-    if (sending || !activeProjectId) return
+  async function handleSend(input: string): Promise<boolean> {
+    if (sending || !activeProjectId) return false
     const tabId = tabStore.activeTab?.id
-    if (!tabId) return
+    if (!tabId) return false
 
     sending = true
 
@@ -94,12 +107,12 @@
       }
 
       const model = modelsStore.selectedModel
-      if (!model) return
+      if (!model) return false
 
       const session = await Effect.runPromise(
         sessionStore.createSession(activeProjectId, tabId),
       )
-      if (!session) return
+      if (!session) return false
 
       messagesStore.prepareSession(tabId, session.id)
 
@@ -113,7 +126,7 @@
           modelsStore.selectedOptions,
         ),
       )
-      if (!response) return
+      if (!response) return false
 
       writeSelectedHead(
         selectedHeadStorageKey(
@@ -130,6 +143,7 @@
         response.baseNodeId,
         response.runId,
       )
+      return true
     } finally {
       sending = false
     }
@@ -244,6 +258,8 @@
     onSend={handleSend}
     onAttach={handleAttach}
     onModelChange={handleModel}
+    {draftStorageKey}
+    {historyStorageKey}
     models={modelsStore.models}
     model={modelsStore.selectedModel}
     modelOptions={modelsStore.selectedOptions}

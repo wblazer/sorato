@@ -7,7 +7,12 @@
   import { modelsStore } from '$lib/stores/models.svelte.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
+  import { connectionsStore } from '$lib/stores/connections.svelte.js'
   import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
+  import {
+    composerDraftStorageKey,
+    composerHistoryStorageKey,
+  } from '$lib/composer-storage.js'
   import type { MessageNode, ModelCall } from '$lib/types.js'
   import {
     persistedSources,
@@ -88,6 +93,12 @@
   const showStreamingIndicator = $derived(
     selectedHeadValue?.type === 'run' &&
       (isFollowingActiveRun || followedStreamingParts.length > 0),
+  )
+  const draftStorageKey = $derived(
+    composerDraftStorageKey(connectionsStore.activeConnection?.id, tabId),
+  )
+  const historyStorageKey = $derived(
+    composerHistoryStorageKey(connectionsStore.activeConnection?.id),
   )
 
   const persistedTranscriptItems = $derived.by(() =>
@@ -261,15 +272,15 @@
   // run head follows the active run while it is streaming and resolves to
   // the latest persisted node for that run once inactive. This preserves
   // explicit node selection for mid-run history browsing.
-  function handleSend(input: string) {
+  async function handleSend(input: string): Promise<boolean> {
     const model = modelsStore.selectedModel
-    if (!model) return
+    if (!model) return false
 
     const baseNodeId = selectedHead.selectedBaseNodeId
     const afterRunId = selectedHead.selectedAfterRunId
     const wasRunning = sessionStore.isRunning(sessionId)
 
-    void Effect.runPromise(
+    const response = await Effect.runPromise(
       sessionStore.runAgent(
         sessionId,
         input,
@@ -278,28 +289,29 @@
         afterRunId,
         modelsStore.selectedOptions,
       ),
-    ).then((response) => {
-      if (!response) return
-      if (response.status === 'queued') return
+    )
+    if (!response) return false
+    if (response.status === 'queued') return true
 
-      selectedHead.setSelectedHead({
-        type: 'run',
-        runId: response.runId,
-        baseNodeId: response.baseNodeId,
-      })
-
-      if (!wasRunning) {
-        // Show the user's message immediately — don't wait for the server
-        // round-trip. The optimistic node is replaced on the next refresh.
-        messagesStore.addOptimisticUserMessage(
-          tabId,
-          sessionId,
-          input,
-          response.baseNodeId,
-          response.runId,
-        )
-      }
+    selectedHead.setSelectedHead({
+      type: 'run',
+      runId: response.runId,
+      baseNodeId: response.baseNodeId,
     })
+
+    if (!wasRunning) {
+      // Show the user's message immediately — don't wait for the server
+      // round-trip. The optimistic node is replaced on the next refresh.
+      messagesStore.addOptimisticUserMessage(
+        tabId,
+        sessionId,
+        input,
+        response.baseNodeId,
+        response.runId,
+      )
+    }
+
+    return true
   }
 
   function handleStop() {
@@ -469,6 +481,8 @@
     {isStopping}
     autoFocus={active}
     focusKey={sessionId}
+    {draftStorageKey}
+    {historyStorageKey}
     draftText={composerDraftText}
     draftKey={composerDraftKey}
     {sessionStatus}

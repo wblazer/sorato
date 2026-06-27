@@ -5,6 +5,12 @@
   import { tick } from 'svelte'
   import { Textarea } from '$lib/components/ui/textarea/index.js'
   import * as Select from '$lib/components/ui/select/index.js'
+  import {
+    pushComposerHistory,
+    readComposerDraft,
+    readComposerHistory,
+    writeComposerDraft,
+  } from '$lib/composer-storage.js'
   import type {
     AvailableModel,
     MessageNode,
@@ -35,13 +41,15 @@
     disabled = false,
     autoFocus = false,
     focusKey,
+    draftStorageKey,
+    historyStorageKey,
     draftText,
     draftKey,
     placeholder,
     sessionStatus = null,
     tokenUsageMessages = [],
   }: {
-    onSend: (input: string) => void
+    onSend: (input: string) => boolean | Promise<boolean>
     onStop?: () => void
     onAttach?: () => void
     onDismissStatus?: () => void
@@ -56,6 +64,8 @@
     disabled?: boolean
     autoFocus?: boolean
     focusKey?: string | number | null
+    draftStorageKey?: string | null
+    historyStorageKey?: string | null
     draftText?: string
     draftKey?: string | number | null
     placeholder?: string
@@ -66,6 +76,10 @@
   let input = $state('')
   let textarea: HTMLTextAreaElement | null = $state(null)
   let now = $state(Date.now())
+  let loadedDraftStorageKey = $state<string | null>(null)
+  let historyIndex = $state(-1)
+  let savedHistoryDraft = $state<string | null>(null)
+  let submitting = $state(false)
 
   const selectedModel = $derived(
     models.find((item) => item.id === model) ?? null,
@@ -120,19 +134,124 @@
     onModelChange?.(model, next)
   }
 
-  function handleSubmit() {
+  function resetHistoryNavigation() {
+    historyIndex = -1
+    savedHistoryDraft = null
+  }
+
+  function setInput(value: string, options?: { persist?: boolean }) {
+    input = value
+    if (options?.persist !== false) writeComposerDraft(draftStorageKey, value)
+  }
+
+  async function handleSubmit() {
     const trimmed = input.trim()
-    if (!trimmed || disabled) return
-    onSend(trimmed)
-    input = ''
+    if (!trimmed || disabled || submitting) return
+
+    submitting = true
+    try {
+      const sent = await onSend(trimmed)
+      if (!sent) return
+
+      pushComposerHistory(historyStorageKey, trimmed)
+      resetHistoryNavigation()
+      setInput('')
+    } finally {
+      submitting = false
+    }
+  }
+
+  function canNavigateHistory(direction: 'up' | 'down') {
+    if (!textarea) return false
+    if (textarea.selectionStart !== textarea.selectionEnd) return false
+
+    const cursor = textarea.selectionStart
+    if (historyIndex >= 0) {
+      return direction === 'up' ? cursor === 0 : cursor === input.length
+    }
+
+    return direction === 'up'
+      ? cursor === 0 && input.length === 0
+      : cursor === input.length
+  }
+
+  function applyHistoryValue(value: string, cursor: 'start' | 'end') {
+    setInput(value)
+    tick().then(() => {
+      if (!textarea) return
+      const offset = cursor === 'start' ? 0 : textarea.value.length
+      textarea.focus()
+      textarea.setSelectionRange(offset, offset)
+    })
+  }
+
+  function navigateHistory(direction: 'up' | 'down') {
+    const history = readComposerHistory(historyStorageKey)
+    if (direction === 'up') {
+      if (history.length === 0) return false
+
+      if (historyIndex === -1) {
+        savedHistoryDraft = input
+        historyIndex = 0
+        applyHistoryValue(history[0] ?? '', 'start')
+        return true
+      }
+
+      if (historyIndex < history.length - 1) {
+        historyIndex += 1
+        applyHistoryValue(history[historyIndex] ?? '', 'start')
+        return true
+      }
+
+      return false
+    }
+
+    if (historyIndex > 0) {
+      historyIndex -= 1
+      applyHistoryValue(history[historyIndex] ?? '', 'end')
+      return true
+    }
+
+    if (historyIndex === 0) {
+      const draft = savedHistoryDraft ?? ''
+      resetHistoryNavigation()
+      applyHistoryValue(draft, 'end')
+      return true
+    }
+
+    return false
   }
 
   function handleKeydown(e: KeyboardEvent) {
+    if (
+      (e.key === 'ArrowUp' || e.key === 'ArrowDown') &&
+      !e.altKey &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      canNavigateHistory(e.key === 'ArrowUp' ? 'up' : 'down') &&
+      navigateHistory(e.key === 'ArrowUp' ? 'up' : 'down')
+    ) {
+      e.preventDefault()
+      return
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSubmit()
+      void handleSubmit()
     }
   }
+
+  function handleInput(e: Event) {
+    resetHistoryNavigation()
+    setInput((e.currentTarget as HTMLTextAreaElement).value)
+  }
+
+  $effect(() => {
+    if (draftStorageKey === loadedDraftStorageKey) return
+    loadedDraftStorageKey = draftStorageKey ?? null
+    resetHistoryNavigation()
+    setInput(readComposerDraft(draftStorageKey) ?? '', { persist: false })
+  })
 
   $effect(() => {
     focusKey
@@ -145,7 +264,8 @@
 
   $effect(() => {
     if (draftKey === undefined || draftKey === null) return
-    input = draftText ?? ''
+    resetHistoryNavigation()
+    setInput(draftText ?? '')
 
     tick().then(() => {
       if (disabled) return
@@ -204,6 +324,7 @@
         bind:ref={textarea}
         bind:value={input}
         onkeydown={handleKeydown}
+        oninput={handleInput}
         {disabled}
         {placeholder}
         rows={1}
@@ -325,7 +446,7 @@
           {:else}
             <Button
               onclick={handleSubmit}
-              disabled={disabled || !input.trim()}
+              disabled={disabled || submitting || !input.trim()}
               size="icon-lg"
               aria-label="Send message"
             >
