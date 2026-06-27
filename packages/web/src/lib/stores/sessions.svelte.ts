@@ -4,7 +4,6 @@ import type { ModelOptions, Session, SessionRunStatus } from '$lib/types.js'
 import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
 import { messagesStore } from './messages.svelte.js'
-import { modelsStore } from './models.svelte.js'
 import { projectStore } from './projects.svelte.js'
 import { onSessionRefreshRequest } from './session-refresh-bus.js'
 import { tabStore } from './tabs.svelte.js'
@@ -18,15 +17,8 @@ export interface QueuedMessageDraft {
 
 function createSessionStore() {
   let sessions = $state<Session[]>([])
-  let selectedSessionId = $state<string | null>(null)
   let loading = $state(false)
   let error = $state<string | null>(null)
-
-  /**
-   * When true, the main area shows the new-session composer
-   * instead of an existing session view.
-   */
-  let composing = $state(true)
 
   const filteredSessions = $derived.by(() => {
     const projectId =
@@ -213,10 +205,6 @@ function createSessionStore() {
         return
       }
       sessions = [...result.value]
-
-      const projectId =
-        tabStore.activeTab?.projectId ?? projectStore.selectedProjectId
-      if (projectId) void modelsStore.load(projectId)
     } catch (e) {
       error = requestErrorMessage(e, 'Failed to load sessions')
     } finally {
@@ -248,8 +236,6 @@ function createSessionStore() {
 
       const session: Session = result.value
       sessions = [session, ...sessions]
-      selectedSessionId = session.id
-      composing = false
       if (tabStore.activeTab)
         tabStore.attachSession(tabStore.activeTab.id, session)
       return session
@@ -440,13 +426,6 @@ function createSessionStore() {
     }
   }
 
-  /** Enter new-session composer mode. */
-  function startComposing() {
-    selectedSessionId = null
-    composing = true
-    messagesStore.clear()
-  }
-
   /** Check if a session currently has an active run. */
   function isRunning(sessionId: string): boolean {
     const session = sessions.find((s) => s.id === sessionId)
@@ -497,12 +476,6 @@ function createSessionStore() {
     get filteredSessions() {
       return filteredSessions
     },
-    get selectedSessionId() {
-      return selectedSessionId
-    },
-    get composing() {
-      return composing
-    },
     get loading() {
       return loading
     },
@@ -513,14 +486,9 @@ function createSessionStore() {
       projectStore.selectProject(projectId)
       if (tabStore.activeTab)
         tabStore.setDraftProject(tabStore.activeTab.id, projectId)
-      selectedSessionId = null
-      composing = true
       messagesStore.clear()
-      void modelsStore.load(projectId)
     },
     selectSession(id: string) {
-      selectedSessionId = id
-      composing = false
       const session = sessions.find((item) => item.id === id)
       if (session && tabStore.activeTab)
         tabStore.attachSession(tabStore.activeTab.id, session)
@@ -538,7 +506,6 @@ function createSessionStore() {
     displayTitle,
     clearSessionError,
     queuedMessagesFor,
-    startComposing,
     createSession,
     runAgent,
     compactRange,

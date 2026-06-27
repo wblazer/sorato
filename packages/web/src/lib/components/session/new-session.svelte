@@ -8,6 +8,8 @@
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
   import Composer from './composer.svelte'
   import * as Item from '$lib/components/ui/item/index.js'
+  import EmptySessionTreePanel from './empty-session-tree-panel.svelte'
+  import SessionShell from './session-shell.svelte'
   import ProjectSelector from './project-selector.svelte'
   import SessionSearchDialog from './session-search-dialog.svelte'
   import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon'
@@ -114,7 +116,11 @@
 
 <SessionSearchDialog bind:open={sessionSearchOpen} />
 
-<div class="flex h-full flex-col">
+<SessionShell title="New Session">
+  {#snippet panel()}
+    <EmptySessionTreePanel />
+  {/snippet}
+
   <div
     class="mx-auto flex min-h-0 w-full max-w-6xl flex-1 items-center justify-center px-6 py-6"
   >
@@ -233,4 +239,4 @@
         : 'What would you like to do?'
       : 'Choose a project to start'}
   />
-</div>
+</SessionShell>

@@ -136,7 +136,6 @@
         defaultShortcut: 'Control+N',
         run: () => {
           tabStore.resetActiveTabToNewSession()
-          sessionStore.startComposing()
         },
       }),
       actionStore.register({

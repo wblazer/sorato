@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LoadingState from '$lib/components/loading-state.svelte'
   import { messagesStore } from '$lib/stores/messages.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import type { SelectedHead } from '$lib/selected-head-storage.js'
@@ -412,7 +413,7 @@
 
     <Tabs.Content value="tree" class="min-h-0 overflow-auto">
       {#if messagesStore.loading}
-        <div class="p-3 text-sm text-muted-foreground">Loading tree...</div>
+        <LoadingState />
       {:else if rows.length === 0}
         <div class="p-3 text-sm text-muted-foreground">No messages yet.</div>
       {:else if compactMode}
