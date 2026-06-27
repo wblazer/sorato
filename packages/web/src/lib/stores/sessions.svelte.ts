@@ -486,7 +486,7 @@ function createSessionStore() {
       projectStore.selectProject(projectId)
       if (tabStore.activeTab)
         tabStore.setDraftProject(tabStore.activeTab.id, projectId)
-      messagesStore.clear()
+      messagesStore.clearActive()
     },
     selectSession(id: string) {
       const session = sessions.find((item) => item.id === id)

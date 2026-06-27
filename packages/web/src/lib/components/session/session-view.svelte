@@ -25,10 +25,16 @@
   import { SessionSelectedHeadController } from './session-selected-head.svelte.js'
   import * as Item from '$lib/components/ui/item/index.js'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
-  let { sessionId, title }: { sessionId: string; title: string | null } =
-    $props()
+  let {
+    sessionId,
+    title,
+    active = true,
+  }: { sessionId: string; title: string | null; active?: boolean } = $props()
 
-  const selectedHead = new SessionSelectedHeadController(() => sessionId)
+  const selectedHead = new SessionSelectedHeadController(
+    () => sessionId,
+    () => active,
+  )
   const scroller = new MessageScrollerController({
     autoScroll: true,
     defaultScrollPosition: 'last-anchor',
@@ -54,6 +60,9 @@
     return project?.name ?? null
   })
   const visibleMessages = $derived(selectedHead.visibleMessages)
+  const messagesLoading = $derived(messagesStore.loadingFor(sessionId))
+  const messagesLoaded = $derived(messagesStore.loadedFor(sessionId))
+  const messagesError = $derived(messagesStore.errorFor(sessionId))
   const selectedHeadValue = $derived(selectedHead.renderHead)
   const followedRun = $derived(
     selectedHeadValue?.type === 'run'
@@ -207,7 +216,7 @@
   }
 
   $effect(() => {
-    if (messagesStore.currentSessionId !== sessionId) {
+    if (!messagesLoaded && !messagesLoading) {
       void messagesStore.loadMessages(sessionId)
     }
   })
@@ -231,8 +240,8 @@
   })
 
   $effect(() => {
-    if (messagesStore.currentSessionId !== sessionId) return
-    if (messagesStore.loading || transcriptRows.length === 0) return
+    if (!active) return
+    if (messagesLoading || transcriptRows.length === 0) return
     if (initialScrollSessionId === sessionId) return
     initialScrollSessionId = sessionId
     scrollToLatestAfterRender()
@@ -344,9 +353,9 @@
         class="mr-0.5 h-full"
         viewportClass="scroll-mask-y scroll-mask-y-from-98% outline-none"
       >
-        {#if messagesStore.loading}
+        {#if messagesLoading}
           <LoadingState />
-        {:else if messagesStore.error}
+        {:else if messagesError}
           <div
             class="mx-auto flex w-full max-w-6xl items-center justify-center p-8"
           >
@@ -356,14 +365,14 @@
               </Item.Media>
               <Item.Content>
                 <Item.Title>Messages failed to load</Item.Title>
-                <Item.Description>{messagesStore.error}</Item.Description>
+                <Item.Description>{messagesError}</Item.Description>
               </Item.Content>
               <Item.Actions>
                 <Button variant="outline" onclick={retryMessages}>Retry</Button>
               </Item.Actions>
             </Item.Root>
           </div>
-        {:else if messagesStore.loaded || isRunning}
+        {:else if messagesLoaded || isRunning}
           <div
             use:scroller.content
             role="log"
@@ -444,7 +453,7 @@
     modelLoading={modelsStore.loading}
     {isRunning}
     {isStopping}
-    autoFocus
+    autoFocus={active}
     focusKey={sessionId}
     draftText={composerDraftText}
     draftKey={composerDraftKey}

@@ -36,6 +36,7 @@
   const selectedModel = $derived(
     models.find((item) => item.id === value) ?? null,
   )
+  const showLoading = $derived(loading && models.length === 0)
 
   const modelsByProvider = $derived.by(() => {
     const groups = new Map<string, Array<AvailableModel>>()
@@ -90,7 +91,7 @@
 
   const triggerLabel = $derived.by(() => {
     if (selectedModel) return selectedModel.name
-    if (loading) return 'Loading models...'
+    if (showLoading) return 'Loading models...'
     if (missing && value) return `${value} (unavailable)`
     if (models.length === 0) return 'No models'
     return 'Select model'
@@ -120,7 +121,7 @@
     <Command.Root class="rounded-lg p-1" filter={filterModel}>
       <Command.Input placeholder="Search models..." />
       <Command.List id={listboxId} class="h-60 py-1.5">
-        {#if loading}
+        {#if showLoading}
           <div class="px-3 py-6 text-center text-sm text-muted-foreground">
             Loading models...
           </div>

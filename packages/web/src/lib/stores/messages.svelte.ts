@@ -14,11 +14,22 @@ import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
 import { requestSessionRefresh } from './session-refresh-bus.js'
 
+interface MessageSessionState {
+  readonly messages: MessageNode[]
+  readonly loading: boolean
+  readonly loaded: boolean
+  readonly error: string | null
+}
+
+const emptySessionState: MessageSessionState = {
+  messages: [],
+  loading: false,
+  loaded: false,
+  error: null,
+}
+
 function createMessagesStore() {
-  let messages = $state<MessageNode[]>([])
-  let loading = $state(false)
-  let loaded = $state(false)
-  let error = $state<string | null>(null)
+  let sessionStates = $state<Record<string, MessageSessionState>>({})
   let currentSessionId = $state<string | null>(null)
 
   let streamingParts = $state<MessagePart[]>([])
@@ -27,6 +38,28 @@ function createMessagesStore() {
   let streamConnection: SseConnection | null = null
   let streamedRunId = $state<string | null>(null)
   let streamedRunBaseNodeId = $state<string | null>(null)
+
+  const currentState = $derived(
+    currentSessionId === null
+      ? emptySessionState
+      : (sessionStates[currentSessionId] ?? emptySessionState)
+  )
+
+  function updateSessionState(
+    sessionId: string,
+    update: (state: MessageSessionState) => MessageSessionState
+  ) {
+    sessionStates = {
+      ...sessionStates,
+      [sessionId]: update(sessionStates[sessionId] ?? emptySessionState),
+    }
+  }
+
+  function stateFor(sessionId: string | null): MessageSessionState {
+    return sessionId === null
+      ? emptySessionState
+      : (sessionStates[sessionId] ?? emptySessionState)
+  }
 
   const getLastCursor = (runId: string) => lastCursors.get(runId) ?? null
 
@@ -196,11 +229,13 @@ function createMessagesStore() {
   }
 
   function prepareSession(sessionId: string) {
-    messages = []
+    updateSessionState(sessionId, () => ({
+      messages: [],
+      loading: false,
+      loaded: true,
+      error: null,
+    }))
     currentSessionId = sessionId
-    loading = false
-    loaded = true
-    error = null
     streamingParts = []
     resetCursor()
     streamedRunId = null
@@ -209,18 +244,23 @@ function createMessagesStore() {
   }
 
   async function loadMessages(sessionId: string) {
-    const hasExisting = currentSessionId === sessionId && messages.length > 0
+    const hasExisting = sessionStates[sessionId]?.loaded === true
 
     streamingParts = []
     resetCursor()
     streamedRunId = null
     streamedRunBaseNodeId = null
     closeRunStream()
-    error = null
 
     if (!hasExisting) {
-      loading = true
-      loaded = false
+      updateSessionState(sessionId, (state) => ({
+        ...state,
+        loading: true,
+        loaded: false,
+        error: null,
+      }))
+    } else {
+      updateSessionState(sessionId, (state) => ({ ...state, error: null }))
     }
 
     currentSessionId = sessionId
@@ -232,27 +272,29 @@ function createMessagesStore() {
         'Failed to load messages'
       )
 
-      if (currentSessionId !== sessionId) return
-
       if (!result.ok) throw new Error(result.error.message)
 
       const serverMessages: MessageNode[] = result.value as MessageNode[]
       await preloadMessageToolDiffs(serverMessages)
 
-      if (currentSessionId !== sessionId) return
-
       if (!(hasExisting && serverMessages.length === 0)) {
-        messages = serverMessages
+        updateSessionState(sessionId, (state) => ({
+          ...state,
+          messages: serverMessages,
+        }))
       }
     } catch (e) {
-      if (currentSessionId !== sessionId) return
-      error = requestErrorMessage(e, 'Failed to load messages')
-      if (!hasExisting) messages = []
+      updateSessionState(sessionId, (state) => ({
+        ...state,
+        messages: hasExisting ? state.messages : [],
+        error: requestErrorMessage(e, 'Failed to load messages'),
+      }))
     } finally {
-      if (currentSessionId === sessionId) {
-        loading = false
-        loaded = true
-      }
+      updateSessionState(sessionId, (state) => ({
+        ...state,
+        loading: false,
+        loaded: true,
+      }))
     }
   }
 
@@ -296,7 +338,12 @@ function createMessagesStore() {
       encoded: { role: 'user', content: input },
       createdAt: now,
     }
-    messages = [...messages, optimistic]
+    updateSessionState(sessionId, (state) => ({
+      ...state,
+      messages: [...state.messages, optimistic],
+      loaded: true,
+      error: null,
+    }))
   }
 
   async function refreshMessages(
@@ -316,8 +363,14 @@ function createMessagesStore() {
       const fresh: MessageNode[] = result.value as MessageNode[]
       await preloadMessageToolDiffs(fresh)
 
+      updateSessionState(sessionId, (state) => ({
+        ...state,
+        messages: fresh,
+        loaded: true,
+        error: null,
+      }))
+
       if (currentSessionId === sessionId) {
-        messages = fresh
         if (
           opts?.clearStreamingPartsForRun &&
           streamedRunId === opts.clearStreamingPartsForRun
@@ -349,31 +402,32 @@ function createMessagesStore() {
     }
   })
 
-  function clear() {
+  function clearActive() {
     closeRunStream()
-    messages = []
     currentSessionId = null
-    loading = false
-    loaded = false
-    error = null
     streamingParts = []
     resetCursor()
     streamedRunId = null
     streamedRunBaseNodeId = null
   }
 
+  function clearAll() {
+    clearActive()
+    sessionStates = {}
+  }
+
   return {
     get messages() {
-      return messages
+      return currentState.messages
     },
     get loading() {
-      return loading
+      return currentState.loading
     },
     get loaded() {
-      return loaded
+      return currentState.loaded
     },
     get error() {
-      return error
+      return currentState.error
     },
     get currentSessionId() {
       return currentSessionId
@@ -387,11 +441,25 @@ function createMessagesStore() {
     get activeRunBaseNodeId() {
       return streamedRunBaseNodeId
     },
+    messagesFor(sessionId: string | null) {
+      return stateFor(sessionId).messages
+    },
+    loadingFor(sessionId: string | null) {
+      return stateFor(sessionId).loading
+    },
+    loadedFor(sessionId: string | null) {
+      return stateFor(sessionId).loaded
+    },
+    errorFor(sessionId: string | null) {
+      return stateFor(sessionId).error
+    },
     prepareSession,
     loadMessages,
     selectRunStream,
     addOptimisticUserMessage,
-    clear,
+    clearActive,
+    clearAll,
+    clear: clearAll,
   }
 }
 

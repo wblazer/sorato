@@ -33,6 +33,7 @@
   const selectedProject = $derived(
     projects.find((project) => project.id === value) ?? null,
   )
+  const showLoading = $derived(loading && projects.length === 0)
 
   function closeAndFocusTrigger() {
     open = false
@@ -63,8 +64,8 @@
   }
 
   const triggerLabel = $derived.by(() => {
-    if (loading) return 'Loading projects...'
     if (selectedProject) return selectedProject.name
+    if (showLoading) return 'Loading projects...'
     if (projects.length === 0) return 'No projects'
     return 'Select project'
   })
@@ -106,7 +107,7 @@
     <Command.Root class="rounded-lg p-1" filter={filterProject}>
       <Command.Input placeholder="Search projects..." />
       <Command.List id={listboxId} class="h-60 px-1 py-1.5">
-        {#if loading}
+        {#if showLoading}
           <div class="px-3 py-6 text-center text-sm text-muted-foreground">
             Loading projects...
           </div>

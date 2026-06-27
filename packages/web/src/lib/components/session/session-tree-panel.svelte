@@ -74,15 +74,16 @@
         readonly run: ActiveRun
       } & TreeRowLayout)
 
-  const tree = $derived(buildMessageTree(messagesStore.messages))
+  const messages = $derived(messagesStore.messagesFor(sessionId))
+  const tree = $derived(buildMessageTree(messages))
   const activeRuns = $derived(sessionStore.activeRunsFor(sessionId))
   const selectedPathIds = $derived(
-    pathIdsForHead(messagesStore.messages, selectedHead.renderHead),
+    pathIdsForHead(messages, selectedHead.renderHead),
   )
   const selectedHeadValue = $derived(selectedHead.renderHead)
   const rows = $derived.by(() => flattenRows(tree, activeRuns))
   const selectedPathRows = $derived.by(() =>
-    selectedPath(messagesStore.messages, baseHeadNodeId),
+    selectedPath(messages, baseHeadNodeId),
   )
   const baseHeadNodeId = $derived.by(() =>
     selectedHeadValue?.type === 'node' ? selectedHeadValue.nodeId : null,

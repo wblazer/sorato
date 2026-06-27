@@ -11,6 +11,10 @@
   const selectedSession = $derived(
     sessionStore.sessions.find((s) => s.id === activeTab?.sessionId),
   )
+
+  function sessionFor(tab: NonNullable<typeof activeTab>) {
+    return sessionStore.sessions.find((session) => session.id === tab.sessionId)
+  }
 </script>
 
 {#if !activeTab}
@@ -19,10 +23,21 @@
   <ProviderRequired />
 {:else if projectStore.projects.length === 0}
   <ProjectRequired />
-{:else if selectedSession}
-  {#key selectedSession.id}
-    <SessionView sessionId={selectedSession.id} title={selectedSession.title} />
-  {/key}
 {:else}
-  <NewSession />
+  {#each tabStore.tabs as tab (tab.id)}
+    {@const session = sessionFor(tab)}
+    {#if session}
+      <div class="h-full" hidden={tab.id !== tabStore.activeTabId}>
+        <SessionView
+          sessionId={session.id}
+          title={session.title}
+          active={tab.id === tabStore.activeTabId}
+        />
+      </div>
+    {/if}
+  {/each}
+
+  {#if !selectedSession}
+    <NewSession />
+  {/if}
 {/if}

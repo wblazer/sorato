@@ -24,8 +24,10 @@ export class SessionSelectedHeadController {
   }
 
   readonly renderHead = $derived.by(() =>
-    resolveRenderHead(messagesStore.messages, this.selectedHead, (runId) =>
-      sessionStore.isRunActive(runId)
+    resolveRenderHead(
+      messagesStore.messagesFor(this.sessionId()),
+      this.selectedHead,
+      (runId) => sessionStore.isRunActive(runId)
     )
   )
 
@@ -42,10 +44,16 @@ export class SessionSelectedHeadController {
   )
 
   readonly visibleMessages = $derived.by(() =>
-    selectedMessages(messagesStore.messages, this.renderHead)
+    selectedMessages(
+      messagesStore.messagesFor(this.sessionId()),
+      this.renderHead
+    )
   )
 
-  constructor(private readonly sessionId: () => string) {
+  constructor(
+    private readonly sessionId: () => string,
+    private readonly isActive: () => boolean = () => true
+  ) {
     $effect(() => {
       if (typeof window === 'undefined') return
 
@@ -64,8 +72,8 @@ export class SessionSelectedHeadController {
 
     $effect(() => {
       const key = this.selectedHeadStorageKey
-      const messages = messagesStore.messages
-      if (!messagesStore.loaded) return
+      const messages = messagesStore.messagesFor(this.sessionId())
+      if (!messagesStore.loadedFor(this.sessionId())) return
 
       const ids = new Set(messages.map((message) => message.id))
 
@@ -124,6 +132,8 @@ export class SessionSelectedHeadController {
     })
 
     $effect(() => {
+      if (!this.isActive()) return
+
       const head = this.renderHead
       messagesStore.selectRunStream(
         this.sessionId(),

@@ -12,6 +12,7 @@
   import { appRuntime } from '$lib/stores/app-runtime.svelte.js'
   import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
   import { onMount } from 'svelte'
+  import * as Item from '$lib/components/ui/item/index.js'
 
   let { children } = $props()
 
@@ -50,10 +51,20 @@
     <div class="flex h-screen overflow-hidden">
       <Sidebar />
       <main class="relative min-w-0 flex-1 overflow-hidden">
-        {#if authStore.loadedForActiveConnection}
+        {#if appRuntime.activationError}
+          <div class="flex h-full items-center justify-center px-6 py-10">
+            <Item.Root variant="danger" class="max-w-lg">
+              <Item.Content>
+                <Item.Title>Connection failed</Item.Title>
+                <Item.Description>{appRuntime.activationError}</Item.Description
+                >
+              </Item.Content>
+            </Item.Root>
+          </div>
+        {:else if authStore.loadedForActiveConnection && appRuntime.readyForActiveConnection}
           {@render children()}
         {:else}
-          <AppLoading />
+          <AppLoading message={appRuntime.activationMessage ?? undefined} />
         {/if}
       </main>
     </div>
