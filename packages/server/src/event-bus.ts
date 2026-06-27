@@ -1,7 +1,7 @@
 /**
  * EventBus — in-process pub/sub for server events.
  *
- * Uses a plain EventEmitter for simplicity. Events flow from:
+ * Events flow from:
  *   - Harness hooks (via `createBusHook`)
  *   - Direct `publish()` calls from server run orchestration
  *
@@ -16,9 +16,8 @@
  * Note: this is in-process only. If the harness runs in a different
  * process, events won't bridge.
  */
-import { EventEmitter } from 'node:events'
-import { Effect } from 'effect'
-import type { HarnessEvent, HarnessHook } from '@sorato/core'
+import { Context, Effect, Layer, PubSub, Scope, Stream } from 'effect'
+import type { HarnessEvent } from '@sorato/core'
 import {
   isContentEvent,
   type ContentEvent,
@@ -29,22 +28,38 @@ import { appendReplayEvent } from './event-replay.ts'
 export { isContentEvent, type ContentEvent, type ServerEvent }
 
 // ---------------------------------------------------------------------------
-// Bus singleton
+// Bus service
 // ---------------------------------------------------------------------------
 
-const emitter = new EventEmitter()
-emitter.setMaxListeners(100)
-
-/** Publish an event to all subscribers. */
-export function publish(event: ServerEvent): void {
-  emitter.emit('event', event)
+export interface EventBusApi {
+  readonly publish: (event: ServerEvent) => Effect.Effect<void>
+  readonly subscribe: Effect.Effect<
+    PubSub.Subscription<ServerEvent>,
+    never,
+    Scope.Scope
+  >
+  readonly stream: Stream.Stream<ServerEvent>
 }
 
-/** Subscribe to events. Returns an unsubscribe function. */
-export function subscribe(listener: (event: ServerEvent) => void): () => void {
-  emitter.on('event', listener)
-  return () => emitter.off('event', listener)
-}
+export class EventBus extends Context.Service<EventBus, EventBusApi>()(
+  '@sorato/server/EventBus'
+) {}
+
+export const EventBusLive = Layer.effect(
+  EventBus,
+  Effect.gen(function* () {
+    const pubsub = yield* Effect.acquireRelease(
+      PubSub.unbounded<ServerEvent>(),
+      PubSub.shutdown
+    )
+
+    return EventBus.of({
+      publish: (event) => PubSub.publish(pubsub, event).pipe(Effect.asVoid),
+      subscribe: PubSub.subscribe(pubsub),
+      stream: Stream.fromPubSub(pubsub),
+    })
+  })
+)
 
 // ---------------------------------------------------------------------------
 // Harness hook bridge
@@ -57,78 +72,90 @@ export function subscribe(listener: (event: ServerEvent) => void): () => void {
  * belong to. Content events are stamped with a monotonic `eventId`
  * within the current run.
  */
-export const createBusHook = (
+export const createBusHook = Effect.fn('EventBus.createBusHook')(function* (
   sessionId: string,
   runId: string
-): HarnessHook => ({
-  name: 'event-bus',
-  handle: (event: HarnessEvent) =>
-    Effect.sync(() => {
-      switch (event._tag) {
-        case 'RunStart':
-          // RunStart/RunEnd lifecycle events are published by run-agent.ts
-          // (which owns the run lifecycle), not the harness hook.
-          break
-        case 'TextDelta':
-          publish(
-            appendReplayEvent(sessionId, runId, {
-              _tag: 'TextDelta',
-              sessionId,
-              runId,
-              delta: event.delta,
-            })
-          )
-          break
-        case 'ReasoningDelta':
-          publish(
-            appendReplayEvent(sessionId, runId, {
-              _tag: 'ReasoningDelta',
-              sessionId,
-              runId,
-              delta: event.delta,
-            })
-          )
-          break
-        case 'ToolCall':
-          publish(
-            appendReplayEvent(sessionId, runId, {
-              _tag: 'ToolCall',
-              sessionId,
-              runId,
-              id: event.id,
-              name: event.name,
-              params: event.params,
-              header: event.header,
-            })
-          )
-          break
-        case 'ToolResult':
-          publish(
-            appendReplayEvent(sessionId, runId, {
-              _tag: 'ToolResult',
-              sessionId,
-              runId,
-              id: event.id,
-              name: event.name,
-              result: event.result,
-              header: event.header,
-              bodyDisplay: event.bodyDisplay,
-              isFailure: event.isFailure,
-            })
-          )
-          break
-        case 'RunUsage':
-          // Persistence-only event.
-          break
-        case 'ModelCallComplete':
-          // Persistence-only event.
-          break
-        case 'RunEnd':
-          // See RunStart comment — lifecycle managed by run-agent.ts.
-          break
-        case 'RunResult':
-          // Persistence is handled by the run persistence hook.
-          break
-      }
-    }),
+) {
+  const bus = yield* EventBus
+
+  return {
+    name: 'event-bus',
+    handle: (event: HarnessEvent) =>
+      Effect.gen(function* () {
+        switch (event._tag) {
+          case 'RunStart':
+            // RunStart/RunEnd lifecycle events are published by run-agent.ts
+            // (which owns the run lifecycle), not the harness hook.
+            break
+          case 'TextDelta':
+            yield* bus.publish(
+              yield* Effect.sync(() =>
+                appendReplayEvent(sessionId, runId, {
+                  _tag: 'TextDelta',
+                  sessionId,
+                  runId,
+                  delta: event.delta,
+                })
+              )
+            )
+            break
+          case 'ReasoningDelta':
+            yield* bus.publish(
+              yield* Effect.sync(() =>
+                appendReplayEvent(sessionId, runId, {
+                  _tag: 'ReasoningDelta',
+                  sessionId,
+                  runId,
+                  delta: event.delta,
+                })
+              )
+            )
+            break
+          case 'ToolCall':
+            yield* bus.publish(
+              yield* Effect.sync(() =>
+                appendReplayEvent(sessionId, runId, {
+                  _tag: 'ToolCall',
+                  sessionId,
+                  runId,
+                  id: event.id,
+                  name: event.name,
+                  params: event.params,
+                  header: event.header,
+                })
+              )
+            )
+            break
+          case 'ToolResult':
+            yield* bus.publish(
+              yield* Effect.sync(() =>
+                appendReplayEvent(sessionId, runId, {
+                  _tag: 'ToolResult',
+                  sessionId,
+                  runId,
+                  id: event.id,
+                  name: event.name,
+                  result: event.result,
+                  header: event.header,
+                  bodyDisplay: event.bodyDisplay,
+                  isFailure: event.isFailure,
+                })
+              )
+            )
+            break
+          case 'RunUsage':
+            // Persistence-only event.
+            break
+          case 'ModelCallComplete':
+            // Persistence-only event.
+            break
+          case 'RunEnd':
+            // See RunStart comment — lifecycle managed by run-agent.ts.
+            break
+          case 'RunResult':
+            // Persistence is handled by the run persistence hook.
+            break
+        }
+      }),
+  }
 })

@@ -8,8 +8,8 @@
 import { apiClient, runApiEffect } from '$lib/api-client.js'
 import type { UiApiError } from '$lib/api-errors.js'
 import type { MessageNode, MessagePart, StreamCursor } from '$lib/types.js'
-import { Effect } from 'effect'
-import { connectSse, type SseConnection } from '$lib/sse.js'
+import { Effect, Fiber, Stream } from 'effect'
+import { serverEvents, type SseError } from '$lib/sse.js'
 import { preloadMessageToolDiffs } from '$lib/tool-output.js'
 import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
@@ -37,7 +37,7 @@ function createMessagesStore() {
   let streamingParts = $state<MessagePart[]>([])
   const lastCursors = new Map<string, StreamCursor>()
 
-  let streamConnection: SseConnection | null = null
+  let streamFiber: Fiber.Fiber<void, SseError> | null = null
   let streamedTabId = $state<string | null>(null)
   let streamedSessionId = $state<string | null>(null)
   let streamedRunId = $state<string | null>(null)
@@ -79,8 +79,8 @@ function createMessagesStore() {
   }
 
   function closeRunStream() {
-    streamConnection?.close()
-    streamConnection = null
+    if (streamFiber) Effect.runFork(Fiber.interrupt(streamFiber))
+    streamFiber = null
   }
 
   function openRunStream(tabId: string, sessionId: string, runId: string) {
@@ -89,102 +89,104 @@ function createMessagesStore() {
     const apiBase = connectionsStore.getApiBase()
     if (!apiBase) return
 
-    streamConnection = connectSse(
-      apiBase,
-      (event) => {
-        if (!('sessionId' in event) || event.sessionId !== sessionId) return
-        if (stateFor(tabId).sessionId !== sessionId) {
-          closeRunStream()
-          return
-        }
-        if ('runId' in event && event.runId !== streamedRunId) return
-
-        switch (event._tag) {
-          case 'RunStart':
-            streamedRunId = event.runId
-            streamedRunBaseNodeId = event.baseNodeId
-            streamingParts = []
-            setRunCursor(event.runId)
-            void Effect.runPromise(refreshMessages(tabId, sessionId))
-            break
-
-          case 'TextDelta':
-            setContentCursor(event.runId, event.eventId)
-            appendTextDelta(event.delta)
-            break
-
-          case 'ReasoningDelta':
-            setContentCursor(event.runId, event.eventId)
-            appendReasoningDelta(event.delta)
-            break
-
-          case 'ToolCall':
-            setContentCursor(event.runId, event.eventId)
-            streamingParts = [
-              ...streamingParts,
-              {
-                type: 'tool-call',
-                id: event.id,
-                name: event.name,
-                params: event.params,
-                header: event.header,
-              },
-            ]
-            break
-
-          case 'ToolResult':
-            setContentCursor(event.runId, event.eventId)
-            streamingParts = [
-              ...streamingParts,
-              {
-                type: 'tool-result',
-                id: event.id,
-                name: event.name,
-                result: event.result,
-                header: event.header,
-                bodyDisplay: event.bodyDisplay,
-                isFailure: event.isFailure,
-              },
-            ]
-            break
-
-          case 'RunEnd':
-            void Effect.runPromise(
-              refreshMessages(tabId, sessionId, {
-                clearPartsForRun: event.runId,
-              })
-            )
-            break
-
-          case 'RunFailed':
-            requestSessionRefresh(sessionId)
-            break
-
-          case 'ReplayReset':
-            requestSessionRefresh(sessionId)
-            void Effect.runPromise(
-              refreshMessages(tabId, sessionId, {
-                clearPartsForRun: event.runId,
-              })
-            )
-            break
-
-          case 'MessagesAppended':
-            void Effect.runPromise(
-              refreshMessages(tabId, sessionId, {
-                clearStreamingPartsForRun: event.runId,
-              })
-            )
-            break
-
-          case 'SessionUpdated':
-            break
-        }
-      },
-      {
+    streamFiber = Effect.runFork(
+      serverEvents(apiBase, {
         runId,
         getSince: () => getLastCursor(runId),
-      }
+      }).pipe(
+        Stream.runForEach((event) =>
+          Effect.sync(() => {
+            if (!('sessionId' in event) || event.sessionId !== sessionId) return
+            if (stateFor(tabId).sessionId !== sessionId) {
+              closeRunStream()
+              return
+            }
+            if ('runId' in event && event.runId !== streamedRunId) return
+
+            switch (event._tag) {
+              case 'RunStart':
+                streamedRunId = event.runId
+                streamedRunBaseNodeId = event.baseNodeId
+                streamingParts = []
+                setRunCursor(event.runId)
+                void Effect.runPromise(refreshMessages(tabId, sessionId))
+                break
+
+              case 'TextDelta':
+                setContentCursor(event.runId, event.eventId)
+                appendTextDelta(event.delta)
+                break
+
+              case 'ReasoningDelta':
+                setContentCursor(event.runId, event.eventId)
+                appendReasoningDelta(event.delta)
+                break
+
+              case 'ToolCall':
+                setContentCursor(event.runId, event.eventId)
+                streamingParts = [
+                  ...streamingParts,
+                  {
+                    type: 'tool-call',
+                    id: event.id,
+                    name: event.name,
+                    params: event.params,
+                    header: event.header,
+                  },
+                ]
+                break
+
+              case 'ToolResult':
+                setContentCursor(event.runId, event.eventId)
+                streamingParts = [
+                  ...streamingParts,
+                  {
+                    type: 'tool-result',
+                    id: event.id,
+                    name: event.name,
+                    result: event.result,
+                    header: event.header,
+                    bodyDisplay: event.bodyDisplay,
+                    isFailure: event.isFailure,
+                  },
+                ]
+                break
+
+              case 'RunEnd':
+                void Effect.runPromise(
+                  refreshMessages(tabId, sessionId, {
+                    clearPartsForRun: event.runId,
+                  })
+                )
+                break
+
+              case 'RunFailed':
+                requestSessionRefresh(sessionId)
+                break
+
+              case 'ReplayReset':
+                requestSessionRefresh(sessionId)
+                void Effect.runPromise(
+                  refreshMessages(tabId, sessionId, {
+                    clearPartsForRun: event.runId,
+                  })
+                )
+                break
+
+              case 'MessagesAppended':
+                void Effect.runPromise(
+                  refreshMessages(tabId, sessionId, {
+                    clearStreamingPartsForRun: event.runId,
+                  })
+                )
+                break
+
+              case 'SessionUpdated':
+                break
+            }
+          })
+        )
+      )
     )
   }
 
@@ -209,7 +211,7 @@ function createMessagesStore() {
       streamedTabId === tabId &&
       streamedSessionId === sessionId &&
       streamedRunId === runId &&
-      streamConnection !== null
+      streamFiber !== null
     )
       return
 
@@ -263,6 +265,15 @@ function createMessagesStore() {
     sessionId: string,
     opts?: { readonly force?: boolean }
   ) {
+    const markLoaded = Effect.sync(() => {
+      updateTabState(tabId, (state) => ({
+        ...state,
+        sessionId,
+        loading: false,
+        loaded: true,
+      }))
+    })
+
     return Effect.gen(function* () {
       const existing = stateFor(tabId)
       const hasExisting =
@@ -324,16 +335,7 @@ function createMessagesStore() {
           }))
         })
       ),
-      Effect.ensuring(
-        Effect.sync(() => {
-          updateTabState(tabId, (state) => ({
-            ...state,
-            sessionId,
-            loading: false,
-            loaded: true,
-          }))
-        })
-      )
+      Effect.ensuring(markLoaded)
     )
   }
 
@@ -433,8 +435,8 @@ function createMessagesStore() {
       })
     }).pipe(
       Effect.catch((cause: UiApiError) =>
-        Effect.sync(() => {
-          console.error('Failed to refresh messages', cause)
+        Effect.logError('Failed to refresh messages', {
+          cause,
         })
       )
     )

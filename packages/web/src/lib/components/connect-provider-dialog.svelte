@@ -66,21 +66,21 @@
     saving = true
     error = null
     try {
-      await Effect.runPromise(
-        Effect.gen(function* () {
-          const client = yield* apiClient(api)
-          yield* runApiEffect(
-            client.auth.set({
-              params: { provider: providerId },
-              payload: { key: apiKey },
-            }),
-            'Failed to connect provider',
-          )
-          yield* authStore.load()
-          if (modelsStore.projectId)
-            yield* modelsStore.load(modelsStore.projectId)
-        }),
-      )
+      const connectProvider = Effect.gen(function* () {
+        const client = yield* apiClient(api)
+        yield* runApiEffect(
+          client.auth.set({
+            params: { provider: providerId },
+            payload: { key: apiKey },
+          }),
+          'Failed to connect provider',
+        )
+        yield* authStore.load()
+        if (modelsStore.projectId)
+          yield* modelsStore.load(modelsStore.projectId)
+      })
+
+      await Effect.runPromise(connectProvider)
       open = false
     } catch (cause) {
       error = effectErrorMessage(cause, 'Failed to connect provider')
@@ -96,15 +96,15 @@
     oauthSaving = true
     error = null
     try {
-      const result = await Effect.runPromise(
-        Effect.gen(function* () {
-          const client = yield* apiClient(api)
-          return yield* runApiEffect(
-            client.auth.oauthAuthorize({ params: { provider: 'openai' } }),
-            'Failed to start ChatGPT sign-in',
-          )
-        }),
-      )
+      const authorize = Effect.gen(function* () {
+        const client = yield* apiClient(api)
+        return yield* runApiEffect(
+          client.auth.oauthAuthorize({ params: { provider: 'openai' } }),
+          'Failed to start ChatGPT sign-in',
+        )
+      })
+
+      const result = await Effect.runPromise(authorize)
       window.open(result.url, '_blank', 'noopener,noreferrer')
       window.setTimeout(() => {
         void Effect.runPromise(authStore.load())

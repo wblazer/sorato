@@ -22,7 +22,8 @@ import { ModelsLive } from './models.ts'
 import { ProjectsLive } from './projects.ts'
 import { RuntimeConfigLive } from './runtime-config.ts'
 import { SessionsLive } from './sessions.ts'
-import { SseLive } from './sse.ts'
+import { EventBusLive } from './event-bus.ts'
+import { EventsLive } from './sse.ts'
 import { dataDir } from './data-dir.ts'
 import { makeSqlitePersistenceLive } from './db/sqlite.ts'
 import { SqliteProviderAuthStore } from './provider-auth.ts'
@@ -53,7 +54,8 @@ const ApiLive = HttpApiBuilder.layer(Api).pipe(
   Layer.provide(DirectoriesLive),
   Layer.provide(ModelsLive),
   Layer.provide(AuthLive),
-  Layer.provide(HandshakeLive)
+  Layer.provide(HandshakeLive),
+  Layer.provide(EventsLive)
 )
 
 const sessionsDbPath = join(dataDir, 'sessions.db')
@@ -86,9 +88,7 @@ const serverPort = Config.int('SORATO_SERVER_PORT').pipe(
   Config.orElse(() => Config.succeed(3100))
 )
 
-const AppLive = Layer.merge(ApiLive, SseLive)
-
-const HttpLive = HttpRouter.toHttpEffect(AppLive).pipe(
+const HttpLive = HttpRouter.toHttpEffect(ApiLive).pipe(
   Effect.map((app) =>
     HttpServer.serve(app, (httpApp) =>
       HttpMiddleware.cors()(HttpMiddleware.logger(httpApp))
@@ -97,6 +97,7 @@ const HttpLive = HttpRouter.toHttpEffect(AppLive).pipe(
   Layer.unwrap,
   HttpServer.withLogAddress,
   Layer.provide(RuntimeConfigLive),
+  Layer.provide(EventBusLive),
   Layer.provide(StorageLive),
   Layer.provide(ProviderAuthLive),
   Layer.provide(AgentLive),

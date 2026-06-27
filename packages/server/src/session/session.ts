@@ -20,10 +20,7 @@
 import { Context, Schema } from 'effect'
 import type { Effect } from 'effect/Effect'
 import type { Prompt } from 'effect/unstable/ai'
-import {
-  StoredMessage,
-  type StoredMessageEncoded,
-} from '@sorato/core/message'
+import { StoredMessage, type StoredMessageEncoded } from '@sorato/core/message'
 
 export { StoredMessage }
 export type { StoredMessageEncoded }

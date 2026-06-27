@@ -28,7 +28,7 @@ import {
   SYSTEM_PROMPT,
   loadAgentsMd,
 } from './agent-config.ts'
-import { createBusHook, publish } from './event-bus.ts'
+import { createBusHook, EventBus } from './event-bus.ts'
 import {
   appendReplayEvent,
   endEventReplay,
@@ -260,6 +260,7 @@ const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
   if (compactRange === undefined) return false
 
   const storage = yield* SessionStorage
+  const bus = yield* EventBus
 
   startEventReplay(
     sessionId,
@@ -267,7 +268,7 @@ const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
     compactRange.baseHeadNodeId,
     'summary'
   )
-  publish({
+  yield* bus.publish({
     _tag: 'RunStart',
     sessionId,
     runId: request.runId,
@@ -312,15 +313,13 @@ const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
     ),
     Stream.tap((part) =>
       Effect.sync(() =>
-        publish(
-          appendReplayEvent(sessionId, request.runId, {
-            _tag: 'TextDelta',
-            sessionId,
-            runId: request.runId,
-            delta: part.delta,
-          })
-        )
-      )
+        appendReplayEvent(sessionId, request.runId, {
+          _tag: 'TextDelta',
+          sessionId,
+          runId: request.runId,
+          delta: part.delta,
+        })
+      ).pipe(Effect.flatMap((event) => bus.publish(event)))
     ),
     Stream.map((part) => part.delta),
     Stream.mkString,
@@ -335,16 +334,17 @@ const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
     endNodeId: compactRange.endNodeId,
     summaryContent: summary.trim(),
   })
-  publish({ _tag: 'MessagesAppended', sessionId })
+  yield* bus.publish({ _tag: 'MessagesAppended', sessionId })
   return true
 })
 
 export const runAgent = (sessionId: SessionId, request: RunRequest) => {
   const runId = request.runId
   let runFailed = false
-  const finalizeRun = Effect.sync(() => {
+  const finalizeRun = Effect.gen(function* () {
     endEventReplay(sessionId, runId, runFailed ? 'failed' : 'completed')
-    publish({ _tag: 'RunEnd', sessionId, runId })
+    const bus = yield* EventBus
+    yield* bus.publish({ _tag: 'RunEnd', sessionId, runId })
   })
 
   return Effect.gen(function* () {
@@ -359,6 +359,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     const storage = yield* SessionStorage
     const projects = yield* ProjectStorage
     const sandbox = yield* Sandbox
+    const bus = yield* EventBus
 
     const session = yield* storage.get(sessionId)
     const projectPath = yield* projects.resolvePath(session.projectId)
@@ -393,16 +394,18 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       sessionId,
       onRetry: (info) => {
         const retryAt = Date.now() + Duration.toMillis(info.delay)
-        publish({
-          _tag: 'RunRetrying',
-          sessionId,
-          runId,
-          title: aiRunRetryingMessage(info.error),
-          message: '',
-          retryAt,
-          attempt: info.attempt,
-          maxAttempts: info.maxAttempts,
-        })
+        Effect.runFork(
+          bus.publish({
+            _tag: 'RunRetrying',
+            sessionId,
+            runId,
+            title: aiRunRetryingMessage(info.error),
+            message: '',
+            retryAt,
+            attempt: info.attempt,
+            maxAttempts: info.maxAttempts,
+          })
+        )
       },
       ...request.modelOptions,
     }).pipe(
@@ -431,9 +434,10 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     const shouldSetTitle = Effect.succeed(
       isFirstMessage && session.title === null
     )
-    const publishSessionUpdated = Effect.sync(() =>
-      publish({ _tag: 'SessionUpdated', sessionId })
-    )
+    const publishSessionUpdated = bus.publish({
+      _tag: 'SessionUpdated',
+      sessionId,
+    })
     const maybeSetTitle = generateSessionTitle(
       projectPath,
       request.inputs.join('\n')
@@ -511,19 +515,25 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
               wasEmptySession: isFirstMessage,
             })
           ),
-          Effect.tap(() =>
-            Effect.sync(() => {
-              publish({ _tag: 'MessagesAppended', sessionId })
+          Effect.tap(() => {
+            const startReplay = Effect.sync(() => {
               startEventReplay(sessionId, runId, request.baseNodeId, 'agent')
-              publish({
-                _tag: 'RunStart',
-                sessionId,
-                runId,
-                baseNodeId: request.baseNodeId,
-                kind: 'agent',
-              })
             })
-          ),
+            const publishRunStart = bus.publish({
+              _tag: 'RunStart',
+              sessionId,
+              runId,
+              baseNodeId: request.baseNodeId,
+              kind: 'agent',
+            })
+
+            return bus
+              .publish({ _tag: 'MessagesAppended', sessionId })
+              .pipe(
+                Effect.andThen(startReplay),
+                Effect.andThen(publishRunStart)
+              )
+          }),
           Effect.tap(() => Effect.forkDetach(maybeSetTitle)),
           Effect.tap(() =>
             Effect.logInfo('Agent run published lifecycle start', { runId })
@@ -546,29 +556,33 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
           ),
           Effect.flatMap(({ appendBaseNodeId, conversation }) => {
             const messageCountBeforeRun = conversation.content.length
-            return Effect.provide(
-              run(conversation, {
-                toolkit: AllTools,
-                hooks: [
-                  createBusHook(sessionId, runId),
-                  createPersistenceHook(
-                    sessionId,
-                    runId,
-                    messageCountBeforeRun,
-                    appendBaseNodeId,
-                    {
-                      providerId: resolvedModel.providerId,
-                      modelId: resolvedModel.modelId,
-                      billingMode,
-                      cost: resolvedModel.model.cost,
-                    }
-                  ),
-                ],
-              }),
-              Layer.mergeAll(
-                Layer.succeed(CurrentShell, shell),
-                Layer.succeed(CurrentFiles, files),
-                modelServices
+            return Effect.all([
+              createBusHook(sessionId, runId),
+              createPersistenceHook(
+                sessionId,
+                runId,
+                messageCountBeforeRun,
+                appendBaseNodeId,
+                {
+                  providerId: resolvedModel.providerId,
+                  modelId: resolvedModel.modelId,
+                  billingMode,
+                  cost: resolvedModel.model.cost,
+                }
+              ),
+            ]).pipe(
+              Effect.flatMap(([busHook, persistHook]) =>
+                Effect.provide(
+                  run(conversation, {
+                    toolkit: AllTools,
+                    hooks: [busHook, persistHook],
+                  }),
+                  Layer.mergeAll(
+                    Layer.succeed(CurrentShell, shell),
+                    Layer.succeed(CurrentFiles, files),
+                    modelServices
+                  )
+                )
               )
             )
           })
@@ -589,8 +603,9 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
             runId,
             cause: Cause.pretty(cause),
           })
+          const bus = yield* EventBus
           const failure = runFailureMessage(runId, cause)
-          publish({
+          yield* bus.publish({
             _tag: 'RunFailed',
             sessionId,
             runId,

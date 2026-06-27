@@ -12,6 +12,7 @@ import {
   StorageUnavailable,
 } from '@sorato/api'
 import { Cause, Effect, Schema } from 'effect'
+import type { Effect as EffectValue } from 'effect/Effect'
 import { HttpClientError } from 'effect/unstable/http'
 import { HttpApiClient } from 'effect/unstable/httpapi'
 import type { UiApiError } from '$lib/api-errors.js'
@@ -19,9 +20,7 @@ import { requestError } from '$lib/api-errors.js'
 
 export type SoratoApiClient = HttpApiClient.ForApi<typeof Api>
 
-export function apiClient(
-  baseUrl: string
-): Effect.Effect<SoratoApiClient, never, never> {
+export function apiClient(baseUrl: string) {
   return HttpApiClient.make(Api, { baseUrl }).pipe(
     Effect.provide(BrowserHttpClient.layerFetch)
   )
@@ -122,9 +121,9 @@ function defectToUi(cause: Cause.Cause<unknown>, context: string): UiApiError {
 }
 
 export function runApiEffect<A, E, R>(
-  effect: Effect.Effect<A, E, R>,
+  effect: EffectValue<A, E, R>,
   context: string
-): Effect.Effect<A, UiApiError, R> {
+) {
   return Effect.exit(effect).pipe(
     Effect.flatMap((exit) => {
       if (exit._tag === 'Success') return Effect.succeed(exit.value)

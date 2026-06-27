@@ -381,7 +381,8 @@
   type TreeTone = 'user' | 'assistant' | 'tool' | 'system' | 'summary'
 
   function messageTone(message: MessageNode): TreeTone {
-    if (message.kind === 'summary') return 'summary'
+    const summaryTone = 'summary'
+    if (message.kind === 'summary') return summaryTone
     return message.encoded.role
   }
 

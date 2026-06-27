@@ -17,6 +17,10 @@ function createAuthStore() {
   )
 
   function load() {
+    const clearLoading = Effect.sync(() => {
+      loading = false
+    })
+
     return Effect.gen(function* () {
       const id = ++requestId
       const connectionId = connectionsStore.activeConnection?.id ?? null
@@ -56,11 +60,7 @@ function createAuthStore() {
           loadedConnectionId = connectionsStore.activeConnection?.id ?? null
         })
       ),
-      Effect.ensuring(
-        Effect.sync(() => {
-          loading = false
-        })
-      )
+      Effect.ensuring(clearLoading)
     )
   }
 

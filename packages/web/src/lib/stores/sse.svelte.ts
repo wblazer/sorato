@@ -13,14 +13,15 @@
  * Session indicators (running/idle, title updates) stay live everywhere,
  * without fanning out full TextDelta / tool payloads to every client.
  */
-import { connectSse, type SseConnection } from '$lib/sse.js'
+import { Effect, Fiber, Stream } from 'effect'
+import { serverEvents, type SseError } from '$lib/sse.js'
 import type { ServerEvent } from '$lib/types.js'
 import { connectionsStore } from './connections.svelte.js'
 
 type EventHandler = (event: ServerEvent) => void
 
 function createSseStore() {
-  let connection: SseConnection | null = null
+  let fiber: Fiber.Fiber<void, SseError> | null = null
   const listeners = new Set<EventHandler>()
 
   /**
@@ -28,14 +29,20 @@ function createSseStore() {
    * Should be called once from the root layout.
    */
   function connect() {
-    if (connection) return
+    if (fiber) return
     const apiBase = connectionsStore.getApiBase()
     if (!apiBase) return
-    connection = connectSse(apiBase, (event) => {
-      for (const listener of listeners) {
-        listener(event)
-      }
-    })
+    fiber = Effect.runFork(
+      serverEvents(apiBase).pipe(
+        Stream.runForEach((event) =>
+          Effect.sync(() => {
+            for (const listener of listeners) {
+              listener(event)
+            }
+          })
+        )
+      )
+    )
   }
 
   /**
@@ -49,8 +56,8 @@ function createSseStore() {
 
   /** Close the global SSE connection. */
   function disconnect() {
-    connection?.close()
-    connection = null
+    if (fiber) Effect.runFork(Fiber.interrupt(fiber))
+    fiber = null
   }
 
   return {

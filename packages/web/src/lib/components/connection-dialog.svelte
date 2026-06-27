@@ -65,15 +65,12 @@
     checkStatus = 'loading'
 
     try {
-      const result = await Effect.runPromise(
-        Effect.gen(function* () {
-          const client = yield* apiClient(url)
-          return yield* runApiEffect(
-            client.handshake.check(),
-            'Handshake failed',
-          )
-        }),
-      )
+      const checkConnection = Effect.gen(function* () {
+        const client = yield* apiClient(url)
+        return yield* runApiEffect(client.handshake.check(), 'Handshake failed')
+      })
+
+      const result = await Effect.runPromise(checkConnection)
 
       if (result.status === 'ok') {
         checkStatus = 'success'

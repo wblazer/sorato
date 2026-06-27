@@ -6,11 +6,14 @@
  *   - `runId`: stream/replay content and lifecycle for one active run
  *   - `since`: replay content events after the `runId:eventId` cursor
  */
-import { HttpRouter, HttpServerResponse } from 'effect/unstable/http'
-import { Effect, Match, Queue, Scope, Stream } from 'effect'
+import { HttpServerResponse } from 'effect/unstable/http'
+import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { Effect, Match, PubSub, Stream } from 'effect'
+import { Api } from '@sorato/api'
 import {
   isContentEvent,
-  subscribe,
+  EventBus,
+  type EventBusApi,
   type ContentEvent,
   type ServerEvent,
 } from './event-bus.ts'
@@ -79,70 +82,57 @@ const isRunStreamEvent = (event: ServerEvent): boolean =>
   event._tag === 'ReplayReset' ||
   isContentEvent(event)
 
-const liveGlobalStream = Stream.callback<string>((queue) =>
-  Effect.gen(function* () {
-    Queue.offerUnsafe(queue, connectedEvent())
-    const unsubscribe = subscribe((event) => {
-      isContentEvent(event) || Queue.offerUnsafe(queue, formatEvent(event))
-    })
-    const scope = yield* Scope.Scope
-    yield* Scope.addFinalizer(scope, Effect.sync(unsubscribe))
-  })
-)
+const liveGlobalStream = (bus: EventBusApi) =>
+  Stream.concat(
+    Stream.make(connectedEvent()),
+    bus.stream.pipe(
+      Stream.filter((event) => !isContentEvent(event)),
+      Stream.map(formatEvent)
+    )
+  )
 
-const liveRunStream = (runId: string, cursor: StreamCursor | undefined) =>
-  Stream.callback<string>((queue) =>
+const liveRunStream = (
+  bus: EventBusApi,
+  runId: string,
+  cursor: StreamCursor | undefined
+) =>
+  Stream.unwrap(
     Effect.gen(function* () {
-      Queue.offerUnsafe(queue, connectedEvent())
+      const subscription = yield* bus.subscribe
 
       let lastCursor = cursor
-      let replaying = true
-      const pending: ServerEvent[] = []
+      let replayStartSent = false
 
-      const writeRunContentEvent = (event: ContentEvent) => {
+      const formatRunContentEvent = (event: ContentEvent) => {
         const alreadyStreamed =
           lastCursor?.runId === event.runId &&
           event.eventId <= lastCursor.eventId
 
-        if (alreadyStreamed) return
+        if (alreadyStreamed) return []
 
         lastCursor = { runId: event.runId, eventId: event.eventId }
-        Queue.offerUnsafe(queue, formatEvent(event))
+        return [formatEvent(event)]
       }
 
-      const writeRunEvent = Match.type<ServerEvent>().pipe(
+      const formatRunEvent = Match.type<ServerEvent>().pipe(
         Match.tagsExhaustive({
-          MessagesAppended: (event) =>
-            Queue.offerUnsafe(queue, formatEvent(event)),
-          RunEnd: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
-          RunFailed: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
-          RunRetrying: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
-          RunStart: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
-          SessionUpdated: (event) =>
-            Queue.offerUnsafe(queue, formatEvent(event)),
-          ReplayReset: (event) => Queue.offerUnsafe(queue, formatEvent(event)),
-          ReasoningDelta: writeRunContentEvent,
-          TextDelta: writeRunContentEvent,
-          ToolCall: writeRunContentEvent,
-          ToolResult: writeRunContentEvent,
+          MessagesAppended: (event) => [formatEvent(event)],
+          RunEnd: (event) => [formatEvent(event)],
+          RunFailed: (event) => [formatEvent(event)],
+          RunRetrying: (event) => [formatEvent(event)],
+          RunStart: (event) =>
+            replayStartSent && event.runId === runId
+              ? []
+              : [formatEvent(event)],
+          SessionUpdated: (event) => [formatEvent(event)],
+          ReplayReset: (event) => [formatEvent(event)],
+          ReasoningDelta: formatRunContentEvent,
+          TextDelta: formatRunContentEvent,
+          ToolCall: formatRunContentEvent,
+          ToolResult: formatRunContentEvent,
         })
       )
 
-      const unsubscribe = subscribe((event) => {
-        const liveRunEvent = isRunEvent(runId)(event) && isRunStreamEvent(event)
-
-        liveRunEvent &&
-          Match.value(replaying).pipe(
-            Match.when(true, () => pending.push(event)),
-            Match.orElse(() => writeRunEvent(event))
-          )
-      })
-      const scope = yield* Scope.Scope
-      yield* Scope.addFinalizer(scope, Effect.sync(unsubscribe))
-
-      const pendingHasRunStart = pending.some(
-        (event) => event._tag === 'RunStart' && event.runId === runId
-      )
       const replaySnapshot = getReplaySnapshot(runId)
       const replayStartEvent = [
         undefined,
@@ -153,21 +143,15 @@ const liveRunStream = (runId: string, cursor: StreamCursor | undefined) =>
           baseNodeId: replaySnapshot.baseNodeId,
           kind: replaySnapshot.kind,
         },
-      ][
-        Number(
-          replaySnapshot !== null &&
-            cursor?.runId !== runId &&
-            !pendingHasRunStart
-        )
-      ]
+      ][Number(replaySnapshot !== null && cursor?.runId !== runId && true)]
       const resetReason = getReplayResetReason(runId, cursor)
       const replay = getReplayBufferSince(runId, cursor)
+      const prefix: string[] = [connectedEvent()]
 
       resetReason &&
         cursor &&
         replaySnapshot &&
-        Queue.offerUnsafe(
-          queue,
+        prefix.push(
           formatEvent({
             _tag: 'ReplayReset',
             sessionId: replaySnapshot.sessionId,
@@ -176,41 +160,55 @@ const liveRunStream = (runId: string, cursor: StreamCursor | undefined) =>
             refetch: true,
           })
         )
-      !resetReason &&
-        replayStartEvent &&
-        Queue.offerUnsafe(queue, formatEvent(replayStartEvent))
-
-      replaying = false
-      for (const event of [...replay, ...pending]) {
-        writeRunEvent(event)
+      if (!resetReason && replayStartEvent) {
+        replayStartSent = true
+        prefix.push(formatEvent(replayStartEvent))
       }
+
+      for (const event of replay) {
+        prefix.push(...formatRunEvent(event))
+      }
+
+      return Stream.concat(
+        Stream.fromIterable(prefix),
+        Stream.fromEffectRepeat(PubSub.take(subscription)).pipe(
+          Stream.filter(
+            (event) => isRunEvent(runId)(event) && isRunStreamEvent(event)
+          ),
+          Stream.flatMap((event) => Stream.fromIterable(formatRunEvent(event)))
+        )
+      )
     })
-  )
+  ).pipe(Stream.scoped)
 
 const heartbeatStream = Stream.tick('5 seconds').pipe(
   Stream.map(() => ':heartbeat\n\n')
 )
 
 const makeSseStream = (
+  bus: EventBusApi,
   runId: string | undefined,
   cursor: StreamCursor | undefined
 ) =>
-  (runId ? liveRunStream(runId, cursor) : liveGlobalStream).pipe(
+  (runId ? liveRunStream(bus, runId, cursor) : liveGlobalStream(bus)).pipe(
     Stream.merge(heartbeatStream),
     Stream.encodeText
   )
 
-export const SseLive = HttpRouter.add('GET', '/events', (request) => {
-  const url = new URL(request.url, 'http://localhost')
-  const runId = url.searchParams.get('runId') ?? undefined
-  const cursor = parseCursor(url.searchParams.get('since'))
+export const EventsLive = HttpApiBuilder.group(Api, 'events', (handlers) =>
+  handlers.handleRaw('stream', (context) => {
+    const url = new URL(context.request.url, 'http://localhost')
+    const runId = url.searchParams.get('runId') ?? undefined
+    const cursor = parseCursor(url.searchParams.get('since'))
 
-  return Effect.logInfo('SSE connection requested', {
-    runId,
-    hasCursor: cursor !== undefined,
-  }).pipe(
-    Effect.map(() =>
-      HttpServerResponse.stream(makeSseStream(runId, cursor), {
+    return Effect.gen(function* () {
+      const bus = yield* EventBus
+      yield* Effect.logInfo('SSE connection requested', {
+        runId,
+        hasCursor: cursor !== undefined,
+      })
+
+      return HttpServerResponse.stream(makeSseStream(bus, runId, cursor), {
         headers: {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
@@ -218,7 +216,6 @@ export const SseLive = HttpRouter.add('GET', '/events', (request) => {
           'Access-Control-Allow-Origin': '*',
         },
       })
-    ),
-    Effect.annotateLogs({ package: 'server', subsystem: 'sse' })
-  )
-})
+    }).pipe(Effect.annotateLogs({ package: 'server', subsystem: 'sse' }))
+  })
+)

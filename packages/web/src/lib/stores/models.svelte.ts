@@ -66,7 +66,8 @@ function createModelsStore() {
     }
 
     const stored = recent()
-    if (!stored) return null
+    const noPreference = null
+    if (!stored) return noPreference
     preferredModel = stored.model
     preferredOptions = stored.options
     return stored
@@ -127,7 +128,8 @@ function createModelsStore() {
       ).pipe(
         Effect.catch((cause: UiApiError) =>
           Effect.sync(() => {
-            if (id !== req) return null
+            const failedResult = null
+            if (id !== req) return failedResult
             if (!hasExistingForProject) {
               models = []
               defaultModel = null
@@ -135,7 +137,7 @@ function createModelsStore() {
               selectedOptions = {}
             }
             error = cause.message
-            return null
+            return failedResult
           })
         )
       )

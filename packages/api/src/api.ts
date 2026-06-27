@@ -258,6 +258,11 @@ export class AuthStatusResponse extends Schema.Class<AuthStatusResponse>(
   hasAuthenticatedProvider: Schema.Boolean,
 }) {}
 
+export class EventsQuery extends Schema.Class<EventsQuery>('EventsQuery')({
+  runId: Schema.optional(Schema.String),
+  since: Schema.optional(Schema.String),
+}) {}
+
 export class AuthOauthAuthorizeResponse extends Schema.Class<AuthOauthAuthorizeResponse>(
   'AuthOauthAuthorizeResponse'
 )({
@@ -524,6 +529,17 @@ export class HandshakeGroup extends HttpApiGroup.make('handshake')
   .add(HttpApiEndpoint.get('check', '/', { success: HandshakeResponse }))
   .prefix('/handshake') {}
 
+// ── Events Group ─────────────────────────────────────────────────────
+
+export class EventsGroup extends HttpApiGroup.make('events').add(
+  HttpApiEndpoint.get('stream', '/events', {
+    query: EventsQuery,
+    success: Schema.String.pipe(
+      HttpApiSchema.asText({ contentType: 'text/event-stream' })
+    ),
+  })
+) {}
+
 // ── Models Group ────────────────────────────────────────────────────
 
 export class ModelsGroup extends HttpApiGroup.make('models')
@@ -580,4 +596,5 @@ export class Api extends HttpApi.make('sorato')
   .add(DirectoriesGroup)
   .add(ModelsGroup)
   .add(AuthGroup)
-  .add(HandshakeGroup) {}
+  .add(HandshakeGroup)
+  .add(EventsGroup) {}

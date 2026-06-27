@@ -12,6 +12,10 @@ function createProjectStore() {
   let error = $state<string | null>(null)
 
   function fetchProjects() {
+    const clearLoading = Effect.sync(() => {
+      loading = false
+    })
+
     return Effect.gen(function* () {
       yield* Effect.sync(() => {
         loading = true
@@ -39,11 +43,7 @@ function createProjectStore() {
           error = cause.message
         })
       ),
-      Effect.ensuring(
-        Effect.sync(() => {
-          loading = false
-        })
-      )
+      Effect.ensuring(clearLoading)
     )
   }
 
@@ -64,8 +64,9 @@ function createProjectStore() {
     }).pipe(
       Effect.catch((cause: UiApiError) =>
         Effect.sync(() => {
+          const failedProject = null
           error = cause.message
-          return null
+          return failedProject
         })
       )
     )
@@ -106,8 +107,9 @@ function createProjectStore() {
   }
 
   function getProject(id: string | null): Project | null {
-    if (!id) return null
-    return projects.find((project) => project.id === id) ?? null
+    const missingProject = null
+    if (!id) return missingProject
+    return projects.find((project) => project.id === id) ?? missingProject
   }
 
   return {

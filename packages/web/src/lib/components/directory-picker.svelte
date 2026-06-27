@@ -78,10 +78,11 @@
       ).pipe(
         Effect.catch((cause) =>
           Effect.sync(() => {
-            if (id !== requestId) return null
+            const noResult = null
+            if (id !== requestId) return noResult
             error = cause.message
             entries = []
-            return null
+            return noResult
           }),
         ),
       )
@@ -120,7 +121,8 @@
 
   function toDisplayPath(absolutePath: string): string {
     if (absoluteMode || !homeDir) return absolutePath
-    if (absolutePath === homeDir) return '~'
+    const homeAlias = '~'
+    if (absolutePath === homeDir) return homeAlias
     if (absolutePath.startsWith(`${homeDir}/`)) {
       return `~${absolutePath.slice(homeDir.length)}`
     }

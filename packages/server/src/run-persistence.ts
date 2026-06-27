@@ -7,7 +7,7 @@ import {
   type BillingMode,
   type SessionId,
 } from './session/session.ts'
-import { publish } from './event-bus.ts'
+import { EventBus } from './event-bus.ts'
 import { pricedUsage, type CostInfo } from './run-cost.ts'
 
 const stoppedSystemMessage = {
@@ -81,7 +81,9 @@ const addToolDisplays = (
   })
 }
 
-export const createPersistenceHook = (
+export const createPersistenceHook = Effect.fn(
+  'RunPersistence.createPersistenceHook'
+)(function* (
   sessionId: SessionId,
   runId: string,
   messageCountBeforeRun: number,
@@ -92,7 +94,8 @@ export const createPersistenceHook = (
     readonly billingMode: BillingMode
     readonly cost: CostInfo | undefined
   }
-): HarnessHook<StorageError, SessionStorage> => {
+) {
+  const bus = yield* EventBus
   let nextMessageIndex = messageCountBeforeRun
   let nextModelCallIndex = 0
   let nextAppendBaseNodeId = appendBaseNodeId
@@ -187,8 +190,8 @@ export const createPersistenceHook = (
       modelCallUsages.length
     )
 
-    publish({ _tag: 'MessagesAppended', sessionId, runId })
-    publish({ _tag: 'SessionUpdated', sessionId })
+    yield* bus.publish({ _tag: 'MessagesAppended', sessionId, runId })
+    yield* bus.publish({ _tag: 'SessionUpdated', sessionId })
   })
 
   return {
@@ -211,5 +214,5 @@ export const createPersistenceHook = (
         }),
         Effect.withLogSpan('server.persistRun')
       ),
-  }
-}
+  } satisfies HarnessHook<StorageError, SessionStorage>
+})

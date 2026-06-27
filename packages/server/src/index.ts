@@ -21,7 +21,7 @@ export {
   StopResponse,
   StorageUnavailable,
 } from '@sorato/api'
-export { publish, subscribe, createBusHook } from './event-bus.ts'
+export { EventBus, EventBusLive, createBusHook } from './event-bus.ts'
 export type { ContentEvent, ServerEvent } from './event-bus.ts'
 export { getReplayBufferSince } from './event-replay.ts'
 export type { StreamCursor } from './event-replay.ts'

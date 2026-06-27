@@ -16,6 +16,11 @@ function createServerInfoStore() {
   let error = $state<string | null>(null)
 
   function refresh() {
+    const clearLoading = Effect.sync(() => {
+      const active = connectionsStore.activeConnection
+      if (active && connectionId === active.id) loading = false
+    })
+
     return Effect.gen(function* () {
       const connection = connectionsStore.activeConnection
       yield* Effect.sync(() => {
@@ -48,12 +53,7 @@ function createServerInfoStore() {
           error = cause.message
         })
       ),
-      Effect.ensuring(
-        Effect.sync(() => {
-          const active = connectionsStore.activeConnection
-          if (active && connectionId === active.id) loading = false
-        })
-      )
+      Effect.ensuring(clearLoading)
     )
   }
 

@@ -157,9 +157,9 @@ function createSessionStore() {
         next.delete(event.sessionId)
         stoppingSessions = next
       }
-      void refreshSession(event.sessionId)
+      void Effect.runPromise(refreshSession(event.sessionId))
     } else if (event._tag === 'SessionUpdated') {
-      refreshSession(event.sessionId)
+      void Effect.runPromise(refreshSession(event.sessionId))
     }
   })
 
@@ -192,6 +192,10 @@ function createSessionStore() {
   // ── Public API ────────────────────────────────────────────────────
 
   function fetchSessions() {
+    const clearLoading = Effect.sync(() => {
+      loading = false
+    })
+
     return Effect.gen(function* () {
       yield* Effect.sync(() => {
         loading = true
@@ -213,11 +217,7 @@ function createSessionStore() {
           error = cause.message
         })
       ),
-      Effect.ensuring(
-        Effect.sync(() => {
-          loading = false
-        })
-      )
+      Effect.ensuring(clearLoading)
     )
   }
 
@@ -231,7 +231,8 @@ function createSessionStore() {
         projectId ??
         tabStore.activeTab?.projectId ??
         projectStore.selectedProjectId
-      if (!resolvedProjectId) return null
+      const noSession = null
+      if (!resolvedProjectId) return noSession
 
       const client = yield* apiClient(connectionsStore.getApiBase())
       const session = yield* runApiEffect(
@@ -247,8 +248,9 @@ function createSessionStore() {
     }).pipe(
       Effect.catch((cause: UiApiError) =>
         Effect.sync(() => {
+          const noSession = null
           error = cause.message
-          return null
+          return noSession
         })
       )
     )
@@ -310,6 +312,7 @@ function createSessionStore() {
     }).pipe(
       Effect.catch((cause: UiApiError) =>
         Effect.sync(() => {
+          const noRun = null
           const message = cause.message
           error = message
           const next = new Map(sessionStatuses)
@@ -320,7 +323,7 @@ function createSessionStore() {
             retryable: cause.retryable,
           })
           sessionStatuses = next
-          return null
+          return noRun
         })
       )
     )
@@ -364,6 +367,7 @@ function createSessionStore() {
     }).pipe(
       Effect.catch((cause: UiApiError) =>
         Effect.sync(() => {
+          const noRun = null
           const message = cause.message
           error = message
           const next = new Map(sessionStatuses)
@@ -374,7 +378,7 @@ function createSessionStore() {
             retryable: cause.retryable,
           })
           sessionStatuses = next
-          return null
+          return noRun
         })
       )
     )

@@ -44,7 +44,7 @@ import {
   shouldStop,
   shiftQueuedRun,
 } from './run-registry.ts'
-import { publish } from './event-bus.ts'
+import { EventBus } from './event-bus.ts'
 
 const toSessionResponse = (s: {
   readonly id: string
@@ -195,8 +195,9 @@ const doRequestRunStop = (sessionId: string) => {
 }
 
 const doPublishMessagesAppended = (sessionId: string) => {
-  publish({ _tag: 'MessagesAppended', sessionId })
-  return Effect.void
+  return Effect.flatMap(EventBus, (bus) =>
+    bus.publish({ _tag: 'MessagesAppended', sessionId })
+  )
 }
 
 function isDescendantOrSame(
