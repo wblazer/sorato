@@ -19,13 +19,14 @@ export class SessionSelectedHeadController {
   get selectedHeadStorageKey() {
     return makeSelectedHeadStorageKey(
       connectionsStore.activeConnection?.id,
-      this.sessionId()
+      this.sessionId(),
+      this.tabId()
     )
   }
 
   readonly renderHead = $derived.by(() =>
     resolveRenderHead(
-      messagesStore.messagesFor(this.sessionId()),
+      messagesStore.messagesForTab(this.tabId()),
       this.selectedHead,
       (runId) => sessionStore.isRunActive(runId)
     )
@@ -45,12 +46,13 @@ export class SessionSelectedHeadController {
 
   readonly visibleMessages = $derived.by(() =>
     selectedMessages(
-      messagesStore.messagesFor(this.sessionId()),
+      messagesStore.messagesForTab(this.tabId()),
       this.renderHead
     )
   )
 
   constructor(
+    private readonly tabId: () => string,
     private readonly sessionId: () => string,
     private readonly isActive: () => boolean = () => true
   ) {
@@ -72,8 +74,8 @@ export class SessionSelectedHeadController {
 
     $effect(() => {
       const key = this.selectedHeadStorageKey
-      const messages = messagesStore.messagesFor(this.sessionId())
-      if (!messagesStore.loadedFor(this.sessionId())) return
+      const messages = messagesStore.messagesForTab(this.tabId())
+      if (!messagesStore.loadedForTab(this.tabId())) return
 
       const ids = new Set(messages.map((message) => message.id))
 
@@ -136,6 +138,7 @@ export class SessionSelectedHeadController {
 
       const head = this.renderHead
       messagesStore.selectRunStream(
+        this.tabId(),
         this.sessionId(),
         head?.type === 'run' ? head.runId : null,
         head?.type === 'run' ? head.baseNodeId : null

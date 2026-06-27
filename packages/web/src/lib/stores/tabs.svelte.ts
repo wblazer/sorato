@@ -56,8 +56,7 @@ function createTabStore() {
 
   function loadActiveTabMessages(): Promise<void> {
     const tab = activeTab()
-    if (tab?.sessionId) return messagesStore.loadMessages(tab.sessionId)
-    messagesStore.clearActive()
+    if (tab?.sessionId) return messagesStore.loadMessages(tab.id, tab.sessionId)
     return Promise.resolve()
   }
 
@@ -72,15 +71,14 @@ function createTabStore() {
     const state = ensureTabSet()
     setTabSet({ ...state, activeTabId: id })
     const tab = state.tabs.find((item) => item.id === id)
-    if (tab?.sessionId) void messagesStore.loadMessages(tab.sessionId)
-    if (!tab?.sessionId) messagesStore.clearActive()
+    if (!tab?.sessionId) messagesStore.clearActiveStream()
   }
 
   function openNewTab() {
     const state = ensureTabSet()
     const tab = newTab()
     setTabSet({ tabs: [tab, ...state.tabs], activeTabId: tab.id })
-    messagesStore.clearActive()
+    messagesStore.clearActiveStream()
   }
 
   function closeTab(id: string) {
@@ -97,10 +95,12 @@ function createTabStore() {
         setActiveTab(replacement.id)
       } else {
         setTabSet({ tabs: next, activeTabId: null })
-        messagesStore.clearActive()
+        messagesStore.clearActiveStream()
       }
+      messagesStore.clearTab(id)
     } else {
       setTabSet({ ...state, tabs: next })
+      messagesStore.clearTab(id)
     }
   }
 
@@ -154,7 +154,8 @@ function createTabStore() {
           : tab
       ),
     })
-    messagesStore.clearActive()
+    messagesStore.clearTab(state.activeTabId)
+    messagesStore.clearActiveStream()
   }
 
   function clearProject(projectId: string) {

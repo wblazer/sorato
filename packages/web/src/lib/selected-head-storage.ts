@@ -36,13 +36,16 @@ export interface SelectedHeadChangedDetail {
 
 export function selectedHeadStorageKey(
   connectionId: string | null | undefined,
-  sessionId: string
+  sessionId: string,
+  tabId: string
 ) {
   return storageKey(
     'connection',
     connectionId,
     'session',
     sessionId,
+    'tab',
+    tabId,
     'selected-head'
   )
 }

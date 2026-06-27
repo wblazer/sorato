@@ -80,6 +80,9 @@
 
   async function handleSend(input: string) {
     if (sending || !activeProjectId) return
+    const tabId = tabStore.activeTab?.id
+    if (!tabId) return
+
     sending = true
 
     try {
@@ -90,10 +93,10 @@
       const model = modelsStore.selectedModel
       if (!model) return
 
-      const session = await sessionStore.createSession(activeProjectId)
+      const session = await sessionStore.createSession(activeProjectId, tabId)
       if (!session) return
 
-      messagesStore.prepareSession(session.id)
+      messagesStore.prepareSession(tabId, session.id)
 
       const response = await sessionStore.runAgent(
         session.id,
@@ -109,10 +112,12 @@
         selectedHeadStorageKey(
           connectionsStore.activeConnection?.id,
           session.id,
+          tabId,
         ),
         { type: 'run', runId: response.runId, baseNodeId: response.baseNodeId },
       )
       messagesStore.addOptimisticUserMessage(
+        tabId,
         session.id,
         input,
         response.baseNodeId,

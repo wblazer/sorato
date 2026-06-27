@@ -26,10 +26,12 @@
   import type { SessionSelectedHeadController } from './session-selected-head.svelte.js'
 
   let {
+    tabId,
     sessionId,
     selectedHead,
     model,
   }: {
+    tabId: string
     sessionId: string
     selectedHead: SessionSelectedHeadController
     model: string | null
@@ -74,7 +76,7 @@
         readonly run: ActiveRun
       } & TreeRowLayout)
 
-  const messages = $derived(messagesStore.messagesFor(sessionId))
+  const messages = $derived(messagesStore.messagesForTab(tabId))
   const tree = $derived(buildMessageTree(messages))
   const activeRuns = $derived(sessionStore.activeRunsFor(sessionId))
   const selectedPathIds = $derived(
@@ -413,7 +415,7 @@
     </div>
 
     <Tabs.Content value="tree" class="min-h-0 overflow-auto">
-      {#if messagesStore.loading}
+      {#if messagesStore.loadingForTab(tabId)}
         <LoadingState />
       {:else if rows.length === 0}
         <div class="p-3 text-sm text-muted-foreground">No messages yet.</div>

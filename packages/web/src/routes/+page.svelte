@@ -29,6 +29,7 @@
     {#if session}
       <div class="h-full" hidden={tab.id !== tabStore.activeTabId}>
         <SessionView
+          tabId={tab.id}
           sessionId={session.id}
           title={session.title}
           active={tab.id === tabStore.activeTabId}

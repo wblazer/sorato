@@ -26,12 +26,19 @@
   import * as Item from '$lib/components/ui/item/index.js'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
   let {
+    tabId,
     sessionId,
     title,
     active = true,
-  }: { sessionId: string; title: string | null; active?: boolean } = $props()
+  }: {
+    tabId: string
+    sessionId: string
+    title: string | null
+    active?: boolean
+  } = $props()
 
   const selectedHead = new SessionSelectedHeadController(
+    () => tabId,
     () => sessionId,
     () => active,
   )
@@ -60,9 +67,9 @@
     return project?.name ?? null
   })
   const visibleMessages = $derived(selectedHead.visibleMessages)
-  const messagesLoading = $derived(messagesStore.loadingFor(sessionId))
-  const messagesLoaded = $derived(messagesStore.loadedFor(sessionId))
-  const messagesError = $derived(messagesStore.errorFor(sessionId))
+  const messagesLoading = $derived(messagesStore.loadingForTab(tabId))
+  const messagesLoaded = $derived(messagesStore.loadedForTab(tabId))
+  const messagesError = $derived(messagesStore.errorForTab(tabId))
   const selectedHeadValue = $derived(selectedHead.renderHead)
   const followedRun = $derived(
     selectedHeadValue?.type === 'run'
@@ -72,8 +79,9 @@
   const isFollowingActiveRun = $derived(followedRun !== null)
   const followedStreamingParts = $derived(
     selectedHeadValue?.type === 'run' &&
+      messagesStore.activeStreamTabId === tabId &&
       messagesStore.activeRunId === selectedHeadValue.runId
-      ? messagesStore.streamingParts
+      ? messagesStore.streamingPartsForTab(tabId)
       : [],
   )
   const showStreamingIndicator = $derived(
@@ -216,8 +224,9 @@
   }
 
   $effect(() => {
+    if (!active) return
     if (!messagesLoaded && !messagesLoading) {
-      void messagesStore.loadMessages(sessionId)
+      void messagesStore.loadMessages(tabId, sessionId)
     }
   })
 
@@ -282,6 +291,7 @@
           // Show the user's message immediately — don't wait for the server
           // round-trip. The optimistic node is replaced on the next refresh.
           messagesStore.addOptimisticUserMessage(
+            tabId,
             sessionId,
             input,
             response.baseNodeId,
@@ -319,7 +329,7 @@
   }
 
   function retryMessages() {
-    void messagesStore.loadMessages(sessionId)
+    void messagesStore.loadMessages(tabId, sessionId, { force: true })
   }
 
   onDestroy(() => scroller.destroy())
@@ -336,6 +346,7 @@
 
   {#snippet panel()}
     <SessionTreePanel
+      {tabId}
       {sessionId}
       {selectedHead}
       model={modelsStore.selectedModel}

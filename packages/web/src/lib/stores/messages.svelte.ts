@@ -1,6 +1,6 @@
 /**
- * Messages store — persisted messages for the active session plus streaming
- * content for the selected run.
+ * Messages store — persisted messages scoped to each tab plus streaming content
+ * for the selected run in the active tab.
  *
  * Heavy content SSE is run-scoped: `/events?runId=...&since=...`. The global
  * SSE stream still carries lifecycle events used by the session store.
@@ -14,14 +14,16 @@ import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
 import { requestSessionRefresh } from './session-refresh-bus.js'
 
-interface MessageSessionState {
+interface MessageTabState {
+  readonly sessionId: string | null
   readonly messages: MessageNode[]
   readonly loading: boolean
   readonly loaded: boolean
   readonly error: string | null
 }
 
-const emptySessionState: MessageSessionState = {
+const emptyTabState: MessageTabState = {
+  sessionId: null,
   messages: [],
   loading: false,
   loaded: false,
@@ -29,36 +31,29 @@ const emptySessionState: MessageSessionState = {
 }
 
 function createMessagesStore() {
-  let sessionStates = $state<Record<string, MessageSessionState>>({})
-  let currentSessionId = $state<string | null>(null)
+  let tabStates = $state<Record<string, MessageTabState>>({})
 
   let streamingParts = $state<MessagePart[]>([])
   const lastCursors = new Map<string, StreamCursor>()
 
   let streamConnection: SseConnection | null = null
+  let streamedTabId = $state<string | null>(null)
+  let streamedSessionId = $state<string | null>(null)
   let streamedRunId = $state<string | null>(null)
   let streamedRunBaseNodeId = $state<string | null>(null)
 
-  const currentState = $derived(
-    currentSessionId === null
-      ? emptySessionState
-      : (sessionStates[currentSessionId] ?? emptySessionState)
-  )
-
-  function updateSessionState(
-    sessionId: string,
-    update: (state: MessageSessionState) => MessageSessionState
+  function updateTabState(
+    tabId: string,
+    update: (state: MessageTabState) => MessageTabState
   ) {
-    sessionStates = {
-      ...sessionStates,
-      [sessionId]: update(sessionStates[sessionId] ?? emptySessionState),
+    tabStates = {
+      ...tabStates,
+      [tabId]: update(tabStates[tabId] ?? emptyTabState),
     }
   }
 
-  function stateFor(sessionId: string | null): MessageSessionState {
-    return sessionId === null
-      ? emptySessionState
-      : (sessionStates[sessionId] ?? emptySessionState)
+  function stateFor(tabId: string | null): MessageTabState {
+    return tabId === null ? emptyTabState : (tabStates[tabId] ?? emptyTabState)
   }
 
   const getLastCursor = (runId: string) => lastCursors.get(runId) ?? null
@@ -87,7 +82,7 @@ function createMessagesStore() {
     streamConnection = null
   }
 
-  function openRunStream(sessionId: string, runId: string) {
+  function openRunStream(tabId: string, sessionId: string, runId: string) {
     closeRunStream()
 
     const apiBase = connectionsStore.getApiBase()
@@ -96,8 +91,11 @@ function createMessagesStore() {
     streamConnection = connectSse(
       apiBase,
       (event) => {
-        if (!('sessionId' in event) || event.sessionId !== currentSessionId)
+        if (!('sessionId' in event) || event.sessionId !== sessionId) return
+        if (stateFor(tabId).sessionId !== sessionId) {
+          closeRunStream()
           return
+        }
         if ('runId' in event && event.runId !== streamedRunId) return
 
         switch (event._tag) {
@@ -106,7 +104,7 @@ function createMessagesStore() {
             streamedRunBaseNodeId = event.baseNodeId
             streamingParts = []
             setRunCursor(event.runId)
-            refreshMessages(sessionId)
+            refreshMessages(tabId, sessionId)
             break
 
           case 'TextDelta':
@@ -150,7 +148,7 @@ function createMessagesStore() {
             break
 
           case 'RunEnd':
-            refreshMessages(sessionId, { clearPartsForRun: event.runId })
+            refreshMessages(tabId, sessionId, { clearPartsForRun: event.runId })
             break
 
           case 'RunFailed':
@@ -159,11 +157,11 @@ function createMessagesStore() {
 
           case 'ReplayReset':
             requestSessionRefresh(sessionId)
-            refreshMessages(sessionId, { clearPartsForRun: event.runId })
+            refreshMessages(tabId, sessionId, { clearPartsForRun: event.runId })
             break
 
           case 'MessagesAppended':
-            refreshMessages(sessionId, {
+            refreshMessages(tabId, sessionId, {
               clearStreamingPartsForRun: event.runId,
             })
             break
@@ -180,6 +178,7 @@ function createMessagesStore() {
   }
 
   function selectRunStream(
+    tabId: string,
     sessionId: string,
     runId: string | null,
     baseNodeId: string | null = null
@@ -187,21 +186,30 @@ function createMessagesStore() {
     if (runId === null) {
       closeRunStream()
       if (streamedRunId !== null) resetCursor(streamedRunId)
+      streamedTabId = null
+      streamedSessionId = null
       streamedRunId = null
       streamedRunBaseNodeId = null
       streamingParts = []
       return
     }
 
-    if (currentSessionId !== sessionId) currentSessionId = sessionId
-    if (streamedRunId === runId && streamConnection !== null) return
+    if (
+      streamedTabId === tabId &&
+      streamedSessionId === sessionId &&
+      streamedRunId === runId &&
+      streamConnection !== null
+    )
+      return
 
     if (streamedRunId !== null) resetCursor(streamedRunId)
     streamingParts = []
     resetCursor(runId)
+    streamedTabId = tabId
+    streamedSessionId = sessionId
     streamedRunId = runId
     streamedRunBaseNodeId = baseNodeId
-    openRunStream(sessionId, runId)
+    openRunStream(tabId, sessionId, runId)
   }
 
   function appendTextDelta(delta: string) {
@@ -228,42 +236,48 @@ function createMessagesStore() {
     }
   }
 
-  function prepareSession(sessionId: string) {
-    updateSessionState(sessionId, () => ({
+  function prepareSession(tabId: string, sessionId: string) {
+    updateTabState(tabId, () => ({
+      sessionId,
       messages: [],
       loading: false,
       loaded: true,
       error: null,
     }))
-    currentSessionId = sessionId
-    streamingParts = []
-    resetCursor()
-    streamedRunId = null
-    streamedRunBaseNodeId = null
-    closeRunStream()
+    if (streamedTabId === tabId) clearActiveStream()
   }
 
-  async function loadMessages(sessionId: string) {
-    const hasExisting = sessionStates[sessionId]?.loaded === true
+  async function loadMessages(
+    tabId: string,
+    sessionId: string,
+    opts?: { readonly force?: boolean }
+  ) {
+    const existing = stateFor(tabId)
+    const hasExisting =
+      existing.sessionId === sessionId && existing.loaded === true
+    if (hasExisting && !opts?.force) return
 
-    streamingParts = []
-    resetCursor()
-    streamedRunId = null
-    streamedRunBaseNodeId = null
-    closeRunStream()
+    if (streamedTabId === tabId) {
+      streamingParts = []
+      resetCursor()
+      streamedTabId = null
+      streamedSessionId = null
+      streamedRunId = null
+      streamedRunBaseNodeId = null
+      closeRunStream()
+    }
 
     if (!hasExisting) {
-      updateSessionState(sessionId, (state) => ({
+      updateTabState(tabId, (state) => ({
         ...state,
+        sessionId,
         loading: true,
         loaded: false,
         error: null,
       }))
     } else {
-      updateSessionState(sessionId, (state) => ({ ...state, error: null }))
+      updateTabState(tabId, (state) => ({ ...state, error: null }))
     }
-
-    currentSessionId = sessionId
 
     try {
       const client = await getApiClient(connectionsStore.getApiBase())
@@ -278,20 +292,23 @@ function createMessagesStore() {
       await preloadMessageToolDiffs(serverMessages)
 
       if (!(hasExisting && serverMessages.length === 0)) {
-        updateSessionState(sessionId, (state) => ({
+        updateTabState(tabId, (state) => ({
           ...state,
+          sessionId,
           messages: serverMessages,
         }))
       }
     } catch (e) {
-      updateSessionState(sessionId, (state) => ({
+      updateTabState(tabId, (state) => ({
         ...state,
+        sessionId,
         messages: hasExisting ? state.messages : [],
         error: requestErrorMessage(e, 'Failed to load messages'),
       }))
     } finally {
-      updateSessionState(sessionId, (state) => ({
+      updateTabState(tabId, (state) => ({
         ...state,
+        sessionId,
         loading: false,
         loaded: true,
       }))
@@ -299,6 +316,7 @@ function createMessagesStore() {
   }
 
   function addOptimisticUserMessage(
+    tabId: string,
     sessionId: string,
     input: string,
     parentNodeId: string | null,
@@ -338,8 +356,9 @@ function createMessagesStore() {
       encoded: { role: 'user', content: input },
       createdAt: now,
     }
-    updateSessionState(sessionId, (state) => ({
+    updateTabState(tabId, (state) => ({
       ...state,
+      sessionId,
       messages: [...state.messages, optimistic],
       loaded: true,
       error: null,
@@ -347,9 +366,12 @@ function createMessagesStore() {
   }
 
   async function refreshMessages(
+    tabId: string,
     sessionId: string,
     opts?: { clearPartsForRun?: string; clearStreamingPartsForRun?: string }
   ) {
+    if (stateFor(tabId).sessionId !== sessionId) return
+
     try {
       const client = await getApiClient(connectionsStore.getApiBase())
       const result = await runApi(
@@ -363,14 +385,15 @@ function createMessagesStore() {
       const fresh: MessageNode[] = result.value as MessageNode[]
       await preloadMessageToolDiffs(fresh)
 
-      updateSessionState(sessionId, (state) => ({
+      updateTabState(tabId, (state) => ({
         ...state,
+        sessionId,
         messages: fresh,
         loaded: true,
         error: null,
       }))
 
-      if (currentSessionId === sessionId) {
+      if (streamedTabId === tabId && streamedSessionId === sessionId) {
         if (
           opts?.clearStreamingPartsForRun &&
           streamedRunId === opts.clearStreamingPartsForRun
@@ -393,45 +416,46 @@ function createMessagesStore() {
   sseStore.onEvent((event) => {
     if (
       event._tag === 'MessagesAppended' &&
-      currentSessionId &&
-      event.sessionId === currentSessionId
+      streamedTabId !== null &&
+      streamedSessionId === event.sessionId
     ) {
-      refreshMessages(event.sessionId, {
+      refreshMessages(streamedTabId, event.sessionId, {
         clearStreamingPartsForRun: event.runId,
       })
     }
   })
 
-  function clearActive() {
+  function clearTab(tabId: string) {
+    if (streamedTabId === tabId) {
+      closeRunStream()
+      streamingParts = []
+      resetCursor()
+      streamedTabId = null
+      streamedSessionId = null
+      streamedRunId = null
+      streamedRunBaseNodeId = null
+    }
+    const next = { ...tabStates }
+    delete next[tabId]
+    tabStates = next
+  }
+
+  function clearActiveStream() {
     closeRunStream()
-    currentSessionId = null
     streamingParts = []
     resetCursor()
+    streamedTabId = null
+    streamedSessionId = null
     streamedRunId = null
     streamedRunBaseNodeId = null
   }
 
   function clearAll() {
-    clearActive()
-    sessionStates = {}
+    clearActiveStream()
+    tabStates = {}
   }
 
   return {
-    get messages() {
-      return currentState.messages
-    },
-    get loading() {
-      return currentState.loading
-    },
-    get loaded() {
-      return currentState.loaded
-    },
-    get error() {
-      return currentState.error
-    },
-    get currentSessionId() {
-      return currentSessionId
-    },
     get streamingParts() {
       return streamingParts
     },
@@ -441,23 +465,30 @@ function createMessagesStore() {
     get activeRunBaseNodeId() {
       return streamedRunBaseNodeId
     },
-    messagesFor(sessionId: string | null) {
-      return stateFor(sessionId).messages
+    get activeStreamTabId() {
+      return streamedTabId
     },
-    loadingFor(sessionId: string | null) {
-      return stateFor(sessionId).loading
+    messagesForTab(tabId: string | null) {
+      return stateFor(tabId).messages
     },
-    loadedFor(sessionId: string | null) {
-      return stateFor(sessionId).loaded
+    loadingForTab(tabId: string | null) {
+      return stateFor(tabId).loading
     },
-    errorFor(sessionId: string | null) {
-      return stateFor(sessionId).error
+    loadedForTab(tabId: string | null) {
+      return stateFor(tabId).loaded
+    },
+    errorForTab(tabId: string | null) {
+      return stateFor(tabId).error
+    },
+    streamingPartsForTab(tabId: string | null) {
+      return streamedTabId === tabId ? streamingParts : []
     },
     prepareSession,
     loadMessages,
     selectRunStream,
     addOptimisticUserMessage,
-    clearActive,
+    clearTab,
+    clearActiveStream,
     clearAll,
     clear: clearAll,
   }

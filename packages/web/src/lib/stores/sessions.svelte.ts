@@ -216,7 +216,10 @@ function createSessionStore() {
    * Create a new session in the selected project.
    * Returns the new session, or null on error.
    */
-  async function createSession(projectId?: string): Promise<Session | null> {
+  async function createSession(
+    projectId?: string,
+    tabId = tabStore.activeTab?.id
+  ): Promise<Session | null> {
     const resolvedProjectId =
       projectId ??
       tabStore.activeTab?.projectId ??
@@ -236,8 +239,7 @@ function createSessionStore() {
 
       const session: Session = result.value
       sessions = [session, ...sessions]
-      if (tabStore.activeTab)
-        tabStore.attachSession(tabStore.activeTab.id, session)
+      if (tabId) tabStore.attachSession(tabId, session)
       return session
     } catch (e) {
       error = requestErrorMessage(e, 'Failed to create session')
@@ -486,13 +488,14 @@ function createSessionStore() {
       projectStore.selectProject(projectId)
       if (tabStore.activeTab)
         tabStore.setDraftProject(tabStore.activeTab.id, projectId)
-      messagesStore.clearActive()
     },
     selectSession(id: string) {
       const session = sessions.find((item) => item.id === id)
-      if (session && tabStore.activeTab)
-        tabStore.attachSession(tabStore.activeTab.id, session)
-      void messagesStore.loadMessages(id)
+      const tab = tabStore.activeTab
+      if (!session || !tab) return
+
+      tabStore.attachSession(tab.id, session)
+      void messagesStore.loadMessages(tab.id, id)
     },
     isRunning,
     isRunActive,
