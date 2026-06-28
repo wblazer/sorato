@@ -33,7 +33,12 @@ const toProjectResponse = (project: Project) =>
   })
 
 const createFileFinder = (project: Project) => {
-  const created = FileFinder.create({ basePath: project.path, aiMode: true })
+  const created = FileFinder.create({
+    basePath: project.path,
+    aiMode: true,
+    enableHomeDirScanning: true,
+    enableFsRootScanning: true,
+  })
   if (!created.ok) {
     return new ProjectOperationFailed({
       code: 'project.file_search_unavailable',
