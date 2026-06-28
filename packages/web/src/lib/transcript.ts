@@ -34,10 +34,24 @@ export type TranscriptItem =
       source: TranscriptSource
     }
 
-const isStoppedSystemMessage = (source: TranscriptSource): boolean =>
+const isInterruptedAssistantSource = (source: TranscriptSource): boolean =>
   source.type === 'persisted' &&
-  source.message.encoded.role === 'system' &&
-  source.message.encoded.source === 'interruption'
+  source.message.encoded.role === 'assistant' &&
+  source.message.encoded.metadata?.interrupted === true
+
+const isLastSourceForMessage = (
+  sources: ReadonlyArray<TranscriptSource>,
+  source: TranscriptSource,
+  index: number
+): boolean =>
+  source.type === 'persisted' &&
+  !sources
+    .slice(index + 1)
+    .some(
+      (candidate) =>
+        candidate.type === 'persisted' &&
+        candidate.message.id === source.message.id
+    )
 
 export const messageParts = (
   message: MessageNode
@@ -83,11 +97,15 @@ export const projectTranscript = (
     }
   }
 
-  return sources.flatMap((source): TranscriptItem[] => {
+  return sources.flatMap((source, index): TranscriptItem[] => {
     const part = source.part
-    if (isStoppedSystemMessage(source)) {
-      return [{ type: 'interruption', source }]
-    }
+    const appendInterruption =
+      isInterruptedAssistantSource(source) &&
+      isLastSourceForMessage(sources, source, index)
+    const interruption = appendInterruption
+      ? [{ type: 'interruption' as const, source }]
+      : []
+
     if (part.type === 'tool-call') {
       const result = results.get(part.id)
       return [
@@ -98,9 +116,10 @@ export const projectTranscript = (
           callSource: source,
           resultSource: result?.source,
         },
+        ...interruption,
       ]
     }
     if (part.type === 'tool-result') return []
-    return [{ type: 'message', source, part }]
+    return [{ type: 'message', source, part }, ...interruption]
   })
 }

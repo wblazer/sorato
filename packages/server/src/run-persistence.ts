@@ -7,15 +7,22 @@ import {
   type BillingMode,
   type SessionId,
 } from './session/session.ts'
+import { StoredMessage, type StoredMessageEncoded } from '@sorato/core/message'
 import { EventBus } from './event-bus.ts'
 import { pricedUsage, type CostInfo } from './run-cost.ts'
 
-const stoppedSystemMessage = {
-  role: 'system' as const,
-  source: 'interruption' as const,
-  display: { title: 'System', subtitle: 'Interruption' },
-  content:
-    '[The user stopped the previous response. The assistant message above may be incomplete.]',
+const INTERRUPTED_TOOL_RESULT = 'Tool execution interrupted.'
+
+const nullUsage = {
+  inputTokens: null,
+  outputTokens: null,
+  reasoningTokens: null,
+  cacheReadTokens: null,
+  cacheWriteTokens: null,
+  totalTokens: null,
+  contextWindowTokens: null,
+  actualCostMicrosUsd: null,
+  listPriceMicrosUsd: null,
 }
 
 const addToolDisplays = (
@@ -23,7 +30,7 @@ const addToolDisplays = (
   callHeaders: HarnessResult['toolCallHeaders'],
   resultHeaders: HarnessResult['toolResultHeaders'],
   resultBodyDisplays: HarnessResult['toolResultBodyDisplays']
-): ReadonlyArray<Prompt.MessageEncoded> => {
+): ReadonlyArray<StoredMessageEncoded> => {
   const addDisplayToCallPart = (
     part: Prompt.ToolCallPartEncoded
   ): Prompt.ToolCallPartEncoded => {
@@ -52,33 +59,58 @@ const addToolDisplays = (
       ...(bodyPresentation?.bodyDisplay !== undefined
         ? { bodyDisplay: bodyPresentation.bodyDisplay }
         : {}),
+      ...(part.isFailure && part.result === INTERRUPTED_TOOL_RESULT
+        ? { metadata: { interrupted: true } }
+        : {}),
     }
   }
 
   return messages.map((message) => {
-    switch (message.role) {
-      case 'assistant':
-        if (typeof message.content === 'string') return message
-        return {
-          ...message,
-          content: message.content.map((part) => {
-            if (part.type === 'tool-call') return addDisplayToCallPart(part)
-            if (part.type === 'tool-result') return addDisplayToPart(part)
-            return part
-          }),
-        }
-      case 'tool':
-        return {
-          ...message,
-          content: message.content.map((part) =>
-            part.type === 'tool-result' ? addDisplayToPart(part) : part
-          ),
-        }
-      case 'system':
-      case 'user':
-        return message
-    }
+    const withDisplay = (() => {
+      switch (message.role) {
+        case 'assistant':
+          if (typeof message.content === 'string') return message
+          return {
+            ...message,
+            content: message.content.map((part) => {
+              if (part.type === 'tool-call') return addDisplayToCallPart(part)
+              if (part.type === 'tool-result') return addDisplayToPart(part)
+              return part
+            }),
+          }
+        case 'tool':
+          return {
+            ...message,
+            content: message.content.map((part) =>
+              part.type === 'tool-result' ? addDisplayToPart(part) : part
+            ),
+          }
+        case 'system':
+        case 'user':
+          return message
+      }
+    })()
+
+    return Schema.decodeUnknownSync(StoredMessage)(withDisplay)
   })
+}
+
+const markLastAssistantInterrupted = (
+  messages: ReadonlyArray<StoredMessageEncoded>
+): ReadonlyArray<StoredMessageEncoded> => {
+  const index = messages.findLastIndex(
+    (message) => message.role === 'assistant'
+  )
+  if (index === -1) return messages
+
+  return messages.map((message, messageIndex) =>
+    messageIndex === index && message.role === 'assistant'
+      ? {
+          ...message,
+          metadata: { ...message.metadata, interrupted: true },
+        }
+      : message
+  )
 }
 
 export const createPersistenceHook = Effect.fn(
@@ -99,8 +131,6 @@ export const createPersistenceHook = Effect.fn(
   let nextMessageIndex = messageCountBeforeRun
   let nextModelCallIndex = 0
   let nextAppendBaseNodeId = appendBaseNodeId
-  let interruptionMarkerPersisted = false
-
   const persistResult = Effect.fn('RunPersistence.persistResult')(function* (
     result: HarnessResult,
     interrupted: boolean
@@ -122,10 +152,8 @@ export const createPersistenceHook = Effect.fn(
       result.toolResultHeaders,
       result.toolResultBodyDisplays
     )
-    const shouldAppendInterruptionMarker =
-      interrupted && !interruptionMarkerPersisted
-    const newMessages = shouldAppendInterruptionMarker
-      ? [...displayMessages, stoppedSystemMessage]
+    const newMessages = interrupted
+      ? markLastAssistantInterrupted(displayMessages)
       : displayMessages
 
     if (newMessages.length === 0) return
@@ -158,9 +186,8 @@ export const createPersistenceHook = Effect.fn(
     )
     nextAppendBaseNodeId = nodeIds.at(-1) ?? nextAppendBaseNodeId
     nextMessageIndex += encodedNewMessages.length
-    interruptionMarkerPersisted ||= shouldAppendInterruptionMarker
 
-    const assistantNodeIds = displayMessages.flatMap((message, index) => {
+    const assistantNodeIds = newMessages.flatMap((message, index) => {
       const nodeId = nodeIds[index]
       return message.role === 'assistant' && nodeId !== undefined
         ? [nodeId]
@@ -170,7 +197,12 @@ export const createPersistenceHook = Effect.fn(
       assistantNodeIds,
       (assistantNodeId, index) => {
         const modelCallUsage = modelCallUsages[index]
-        if (!modelCallUsage?.usage) return Effect.void
+        const usage = modelCallUsage?.usage ?? nullUsage
+        const timing =
+          modelCallUsage ??
+          (interrupted && index === assistantNodeIds.length - 1
+            ? result.incompleteModelCall
+            : undefined)
         return storage.createModelCall({
           sessionId,
           runId,
@@ -178,9 +210,9 @@ export const createPersistenceHook = Effect.fn(
           providerId: pricing.providerId,
           modelId: pricing.modelId,
           billingMode: pricing.billingMode,
-          startedAt: modelCallUsage.startedAt,
-          finishedAt: modelCallUsage.finishedAt,
-          ...modelCallUsage.usage,
+          startedAt: timing?.startedAt ?? null,
+          finishedAt: timing?.finishedAt ?? Date.now(),
+          ...usage,
         })
       },
       { discard: true }

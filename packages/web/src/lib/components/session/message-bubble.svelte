@@ -87,8 +87,9 @@
     },
   })
   const copied = $derived(copyAction.state === 'success')
-  const isInterruption = $derived(
-    renderParts.length === 1 && renderParts[0]?.type === 'interruption',
+  const assistantInterrupted = $derived(
+    message.encoded.role === 'assistant' &&
+      message.encoded.metadata?.interrupted === true,
   )
   const systemTitle = $derived(
     message.encoded.role === 'system'
@@ -168,15 +169,7 @@
         ? 'flex flex-col gap-2 py-1'
         : 'flex flex-col gap-2 pt-2.5 pb-1'}
   >
-    {#if isInterruption}
-      <div
-        class="flex items-center gap-3 py-1 text-sm font-medium text-muted-foreground"
-      >
-        <div class="h-px flex-1 bg-border"></div>
-        <span>Interrupted</span>
-        <div class="h-px flex-1 bg-border"></div>
-      </div>
-    {:else if parts.length === 0}
+    {#if parts.length === 0}
       <span class="text-xs italic text-muted-foreground">(empty)</span>
     {:else if isUser}
       <div class="group/user-message flex w-full flex-col items-end">
@@ -211,15 +204,7 @@
                     {accordionState}
                     accordionKey={itemAccordionKey(item, index)}
                   />
-                {:else if item.type === 'interruption'}
-                  <div
-                    class="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
-                  >
-                    <div class="h-px flex-1 bg-border"></div>
-                    <span>Interrupted</span>
-                    <div class="h-px flex-1 bg-border"></div>
-                  </div>
-                {:else}
+                {:else if item.type === 'message'}
                   <MessagePartComponent
                     part={item.part}
                     monospace={false}
@@ -301,6 +286,7 @@
       <AssistantTranscript
         items={renderParts}
         {modelCall}
+        interrupted={assistantInterrupted}
         {accordionState}
         {accordionKey}
       />

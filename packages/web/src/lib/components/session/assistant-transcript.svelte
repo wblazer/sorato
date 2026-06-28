@@ -8,12 +8,14 @@
   let {
     items,
     modelCall = null,
+    interrupted = false,
     isRunning = false,
     accordionState,
     accordionKey,
   }: {
     items: ReadonlyArray<TranscriptItem>
     modelCall?: ModelCall | null
+    interrupted?: boolean
     isRunning?: boolean
     accordionState: Record<string, string[]>
     accordionKey: string
@@ -76,7 +78,12 @@
   )
 
   const metaItems = $derived(
-    [modelLine, runtimeLine, costLine].filter((item) => item !== null),
+    [
+      modelLine,
+      interrupted ? 'interrupted' : null,
+      runtimeLine,
+      costLine,
+    ].filter((item) => item !== null),
   )
   const hasMeta = $derived(metaItems.length > 0)
   const itemRendersContent = (item: TranscriptItem): boolean => {

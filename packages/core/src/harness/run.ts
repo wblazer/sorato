@@ -44,6 +44,7 @@ import { ToolOutputRegistry, toolCallHeader } from '../tool/tool-output.ts'
 
 /** Maximum agent loop iterations to prevent runaway tool-call cycles. */
 const MAX_TURNS = 25
+const INTERRUPTED_TOOL_RESULT = 'Tool execution interrupted.'
 
 type RunUsage = HarnessUsage
 
@@ -102,8 +103,13 @@ const addUsage = (left: RunUsage | undefined, right: RunUsage): RunUsage => ({
 
 interface RunState {
   outputText: string
-  currentTurnParts: Array<Prompt.TextPart | Prompt.ReasoningPart>
+  currentTurnParts: Array<Prompt.AssistantMessagePart>
+  activeToolCalls: Map<
+    string,
+    { readonly name: string; readonly params: unknown }
+  >
   modelCalls: Array<HarnessModelCall>
+  activeModelCallStartedAt: number | undefined
   usage: RunUsage | undefined
   contextTokens: number | undefined
 }
@@ -182,7 +188,9 @@ export const run = <
     const state: RunState = {
       outputText: '',
       currentTurnParts: [],
+      activeToolCalls: new Map(),
       modelCalls: [],
+      activeModelCallStartedAt: undefined,
       usage: undefined,
       contextTokens: undefined,
     }
@@ -198,6 +206,7 @@ export const run = <
     ) {
       let hadToolCalls = false
       const startedAt = Date.now()
+      state.activeModelCallStartedAt = startedAt
       state.currentTurnParts = []
       yield* Effect.logDebug('Harness turn starting', { turn })
 
@@ -237,6 +246,18 @@ export const run = <
             const header = toolCallHeader(part.name, part.params)
             return Effect.sync(() => {
               hadToolCalls = true
+              state.activeToolCalls.set(part.id, {
+                name: part.name,
+                params: part.params,
+              })
+              state.currentTurnParts.push(
+                Prompt.makePart('tool-call', {
+                  id: part.id,
+                  name: part.name,
+                  params: part.params,
+                  providerExecuted: false,
+                })
+              )
               toolCallHeaders.set(part.id, { header })
             }).pipe(
               Effect.flatMap(() =>
@@ -276,6 +297,7 @@ export const run = <
                 ? { icon: callHeader.icon }
                 : {}),
             }
+            state.activeToolCalls.delete(part.id)
             toolResultHeaders.set(part.id, { header: resultHeader })
             if (presentation?.bodyDisplay) {
               toolResultBodyDisplays.set(part.id, {
@@ -306,9 +328,6 @@ export const run = <
             const usage = usageFromResponse(part.usage)
             const finishedAt = Date.now()
             return Effect.sync(() => {
-              // Turn completed normally — clear currentTurnParts so the
-              // interrupt path knows there's nothing to recover.
-              state.currentTurnParts = []
               if (usage) {
                 state.modelCalls.push({
                   usage,
@@ -319,6 +338,7 @@ export const run = <
                 state.usage = addUsage(state.usage, usage)
                 state.contextTokens = usage.totalTokens
               }
+              state.activeModelCallStartedAt = undefined
             }).pipe(
               Effect.flatMap(() =>
                 Effect.logDebug('Harness turn finished', {
@@ -364,9 +384,66 @@ export const run = <
       toolResultBodyDisplays,
       text: state.outputText,
       modelCalls: state.modelCalls,
+      incompleteModelCall:
+        state.activeModelCallStartedAt === undefined
+          ? undefined
+          : {
+              startedAt: state.activeModelCallStartedAt,
+              finishedAt: Date.now(),
+            },
       usage: state.usage,
       contextTokens: state.contextTokens,
     })
+
+    const interruptedToolResults = Effect.fn('Harness.interruptedToolResults')(
+      function* () {
+        const results: Array<Prompt.ToolResultPart> = []
+        for (const [id, call] of state.activeToolCalls) {
+          const callHeader = toolCallHeaders.get(id)?.header
+          const resultHeader = {
+            title: `${callHeader?.title ?? call.name} Result`,
+            ...(callHeader?.subtitle !== undefined
+              ? { subtitle: callHeader.subtitle }
+              : {}),
+            ...(callHeader?.icon !== undefined
+              ? { icon: callHeader.icon }
+              : {}),
+          }
+          toolResultHeaders.set(id, { header: resultHeader })
+          results.push(
+            Prompt.makePart('tool-result', {
+              id,
+              name: call.name,
+              isFailure: true,
+              result: INTERRUPTED_TOOL_RESULT,
+            })
+          )
+          yield* fireHooks(config, {
+            _tag: 'ToolResult',
+            id,
+            name: call.name,
+            result: INTERRUPTED_TOOL_RESULT,
+            header: resultHeader,
+            isFailure: true,
+          })
+        }
+        state.activeToolCalls.clear()
+        return results
+      }
+    )
+
+    const conversationHasActiveToolCall = (conversation: Prompt.Prompt) => {
+      if (state.activeToolCalls.size === 0) return true
+
+      const activeIds = new Set(state.activeToolCalls.keys())
+      return conversation.content.some((message) => {
+        if (message.role !== 'assistant' || typeof message.content === 'string')
+          return false
+        return message.content.some(
+          (part) => part.type === 'tool-call' && activeIds.has(part.id)
+        )
+      })
+    }
 
     const runToolLoop = Effect.fn('Harness.runToolLoop')(function* () {
       // First turn: empty prompt — the conversation already ends with the
@@ -408,8 +485,43 @@ export const run = <
       // assistant message so it gets persisted.
       const wasInterrupted =
         Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)
+      const hadInterruptedToolCalls =
+        wasInterrupted && state.activeToolCalls.size > 0
 
-      if (wasInterrupted && state.currentTurnParts.length > 0) {
+      if (
+        hadInterruptedToolCalls &&
+        state.currentTurnParts.length > 0 &&
+        !conversationHasActiveToolCall(fullConversation)
+      ) {
+        yield* Effect.logInfo('Harness recovering interrupted tool-call turn', {
+          recoveredPartCount: state.currentTurnParts.length,
+        })
+        fullConversation = Prompt.fromMessages([
+          ...fullConversation.content,
+          Prompt.makeMessage('assistant', {
+            content: state.currentTurnParts,
+          }),
+        ])
+      }
+
+      if (hadInterruptedToolCalls) {
+        yield* Effect.logInfo('Harness marking interrupted tool calls', {
+          interruptedToolCallCount: state.activeToolCalls.size,
+        })
+        const toolResults = yield* interruptedToolResults()
+        if (toolResults.length > 0) {
+          fullConversation = Prompt.fromMessages([
+            ...fullConversation.content,
+            Prompt.makeMessage('tool', { content: toolResults }),
+          ])
+        }
+      }
+
+      if (
+        wasInterrupted &&
+        !hadInterruptedToolCalls &&
+        state.currentTurnParts.length > 0
+      ) {
         yield* Effect.logInfo('Harness recovering interrupted content', {
           recoveredPartCount: state.currentTurnParts.length,
         })

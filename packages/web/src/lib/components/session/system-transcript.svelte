@@ -72,15 +72,7 @@
                 {accordionState}
                 accordionKey={itemAccordionKey(item, index)}
               />
-            {:else if item.type === 'interruption'}
-              <div
-                class="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
-              >
-                <div class="h-px flex-1 bg-border"></div>
-                <span>Interrupted</span>
-                <div class="h-px flex-1 bg-border"></div>
-              </div>
-            {:else}
+            {:else if item.type === 'message'}
               <MessagePartComponent
                 part={item.part}
                 monospace={true}

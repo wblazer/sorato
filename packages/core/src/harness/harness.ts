@@ -46,6 +46,11 @@ export interface HarnessModelCall {
   readonly finishedAt: number
 }
 
+export interface HarnessIncompleteModelCall {
+  readonly startedAt: number
+  readonly finishedAt: number
+}
+
 export type HarnessEvent =
   | { readonly _tag: 'RunStart' }
   | { readonly _tag: 'TextDelta'; readonly delta: string }
@@ -166,6 +171,8 @@ export interface HarnessResult {
   readonly text: string
   /** Per-model-call provider-reported token usage. */
   readonly modelCalls: ReadonlyArray<HarnessModelCall>
+  /** In-flight model call timing when a run is interrupted before usage arrives. */
+  readonly incompleteModelCall: HarnessIncompleteModelCall | undefined
   /** Aggregate provider-reported token usage across the run. */
   readonly usage: HarnessUsage | undefined
   /** Latest model call's total context after response, not run aggregate. */

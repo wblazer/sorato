@@ -108,15 +108,6 @@ const bootstrapSystemMsg = (text: string): StoredMessageEncoded =>
     })
   )
 
-const interruptionMsg = (text: string): StoredMessageEncoded =>
-  encodeMessage(
-    Schema.decodeUnknownSync(StoredMessage)({
-      role: 'system',
-      content: text,
-      source: 'interruption',
-    })
-  )
-
 const userMsg = (text: string): StoredMessageEncoded =>
   encodeMessage(
     Schema.decodeUnknownSync(StoredMessage)({ role: 'user', content: text })
@@ -127,6 +118,15 @@ const assistantMsg = (text: string): StoredMessageEncoded =>
     Schema.decodeUnknownSync(StoredMessage)({
       role: 'assistant',
       content: text,
+    })
+  )
+
+const interruptedAssistantMsg = (text: string): StoredMessageEncoded =>
+  encodeMessage(
+    Schema.decodeUnknownSync(StoredMessage)({
+      role: 'assistant',
+      content: text,
+      metadata: { interrupted: true },
     })
   )
 
@@ -394,20 +394,19 @@ describe('SessionStorage', () => {
       }).pipe(Effect.provide(testLayer()))
     )
 
-    it.effect('allows ranges that include interruption system messages', () =>
+    it.effect('allows ranges that include interrupted assistant messages', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'interruption-compact')
-        const [systemNodeId, userNodeId, assistantNodeId] = yield* append(
+        const session = yield* storage.create(TEST_DIR, 'interrupted-compact')
+        const [systemNodeId, userNodeId] = yield* append(storage, session.id, [
+          bootstrapSystemMsg('System'),
+          userMsg('Hello'),
+        ])
+        const [assistantNodeId, nextUserNodeId] = yield* append(
           storage,
           session.id,
-          [bootstrapSystemMsg('System'), userMsg('Hello'), assistantMsg('Hi')]
-        )
-        const [interruptionNodeId, nextUserNodeId] = yield* append(
-          storage,
-          session.id,
-          [interruptionMsg('Interrupted'), userMsg('Continue')],
-          expectDefined(assistantNodeId, 'expected assistant node id')
+          [interruptedAssistantMsg('Partial'), userMsg('Continue')],
+          expectDefined(userNodeId, 'expected user node id')
         )
         const resolvedNextUserNodeId = expectDefined(
           nextUserNodeId,
@@ -428,8 +427,8 @@ describe('SessionStorage', () => {
           runId: compactRunId,
           baseHeadNodeId: resolvedNextUserNodeId,
           startNodeId: expectDefined(
-            interruptionNodeId,
-            'expected interruption node id'
+            assistantNodeId,
+            'expected assistant node id'
           ),
           endNodeId: resolvedNextUserNodeId,
           summaryContent: 'summary',

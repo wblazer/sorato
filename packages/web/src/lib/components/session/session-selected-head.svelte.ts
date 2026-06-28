@@ -282,12 +282,18 @@ function finalPersistedRunNode(
   const runMessages = messages.filter(
     (message) => message.runId === runId && !isOptimisticNode(message)
   )
-  const hasGeneratedOutput = runMessages.some(
-    (message) =>
-      message.encoded.role === 'assistant' ||
-      message.encoded.role === 'tool' ||
-      message.encoded.role === 'system'
+  const generatedRunIds = new Set(
+    runMessages
+      .filter(
+        (message) =>
+          message.kind === 'summary' ||
+          message.encoded.role === 'assistant' ||
+          message.encoded.role === 'tool' ||
+          message.encoded.role === 'system'
+      )
+      .map((message) => message.id)
   )
+  const hasGeneratedOutput = generatedRunIds.size > 0
   if (!hasGeneratedOutput) return null
 
   const runIds = new Set(runMessages.map((message) => message.id))
@@ -301,6 +307,7 @@ function finalPersistedRunNode(
     .toReversed()
     .find(
       (message) =>
+        generatedRunIds.has(message.id) &&
         !parentIds.has(message.id) &&
         isDescendantOrSame(messages, message.id, baseNodeId)
     )

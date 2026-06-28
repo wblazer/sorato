@@ -195,6 +195,9 @@ export const LocalSandbox = Layer.effect(Sandbox)(
           process.isRunning
         )
         const timeoutAction = maybeKillRunningProcess.pipe(Effect.asVoid)
+        const interruptCleanup = maybeKillRunningProcess.pipe(
+          Effect.catch(() => Effect.void)
+        )
         const timeoutProgram = Option.map(
           Option.fromNullishOr(input.timeout),
           (timeout) =>
@@ -215,6 +218,7 @@ export const LocalSandbox = Layer.effect(Sandbox)(
           streamToString(process.stderr),
           process.exitCode,
         ] as const).pipe(
+          Effect.ensuring(interruptCleanup),
           Effect.mapError(
             (error) =>
               new SandboxError({

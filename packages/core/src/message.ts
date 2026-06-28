@@ -8,8 +8,15 @@ import {
 export const SystemMessageSource = Schema.Literals([
   'system-prompt',
   'agents-md',
-  'interruption',
 ])
+
+export const AssistantMessageMetadata = Schema.Struct({
+  interrupted: Schema.optionalKey(Schema.Boolean),
+})
+
+export const ToolResultPartMetadata = Schema.Struct({
+  interrupted: Schema.optionalKey(Schema.Boolean),
+})
 
 export const StoredToolCallPart = Schema.Struct({
   ...PromptSchemas.ToolCallPart.fields,
@@ -20,6 +27,7 @@ export const StoredToolResultPart = Schema.Struct({
   ...PromptSchemas.ToolResultPart.fields,
   header: Schema.optionalKey(MessageHeaderDisplaySchema),
   bodyDisplay: Schema.optionalKey(ToolResultDisplaySchema),
+  metadata: Schema.optionalKey(ToolResultPartMetadata),
 })
 
 export const StoredPart = Schema.Union([
@@ -56,6 +64,7 @@ export const StoredUserMessage = Schema.Struct({
 export const StoredAssistantMessage = Schema.Struct({
   ...PromptSchemas.AssistantMessage.fields,
   content: Schema.Union([Schema.String, Schema.Array(StoredPart)]),
+  metadata: Schema.optionalKey(AssistantMessageMetadata),
 })
 
 export const StoredToolMessage = Schema.Struct({
