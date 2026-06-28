@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte'
   import LoadingState from '$lib/components/loading-state.svelte'
   import { messagesStore } from '$lib/stores/messages.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
@@ -13,6 +14,7 @@
   import RobotIcon from 'phosphor-svelte/lib/RobotIcon'
   import WrenchIcon from 'phosphor-svelte/lib/WrenchIcon'
   import FileTextIcon from 'phosphor-svelte/lib/FileTextIcon'
+  import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon'
   import {
     buildMessageTree,
     messageNarrativePreview,
@@ -43,6 +45,12 @@
   let compactStartNodeId = $state<string | null>(null)
   let compactEndNodeId = $state<string | null>(null)
   let compactInstructions = $state('')
+  let compactDragCleanup: (() => void) | null = null
+  let compactDragFixedNodeId = $state<string | null>(null)
+
+  onDestroy(() => {
+    compactDragCleanup?.()
+  })
 
   type ActiveRun = ReturnType<typeof sessionStore.activeRunsFor>[number]
   type BranchConnector = 'first' | 'middle' | 'last' | null
@@ -96,8 +104,12 @@
   const rows = $derived.by(() =>
     flattenRows(tree, activeRuns, selectedPathIds, selectedHeadValue),
   )
-  const selectedPathRows = $derived.by(() =>
-    selectedPath(messages, baseHeadNodeId),
+  const compactRows = $derived.by(() =>
+    rows.filter(
+      (row): row is Extract<TreeRow, { type: 'node' }> =>
+        row.type === 'node' &&
+        row.coveredNodeIds.some((id) => selectedPathIds.has(id)),
+    ),
   )
   const baseHeadNodeId = $derived.by(() =>
     selectedHeadValue?.type === 'node' ? selectedHeadValue.nodeId : null,
@@ -455,25 +467,6 @@
     })
   }
 
-  function selectedPath(
-    messages: ReadonlyArray<MessageNode>,
-    headNodeId: string | null,
-  ): ReadonlyArray<MessageNode> {
-    if (headNodeId === null) return []
-    const byId = new Map(messages.map((message) => [message.id, message]))
-    const path: MessageNode[] = []
-    const seen = new Set<string>()
-    let cursor: string | null = headNodeId
-    while (cursor !== null && !seen.has(cursor)) {
-      seen.add(cursor)
-      const message = byId.get(cursor)
-      if (!message) return []
-      path.push(message)
-      cursor = message.parentId
-    }
-    return path.reverse()
-  }
-
   function resetCompactMode() {
     compactMode = false
     compactStartNodeId = null
@@ -493,7 +486,7 @@
 
   function compactIndex(nodeId: string | null) {
     if (nodeId === null) return -1
-    return selectedPathRows.findIndex((message) => message.id === nodeId)
+    return compactRows.findIndex((row) => row.id === nodeId)
   }
 
   function isInCompactRange(nodeId: string) {
@@ -504,13 +497,136 @@
     return index >= Math.min(start, end) && index <= Math.max(start, end)
   }
 
-  function selectCompactEndpoint(nodeId: string) {
-    if (compactStartNodeId === null || compactEndNodeId !== null) {
+  function isCompactSelected(nodeId: string) {
+    return nodeId === compactStartNodeId || nodeId === compactEndNodeId
+  }
+
+  function hasCompactRange() {
+    return compactStartNodeId !== null && compactEndNodeId !== null
+  }
+
+  function clearCompactDrag() {
+    compactDragCleanup?.()
+    compactDragCleanup = null
+    compactDragFixedNodeId = null
+  }
+
+  function clearCompactSelection() {
+    compactStartNodeId = null
+    compactEndNodeId = null
+  }
+
+  function selectCompactRow(nodeId: string) {
+    if (compactStartNodeId === null) {
       compactStartNodeId = nodeId
       compactEndNodeId = null
       return
     }
-    compactEndNodeId = nodeId
+
+    if (compactEndNodeId === null) {
+      if (compactStartNodeId === nodeId) clearCompactSelection()
+      else compactEndNodeId = nodeId
+      return
+    }
+
+    const currentIndex = compactIndex(nodeId)
+    const startIndex = compactIndex(compactStartNodeId)
+    const endIndex = compactIndex(compactEndNodeId)
+    if (currentIndex >= 0 && startIndex >= 0 && endIndex >= 0) {
+      const min = Math.min(startIndex, endIndex)
+      const max = Math.max(startIndex, endIndex)
+      if (currentIndex < min) {
+        if (startIndex === min) compactStartNodeId = nodeId
+        else compactEndNodeId = nodeId
+        return
+      }
+      if (currentIndex > max) {
+        if (startIndex === max) compactStartNodeId = nodeId
+        else compactEndNodeId = nodeId
+        return
+      }
+    }
+
+    compactStartNodeId = nodeId
+    compactEndNodeId = null
+  }
+
+  function compactFixedEdgeForDrag(nodeId: string) {
+    if (compactStartNodeId === null || compactEndNodeId === null) return
+
+    const currentIndex = compactIndex(nodeId)
+    const startIndex = compactIndex(compactStartNodeId)
+    const endIndex = compactIndex(compactEndNodeId)
+    if (currentIndex < 0 || startIndex < 0 || endIndex < 0) return
+
+    const min = Math.min(startIndex, endIndex)
+    const max = Math.max(startIndex, endIndex)
+    if (currentIndex === startIndex) return compactEndNodeId
+    if (currentIndex === endIndex) return compactStartNodeId
+    if (currentIndex < min) {
+      return startIndex === max ? compactStartNodeId : compactEndNodeId
+    }
+    if (currentIndex > max) {
+      return startIndex === min ? compactStartNodeId : compactEndNodeId
+    }
+
+    return
+  }
+
+  function startNewCompactRange(nodeId: string) {
+    compactStartNodeId = nodeId
+    compactEndNodeId = null
+  }
+
+  function startCompactDrag(nodeId: string, event: PointerEvent) {
+    if (event.button !== 0) return
+    event.preventDefault()
+    clearCompactDrag()
+
+    if (compactStartNodeId === nodeId && compactEndNodeId === null) {
+      clearCompactSelection()
+      return
+    }
+
+    const fixedEdge = compactFixedEdgeForDrag(nodeId)
+    if (fixedEdge !== undefined) {
+      compactStartNodeId = fixedEdge
+      compactEndNodeId = nodeId
+      compactDragFixedNodeId = fixedEdge
+    } else if (compactEndNodeId !== null) {
+      startNewCompactRange(nodeId)
+    } else if (compactStartNodeId === null) {
+      startNewCompactRange(nodeId)
+    } else {
+      compactEndNodeId = nodeId
+      compactDragFixedNodeId = compactStartNodeId
+    }
+
+    const handlePointerUp = () => {
+      clearCompactDrag()
+    }
+    window.addEventListener('pointerup', handlePointerUp, { once: true })
+    window.addEventListener('pointercancel', handlePointerUp, { once: true })
+    compactDragCleanup = () => {
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+  }
+
+  function updateCompactDrag(nodeId: string) {
+    if (compactDragCleanup === null || compactStartNodeId === null) return
+    if (compactDragFixedNodeId !== null) {
+      compactStartNodeId = compactDragFixedNodeId
+      compactEndNodeId = compactDragFixedNodeId === nodeId ? null : nodeId
+      return
+    }
+    compactEndNodeId = compactStartNodeId === nodeId ? null : nodeId
+  }
+
+  function handleCompactKeydown(nodeId: string, event: KeyboardEvent) {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    selectCompactRow(nodeId)
   }
 
   async function startCompaction() {
@@ -519,8 +635,10 @@
     const start = compactIndex(compactStartNodeId)
     const end = compactIndex(endNodeId)
     if (start < 0 || end < 0) return
-    const startNodeId = selectedPathRows[Math.min(start, end)]?.id
-    const orderedEndNodeId = selectedPathRows[Math.max(start, end)]?.id
+    const startRow = compactRows[Math.min(start, end)]
+    const endRow = compactRows[Math.max(start, end)]
+    const startNodeId = startRow?.message.id
+    const orderedEndNodeId = endRow?.targetNodeId
     if (!startNodeId || !orderedEndNodeId) return
 
     const response = await Effect.runPromise(
@@ -608,73 +726,105 @@
       {:else if rows.length === 0}
         <div class="p-3 text-sm text-muted-foreground">No messages yet.</div>
       {:else if compactMode}
-        <div class="space-y-2 p-2">
-          <div class="flex items-center justify-between gap-2">
-            <div class="min-w-0">
-              <div class="text-sm font-medium text-foreground">
-                Compact context
-              </div>
-              <div class="text-xs text-muted-foreground">
-                Select a range on the active path.
-              </div>
-            </div>
-            <Button variant="ghost" size="sm" onclick={resetCompactMode}
-              >Cancel</Button
+        <div class="border-b border-border p-2">
+          <div class="relative flex h-7 items-center justify-center">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              class="absolute left-0"
+              aria-label="Back"
+              onclick={resetCompactMode}
             >
+              <ArrowLeftIcon />
+            </Button>
+            <div class="text-center text-sm font-medium text-foreground">
+              Select a range to compact
+            </div>
           </div>
-          <div
-            class="rounded border border-border bg-base p-2 text-xs text-muted-foreground"
-          >
-            Sorato will generate and install the summary without rewriting
-            existing history.
-          </div>
-          <div class="flex flex-col">
-            {#each selectedPathRows as message (message.id)}
-              {@const selected =
-                message.id === compactStartNodeId ||
-                message.id === compactEndNodeId}
-              {@const inRange = isInCompactRange(message.id)}
+        </div>
+        <div class="border-b border-border">
+          <div class="flex flex-col p-1.5">
+            {#each compactRows as row, index (row.id)}
+              {@const selected = isCompactSelected(row.id)}
+              {@const inRange = isInCompactRange(row.id)}
+              {@const hasPrevious = index > 0}
+              {@const hasNext = index < compactRows.length - 1}
+              {@const Icon = nodeIcon(row)}
+              {@const preview = rowPreview(row)}
+              {@const tone = messageTone(row.message)}
               <Button
                 variant="ghost"
                 size="sm"
-                class="h-auto justify-start gap-1.5 px-1.5 py-0.5 text-left hover:bg-base-hover {inRange
-                  ? 'bg-selected hover:bg-selected'
-                  : ''}"
-                onclick={() => selectCompactEndpoint(message.id)}
+                class="h-auto justify-start gap-0.5 px-1.5 py-0.5 text-left hover:bg-base-hover {selected
+                  ? 'bg-selected text-foreground hover:bg-selected'
+                    : inRange
+                      ? 'bg-selected/45 hover:bg-selected/60'
+                      : ''}"
+                onpointerdown={(event) => startCompactDrag(row.id, event)}
+                onpointerenter={() => updateCompactDrag(row.id)}
+                onkeydown={(event) => handleCompactKeydown(row.id, event)}
               >
                 <span
                   class="tree-icon flex size-5 shrink-0 items-center justify-center"
-                  data-tone={messageTone(message)}
+                  data-tone={tone}
+                  data-in-path="true"
                   data-selected={selected}
+                  data-parent-connector={hasPrevious}
+                  data-child-connector={hasNext}
+                  data-active-parent-connector={hasPrevious}
+                  data-active-child-connector={hasNext}
                 >
-                  {#if message.kind === 'summary'}
-                    <FileTextIcon class="size-3.5" />
-                  {:else if message.encoded.role === 'user'}
-                    <UserIcon class="size-3.5" />
-                  {:else if message.encoded.role === 'assistant'}
-                    <RobotIcon class="size-3.5" />
-                  {:else if message.encoded.role === 'tool'}
-                    <WrenchIcon class="size-3.5" />
-                  {:else}
-                    <ChatCircleTextIcon class="size-3.5" />
-                  {/if}
+                  <Icon class="size-3.5" />
                 </span>
-                <span
-                  class="tree-preview min-w-0 flex-1 truncate text-sm font-normal text-foreground"
-                  data-tone={messageTone(message)}
-                >
-                  {messagePreview(message)}
+                <span class="flex min-w-0 flex-1 items-center gap-1.5">
+                  {#if preview.length > 0}
+                    <span
+                      class="tree-preview truncate text-sm font-normal text-foreground"
+                      data-tone={tone}
+                    >
+                      {preview}
+                    </span>
+                  {/if}
+                  {#if row.toolCallCount > 0}
+                    {#each toolBadgeNames(row) as toolName}
+                      <span
+                        class="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-foreground"
+                      >
+                        <WrenchIcon class="size-3" />
+                        {toolName}
+                      </span>
+                    {/each}
+                    {#if row.unresolvedToolCallCount > 0}
+                      <span
+                        class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs text-foreground"
+                      >
+                        {row.unresolvedToolCallCount} pending
+                      </span>
+                    {/if}
+                  {/if}
                 </span>
               </Button>
             {/each}
           </div>
+          <div class="p-2 pt-1">
+            <Button
+              variant="outline"
+              size="sm"
+              class="w-full"
+              disabled={compactStartNodeId === null}
+              onclick={clearCompactSelection}
+            >
+              Clear selection
+            </Button>
+          </div>
+        </div>
+        <div class="flex flex-col gap-2 p-2">
           <textarea
-            class="min-h-20 w-full resize-y rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-ring"
+            class="min-h-20 w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-ring"
             bind:value={compactInstructions}
             placeholder="Optional summarizer instructions"></textarea>
           <Button
             class="w-full"
-            size="sm"
             disabled={!model ||
               baseHeadNodeId === null ||
               compactStartNodeId === null}
