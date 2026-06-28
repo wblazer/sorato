@@ -9,10 +9,6 @@
   import * as Tabs from '$lib/components/ui/tabs/index.js'
   import GitBranchIcon from 'phosphor-svelte/lib/GitBranchIcon'
   import CircleNotchIcon from 'phosphor-svelte/lib/CircleNotchIcon'
-  import ChatCircleTextIcon from 'phosphor-svelte/lib/ChatCircleTextIcon'
-  import UserIcon from 'phosphor-svelte/lib/UserIcon'
-  import RobotIcon from 'phosphor-svelte/lib/RobotIcon'
-  import WrenchIcon from 'phosphor-svelte/lib/WrenchIcon'
   import FileTextIcon from 'phosphor-svelte/lib/FileTextIcon'
   import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon'
   import {
@@ -24,8 +20,10 @@
     runTreeNodeId,
     summarizeAssistantToolExchange,
     type MessageTreeNode,
+    type ToolCallSummary,
   } from './session-tree.js'
   import type { SessionSelectedHeadController } from './session-selected-head.svelte.js'
+  import { iconForMessageName, roleIcons } from './message-icons.js'
   import { Effect } from 'effect'
 
   let {
@@ -84,7 +82,7 @@
         readonly coveredNodeIds: ReadonlyArray<string>
         readonly childCount: number
         readonly toolCallCount: number
-        readonly toolCallNames: ReadonlyArray<string>
+        readonly toolCalls: ReadonlyArray<ToolCallSummary>
         readonly unresolvedToolCallCount: number
         readonly canSelect: boolean
       } & TreeRowLayout)
@@ -104,6 +102,7 @@
   const rows = $derived.by(() =>
     flattenRows(tree, activeRuns, selectedPathIds, selectedHeadValue),
   )
+  const streamingParts = $derived(messagesStore.streamingPartsForTab(tabId))
   const compactRows = $derived.by(() =>
     rows.filter(
       (row): row is Extract<TreeRow, { type: 'node' }> =>
@@ -198,7 +197,7 @@
       const continuationChildren =
         toolExchange?.continuationChildren ?? node.children
       const toolCallCount = toolExchange?.toolCallCount ?? 0
-      const toolCallNames = toolExchange?.toolCallNames ?? []
+      const toolCalls = toolExchange?.toolCalls ?? []
       const unresolvedToolCallCount =
         toolExchange === null
           ? 0
@@ -225,7 +224,7 @@
         coveredNodeIds,
         childCount,
         toolCallCount,
-        toolCallNames,
+        toolCalls,
         unresolvedToolCallCount,
         canSelect: unresolvedToolCallCount === 0,
       })
@@ -700,8 +699,8 @@
     return messageNarrativePreview(row.message)
   }
 
-  function toolBadgeNames(row: Extract<TreeRow, { type: 'node' }>) {
-    return row.toolCallNames
+  function toolBadges(row: Extract<TreeRow, { type: 'node' }>) {
+    return row.toolCalls
   }
 
   type TreeTone = 'user' | 'assistant' | 'tool' | 'system' | 'summary'
@@ -714,18 +713,38 @@
 
   function nodeIcon(row: Extract<TreeRow, { type: 'node' }>) {
     const message = row.message
-    if (message.kind === 'summary') return FileTextIcon
+    if (message.kind === 'summary') return roleIcons.summary
     switch (message.encoded.role) {
       case 'user':
-        return UserIcon
+        return roleIcons.user
       case 'assistant':
-        return RobotIcon
+        return roleIcons.assistant
       case 'tool':
-        return WrenchIcon
+        return roleIcons.tool
       case 'system':
-        return ChatCircleTextIcon
+        return roleIcons.system
     }
   }
+
+  function toolBadgeIcon(tool: ToolCallSummary) {
+    return iconForMessageName(tool.icon) ?? roleIcons.tool
+  }
+
+  const summaryRunPreview = $derived.by(() =>
+    streamingParts
+      .flatMap((part) => {
+        switch (part.type) {
+          case 'text':
+          case 'reasoning':
+            return [part.text]
+          default:
+            return []
+        }
+      })
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+  )
 </script>
 
 <aside
@@ -810,12 +829,13 @@
                     </span>
                   {/if}
                   {#if row.toolCallCount > 0}
-                    {#each toolBadgeNames(row) as toolName}
+                    {#each toolBadges(row) as tool}
+                      {@const ToolIcon = toolBadgeIcon(tool)}
                       <span
                         class="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-foreground"
                       >
-                        <WrenchIcon class="size-3" />
-                        {toolName}
+                        <ToolIcon class="size-3" />
+                        {tool.name}
                       </span>
                     {/each}
                     {#if row.unresolvedToolCallCount > 0}
@@ -924,12 +944,13 @@
                     </span>
                   {/if}
                   {#if row.toolCallCount > 0}
-                    {#each toolBadgeNames(row) as toolName}
+                    {#each toolBadges(row) as tool}
+                      {@const ToolIcon = toolBadgeIcon(tool)}
                       <span
                         class="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-foreground"
                       >
-                        <WrenchIcon class="size-3" />
-                        {toolName}
+                        <ToolIcon class="size-3" />
+                        {tool.name}
                       </span>
                     {/each}
                     {#if row.unresolvedToolCallCount > 0}
@@ -980,15 +1001,24 @@
                 >
                   <CircleNotchIcon class="size-3.5 animate-spin" />
                 </span>
-                <span
-                  class="tree-preview min-w-0 flex-1 truncate text-sm font-normal text-foreground"
-                  data-tone={row.run.kind === 'summary'
-                    ? 'summary'
-                    : 'assistant'}
-                >
-                  {row.run.kind === 'summary'
-                    ? 'Summarizing'
-                    : 'Streaming branch'}
+                <span class="flex min-w-0 flex-1 items-center gap-1.5">
+                  <span
+                    class="tree-preview shrink-0 truncate text-sm font-normal text-foreground"
+                    data-tone={row.run.kind === 'summary'
+                      ? 'summary'
+                      : 'assistant'}
+                  >
+                    {row.run.kind === 'summary'
+                      ? 'Summarizing'
+                      : 'Streaming branch'}
+                  </span>
+                  {#if row.run.kind === 'summary' && summaryRunPreview.length > 0}
+                    <span
+                      class="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
+                    >
+                      {summaryRunPreview}
+                    </span>
+                  {/if}
                 </span>
               </Button>
             {/if}

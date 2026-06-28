@@ -1,5 +1,6 @@
 import type { MessageEncoded, MessageNode } from '$lib/types.js'
 import type { SelectedHead } from '$lib/selected-head-storage.js'
+import type { MessageIconName } from '@sorato/core/presentation'
 
 export interface MessageTreeNode {
   readonly message: MessageNode
@@ -70,8 +71,14 @@ export interface ToolExchangeSummary {
   readonly coveredNodeIds: ReadonlyArray<string>
   readonly continuationChildren: ReadonlyArray<MessageTreeNode>
   readonly toolCallCount: number
-  readonly toolCallNames: ReadonlyArray<string>
+  readonly toolCalls: ReadonlyArray<ToolCallSummary>
   readonly resolvedToolResultCount: number
+}
+
+export interface ToolCallSummary {
+  readonly id: string
+  readonly name: string
+  readonly icon?: MessageIconName | undefined
 }
 
 export function summarizeAssistantToolExchange(
@@ -109,7 +116,7 @@ export function summarizeAssistantToolExchange(
     coveredNodeIds,
     continuationChildren,
     toolCallCount: toolCalls.length,
-    toolCallNames: toolCalls.map((toolCall) => toolCall.name),
+    toolCalls,
     resolvedToolResultCount,
   }
 }
@@ -149,14 +156,14 @@ export function messageNarrativePreview(message: MessageNode): string {
 
 function assistantToolCalls(
   message: MessageNode
-): ReadonlyArray<{ readonly id: string; readonly name: string }> {
+): ReadonlyArray<ToolCallSummary> {
   if (message.kind !== 'message' || message.encoded.role !== 'assistant')
     return []
   const content = message.encoded.content
   if (!Array.isArray(content)) return []
   return content
     .filter((part) => part.type === 'tool-call')
-    .map((part) => ({ id: part.id, name: part.name }))
+    .map((part) => ({ id: part.id, name: part.name, icon: part.header?.icon }))
 }
 
 function toolResultIds(message: MessageNode): ReadonlyArray<string> {

@@ -3,6 +3,7 @@
   import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
   import { projectTranscript, streamingSources } from '$lib/transcript.js'
   import AssistantTranscript from './assistant-transcript.svelte'
+  import { roleIcons } from './message-icons.js'
   import SystemTranscript from './system-transcript.svelte'
 
   let {
@@ -37,6 +38,7 @@
     <SystemTranscript
       items={renderParts}
       title="Summary"
+      icon={roleIcons.summary}
       defaultOpen={true}
       {accordionState}
       accordionKey={`${accordionKey}:system-streaming`}

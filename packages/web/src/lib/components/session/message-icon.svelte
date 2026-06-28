@@ -1,15 +1,6 @@
 <script lang="ts">
-  import type { Component } from 'svelte'
   import type { MessageIconName } from '@sorato/core/presentation'
-  import CheckCircleIcon from 'phosphor-svelte/lib/CheckCircleIcon'
-  import FileMagnifyingGlassIcon from 'phosphor-svelte/lib/FileMagnifyingGlassIcon'
-  import FilePlusIcon from 'phosphor-svelte/lib/FilePlusIcon'
-  import FileTextIcon from 'phosphor-svelte/lib/FileTextIcon'
-  import GlobeIcon from 'phosphor-svelte/lib/GlobeIcon'
-  import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon'
-  import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon'
-  import TerminalIcon from 'phosphor-svelte/lib/TerminalIcon'
-  import WrenchIcon from 'phosphor-svelte/lib/WrenchIcon'
+  import { iconForMessageName } from './message-icons.js'
 
   let {
     name,
@@ -19,20 +10,9 @@
     class?: string | undefined
   } = $props()
 
-  const icons = {
-    tool: WrenchIcon,
-    'tool-result': CheckCircleIcon,
-    'file-text': FileTextIcon,
-    'file-plus': FilePlusIcon,
-    search: MagnifyingGlassIcon,
-    'file-search': FileMagnifyingGlassIcon,
-    edit: PencilSimpleIcon,
-    terminal: TerminalIcon,
-    globe: GlobeIcon,
-  } satisfies Record<MessageIconName, Component>
+  const Icon = $derived(iconForMessageName(name))
 </script>
 
-{#if name}
-  {@const Icon = icons[name]}
+{#if Icon}
   <Icon class={className} aria-hidden="true" />
 {/if}

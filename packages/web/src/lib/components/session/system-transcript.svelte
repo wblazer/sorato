@@ -1,13 +1,16 @@
 <script lang="ts">
+  import type { Component } from 'svelte'
   import type { TranscriptItem } from '$lib/transcript.js'
   import * as Accordion from '$lib/components/ui/accordion/index.js'
   import MessagePartComponent from './message-part.svelte'
   import ToolCallResult from './tool-call-result.svelte'
+  import { roleIcons } from './message-icons.js'
 
   let {
     items,
     title = 'System',
     subtitle = undefined,
+    icon = roleIcons.system,
     defaultOpen = false,
     accordionState,
     accordionKey,
@@ -15,6 +18,7 @@
     items: ReadonlyArray<TranscriptItem>
     title?: string
     subtitle?: string | undefined
+    icon?: Component | undefined
     defaultOpen?: boolean
     accordionState: Record<string, string[]>
     accordionKey: string
@@ -53,6 +57,10 @@
         <span
           class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1"
         >
+          {#if icon}
+            {@const Icon = icon}
+            <Icon class="size-4 shrink-0 text-muted-foreground" />
+          {/if}
           <span class="font-semibold">{title}</span>
           {#if subtitle}
             <span class="min-w-0 truncate font-mono text-muted-foreground">

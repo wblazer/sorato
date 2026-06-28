@@ -22,6 +22,7 @@
   import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon'
   import AssistantTranscript from './assistant-transcript.svelte'
   import MessagePartComponent from './message-part.svelte'
+  import { roleIcons } from './message-icons.js'
   import SystemTranscript from './system-transcript.svelte'
   import ToolCallResult from './tool-call-result.svelte'
 
@@ -113,6 +114,9 @@
   )
   const systemSubtitle = $derived(
     isPrettySummary ? userDisplay?.subtitle : systemDisplay?.subtitle,
+  )
+  const systemIcon = $derived(
+    isPrettySummary ? roleIcons.summary : roleIcons.system,
   )
 
   const itemAccordionKey = (item: TranscriptItem, index: number): string => {
@@ -291,6 +295,7 @@
         items={renderParts}
         title={systemTitle}
         subtitle={systemSubtitle}
+        icon={systemIcon}
         defaultOpen={clientSettingsStore.expandSystemMessagesByDefault}
         {accordionState}
         accordionKey={`${accordionKey}:system`}
