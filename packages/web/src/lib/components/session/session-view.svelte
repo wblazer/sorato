@@ -225,7 +225,7 @@
   )
 
   function jumpToLatest() {
-    scroller.jumpToEnd()
+    scroller.jumpToEnd('auto')
   }
 
   function scrollToLatestAfterRender() {
