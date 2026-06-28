@@ -104,6 +104,20 @@ export class SessionSelectedHeadController {
           latest === null ? null : { type: 'node', nodeId: latest }
         )
       }
+
+      if (
+        this.selectedHead?.type === 'run' &&
+        !sessionStore.isRunActive(this.selectedHead.runId)
+      ) {
+        const finalNode = finalPersistedRunNode(
+          messages,
+          this.selectedHead.runId,
+          this.selectedHead.baseNodeId
+        )
+        if (finalNode) {
+          this.setSelectedHead({ type: 'node', nodeId: finalNode.id })
+        }
+      }
     })
 
     $effect(() => {
@@ -294,8 +308,10 @@ function finalPersistedRunNode(
 
   const compactedRoot = runMessages
     .toReversed()
-    .find((message) =>
-      messages.some((candidate) => candidate.parentId === message.id)
+    .find(
+      (message) =>
+        message.kind === 'summary' ||
+        messages.some((candidate) => candidate.parentId === message.id)
     )
   return compactedRoot
     ? deepestDescendantLeaf(messages, compactedRoot.id)

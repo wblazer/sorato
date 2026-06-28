@@ -198,6 +198,17 @@ const modelCallFromNodeRow = (row: NodeRow): ModelCall | null =>
 const decodeStoredMessage = (content: string): StoredMessageEncoded =>
   Schema.decodeUnknownSync(StoredMessage)(JSON.parse(content))
 
+const isBootstrapSystemRow = (row: NodeRow): boolean => {
+  if (row.kind !== 'message' || row.message_role !== 'system') return false
+  const content = row.message_content
+  if (content === null) return false
+  const message = decodeStoredMessage(content)
+  return (
+    message.role === 'system' &&
+    (message.source === 'system-prompt' || message.source === 'agents-md')
+  )
+}
+
 const decodePromptMessageOption = (
   content: string
 ): Option.Option<Prompt.MessageEncoded> => {
@@ -809,6 +820,18 @@ export const SqliteSession = (options: { readonly path: string }) =>
             notFound(
               'compactRange',
               'Compact range must be ordered on the selected head ancestry path'
+            )
+          )
+        }
+        if (
+          path
+            .slice(startIndex, endIndex + 1)
+            .some((row) => isBootstrapSystemRow(row))
+        ) {
+          return yield* Effect.fail(
+            notFound(
+              'compactRange',
+              'Compact range cannot include bootstrap system messages'
             )
           )
         }

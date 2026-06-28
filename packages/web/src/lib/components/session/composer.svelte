@@ -990,13 +990,17 @@
     class="w-fit max-w-[96vw] justify-items-center gap-2 bg-transparent p-0 shadow-none ring-0 sm:max-w-[96vw] [&_[data-slot='dialog-close']>button]:bg-background/60 [&_[data-slot='dialog-close']>button]:backdrop-blur-sm"
   >
     {#if previewAttachment}
-      <Dialog.Title class="sr-only">Preview {previewAttachment.fileName}</Dialog.Title>
+      <Dialog.Title class="sr-only"
+        >Preview {previewAttachment.fileName}</Dialog.Title
+      >
       <img
         src={previewAttachment.data}
         alt={previewAttachment.fileName}
         class="max-h-[88vh] w-auto max-w-full rounded-lg object-contain"
       />
-      <Dialog.Description class="truncate px-1 text-center text-xs text-muted-foreground">
+      <Dialog.Description
+        class="truncate px-1 text-center text-xs text-muted-foreground"
+      >
         {previewAttachment.fileName}
       </Dialog.Description>
     {/if}

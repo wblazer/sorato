@@ -108,6 +108,7 @@
     rows.filter(
       (row): row is Extract<TreeRow, { type: 'node' }> =>
         row.type === 'node' &&
+        canCompactMessage(row.message) &&
         row.coveredNodeIds.some((id) => selectedPathIds.has(id)),
     ),
   )
@@ -126,8 +127,7 @@
     const effectiveRunBase = (run: ActiveRun): string | null => {
       if (run.kind !== 'agent') return run.baseNodeId
       return (
-        latestRunLeaf(messages, run.runId, run.baseNodeId)?.id ??
-        run.baseNodeId
+        latestRunLeaf(messages, run.runId, run.baseNodeId)?.id ?? run.baseNodeId
       )
     }
 
@@ -268,11 +268,13 @@
           type: 'run' as const,
           run,
         })),
-      ]
-      const selectedChildIndex = childEntries.findIndex((entry) =>
-        entry.type === 'node'
-          ? nodeContainsSelectedPath(entry.node)
-          : runContainsSelectedPath(entry.run),
+      ].sort(
+        (a, b) =>
+          Number(childEntryContainsSelectedPath(b)) -
+          Number(childEntryContainsSelectedPath(a)),
+      )
+      const selectedChildIndex = childEntries.findIndex(
+        childEntryContainsSelectedPath,
       )
 
       if (nodeInPath && selectedChildIndex >= 0) {
@@ -340,7 +342,12 @@
       })
     }
 
-    for (const root of roots)
+    const orderedRoots = [...roots].sort(
+      (a, b) =>
+        Number(nodeContainsSelectedPath(b)) -
+        Number(nodeContainsSelectedPath(a)),
+    )
+    for (const root of orderedRoots)
       visit(root, 0, [], null, false, false, false, false)
     for (const run of runsByBase.get(null) ?? []) {
       const activeRun = runContainsSelectedPath(run)
@@ -362,6 +369,16 @@
     }
 
     return rows
+
+    function childEntryContainsSelectedPath(
+      entry:
+        | { readonly type: 'node'; readonly node: MessageTreeNode }
+        | { readonly type: 'run'; readonly run: ActiveRun },
+    ) {
+      return entry.type === 'node'
+        ? nodeContainsSelectedPath(entry.node)
+        : runContainsSelectedPath(entry.run)
+    }
   }
 
   function latestRunLeaf(
@@ -407,9 +424,7 @@
     return false
   }
 
-  function gutterMarks(
-    row: TreeRow,
-  ): ReadonlyArray<{
+  function gutterMarks(row: TreeRow): ReadonlyArray<{
     readonly mark: GutterMark
     readonly activeVerticalTop: boolean
     readonly activeVerticalBottom: boolean
@@ -671,6 +686,15 @@
     return head?.type === 'run' && head.runId === runId
   }
 
+  function canCompactMessage(message: MessageNode) {
+    return (
+      message.kind !== 'message' ||
+      message.encoded.role !== 'system' ||
+      (message.encoded.source !== 'system-prompt' &&
+        message.encoded.source !== 'agents-md')
+    )
+  }
+
   function rowPreview(row: Extract<TreeRow, { type: 'node' }>) {
     if (row.toolCallCount === 0) return messagePreview(row.message)
     return messageNarrativePreview(row.message)
@@ -757,9 +781,9 @@
                 size="sm"
                 class="h-auto justify-start gap-0.5 px-1.5 py-0.5 text-left hover:bg-base-hover {selected
                   ? 'bg-selected text-foreground hover:bg-selected'
-                    : inRange
-                      ? 'bg-selected/45 hover:bg-selected/60'
-                      : ''}"
+                  : inRange
+                    ? 'bg-selected/45 hover:bg-selected/60'
+                    : ''}"
                 onpointerdown={(event) => startCompactDrag(row.id, event)}
                 onpointerenter={() => updateCompactDrag(row.id)}
                 onkeydown={(event) => handleCompactKeydown(row.id, event)}

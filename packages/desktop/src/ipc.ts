@@ -53,7 +53,10 @@ const selectImages = async () => {
 
   return await Promise.all(
     result.filePaths.map(async (path) => {
-      const [metadata, content] = await Promise.all([stat(path), readFile(path)])
+      const [metadata, content] = await Promise.all([
+        stat(path),
+        readFile(path),
+      ])
       const mediaType = imageMimeType(path)
       return {
         mediaType,

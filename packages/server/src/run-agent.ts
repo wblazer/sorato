@@ -315,10 +315,24 @@ const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
       new Error('Compact range must be ordered on the selected path')
     )
   }
+  const compactedPath = path.slice(startIndex, endIndex + 1)
+  if (
+    compactedPath.some(
+      (message) =>
+        message.kind === 'message' &&
+        message.encoded.role === 'system' &&
+        (message.encoded.source === 'system-prompt' ||
+          message.encoded.source === 'agents-md')
+    )
+  ) {
+    return yield* Effect.die(
+      new Error('Compact range cannot include bootstrap system messages')
+    )
+  }
 
   const chat = yield* Chat.fromPrompt(
     summaryPrompt(
-      path.slice(startIndex, endIndex + 1).map((message) => message.encoded),
+      compactedPath.map((message) => message.encoded),
       compactRange.instructions
     )
   )

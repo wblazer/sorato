@@ -273,8 +273,10 @@ function finalPersistedRunNode(
 
   const compactedRoot = runMessages
     .toReversed()
-    .find((message) =>
-      messages.some((candidate) => candidate.parentId === message.id)
+    .find(
+      (message) =>
+        message.kind === 'summary' ||
+        messages.some((candidate) => candidate.parentId === message.id)
     )
   return compactedRoot
     ? deepestDescendantLeaf(messages, compactedRoot.id)

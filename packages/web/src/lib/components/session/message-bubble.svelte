@@ -1,6 +1,11 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
-  import type { FilePart, MessageNode, MessagePart, ModelCall } from '$lib/types.js'
+  import type {
+    FilePart,
+    MessageNode,
+    MessagePart,
+    ModelCall,
+  } from '$lib/types.js'
   import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
   import {
     messageParts,
@@ -317,7 +322,9 @@
         class="max-h-[88vh] w-auto max-w-full rounded-lg object-contain"
       />
       {#if previewImage.fileName}
-        <Dialog.Description class="truncate px-1 text-center text-xs text-muted-foreground">
+        <Dialog.Description
+          class="truncate px-1 text-center text-xs text-muted-foreground"
+        >
           {previewImage.fileName}
         </Dialog.Description>
       {/if}

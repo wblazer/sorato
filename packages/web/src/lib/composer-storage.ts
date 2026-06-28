@@ -20,27 +20,29 @@ export type ComposerDraftAttachment = typeof DraftAttachmentSchema.Type
 
 export const composerDraftStorageKey = (
   connectionId: string | null | undefined,
-  tabId: string | null | undefined,
+  tabId: string | null | undefined
 ) =>
   connectionId && tabId
     ? storageKey('connection', connectionId, 'tab', tabId, 'composer-draft')
     : null
 
 export const composerHistoryStorageKey = (
-  connectionId: string | null | undefined,
+  connectionId: string | null | undefined
 ) =>
   connectionId
     ? storageKey('connection', connectionId, 'composer-history')
     : null
 
-export function readComposerDraft(key: string | null | undefined): string | undefined {
+export function readComposerDraft(
+  key: string | null | undefined
+): string | undefined {
   if (!key) return undefined
   return storage.get(key)
 }
 
 export function writeComposerDraft(
   key: string | null | undefined,
-  value: string,
+  value: string
 ) {
   if (!key) return
   if (value.length === 0) {
@@ -53,7 +55,7 @@ export function writeComposerDraft(
 const attachmentsKey = (key: string) => `${key}:attachments`
 
 export function readComposerDraftAttachments(
-  key: string | null | undefined,
+  key: string | null | undefined
 ): ReadonlyArray<ComposerDraftAttachment> {
   if (!key) return []
   return getJsonWithSchema(attachmentsKey(key), DraftAttachmentsSchema, [])
@@ -61,7 +63,7 @@ export function readComposerDraftAttachments(
 
 export function writeComposerDraftAttachments(
   key: string | null | undefined,
-  value: ReadonlyArray<ComposerDraftAttachment>,
+  value: ReadonlyArray<ComposerDraftAttachment>
 ) {
   if (!key) return
   if (value.length === 0) {
@@ -72,7 +74,7 @@ export function writeComposerDraftAttachments(
 }
 
 export function readComposerHistory(
-  key: string | null | undefined,
+  key: string | null | undefined
 ): ReadonlyArray<string> {
   if (!key) return []
   return getJsonWithSchema(key, HistorySchema, [])
@@ -80,12 +82,16 @@ export function readComposerHistory(
 
 export function pushComposerHistory(
   key: string | null | undefined,
-  message: string,
+  message: string
 ) {
   const text = message.trim()
   if (!key || !text) return
 
   const current = readComposerHistory(key)
   if (current[0] === text) return
-  setJsonWithSchema(key, HistorySchema, [text, ...current].slice(0, HISTORY_LIMIT))
+  setJsonWithSchema(
+    key,
+    HistorySchema,
+    [text, ...current].slice(0, HISTORY_LIMIT)
+  )
 }

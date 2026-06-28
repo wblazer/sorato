@@ -8,7 +8,9 @@ import { BunServices } from '@effect/platform-bun'
 import {
   SessionId,
   SessionStorage,
+  StoredMessage,
   type SessionStorageApi,
+  type StoredMessageEncoded,
 } from '../src/session/session.ts'
 import { makeSqlitePersistenceLive } from '../src/db/sqlite.ts'
 import { SqliteSession } from '../src/session/sqlite-session.ts'
@@ -54,7 +56,7 @@ const latestLeafId = (storage: SessionStorageApi, sessionId: string) =>
 const append = (
   storage: SessionStorageApi,
   sessionId: string,
-  messages: ReadonlyArray<Prompt.MessageEncoded>,
+  messages: ReadonlyArray<StoredMessageEncoded>,
   baseNodeId?: string | null
 ) =>
   Effect.gen(function* () {
@@ -90,21 +92,39 @@ const conversation = (storage: SessionStorageApi, sessionId: string) =>
 // Helpers
 // ---------------------------------------------------------------------------
 
-const encodeMessage = Schema.encodeSync(Prompt.Message)
+const encodeMessage = Schema.encodeSync(StoredMessage)
 
-const systemMsg = (text: string): Prompt.MessageEncoded =>
+const systemMsg = (text: string): StoredMessageEncoded =>
   encodeMessage(
-    Schema.decodeUnknownSync(Prompt.Message)({ role: 'system', content: text })
+    Schema.decodeUnknownSync(StoredMessage)({ role: 'system', content: text })
   )
 
-const userMsg = (text: string): Prompt.MessageEncoded =>
+const bootstrapSystemMsg = (text: string): StoredMessageEncoded =>
   encodeMessage(
-    Schema.decodeUnknownSync(Prompt.Message)({ role: 'user', content: text })
+    Schema.decodeUnknownSync(StoredMessage)({
+      role: 'system',
+      content: text,
+      source: 'system-prompt',
+    })
   )
 
-const assistantMsg = (text: string): Prompt.MessageEncoded =>
+const interruptionMsg = (text: string): StoredMessageEncoded =>
   encodeMessage(
-    Schema.decodeUnknownSync(Prompt.Message)({
+    Schema.decodeUnknownSync(StoredMessage)({
+      role: 'system',
+      content: text,
+      source: 'interruption',
+    })
+  )
+
+const userMsg = (text: string): StoredMessageEncoded =>
+  encodeMessage(
+    Schema.decodeUnknownSync(StoredMessage)({ role: 'user', content: text })
+  )
+
+const assistantMsg = (text: string): StoredMessageEncoded =>
+  encodeMessage(
+    Schema.decodeUnknownSync(StoredMessage)({
       role: 'assistant',
       content: text,
     })
@@ -114,9 +134,9 @@ const toolCallMsg = (
   id: string,
   name: string,
   params: unknown
-): Prompt.MessageEncoded =>
+): StoredMessageEncoded =>
   encodeMessage(
-    Schema.decodeUnknownSync(Prompt.Message)({
+    Schema.decodeUnknownSync(StoredMessage)({
       role: 'assistant',
       content: [
         {
@@ -134,9 +154,9 @@ const toolResultMsg = (
   id: string,
   name: string,
   result: unknown
-): Prompt.MessageEncoded =>
+): StoredMessageEncoded =>
   encodeMessage(
-    Schema.decodeUnknownSync(Prompt.Message)({
+    Schema.decodeUnknownSync(StoredMessage)({
       role: 'tool',
       content: [
         {
@@ -339,6 +359,85 @@ describe('SessionStorage', () => {
 
         const fetched = yield* storage.get(session.id)
         expect(fetched.updatedAt).toBeGreaterThanOrEqual(session.updatedAt)
+      }).pipe(Effect.provide(testLayer()))
+    )
+  })
+
+  describe('compactRange', () => {
+    it.effect('rejects ranges that include system messages', () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionStorage
+        const session = yield* storage.create(TEST_DIR, 'system-compact')
+        const [systemNodeId, userNodeId] = yield* append(storage, session.id, [
+          bootstrapSystemMsg('System'),
+          userMsg('Hello'),
+          assistantMsg('Hi'),
+        ])
+        const resolvedUserNodeId = expectDefined(
+          userNodeId,
+          'expected user node id'
+        )
+
+        const result = yield* storage
+          .compactRange({
+            sessionId: session.id,
+            runId: crypto.randomUUID(),
+            baseHeadNodeId: resolvedUserNodeId,
+            startNodeId: expectDefined(systemNodeId, 'expected system node id'),
+            endNodeId: resolvedUserNodeId,
+            summaryContent: 'summary',
+          })
+          .pipe(Effect.flip)
+
+        expect(result._tag).toBe('StorageError')
+        expect(result.message).toContain('bootstrap system messages')
+      }).pipe(Effect.provide(testLayer()))
+    )
+
+    it.effect('allows ranges that include interruption system messages', () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionStorage
+        const session = yield* storage.create(TEST_DIR, 'interruption-compact')
+        const [systemNodeId, userNodeId, assistantNodeId] = yield* append(
+          storage,
+          session.id,
+          [bootstrapSystemMsg('System'), userMsg('Hello'), assistantMsg('Hi')]
+        )
+        const [interruptionNodeId, nextUserNodeId] = yield* append(
+          storage,
+          session.id,
+          [interruptionMsg('Interrupted'), userMsg('Continue')],
+          expectDefined(assistantNodeId, 'expected assistant node id')
+        )
+        const resolvedNextUserNodeId = expectDefined(
+          nextUserNodeId,
+          'expected next user id'
+        )
+        const compactRunId = crypto.randomUUID()
+        yield* storage.createRun({
+          id: compactRunId,
+          sessionId: session.id,
+          providerId: 'test',
+          modelId: 'test-model',
+          billingMode: 'api-key',
+          baseNodeId: resolvedNextUserNodeId,
+        })
+
+        const result = yield* storage.compactRange({
+          sessionId: session.id,
+          runId: compactRunId,
+          baseHeadNodeId: resolvedNextUserNodeId,
+          startNodeId: expectDefined(
+            interruptionNodeId,
+            'expected interruption node id'
+          ),
+          endNodeId: resolvedNextUserNodeId,
+          summaryContent: 'summary',
+        })
+
+        expect(result.summaryNodeId).toBeTruthy()
+        expect(systemNodeId).toBeTruthy()
+        expect(userNodeId).toBeTruthy()
       }).pipe(Effect.provide(testLayer()))
     )
   })
