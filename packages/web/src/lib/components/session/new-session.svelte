@@ -170,9 +170,11 @@
   {/snippet}
 
   <div
-    class="mx-auto flex min-h-0 w-full max-w-6xl flex-1 items-center justify-center px-6 py-6"
+    class="new-session-stage mx-auto flex min-h-0 w-full max-w-6xl flex-1 items-center justify-center"
   >
-    <div class="flex w-full flex-col items-center gap-10">
+    <div
+      class="new-session-content flex w-full flex-col items-center gap-10 px-6 py-6"
+    >
       {#if sessionStore.sessions.length > 0}
         <div class="w-full max-w-md space-y-2">
           <div class="text-center text-base font-medium text-muted-foreground">
@@ -190,7 +192,7 @@
               </Button>
             </div>
 
-            <div class="space-y-1">
+            <div class="new-session-recent space-y-1">
               <div class="px-2 text-sm font-medium text-muted-foreground">
                 Recent Sessions
               </div>
@@ -198,7 +200,7 @@
               {#each recentSessions as item (item.session.id)}
                 <button
                   type="button"
-                  class="flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-2 text-left text-base outline-hidden select-none hover:bg-base-hover"
+                  class="new-session-recent-item flex w-full cursor-default items-center gap-2 rounded-sm px-2 py-2 text-left text-base outline-hidden select-none hover:bg-base-hover"
                   onclick={() => openSession(item.session.id)}
                 >
                   <span class="min-w-0 flex-1">
@@ -288,3 +290,36 @@
       : 'Choose a project to start'}
   />
 </SessionShell>
+
+<style>
+  .new-session-stage {
+    container: new-session-stage / size;
+  }
+
+  @container new-session-stage (max-height: 42rem) {
+    .new-session-content {
+      padding-block: 1rem;
+      gap: 1.75rem;
+    }
+
+    .new-session-recent-item:nth-of-type(n + 5) {
+      display: none;
+    }
+  }
+
+  @container new-session-stage (max-height: 36rem) {
+    .new-session-content {
+      gap: 1.25rem;
+    }
+
+    .new-session-recent-item:nth-of-type(n + 3) {
+      display: none;
+    }
+  }
+
+  @container new-session-stage (max-height: 30rem) {
+    .new-session-recent {
+      display: none;
+    }
+  }
+</style>
