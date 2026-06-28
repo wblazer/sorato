@@ -86,7 +86,21 @@
     const haystack = [itemValue, ...keywords].join(' ').toLowerCase()
     const terms = query.split(/\s+/)
 
-    return terms.every((term) => haystack.includes(term)) ? 1 : 0
+    return terms.every((term) => fuzzyIncludes(haystack, term)) ? 1 : 0
+  }
+
+  function fuzzyIncludes(value: string, term: string) {
+    if (value.includes(term)) return true
+
+    const compactValue = compactSearchText(value)
+    const compactTerm = compactSearchText(term)
+
+    if (!compactTerm) return true
+    return compactValue.includes(compactTerm)
+  }
+
+  function compactSearchText(value: string) {
+    return value.replace(/[^a-z0-9]/g, '')
   }
 
   const triggerLabel = $derived.by(() => {
