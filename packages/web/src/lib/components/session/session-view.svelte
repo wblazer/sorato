@@ -14,7 +14,7 @@
     composerDraftStorageKey,
     composerHistoryStorageKey,
   } from '$lib/composer-storage.js'
-  import type { MessageNode, ModelCall } from '$lib/types.js'
+  import type { MessageNode, ModelCall, RunAttachment } from '$lib/types.js'
   import {
     persistedSources,
     projectTranscript,
@@ -273,7 +273,10 @@
   // run head follows the active run while it is streaming and resolves to
   // the latest persisted node for that run once inactive. This preserves
   // explicit node selection for mid-run history browsing.
-  async function handleSend(input: string): Promise<boolean> {
+  async function handleSend(
+    input: string,
+    attachments: ReadonlyArray<RunAttachment>,
+  ): Promise<boolean> {
     const model = modelsStore.selectedModel
     if (!model) return false
 
@@ -285,6 +288,7 @@
       sessionStore.runAgent(
         sessionId,
         input,
+        attachments,
         model,
         baseNodeId,
         afterRunId,
@@ -307,6 +311,7 @@
         tabId,
         sessionId,
         input,
+        attachments,
         response.baseNodeId,
         response.runId,
       )

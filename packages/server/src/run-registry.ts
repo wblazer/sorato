@@ -8,9 +8,21 @@ export interface CompactRangeRun {
   readonly instructions?: string | undefined
 }
 
+export interface RunAttachment {
+  readonly mediaType: string
+  readonly fileName: string
+  readonly data: string
+  readonly size: number
+}
+
+export interface RunInput {
+  readonly text: string
+  readonly attachments: ReadonlyArray<RunAttachment>
+}
+
 export interface RunRequest {
   readonly runId: string
-  readonly inputs: ReadonlyArray<string>
+  readonly inputs: ReadonlyArray<RunInput>
   readonly model: string
   readonly modelOptions: ModelOptions
   readonly baseNodeId: string | null

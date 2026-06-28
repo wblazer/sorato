@@ -2,6 +2,10 @@
   export interface QueuedMessageDraft {
     id: string
     content: string
+    attachments: ReadonlyArray<{
+      fileName: string
+      data: string
+    }>
     createdAt: number
   }
 
@@ -22,7 +26,21 @@
     </span>
   </div>
 
-  <div class="whitespace-pre-wrap break-words">
-    {message.content}
-  </div>
+  {#if message.attachments.length > 0}
+    <div class="flex flex-wrap gap-2">
+      {#each message.attachments as attachment}
+        <img
+          src={attachment.data}
+          alt={attachment.fileName}
+          class="max-h-40 rounded-md border border-accent-foreground/15 object-cover"
+        />
+      {/each}
+    </div>
+  {/if}
+
+  {#if message.content.length > 0}
+    <div class="whitespace-pre-wrap break-words">
+      {message.content}
+    </div>
+  {/if}
 </div>

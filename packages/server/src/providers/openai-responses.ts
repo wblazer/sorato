@@ -346,7 +346,9 @@ const translateInput = (
           if (part.type === 'text') {
             content.push({ type: 'input_text', text: part.text })
           }
-          // (image/file parts omitted here)
+          if (part.type === 'file' && part.mediaType.startsWith('image/')) {
+            content.push({ type: 'input_image', image_url: part.data })
+          }
         }
         input.push({ role: 'user', content })
         break

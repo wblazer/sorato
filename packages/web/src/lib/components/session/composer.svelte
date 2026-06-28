@@ -3,19 +3,23 @@
   import * as Item from '$lib/components/ui/item/index.js'
   import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import * as Tooltip from '$lib/components/ui/tooltip/index.js'
+  import * as Dialog from '$lib/components/ui/dialog/index.js'
   import { tick } from 'svelte'
   import { Textarea } from '$lib/components/ui/textarea/index.js'
   import * as Select from '$lib/components/ui/select/index.js'
   import {
     pushComposerHistory,
     readComposerDraft,
+    readComposerDraftAttachments,
     readComposerHistory,
     writeComposerDraft,
+    writeComposerDraftAttachments,
   } from '$lib/composer-storage.js'
   import type {
     AvailableModel,
     MessageNode,
     ModelOptions,
+    RunAttachment,
     SessionRunStatus,
   } from '$lib/types.js'
   import ArrowUpIcon from 'phosphor-svelte/lib/ArrowUpIcon'
@@ -32,6 +36,10 @@
     readonly type: 'directory' | 'file'
     readonly score?: number
   }
+
+  type ComposerAttachment = RunAttachment & { readonly id: string }
+
+  const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024
 
   let {
     onSend,
@@ -58,7 +66,10 @@
     sessionStatus = null,
     tokenUsageMessages = [],
   }: {
-    onSend: (input: string) => boolean | Promise<boolean>
+    onSend: (
+      input: string,
+      attachments: ReadonlyArray<RunAttachment>,
+    ) => boolean | Promise<boolean>
     onStop?: () => void
     onAttach?: () => void
     onFileSearch?: (
@@ -87,6 +98,7 @@
 
   let input = $state('')
   let textarea: HTMLTextAreaElement | null = $state(null)
+  let fileInput: HTMLInputElement | null = $state(null)
   let fileResultsViewport: HTMLElement | null = $state(null)
   let now = $state(Date.now())
   let loadedDraftStorageKey = $state<string | null>(null)
@@ -102,6 +114,10 @@
   let fileSearchError = $state<string | null>(null)
   let selectedFileIndex = $state(0)
   let fileSearchRequest = 0
+  let attachments = $state<ReadonlyArray<ComposerAttachment>>([])
+  let attachmentError = $state<string | null>(null)
+  let previewAttachment = $state<ComposerAttachment | null>(null)
+  let previewOpen = $state(false)
 
   const selectedModel = $derived(
     models.find((item) => item.id === model) ?? null,
@@ -173,6 +189,33 @@
   function setInput(value: string, options?: { persist?: boolean }) {
     input = value
     if (options?.persist !== false) writeComposerDraft(draftStorageKey, value)
+  }
+
+  function setAttachments(
+    value: ReadonlyArray<ComposerAttachment>,
+    options?: { persist?: boolean },
+  ) {
+    attachments = value
+    if (options?.persist !== false) {
+      writeComposerDraftAttachments(
+        draftStorageKey,
+        value.map(({ mediaType, fileName, data, size }) => ({
+          mediaType,
+          fileName,
+          data,
+          size,
+        })),
+      )
+    }
+  }
+
+  function runAttachments() {
+    return attachments.map(({ mediaType, fileName, data, size }) => ({
+      mediaType,
+      fileName,
+      data,
+      size,
+    }))
   }
 
   function syncMention() {
@@ -247,19 +290,127 @@
 
   async function handleSubmit() {
     const trimmed = input.trim()
-    if (!trimmed || disabled || submitting) return
+    if (
+      (trimmed.length === 0 && attachments.length === 0) ||
+      disabled ||
+      submitting
+    )
+      return
 
     submitting = true
     try {
-      const sent = await onSend(trimmed)
+      const sent = await onSend(trimmed, runAttachments())
       if (!sent) return
 
-      pushComposerHistory(historyStorageKey, trimmed)
+      if (trimmed.length > 0) pushComposerHistory(historyStorageKey, trimmed)
       resetHistoryNavigation()
       setInput('')
+      setAttachments([])
+      attachmentError = null
+      previewAttachment = null
+      previewOpen = false
     } finally {
       submitting = false
     }
+  }
+
+  function formatBytes(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  }
+
+  function readFileAsDataUrl(file: File) {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        if (typeof reader.result === 'string') resolve(reader.result)
+        else reject(new Error('File could not be read.'))
+      }
+      reader.onerror = () =>
+        reject(reader.error ?? new Error('File could not be read.'))
+      reader.readAsDataURL(file)
+    })
+  }
+
+  async function addFiles(files: Iterable<File>) {
+    const next: ComposerAttachment[] = []
+    attachmentError = null
+
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) {
+        attachmentError = 'Only image attachments are supported right now.'
+        continue
+      }
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        attachmentError = `${file.name} is larger than ${formatBytes(MAX_ATTACHMENT_BYTES)}.`
+        continue
+      }
+
+      next.push({
+        id: crypto.randomUUID(),
+        fileName: file.name || 'pasted-image.png',
+        mediaType: file.type || 'application/octet-stream',
+        data: await readFileAsDataUrl(file),
+        size: file.size,
+      })
+    }
+
+    if (next.length > 0) setAttachments([...attachments, ...next])
+  }
+
+  function addSelectedImages(selected: ReadonlyArray<RunAttachment>) {
+    const next: ComposerAttachment[] = []
+    attachmentError = null
+
+    for (const image of selected) {
+      if (!image.mediaType.startsWith('image/')) {
+        attachmentError = 'Only image attachments are supported right now.'
+        continue
+      }
+      if (image.size > MAX_ATTACHMENT_BYTES) {
+        attachmentError = `${image.fileName} is larger than ${formatBytes(MAX_ATTACHMENT_BYTES)}.`
+        continue
+      }
+      next.push({ ...image, id: crypto.randomUUID() })
+    }
+
+    if (next.length > 0) setAttachments([...attachments, ...next])
+  }
+
+  function removeAttachment(id: string) {
+    setAttachments(attachments.filter((attachment) => attachment.id !== id))
+    if (previewAttachment?.id === id) {
+      previewAttachment = null
+      previewOpen = false
+    }
+  }
+
+  function openAttachmentPreview(attachment: ComposerAttachment) {
+    previewAttachment = attachment
+    previewOpen = true
+  }
+
+  async function handleAttachClick() {
+    onAttach?.()
+    if (window.soratoDesktop?.selectImages) {
+      addSelectedImages(await window.soratoDesktop.selectImages())
+      return
+    }
+    fileInput?.click()
+  }
+
+  function handleFileChange(event: Event) {
+    const input = event.currentTarget as HTMLInputElement
+    if (input.files) void addFiles(input.files)
+    input.value = ''
+  }
+
+  function handlePaste(event: ClipboardEvent) {
+    const files = Array.from(event.clipboardData?.files ?? [])
+    if (files.length === 0) return
+    event.preventDefault()
+    void addFiles(files)
   }
 
   function canNavigateHistory(direction: 'up' | 'down') {
@@ -443,6 +594,16 @@
     loadedDraftStorageKey = draftStorageKey ?? null
     resetHistoryNavigation()
     setInput(readComposerDraft(draftStorageKey) ?? '', { persist: false })
+    setAttachments(
+      readComposerDraftAttachments(draftStorageKey).map((attachment) => ({
+        ...attachment,
+        id: crypto.randomUUID(),
+      })),
+      { persist: false },
+    )
+    attachmentError = null
+    previewAttachment = null
+    previewOpen = false
     resetMention()
   })
 
@@ -459,6 +620,7 @@
     if (draftKey === undefined || draftKey === null) return
     resetHistoryNavigation()
     setInput(draftText ?? '')
+    setAttachments([])
     resetMention()
 
     tick().then(() => {
@@ -477,6 +639,10 @@
       now = Date.now()
     }, 250)
     return () => clearInterval(id)
+  })
+
+  $effect(() => {
+    if (!previewOpen) previewAttachment = null
   })
 
   $effect(() => {
@@ -551,11 +717,54 @@
         </Item.Root>
       {/if}
 
+      {#if attachments.length > 0 || attachmentError}
+        <div class="mb-2">
+          {#if attachments.length > 0}
+            <div
+              class="flex w-full flex-wrap gap-2 py-1"
+              role="group"
+              aria-label="Message attachments"
+            >
+              {#each attachments as attachment (attachment.id)}
+                <div class="group relative size-20 shrink-0 snap-start">
+                  <button
+                    type="button"
+                    class="block size-full cursor-zoom-in overflow-hidden rounded-lg border border-border bg-background outline-none ring-offset-background transition-[border-color,box-shadow] hover:border-ring/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    aria-label={`Preview ${attachment.fileName}`}
+                    onclick={() => openAttachmentPreview(attachment)}
+                  >
+                    <img
+                      src={attachment.data}
+                      alt=""
+                      class="size-full object-cover"
+                    />
+                  </button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    class="absolute -right-1.5 -top-1.5 size-5 rounded-full border border-border bg-popover text-popover-foreground opacity-0 shadow-sm shadow-shadow/30 transition-opacity hover:bg-base-hover group-hover:opacity-100 focus-visible:opacity-100"
+                    aria-label={`Remove ${attachment.fileName}`}
+                    onclick={() => removeAttachment(attachment.id)}
+                  >
+                    <XIcon />
+                  </Button>
+                </div>
+              {/each}
+            </div>
+          {/if}
+          {#if attachmentError}
+            <div class="px-1 pt-1 text-xs text-danger">{attachmentError}</div>
+          {/if}
+        </div>
+      {/if}
+
       <Textarea
         bind:ref={textarea}
         bind:value={input}
         onkeydown={handleKeydown}
         oninput={handleInput}
+        onpaste={handlePaste}
         onclick={handleClick}
         onkeyup={handleKeyup}
         {disabled}
@@ -643,21 +852,32 @@
             <Tooltip.Trigger>
               {#snippet child({ props })}
                 <Button
-                  onclick={onAttach}
                   type="button"
                   variant="ghost"
                   size="icon"
                   class="shrink-0 text-muted-foreground"
-                  aria-label="Attach file"
+                  aria-label="Attach image"
                   {disabled}
                   {...props}
+                  onclick={handleAttachClick}
                 >
                   <PlusIcon />
                 </Button>
               {/snippet}
             </Tooltip.Trigger>
-            <Tooltip.Content>Attach file</Tooltip.Content>
+            <Tooltip.Content>Attach image</Tooltip.Content>
           </Tooltip.Root>
+
+          <input
+            bind:this={fileInput}
+            type="file"
+            accept="image/*"
+            multiple
+            class="hidden"
+            onchange={handleFileChange}
+            aria-hidden="true"
+            tabindex="-1"
+          />
 
           <div class="min-w-0 max-w-[min(20rem,60vw)]">
             <ModelSelector
@@ -750,7 +970,9 @@
           {:else}
             <Button
               onclick={handleSubmit}
-              disabled={disabled || submitting || !input.trim()}
+              disabled={disabled ||
+                submitting ||
+                (!input.trim() && attachments.length === 0)}
               size="icon-lg"
               aria-label="Send message"
             >
@@ -762,3 +984,21 @@
     </div>
   </div>
 </div>
+
+<Dialog.Root bind:open={previewOpen}>
+  <Dialog.Content
+    class="w-fit max-w-[96vw] justify-items-center gap-2 bg-transparent p-0 shadow-none ring-0 sm:max-w-[96vw] [&_[data-slot='dialog-close']>button]:bg-background/60 [&_[data-slot='dialog-close']>button]:backdrop-blur-sm"
+  >
+    {#if previewAttachment}
+      <Dialog.Title class="sr-only">Preview {previewAttachment.fileName}</Dialog.Title>
+      <img
+        src={previewAttachment.data}
+        alt={previewAttachment.fileName}
+        class="max-h-[88vh] w-auto max-w-full rounded-lg object-contain"
+      />
+      <Dialog.Description class="truncate px-1 text-center text-xs text-muted-foreground">
+        {previewAttachment.fileName}
+      </Dialog.Description>
+    {/if}
+  </Dialog.Content>
+</Dialog.Root>

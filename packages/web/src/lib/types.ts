@@ -210,6 +210,13 @@ export interface FilePart {
   data: string
 }
 
+export interface RunAttachment {
+  mediaType: string
+  fileName: string
+  data: string
+  size: number
+}
+
 export interface ToolCallPart {
   type: 'tool-call'
   id: string

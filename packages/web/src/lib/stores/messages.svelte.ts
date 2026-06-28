@@ -7,7 +7,12 @@
  */
 import { apiClient, runApiEffect } from '$lib/api-client.js'
 import type { UiApiError } from '$lib/api-errors.js'
-import type { MessageNode, MessagePart, StreamCursor } from '$lib/types.js'
+import type {
+  MessageNode,
+  MessagePart,
+  RunAttachment,
+  StreamCursor,
+} from '$lib/types.js'
 import { Effect, Fiber, Stream } from 'effect'
 import { serverEvents, type SseError } from '$lib/sse.js'
 import { preloadMessageToolDiffs } from '$lib/tool-output.js'
@@ -343,6 +348,7 @@ function createMessagesStore() {
     tabId: string,
     sessionId: string,
     input: string,
+    attachments: ReadonlyArray<RunAttachment>,
     parentNodeId: string | null,
     runId: string
   ) {
@@ -377,7 +383,23 @@ function createMessagesStore() {
         completedAt: null,
       },
       modelCall: null,
-      encoded: { role: 'user', content: input },
+      encoded: {
+        role: 'user',
+        content:
+          attachments.length === 0
+            ? input
+            : [
+                ...(input.length > 0
+                  ? [{ type: 'text' as const, text: input }]
+                  : []),
+                ...attachments.map((attachment) => ({
+                  type: 'file' as const,
+                  mediaType: attachment.mediaType,
+                  fileName: attachment.fileName,
+                  data: attachment.data,
+                })),
+              ],
+      },
       createdAt: now,
     }
     updateTabState(tabId, (state) => ({

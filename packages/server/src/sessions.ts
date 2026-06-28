@@ -5,6 +5,7 @@
  * SessionStorage in its environment — the caller provides it (e.g. SqliteSession).
  */
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
+import { Prompt } from 'effect/unstable/ai'
 import { Cause, Effect, Fiber, Match } from 'effect'
 import { ProjectStorage } from './project/project.ts'
 import {
@@ -26,7 +27,7 @@ import {
 } from '@sorato/api'
 import { ensureModel } from './model-catalog.ts'
 import type { ModelOptions, ThinkingLevel } from './model-catalog.ts'
-import type { RunRequest } from './run-registry.ts'
+import type { RunAttachment, RunRequest } from './run-registry.ts'
 import { runAgent } from './run-agent.ts'
 import {
   clearActiveFiber,
@@ -461,7 +462,21 @@ const appendStoppedQueuedInputs = (
         runId,
         request.inputs.map((input) => ({
           role: 'user' as const,
-          content: input,
+          content:
+            input.attachments.length === 0
+              ? input.text
+              : [
+                  ...(input.text.trim().length > 0
+                    ? [Prompt.makePart('text', { text: input.text })]
+                    : []),
+                  ...input.attachments.map((attachment) =>
+                    Prompt.makePart('file', {
+                      mediaType: attachment.mediaType,
+                      fileName: attachment.fileName,
+                      data: attachment.data,
+                    })
+                  ),
+                ],
         })),
         request.baseNodeId
       )
@@ -535,6 +550,7 @@ const enqueueRunRequest = Effect.fn('Sessions.enqueueRunRequest')((
   storage: SessionStorageApi,
   sessionId: string,
   input: string,
+  attachments: ReadonlyArray<RunAttachment>,
   model: string,
   options: ModelOptions,
   baseNodeId: string | null,
@@ -544,7 +560,7 @@ const enqueueRunRequest = Effect.fn('Sessions.enqueueRunRequest')((
   const runId = crypto.randomUUID()
   const initialRequest = {
     runId,
-    inputs: compactRange === undefined ? [input] : [],
+    inputs: compactRange === undefined ? [{ text: input, attachments }] : [],
     model,
     modelOptions: options,
     baseNodeId,
@@ -671,6 +687,7 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
               storage,
               params.id,
               payload.input,
+              payload.attachments ?? [],
               payload.model,
               modelOptions(payload.modelOptions),
               payload.baseNodeId,
@@ -702,6 +719,7 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
               storage,
               params.id,
               '',
+              [],
               payload.model,
               { thinkingLevel: 'off' },
               payload.baseHeadNodeId,

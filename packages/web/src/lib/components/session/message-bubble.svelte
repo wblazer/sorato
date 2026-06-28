@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
-  import type { MessageNode, ModelCall } from '$lib/types.js'
+  import type { FilePart, MessageNode, MessagePart, ModelCall } from '$lib/types.js'
   import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
   import {
     messageParts,
@@ -10,6 +10,7 @@
   } from '$lib/transcript.js'
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Tooltip from '$lib/components/ui/tooltip/index.js'
+  import * as Dialog from '$lib/components/ui/dialog/index.js'
   import { createTimedAction } from '$lib/timed-action.svelte.js'
   import CheckIcon from 'phosphor-svelte/lib/CheckIcon'
   import CopyIcon from 'phosphor-svelte/lib/CopyIcon'
@@ -52,6 +53,8 @@
   const isSystem = $derived(role === 'system')
   const isAssistant = $derived(role === 'assistant')
   let copyTooltipOpen = $state(false)
+  let previewOpen = $state(false)
+  let previewImage = $state<FilePart | null>(null)
   const userText = $derived(
     parts
       .filter((part) => part.type === 'text')
@@ -63,6 +66,14 @@
     isUser && !!onEditRetry && userText.trim().length > 0,
   )
   const canCopy = $derived(isUser && userText.trim().length > 0)
+  const userImageParts = $derived(
+    parts.filter((part): part is FilePart => isImagePart(part)),
+  )
+  const userRenderParts = $derived(
+    renderParts.filter(
+      (item) => item.type !== 'message' || !isImagePart(item.part),
+    ),
+  )
   const copyAction = createTimedAction({
     successFor: 1200,
     run: async () => {
@@ -114,6 +125,23 @@
     onEditRetry?.(message, userText)
   }
 
+  function isImagePart(part: MessagePart): part is FilePart {
+    return (
+      part.type === 'file' &&
+      part.mediaType.startsWith('image/') &&
+      typeof part.data === 'string'
+    )
+  }
+
+  function openImagePreview(part: FilePart) {
+    previewImage = part
+    previewOpen = true
+  }
+
+  $effect(() => {
+    if (!previewOpen) previewImage = null
+  })
+
   $effect(() => {
     if (copyAction.state === 'success') {
       copyTooltipOpen = true
@@ -147,37 +175,57 @@
       <span class="text-xs italic text-muted-foreground">(empty)</span>
     {:else if isUser}
       <div class="group/user-message flex w-full flex-col items-end">
-        <div
-          class="ml-auto w-fit max-w-[min(42rem,85%)] rounded-lg border border-accent bg-accent text-accent-foreground shadow-sm shadow-shadow/30"
-        >
-          <div class="flex flex-col gap-3 px-3 py-3">
-            {#each renderParts as item, index}
-              {#if item.type === 'combined-tool'}
-                <ToolCallResult
-                  call={item.call}
-                  result={item.result}
-                  {accordionState}
-                  accordionKey={itemAccordionKey(item, index)}
-                />
-              {:else if item.type === 'interruption'}
-                <div
-                  class="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
-                >
-                  <div class="h-px flex-1 bg-border"></div>
-                  <span>Interrupted</span>
-                  <div class="h-px flex-1 bg-border"></div>
-                </div>
-              {:else}
-                <MessagePartComponent
-                  part={item.part}
-                  monospace={false}
-                  {accordionState}
-                  accordionKey={itemAccordionKey(item, index)}
-                />
-              {/if}
+        {#if userImageParts.length > 0}
+          <div
+            class="mb-2 ml-auto flex max-w-[min(42rem,85%)] flex-wrap justify-end gap-2"
+            aria-label="Message image attachments"
+          >
+            {#each userImageParts as part, index (`${part.fileName ?? 'image'}:${index}`)}
+              <button
+                type="button"
+                class="size-16 cursor-zoom-in overflow-hidden rounded-lg border border-border bg-background outline-none ring-offset-background transition-[border-color,box-shadow] hover:border-ring/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                aria-label={`Preview ${part.fileName ?? 'image attachment'}`}
+                onclick={() => openImagePreview(part)}
+              >
+                <img src={part.data} alt="" class="size-full object-cover" />
+              </button>
             {/each}
           </div>
-        </div>
+        {/if}
+
+        {#if userRenderParts.length > 0}
+          <div
+            class="ml-auto w-fit max-w-[min(42rem,85%)] rounded-lg border border-accent bg-accent text-accent-foreground shadow-sm shadow-shadow/30"
+          >
+            <div class="flex flex-col gap-3 px-3 py-3">
+              {#each userRenderParts as item, index}
+                {#if item.type === 'combined-tool'}
+                  <ToolCallResult
+                    call={item.call}
+                    result={item.result}
+                    {accordionState}
+                    accordionKey={itemAccordionKey(item, index)}
+                  />
+                {:else if item.type === 'interruption'}
+                  <div
+                    class="flex items-center gap-3 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+                  >
+                    <div class="h-px flex-1 bg-border"></div>
+                    <span>Interrupted</span>
+                    <div class="h-px flex-1 bg-border"></div>
+                  </div>
+                {:else}
+                  <MessagePartComponent
+                    part={item.part}
+                    monospace={false}
+                    {accordionState}
+                    accordionKey={itemAccordionKey(item, index)}
+                  />
+                {/if}
+              {/each}
+            </div>
+          </div>
+        {/if}
 
         <div
           class="mt-1 flex min-h-6 max-w-[min(42rem,85%)] items-center justify-end gap-1 text-xs text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/user-message:opacity-100 focus-within:opacity-100"
@@ -254,3 +302,25 @@
     {/if}
   </div>
 {/if}
+
+<Dialog.Root bind:open={previewOpen}>
+  <Dialog.Content
+    class="w-fit max-w-[96vw] justify-items-center gap-2 bg-transparent p-0 shadow-none ring-0 sm:max-w-[96vw] [&_[data-slot='dialog-close']>button]:bg-background/60 [&_[data-slot='dialog-close']>button]:backdrop-blur-sm"
+  >
+    {#if previewImage}
+      <Dialog.Title class="sr-only"
+        >Preview {previewImage.fileName ?? 'image attachment'}</Dialog.Title
+      >
+      <img
+        src={previewImage.data}
+        alt={previewImage.fileName ?? 'Image attachment'}
+        class="max-h-[88vh] w-auto max-w-full rounded-lg object-contain"
+      />
+      {#if previewImage.fileName}
+        <Dialog.Description class="truncate px-1 text-center text-xs text-muted-foreground">
+          {previewImage.fileName}
+        </Dialog.Description>
+      {/if}
+    {/if}
+  </Dialog.Content>
+</Dialog.Root>

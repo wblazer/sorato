@@ -42,6 +42,33 @@ import { generateSessionTitle } from './session-title.ts'
 import { getAuth } from './provider-auth.ts'
 import type { BillingMode } from './session/session.ts'
 
+const inputText = (input: RunRequest['inputs'][number]) => input.text
+const inputTexts = (inputs: RunRequest['inputs']) => inputs.map(inputText)
+
+const userInputMessage = (
+  input: RunRequest['inputs'][number]
+): StoredMessageEncoded => {
+  if (input.attachments.length === 0) {
+    return { role: 'user', content: input.text }
+  }
+
+  return {
+    role: 'user',
+    content: [
+      ...(input.text.trim().length > 0
+        ? [Prompt.makePart('text', { text: input.text })]
+        : []),
+      ...input.attachments.map((attachment) =>
+        Prompt.makePart('file', {
+          mediaType: attachment.mediaType,
+          fileName: attachment.fileName,
+          data: attachment.data,
+        })
+      ),
+    ],
+  }
+}
+
 type RunFailureMessage = {
   readonly title: string
   readonly message: string
@@ -353,7 +380,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       model: request.model,
       modelOptions: request.modelOptions,
       inputCount: request.inputs.length,
-      inputLength: request.inputs.join('\n').length,
+      inputLength: inputTexts(request.inputs).join('\n').length,
     })
 
     const storage = yield* SessionStorage
@@ -440,7 +467,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     })
     const maybeSetTitle = generateSessionTitle(
       projectPath,
-      request.inputs.join('\n')
+      inputTexts(request.inputs).join('\n')
     ).pipe(
       Effect.flatMap((title) =>
         Option.match(title, {
@@ -494,10 +521,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                       metadata: { loaded: { path: AGENTS_MD_PATH } },
                     },
                   ]),
-              ...request.inputs.map((input) => ({
-                role: 'user' as const,
-                content: input,
-              })),
+              ...request.inputs.map(userInputMessage),
             ]
             return preamble
           }),

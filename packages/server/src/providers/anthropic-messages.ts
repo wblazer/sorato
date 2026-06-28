@@ -251,6 +251,12 @@ type CacheControl = { readonly type: 'ephemeral'; readonly ttl?: '1h' }
 /** A mutable wire block onto which `cache_control` can be attached in-place. */
 type Block = Record<string, unknown>
 
+const base64Data = (data: string): string | undefined => {
+  const marker = ';base64,'
+  const index = data.indexOf(marker)
+  return index === -1 ? undefined : data.slice(index + marker.length)
+}
+
 type WireMessage = {
   readonly role: 'user' | 'assistant'
   readonly content: Array<Block>
@@ -380,8 +386,29 @@ const translatePrompt = (
       case 'user': {
         const messageHint = explicitCacheHint(message.options)
         message.content.forEach((part, index) => {
-          if (part.type !== 'text') return // (image/file parts omitted here)
           const isLast = index === message.content.length - 1
+          if (part.type === 'file' && part.mediaType.startsWith('image/')) {
+            const data =
+              typeof part.data === 'string' ? base64Data(part.data) : undefined
+            if (data === undefined) return
+            push(
+              'user',
+              hint(
+                {
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: part.mediaType,
+                    data,
+                  },
+                },
+                explicitCacheHint(part.options) ??
+                  (isLast ? messageHint : undefined)
+              )
+            )
+            return
+          }
+          if (part.type !== 'text') return
           push(
             'user',
             hint(

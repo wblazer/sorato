@@ -1,6 +1,11 @@
 import { apiClient, runApiEffect } from '$lib/api-client.js'
 import type { UiApiError } from '$lib/api-errors.js'
-import type { ModelOptions, Session, SessionRunStatus } from '$lib/types.js'
+import type {
+  ModelOptions,
+  RunAttachment,
+  Session,
+  SessionRunStatus,
+} from '$lib/types.js'
 import { Effect } from 'effect'
 import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
@@ -13,6 +18,7 @@ export interface QueuedMessageDraft {
   id: string
   runId: string
   content: string
+  attachments: ReadonlyArray<RunAttachment>
   createdAt: number
 }
 
@@ -263,6 +269,7 @@ function createSessionStore() {
   function runAgent(
     sessionId: string,
     input: string,
+    attachments: ReadonlyArray<RunAttachment>,
     model: string,
     baseNodeId: string | null,
     afterRunId: string | null,
@@ -275,6 +282,7 @@ function createSessionStore() {
           params: { id: sessionId },
           payload: {
             input,
+            attachments,
             model,
             baseNodeId,
             afterRunId,
@@ -301,6 +309,7 @@ function createSessionStore() {
               id: crypto.randomUUID(),
               runId: data.runId,
               content: input,
+              attachments,
               createdAt: Date.now(),
             },
           ])

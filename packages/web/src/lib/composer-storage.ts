@@ -8,6 +8,15 @@ import {
 
 const HISTORY_LIMIT = 100
 const HistorySchema = Schema.Array(Schema.String)
+const DraftAttachmentSchema = Schema.Struct({
+  mediaType: Schema.String,
+  fileName: Schema.String,
+  data: Schema.String,
+  size: Schema.Number,
+})
+const DraftAttachmentsSchema = Schema.Array(DraftAttachmentSchema)
+
+export type ComposerDraftAttachment = typeof DraftAttachmentSchema.Type
 
 export const composerDraftStorageKey = (
   connectionId: string | null | undefined,
@@ -39,6 +48,27 @@ export function writeComposerDraft(
     return
   }
   storage.set(key, value)
+}
+
+const attachmentsKey = (key: string) => `${key}:attachments`
+
+export function readComposerDraftAttachments(
+  key: string | null | undefined,
+): ReadonlyArray<ComposerDraftAttachment> {
+  if (!key) return []
+  return getJsonWithSchema(attachmentsKey(key), DraftAttachmentsSchema, [])
+}
+
+export function writeComposerDraftAttachments(
+  key: string | null | undefined,
+  value: ReadonlyArray<ComposerDraftAttachment>,
+) {
+  if (!key) return
+  if (value.length === 0) {
+    storage.remove(attachmentsKey(key))
+    return
+  }
+  setJsonWithSchema(attachmentsKey(key), DraftAttachmentsSchema, value)
 }
 
 export function readComposerHistory(

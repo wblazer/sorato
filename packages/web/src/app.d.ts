@@ -10,6 +10,14 @@ declare global {
       setClientConfigOverrides: (
         overrides: ClientConfig
       ) => Promise<ResolvedClientConfig>
+      selectImages: () => Promise<
+        ReadonlyArray<{
+          readonly mediaType: string
+          readonly fileName: string
+          readonly data: string
+          readonly size: number
+        }>
+      >
       startIntegratedServer: () => Promise<{
         readonly url: string
         readonly pid?: number

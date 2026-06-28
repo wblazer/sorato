@@ -19,7 +19,7 @@ import type { RunRequest } from '../src/run-registry.ts'
 
 const runRequest = (input: string): RunRequest => ({
   runId: `run-${input}`,
-  inputs: [input],
+  inputs: [{ text: input, attachments: [] }],
   model: 'openai/gpt-5.5',
   modelOptions: {},
   baseNodeId: null,
@@ -54,7 +54,10 @@ describe('RunRegistry', () => {
     expect(getQueuedRunCount('session-1')).toBe(1)
     expect(shiftQueuedRun(run.queueId)).toEqual({
       ...first,
-      inputs: ['first', 'second'],
+      inputs: [
+        { text: 'first', attachments: [] },
+        { text: 'second', attachments: [] },
+      ],
     })
     expect(getQueuedRunCount('session-1')).toBe(0)
 
@@ -114,7 +117,13 @@ describe('RunRegistry', () => {
 
     expect(shouldStop(run.queueId)).toBe(true)
     expect(drainQueuedRuns('session-1')).toEqual([
-      { ...first, inputs: ['first', 'second'] },
+      {
+        ...first,
+        inputs: [
+          { text: 'first', attachments: [] },
+          { text: 'second', attachments: [] },
+        ],
+      },
     ])
     expect(getQueuedRunCount('session-1')).toBe(0)
 

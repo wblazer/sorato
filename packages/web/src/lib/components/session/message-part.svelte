@@ -83,12 +83,25 @@
 {:else if part.type === 'tool-result'}
   <ToolResult {part} {accordionState} {accordionKey} />
 {:else if part.type === 'file'}
-  <div class="flex items-center gap-2">
-    <span class="inline-block h-1.5 w-1.5 rounded-full bg-inset"></span>
-    <span class="text-sm font-medium text-muted-foreground">file</span>
-    {#if part.fileName}
-      <code class="text-sm text-muted-foreground">{part.fileName}</code>
-    {/if}
-    <span class="text-sm text-muted-foreground">{part.mediaType}</span>
-  </div>
+  {#if part.mediaType.startsWith('image/') && typeof part.data === 'string'}
+    <figure class="w-fit max-w-full space-y-1">
+      <img
+        src={part.data}
+        alt={part.fileName ?? 'Image attachment'}
+        class="max-h-80 max-w-full rounded-lg border border-border object-contain shadow-sm shadow-shadow/20"
+      />
+      <figcaption class="text-xs text-muted-foreground">
+        {part.fileName ?? 'Image'} · {part.mediaType}
+      </figcaption>
+    </figure>
+  {:else}
+    <div class="flex items-center gap-2">
+      <span class="inline-block h-1.5 w-1.5 rounded-full bg-inset"></span>
+      <span class="text-sm font-medium text-muted-foreground">file</span>
+      {#if part.fileName}
+        <code class="text-sm text-muted-foreground">{part.fileName}</code>
+      {/if}
+      <span class="text-sm text-muted-foreground">{part.mediaType}</span>
+    </div>
+  {/if}
 {/if}

@@ -342,6 +342,14 @@ export class ProjectFileSearchResponse extends Schema.Class<ProjectFileSearchRes
   totalMatched: Schema.Number,
 }) {}
 
+export const RunAttachment = Schema.Struct({
+  mediaType: Schema.String,
+  fileName: Schema.String,
+  data: Schema.String,
+  size: Schema.Number,
+})
+export type RunAttachment = typeof RunAttachment.Type
+
 export class DirectoryError extends Schema.TaggedErrorClass<DirectoryError>()(
   'DirectoryError',
   { message: Schema.String }
@@ -418,6 +426,7 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
       params: { id: SessionId },
       payload: Schema.Struct({
         input: Schema.String,
+        attachments: Schema.optional(Schema.Array(RunAttachment)),
         model: Schema.String,
         baseNodeId: Schema.NullOr(Schema.String),
         afterRunId: Schema.optional(Schema.NullOr(Schema.String)),

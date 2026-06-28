@@ -24,6 +24,7 @@
     composerHistoryStorageKey,
   } from '$lib/composer-storage.js'
   import { Effect } from 'effect'
+  import type { RunAttachment } from '$lib/types.js'
 
   let sending = $state(false)
   let sessionSearchOpen = $state(false)
@@ -100,7 +101,10 @@
       void Effect.runPromise(modelsStore.load(activeProjectId))
   }
 
-  async function handleSend(input: string): Promise<boolean> {
+  async function handleSend(
+    input: string,
+    attachments: ReadonlyArray<RunAttachment>,
+  ): Promise<boolean> {
     if (sending || !activeProjectId) return false
     const tabId = tabStore.activeTab?.id
     if (!tabId) return false
@@ -126,6 +130,7 @@
         sessionStore.runAgent(
           session.id,
           input,
+          attachments,
           model,
           null,
           null,
@@ -146,6 +151,7 @@
         tabId,
         session.id,
         input,
+        attachments,
         response.baseNodeId,
         response.runId,
       )
