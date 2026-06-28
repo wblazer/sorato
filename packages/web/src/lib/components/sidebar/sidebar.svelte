@@ -194,7 +194,7 @@
     role="separator"
     aria-orientation="vertical"
     aria-label="Resize sidebar"
-    class="group absolute inset-y-0 right-0 z-30 flex w-px cursor-col-resize items-center justify-center bg-border"
+    class="group absolute inset-y-0 right-0 z-30 flex w-px cursor-col-resize items-center justify-center"
     onpointerdown={startSidebarResize}
   >
     <div class="absolute inset-y-0 -left-1 -right-1"></div>
