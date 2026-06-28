@@ -9,6 +9,7 @@
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
   import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
+  import { searchProjectFiles } from '$lib/project-file-search.js'
   import {
     composerDraftStorageKey,
     composerHistoryStorageKey,
@@ -324,6 +325,12 @@
 
   function handleAttach() {}
 
+  async function searchFiles(query: string) {
+    const projectId = selectedSession?.projectId
+    if (!projectId) return []
+    return await Effect.runPromise(searchProjectFiles(projectId, query))
+  }
+
   function handleEditRetry(message: MessageNode, text: string) {
     selectedHead.setSelectedHead(
       message.parentId === null
@@ -471,6 +478,7 @@
     onSend={handleSend}
     onStop={handleStop}
     onAttach={handleAttach}
+    onFileSearch={searchFiles}
     onDismissStatus={handleDismissError}
     onModelChange={handleModel}
     models={modelsStore.models}

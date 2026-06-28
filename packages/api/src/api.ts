@@ -326,6 +326,22 @@ export class DirectoryListResponse extends Schema.Class<DirectoryListResponse>(
   entries: Schema.Array(DirectoryEntry),
 }) {}
 
+export class ProjectFileSearchResult extends Schema.Class<ProjectFileSearchResult>(
+  'ProjectFileSearchResult'
+)({
+  path: Schema.String,
+  name: Schema.String,
+  type: Schema.Literals(['directory', 'file']),
+  score: Schema.optional(Schema.Number),
+}) {}
+
+export class ProjectFileSearchResponse extends Schema.Class<ProjectFileSearchResponse>(
+  'ProjectFileSearchResponse'
+)({
+  entries: Schema.Array(ProjectFileSearchResult),
+  totalMatched: Schema.Number,
+}) {}
+
 export class DirectoryError extends Schema.TaggedErrorClass<DirectoryError>()(
   'DirectoryError',
   { message: Schema.String }
@@ -489,6 +505,19 @@ export class ProjectsGroup extends HttpApiGroup.make('projects')
     HttpApiEndpoint.get('get', '/:id', {
       params: { id: ProjectId },
       success: ProjectResponse,
+      error: ProjectOperationFailed.pipe(HttpApiSchema.status(500)),
+    })
+  )
+  .add(
+    HttpApiEndpoint.get('searchFiles', '/:id/files', {
+      params: { id: ProjectId },
+      query: {
+        query: Schema.String,
+        limit: Schema.Number.pipe(
+          Schema.withDecodingDefault(Effect.succeed(20))
+        ),
+      },
+      success: ProjectFileSearchResponse,
       error: ProjectOperationFailed.pipe(HttpApiSchema.status(500)),
     })
   )

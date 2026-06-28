@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Item from '$lib/components/ui/item/index.js'
+  import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import * as Tooltip from '$lib/components/ui/tooltip/index.js'
   import { tick } from 'svelte'
   import { Textarea } from '$lib/components/ui/textarea/index.js'
@@ -25,10 +26,18 @@
   import ModelSelector from './model-selector.svelte'
   import SessionTokenUsage from './session-token-usage.svelte'
 
+  type FileReferenceResult = {
+    readonly path: string
+    readonly name: string
+    readonly type: 'directory' | 'file'
+    readonly score?: number
+  }
+
   let {
     onSend,
     onStop,
     onAttach,
+    onFileSearch,
     onDismissStatus,
     onModelChange,
     models = [],
@@ -52,6 +61,9 @@
     onSend: (input: string) => boolean | Promise<boolean>
     onStop?: () => void
     onAttach?: () => void
+    onFileSearch?: (
+      query: string,
+    ) => Promise<ReadonlyArray<FileReferenceResult>>
     onDismissStatus?: () => void
     onModelChange?: (value: string, options?: ModelOptions) => void
     models?: ReadonlyArray<AvailableModel>
@@ -75,11 +87,21 @@
 
   let input = $state('')
   let textarea: HTMLTextAreaElement | null = $state(null)
+  let fileResultsViewport: HTMLElement | null = $state(null)
   let now = $state(Date.now())
   let loadedDraftStorageKey = $state<string | null>(null)
   let historyIndex = $state(-1)
   let savedHistoryDraft = $state<string | null>(null)
   let submitting = $state(false)
+  let mentionOpen = $state(false)
+  let mentionQuery = $state('')
+  let mentionStart = $state(0)
+  let mentionEnd = $state(0)
+  let fileResults = $state<ReadonlyArray<FileReferenceResult>>([])
+  let fileSearchLoading = $state(false)
+  let fileSearchError = $state<string | null>(null)
+  let selectedFileIndex = $state(0)
+  let fileSearchRequest = 0
 
   const selectedModel = $derived(
     models.find((item) => item.id === model) ?? null,
@@ -139,9 +161,88 @@
     savedHistoryDraft = null
   }
 
+  function resetMention() {
+    fileSearchRequest += 1
+    mentionOpen = false
+    mentionQuery = ''
+    fileResults = []
+    fileSearchError = null
+    selectedFileIndex = 0
+  }
+
   function setInput(value: string, options?: { persist?: boolean }) {
     input = value
     if (options?.persist !== false) writeComposerDraft(draftStorageKey, value)
+  }
+
+  function syncMention() {
+    if (!textarea || disabled) {
+      resetMention()
+      return
+    }
+
+    const cursor = textarea.selectionStart
+    if (cursor !== textarea.selectionEnd) {
+      resetMention()
+      return
+    }
+
+    const beforeCursor = input.slice(0, cursor)
+    const match = beforeCursor.match(/(?:^|\s)@([^\s@]*)$/)
+    if (!match?.[1] && !beforeCursor.endsWith('@')) {
+      resetMention()
+      return
+    }
+
+    mentionOpen = true
+    mentionQuery = match?.[1] ?? ''
+    mentionStart = cursor - mentionQuery.length - 1
+    mentionEnd = cursor
+  }
+
+  function insertFileReference(result: FileReferenceResult) {
+    const after = input.slice(mentionEnd)
+    const suffix = /^\s/.test(after) ? '' : ' '
+    const next = `${input.slice(0, mentionStart)}@${result.path}${suffix}${after}`
+    const cursor = mentionStart + result.path.length + 1 + suffix.length
+
+    setInput(next)
+    resetMention()
+    tick().then(() => {
+      textarea?.focus()
+      textarea?.setSelectionRange(cursor, cursor)
+    })
+  }
+
+  function drillIntoDirectory(result: FileReferenceResult) {
+    const path = result.path.endsWith('/') ? result.path : `${result.path}/`
+    const after = input.slice(mentionEnd)
+    const next = `${input.slice(0, mentionStart)}@${path}${after}`
+    const cursor = mentionStart + path.length + 1
+
+    setInput(next)
+    mentionOpen = true
+    mentionQuery = path
+    mentionEnd = cursor
+    fileResults = []
+    selectedFileIndex = 0
+
+    tick().then(() => {
+      textarea?.focus()
+      textarea?.setSelectionRange(cursor, cursor)
+    })
+  }
+
+  function scrollFileIndexIntoView(index: number) {
+    fileResultsViewport
+      ?.querySelector<HTMLElement>(`[data-file-reference-index="${index}"]`)
+      ?.scrollIntoView({ block: 'nearest' })
+  }
+
+  function selectFileIndex(index: number, options?: { scroll?: boolean }) {
+    selectedFileIndex = index
+    if (options?.scroll === false) return
+    tick().then(() => scrollFileIndexIntoView(index))
   }
 
   async function handleSubmit() {
@@ -223,6 +324,44 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
+    if (mentionOpen) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        resetMention()
+        return
+      }
+
+      if (fileResults.length > 0 && e.key === 'ArrowDown') {
+        e.preventDefault()
+        selectFileIndex((selectedFileIndex + 1) % fileResults.length)
+        return
+      }
+
+      if (fileResults.length > 0 && e.key === 'ArrowUp') {
+        e.preventDefault()
+        selectFileIndex(
+          (selectedFileIndex - 1 + fileResults.length) % fileResults.length,
+        )
+        return
+      }
+
+      if (
+        fileResults.length > 0 &&
+        (e.key === 'Enter' || e.key === 'Tab') &&
+        !e.shiftKey
+      ) {
+        e.preventDefault()
+        const result = fileResults[selectedFileIndex]
+        if (e.key === 'Tab' && result.type === 'directory') {
+          drillIntoDirectory(result)
+          return
+        }
+
+        insertFileReference(result)
+        return
+      }
+    }
+
     if (
       (e.key === 'ArrowUp' || e.key === 'ArrowDown') &&
       !e.altKey &&
@@ -244,6 +383,59 @@
   function handleInput(e: Event) {
     resetHistoryNavigation()
     setInput((e.currentTarget as HTMLTextAreaElement).value)
+    syncMention()
+  }
+
+  function handleClick() {
+    syncMention()
+  }
+
+  function handleKeyup(e: KeyboardEvent) {
+    if (e.key === 'Escape' || e.key === 'Enter' || e.key === 'Tab') return
+    syncMention()
+  }
+
+  function fileSearchErrorMessage(error: unknown) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'message' in error &&
+      typeof error.message === 'string'
+    ) {
+      return error.message
+    }
+
+    return 'File search failed.'
+  }
+
+  function pathLeaf(path: string) {
+    const normalized = path.replace(/\/$/, '')
+    return normalized.slice(normalized.lastIndexOf('/') + 1)
+  }
+
+  function pathPrefix(path: string) {
+    const normalized = path.replace(/\/$/, '')
+    const slash = normalized.lastIndexOf('/')
+    return slash === -1 ? '' : normalized.slice(0, slash + 1)
+  }
+
+  function fileIconColor(result: FileReferenceResult) {
+    if (result.type === 'directory') return 'var(--color-warning)'
+
+    const extension = pathLeaf(result.path).split('.').pop()?.toLowerCase()
+    if (!extension || extension === pathLeaf(result.path).toLowerCase()) {
+      return 'var(--color-muted-foreground)'
+    }
+
+    if (['ts', 'tsx', 'js', 'jsx', 'svelte'].includes(extension)) {
+      return 'var(--color-ring)'
+    }
+    if (['css', 'scss', 'html'].includes(extension))
+      return 'var(--color-success)'
+    if (['json', 'md', 'yaml', 'yml', 'toml'].includes(extension)) {
+      return 'var(--color-warning)'
+    }
+    return 'var(--color-muted-foreground)'
   }
 
   $effect(() => {
@@ -251,6 +443,7 @@
     loadedDraftStorageKey = draftStorageKey ?? null
     resetHistoryNavigation()
     setInput(readComposerDraft(draftStorageKey) ?? '', { persist: false })
+    resetMention()
   })
 
   $effect(() => {
@@ -266,6 +459,7 @@
     if (draftKey === undefined || draftKey === null) return
     resetHistoryNavigation()
     setInput(draftText ?? '')
+    resetMention()
 
     tick().then(() => {
       if (disabled) return
@@ -283,6 +477,43 @@
       now = Date.now()
     }, 250)
     return () => clearInterval(id)
+  })
+
+  $effect(() => {
+    const query = mentionQuery
+    const open = mentionOpen
+    const search = onFileSearch
+
+    if (!open || !search) {
+      fileSearchLoading = false
+      fileResults = []
+      fileSearchError = search ? null : 'File search is unavailable here.'
+      return
+    }
+
+    const request = ++fileSearchRequest
+    fileSearchLoading = true
+    fileSearchError = null
+
+    const id = setTimeout(() => {
+      search(query)
+        .then((results) => {
+          if (request !== fileSearchRequest) return
+          fileResults = results
+          selectFileIndex(0, { scroll: false })
+        })
+        .catch((error) => {
+          if (request !== fileSearchRequest) return
+          fileResults = []
+          fileSearchError = fileSearchErrorMessage(error)
+        })
+        .finally(() => {
+          if (request !== fileSearchRequest) return
+          fileSearchLoading = false
+        })
+    }, 80)
+
+    return () => clearTimeout(id)
   })
 </script>
 
@@ -325,11 +556,84 @@
         bind:value={input}
         onkeydown={handleKeydown}
         oninput={handleInput}
+        onclick={handleClick}
+        onkeyup={handleKeyup}
         {disabled}
         {placeholder}
         rows={1}
         class="no-scrollbar relative z-10 min-h-[32px] w-full max-h-[220px] rounded-lg scroll-pb-4 overflow-y-auto border border-border bg-surface px-4 py-4 shadow-sm shadow-shadow/30 outline-none focus-visible:border-ring focus-visible:ring-0 md:text-sm"
       />
+
+      {#if mentionOpen}
+        <div
+          class="absolute inset-x-0 bottom-full z-30 mb-2 overflow-hidden rounded-lg border border-border bg-surface text-sm shadow-lg shadow-shadow/40 ring-1 ring-border/40"
+        >
+          {#if fileSearchLoading && fileResults.length === 0}
+            <div class="px-3 py-2 text-muted-foreground">Finding files…</div>
+          {:else if fileSearchError}
+            <div class="px-3 py-2 text-danger">{fileSearchError}</div>
+          {:else if fileResults.length === 0}
+            <div class="px-3 py-2 text-muted-foreground">No files found</div>
+          {:else}
+            <ScrollArea
+              orientation="vertical"
+              class={fileResults.length > 8 ? 'h-72' : 'max-h-72'}
+              viewportClass="scroll-mask-y scroll-mask-y-from-92% scroll-py-1 overscroll-contain"
+              bind:viewportRef={fileResultsViewport}
+            >
+              <div class="p-1">
+                {#each fileResults as result, index (result.path)}
+                  {@const leaf = pathLeaf(result.path)}
+                  {@const prefix = pathPrefix(result.path)}
+                  <button
+                    type="button"
+                    data-file-reference-index={index}
+                    data-file-reference-selected={index === selectedFileIndex}
+                    class="group flex min-h-9 w-full min-w-0 cursor-default items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left outline-none"
+                    class:bg-base-hover={index === selectedFileIndex}
+                    onmousedown={(event) => event.preventDefault()}
+                    onmousemove={() =>
+                      selectFileIndex(index, { scroll: false })}
+                    onclick={() => insertFileReference(result)}
+                  >
+                    <span
+                      class="shrink-0 [&_svg]:size-4"
+                      style:color={fileIconColor(result)}
+                      aria-hidden="true"
+                    >
+                      {#if result.type === 'directory'}
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                          <path
+                            d="M3 6.75A2.75 2.75 0 0 1 5.75 4h4.1c.73 0 1.43.29 1.94.8l1.2 1.2h5.26A2.75 2.75 0 0 1 21 8.75v6.5A2.75 2.75 0 0 1 18.25 18H5.75A2.75 2.75 0 0 1 3 15.25v-8.5Z"
+                          />
+                        </svg>
+                      {:else}
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                          <path
+                            d="M6.75 3A2.75 2.75 0 0 0 4 5.75v12.5A2.75 2.75 0 0 0 6.75 21h10.5A2.75 2.75 0 0 0 20 18.25V9.6c0-.73-.29-1.43-.8-1.94L15.34 3.8A2.75 2.75 0 0 0 13.4 3H6.75Zm7.5 1.8L18.2 8.75h-2.45a1.5 1.5 0 0 1-1.5-1.5V4.8Z"
+                          />
+                        </svg>
+                      {/if}
+                    </span>
+                    <span
+                      class="flex min-w-0 flex-1 items-baseline font-mono text-xs"
+                    >
+                      {#if prefix}
+                        <span class="truncate text-muted-foreground"
+                          >@{prefix}</span
+                        >
+                      {:else}
+                        <span class="text-muted-foreground">@</span>
+                      {/if}
+                      <span class="shrink-0 text-foreground">{leaf}</span>
+                    </span>
+                  </button>
+                {/each}
+              </div>
+            </ScrollArea>
+          {/if}
+        </div>
+      {/if}
 
       <div
         class="relative -mt-2 flex w-full flex-wrap items-center gap-2 rounded-b-lg border border-border bg-background px-1 pb-1 pt-3 text-muted-foreground shadow-sm shadow-shadow/30 sm:flex-nowrap"

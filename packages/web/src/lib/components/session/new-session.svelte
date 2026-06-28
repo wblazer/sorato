@@ -6,6 +6,7 @@
   import { projectStore } from '$lib/stores/projects.svelte.js'
   import { tabStore } from '$lib/stores/tabs.svelte.js'
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
+  import { searchProjectFiles } from '$lib/project-file-search.js'
   import Composer from './composer.svelte'
   import * as Item from '$lib/components/ui/item/index.js'
   import EmptySessionTreePanel from './empty-session-tree-panel.svelte'
@@ -88,6 +89,11 @@
   }
 
   function handleAttach() {}
+
+  async function searchFiles(query: string) {
+    if (!activeProjectId) return []
+    return await Effect.runPromise(searchProjectFiles(activeProjectId, query))
+  }
 
   function retryModels() {
     if (activeProjectId)
@@ -257,6 +263,7 @@
   <Composer
     onSend={handleSend}
     onAttach={handleAttach}
+    onFileSearch={searchFiles}
     onModelChange={handleModel}
     {draftStorageKey}
     {historyStorageKey}
