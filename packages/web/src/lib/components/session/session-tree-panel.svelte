@@ -45,8 +45,8 @@
   let compactInstructions = $state('')
 
   type ActiveRun = ReturnType<typeof sessionStore.activeRunsFor>[number]
-  type BranchConnector = 'middle' | 'last' | null
-  type GutterMark = 'blank' | 'vertical' | 'middle' | 'last'
+  type BranchConnector = 'first' | 'middle' | 'last' | null
+  type GutterMark = 'blank' | 'vertical' | 'first' | 'middle' | 'last'
 
   interface TreeRowLayout {
     readonly structuralDepth: number
@@ -56,6 +56,8 @@
       readonly level: number
       readonly continues: boolean
     }>
+    readonly parentConnector: boolean
+    readonly childConnector: boolean
   }
 
   type TreeRow =
@@ -98,11 +100,19 @@
   ): ReadonlyArray<TreeRow> {
     const rows: TreeRow[] = []
     const runsByBase = new Map<string | null, ActiveRun[]>()
+    const effectiveRunBase = (run: ActiveRun): string | null => {
+      if (run.kind !== 'agent') return run.baseNodeId
+      return (
+        latestRunLeaf(messages, run.runId, run.baseNodeId)?.id ??
+        run.baseNodeId
+      )
+    }
 
     for (const run of runs) {
-      const siblings = runsByBase.get(run.baseNodeId) ?? []
+      const baseNodeId = effectiveRunBase(run)
+      const siblings = runsByBase.get(baseNodeId) ?? []
       siblings.push(run)
-      runsByBase.set(run.baseNodeId, siblings)
+      runsByBase.set(baseNodeId, siblings)
     }
 
     const visit = (
@@ -110,12 +120,19 @@
       structuralDepth: number,
       branchGutters: TreeRowLayout['branchGutters'],
       branchConnector: BranchConnector,
+      parentConnector: boolean,
     ) => {
       const visualDepth = structuralDepth
 
       if (isToolMessage(node.message)) {
         for (const child of node.children) {
-          visit(child, structuralDepth, branchGutters, branchConnector)
+          visit(
+            child,
+            structuralDepth,
+            branchGutters,
+            branchConnector,
+            parentConnector,
+          )
         }
         for (const run of runsByBase.get(node.message.id) ?? []) {
           rows.push({
@@ -125,6 +142,8 @@
             visualDepth,
             branchConnector: null,
             branchGutters,
+            parentConnector: true,
+            childConnector: false,
             run,
           })
         }
@@ -152,6 +171,8 @@
         visualDepth,
         branchConnector,
         branchGutters,
+        parentConnector,
+        childConnector: childCount > 0,
         message: node.message,
         targetNodeId,
         coveredNodeIds,
@@ -202,10 +223,22 @@
               )
             : childGutters
         const childConnector: BranchConnector =
-          childCount > 1 ? (isLastChild ? 'last' : 'middle') : null
+          childCount > 1
+            ? isLastChild
+              ? 'last'
+              : index === 0
+                ? 'first'
+                : 'middle'
+            : null
 
         if (entry.type === 'node') {
-          visit(entry.node, childStructuralDepth, nextGutters, childConnector)
+          visit(
+            entry.node,
+            childStructuralDepth,
+            nextGutters,
+            childConnector,
+            childConnector === null,
+          )
         } else {
           rows.push({
             type: 'run',
@@ -214,13 +247,15 @@
             visualDepth: childStructuralDepth,
             branchConnector: childConnector,
             branchGutters: nextGutters,
+            parentConnector: childConnector === null,
+            childConnector: false,
             run: entry.run,
           })
         }
       })
     }
 
-    for (const root of roots) visit(root, 0, [], null)
+    for (const root of roots) visit(root, 0, [], null, false)
     for (const run of runsByBase.get(null) ?? []) {
       rows.push({
         type: 'run',
@@ -229,11 +264,56 @@
         visualDepth: 0,
         branchConnector: null,
         branchGutters: [],
+        parentConnector: false,
+        childConnector: false,
         run,
       })
     }
 
     return rows
+  }
+
+  function latestRunLeaf(
+    messages: ReadonlyArray<MessageNode>,
+    runId: string,
+    baseNodeId: string | null,
+  ): MessageNode | null {
+    const runMessages = messages.filter(
+      (message) =>
+        message.runId === runId &&
+        isDescendantOrSame(messages, message.id, baseNodeId),
+    )
+    const runIds = new Set(runMessages.map((message) => message.id))
+    const parentIds = new Set(
+      runMessages
+        .map((message) => message.parentId)
+        .filter((id): id is string => id !== null && runIds.has(id)),
+    )
+
+    return (
+      runMessages.toReversed().find((message) => !parentIds.has(message.id)) ??
+      null
+    )
+  }
+
+  function isDescendantOrSame(
+    messages: ReadonlyArray<MessageNode>,
+    nodeId: string,
+    ancestorId: string | null,
+  ) {
+    if (ancestorId === null) return true
+
+    const byId = new Map(messages.map((message) => [message.id, message]))
+    const seen = new Set<string>()
+    let cursor: string | null = nodeId
+
+    while (cursor !== null && !seen.has(cursor)) {
+      if (cursor === ancestorId) return true
+      seen.add(cursor)
+      cursor = byId.get(cursor)?.parentId ?? null
+    }
+
+    return false
   }
 
   function gutterMarks(row: TreeRow): ReadonlyArray<GutterMark> {
@@ -543,6 +623,8 @@
                   class="tree-icon flex size-5 shrink-0 items-center justify-center"
                   data-tone={tone}
                   data-in-path={rowInPath}
+                  data-parent-connector={row.parentConnector}
+                  data-child-connector={row.childConnector}
                 >
                   <Icon class="size-3.5" />
                 </span>
@@ -599,6 +681,8 @@
                     ? 'summary'
                     : 'assistant'}
                   data-in-path="true"
+                  data-parent-connector={row.parentConnector}
+                  data-child-connector={row.childConnector}
                 >
                   <CircleNotchIcon class="size-3.5 animate-spin" />
                 </span>
@@ -641,7 +725,36 @@
   }
 
   .tree-icon {
+    --tree-branch-line: var(--muted-foreground);
+    --tree-branch-line-width: 2px;
+    position: relative;
     color: color-mix(in oklch, var(--tree-tone) 88%, var(--foreground));
+  }
+
+  .tree-icon[data-parent-connector='true']::before,
+  .tree-icon[data-child-connector='true']::after {
+    position: absolute;
+    left: calc(50% - (var(--tree-branch-line-width) / 2));
+    z-index: 0;
+    width: var(--tree-branch-line-width);
+    border-radius: 9999px;
+    background: var(--tree-branch-line);
+    content: '';
+  }
+
+  .tree-icon[data-parent-connector='true']::before {
+    top: -0.375rem;
+    bottom: 100%;
+  }
+
+  .tree-icon[data-child-connector='true']::after {
+    top: 100%;
+    bottom: -0.375rem;
+  }
+
+  .tree-icon :global(svg) {
+    position: relative;
+    z-index: 1;
   }
 
   .tree-icon[data-in-path='true'],
@@ -685,6 +798,7 @@
   }
 
   .tree-gutter[data-mark='vertical']::before,
+  .tree-gutter[data-mark='first']::before,
   .tree-gutter[data-mark='middle']::before,
   .tree-gutter[data-mark='last']::before {
     position: absolute;
@@ -701,12 +815,19 @@
     background: var(--tree-branch-line);
   }
 
+  .tree-gutter[data-mark='first']::before {
+    top: -0.375rem;
+    bottom: -0.375rem;
+    background: var(--tree-branch-line);
+  }
+
   .tree-gutter[data-mark='last']::before {
     top: -0.375rem;
     bottom: 50%;
     background: var(--tree-branch-line);
   }
 
+  .tree-gutter[data-mark='first']::after,
   .tree-gutter[data-mark='middle']::after,
   .tree-gutter[data-mark='last']::after {
     position: absolute;
