@@ -848,6 +848,7 @@
     --tree-branch-line: var(--muted-foreground);
     --tree-path-line: var(--tree-active-branch);
     --tree-branch-line-width: 2px;
+    --tree-icon-connector-overlap: 0.125rem;
     position: relative;
     color: color-mix(in oklch, var(--tree-tone) 88%, var(--foreground));
   }
@@ -870,11 +871,11 @@
 
   .tree-icon[data-parent-connector='true']::before {
     top: -0.375rem;
-    bottom: 100%;
+    bottom: calc(100% - var(--tree-icon-connector-overlap));
   }
 
   .tree-icon[data-child-connector='true']::after {
-    top: 100%;
+    top: calc(100% - var(--tree-icon-connector-overlap));
     bottom: -0.375rem;
   }
 
