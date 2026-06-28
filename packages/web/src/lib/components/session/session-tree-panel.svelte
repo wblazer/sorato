@@ -48,16 +48,23 @@
   type BranchConnector = 'first' | 'middle' | 'last' | null
   type GutterMark = 'blank' | 'vertical' | 'first' | 'middle' | 'last'
 
+  interface BranchGutter {
+    readonly level: number
+    readonly continues: boolean
+    readonly active: boolean
+  }
+
   interface TreeRowLayout {
     readonly structuralDepth: number
     readonly visualDepth: number
     readonly branchConnector: BranchConnector
-    readonly branchGutters: ReadonlyArray<{
-      readonly level: number
-      readonly continues: boolean
-    }>
+    readonly branchGutters: ReadonlyArray<BranchGutter>
     readonly parentConnector: boolean
     readonly childConnector: boolean
+    readonly activeParentConnector: boolean
+    readonly activeChildConnector: boolean
+    readonly activeBranchVertical: boolean
+    readonly activeBranchHorizontal: boolean
   }
 
   type TreeRow =
@@ -86,7 +93,9 @@
     pathIdsForHead(messages, selectedHead.renderHead),
   )
   const selectedHeadValue = $derived(selectedHead.renderHead)
-  const rows = $derived.by(() => flattenRows(tree, activeRuns))
+  const rows = $derived.by(() =>
+    flattenRows(tree, activeRuns, selectedPathIds, selectedHeadValue),
+  )
   const selectedPathRows = $derived.by(() =>
     selectedPath(messages, baseHeadNodeId),
   )
@@ -97,6 +106,8 @@
   function flattenRows(
     roots: ReadonlyArray<MessageTreeNode>,
     runs: ReadonlyArray<ActiveRun>,
+    selectedPathIds: ReadonlySet<string>,
+    selectedHead: SelectedHead,
   ): ReadonlyArray<TreeRow> {
     const rows: TreeRow[] = []
     const runsByBase = new Map<string | null, ActiveRun[]>()
@@ -115,12 +126,23 @@
       runsByBase.set(baseNodeId, siblings)
     }
 
+    const nodeContainsSelectedPath = (node: MessageTreeNode): boolean => {
+      if (selectedPathIds.has(node.message.id)) return true
+      return node.children.some(nodeContainsSelectedPath)
+    }
+
+    const runContainsSelectedPath = (run: ActiveRun): boolean =>
+      selectedHead?.type === 'run' && selectedHead.runId === run.runId
+
     const visit = (
       node: MessageTreeNode,
       structuralDepth: number,
-      branchGutters: TreeRowLayout['branchGutters'],
+      branchGutters: ReadonlyArray<BranchGutter>,
       branchConnector: BranchConnector,
       parentConnector: boolean,
+      activeParentConnector: boolean,
+      activeBranchVertical: boolean,
+      activeBranchHorizontal: boolean,
     ) => {
       const visualDepth = structuralDepth
 
@@ -132,9 +154,13 @@
             branchGutters,
             branchConnector,
             parentConnector,
+            activeParentConnector,
+            activeBranchVertical,
+            activeBranchHorizontal,
           )
         }
         for (const run of runsByBase.get(node.message.id) ?? []) {
+          const activeRun = runContainsSelectedPath(run)
           rows.push({
             type: 'run',
             id: runTreeNodeId(run.runId),
@@ -144,6 +170,10 @@
             branchGutters,
             parentConnector: true,
             childConnector: false,
+            activeParentConnector: activeRun,
+            activeChildConnector: false,
+            activeBranchVertical: activeRun,
+            activeBranchHorizontal: activeRun,
             run,
           })
         }
@@ -164,6 +194,7 @@
       const childCount =
         continuationChildren.length +
         (runsByBase.get(targetNodeId)?.length ?? 0)
+      const nodeInPath = coveredNodeIds.some((id) => selectedPathIds.has(id))
       rows.push({
         type: 'node',
         id: node.message.id,
@@ -173,6 +204,10 @@
         branchGutters,
         parentConnector,
         childConnector: childCount > 0,
+        activeParentConnector,
+        activeChildConnector: false,
+        activeBranchVertical,
+        activeBranchHorizontal,
         message: node.message,
         targetNodeId,
         coveredNodeIds,
@@ -184,10 +219,21 @@
       })
 
       const childStructuralDepth = structuralDepth + (childCount > 1 ? 1 : 0)
+      const branchGuttersForChildren =
+        branchConnector !== null && activeBranchHorizontal
+          ? branchGutters.map((gutter) =>
+              gutter.level === structuralDepth - 1
+                ? { ...gutter, active: false }
+                : gutter,
+            )
+          : branchGutters
       const childGutters =
         childCount > 1 && structuralDepth >= 0
-          ? [...branchGutters, { level: structuralDepth, continues: false }]
-          : branchGutters
+          ? [
+              ...branchGuttersForChildren,
+              { level: structuralDepth, continues: false, active: false },
+            ]
+          : branchGuttersForChildren
       const visibleChildren = continuationChildren.filter(
         (child) => !isToolMessage(child.message),
       )
@@ -211,14 +257,30 @@
           run,
         })),
       ]
+      const selectedChildIndex = childEntries.findIndex((entry) =>
+        entry.type === 'node'
+          ? nodeContainsSelectedPath(entry.node)
+          : runContainsSelectedPath(entry.run),
+      )
+
+      if (nodeInPath && selectedChildIndex >= 0) {
+        const row = rows[rows.length - 1]
+        rows[rows.length - 1] = { ...row, activeChildConnector: true }
+      }
 
       childEntries.forEach((entry, index) => {
         const isLastChild = index === childEntries.length - 1
+        const activeBranchLevel =
+          selectedChildIndex >= 0 && index <= selectedChildIndex
         const nextGutters =
           childCount > 1
             ? childGutters.map((gutter) =>
                 gutter.level === structuralDepth
-                  ? { ...gutter, continues: !isLastChild }
+                  ? {
+                      ...gutter,
+                      continues: !isLastChild,
+                      active: activeBranchLevel,
+                    }
                   : gutter,
               )
             : childGutters
@@ -232,14 +294,19 @@
             : null
 
         if (entry.type === 'node') {
+          const entryInPath = nodeContainsSelectedPath(entry.node)
           visit(
             entry.node,
             childStructuralDepth,
             nextGutters,
             childConnector,
             childConnector === null,
+            childConnector === null && nodeInPath && entryInPath,
+            selectedChildIndex >= 0 && index <= selectedChildIndex,
+            entryInPath,
           )
         } else {
+          const activeRun = runContainsSelectedPath(entry.run)
           rows.push({
             type: 'run',
             id: runTreeNodeId(entry.run.runId),
@@ -249,14 +316,22 @@
             branchGutters: nextGutters,
             parentConnector: childConnector === null,
             childConnector: false,
+            activeParentConnector:
+              childConnector === null && nodeInPath && activeRun,
+            activeChildConnector: false,
+            activeBranchVertical:
+              selectedChildIndex >= 0 && index <= selectedChildIndex,
+            activeBranchHorizontal: activeRun,
             run: entry.run,
           })
         }
       })
     }
 
-    for (const root of roots) visit(root, 0, [], null, false)
+    for (const root of roots)
+      visit(root, 0, [], null, false, false, false, false)
     for (const run of runsByBase.get(null) ?? []) {
+      const activeRun = runContainsSelectedPath(run)
       rows.push({
         type: 'run',
         id: runTreeNodeId(run.runId),
@@ -266,6 +341,10 @@
         branchGutters: [],
         parentConnector: false,
         childConnector: false,
+        activeParentConnector: false,
+        activeChildConnector: false,
+        activeBranchVertical: activeRun,
+        activeBranchHorizontal: activeRun,
         run,
       })
     }
@@ -316,11 +395,20 @@
     return false
   }
 
-  function gutterMarks(row: TreeRow): ReadonlyArray<GutterMark> {
-    const marks: GutterMark[] = Array.from(
-      { length: row.visualDepth },
-      () => 'blank',
-    )
+  function gutterMarks(
+    row: TreeRow,
+  ): ReadonlyArray<{
+    readonly mark: GutterMark
+    readonly activeVerticalTop: boolean
+    readonly activeVerticalBottom: boolean
+    readonly activeHorizontal: boolean
+  }> {
+    const marks = Array.from({ length: row.visualDepth }, () => ({
+      mark: 'blank' as GutterMark,
+      activeVerticalTop: false,
+      activeVerticalBottom: false,
+      activeHorizontal: false,
+    }))
 
     for (const gutter of row.branchGutters) {
       if (
@@ -328,12 +416,28 @@
         gutter.level < marks.length &&
         gutter.continues
       ) {
-        marks[gutter.level] = 'vertical'
+        marks[gutter.level] = {
+          mark: 'vertical',
+          activeVerticalTop: gutter.active,
+          activeVerticalBottom: gutter.active,
+          activeHorizontal: false,
+        }
       }
     }
 
     if (row.branchConnector !== null && row.structuralDepth > 0) {
-      marks[row.structuralDepth - 1] = row.branchConnector
+      const connectorGutter = row.branchGutters.find(
+        (gutter) => gutter.level === row.structuralDepth - 1,
+      )
+      const activeVertical = connectorGutter?.active ?? row.activeBranchVertical
+      marks[row.structuralDepth - 1] = {
+        mark: row.branchConnector,
+        activeVerticalTop: activeVertical,
+        activeVerticalBottom:
+          activeVertical &&
+          (!row.activeBranchHorizontal || row.branchConnector === 'last'),
+        activeHorizontal: row.activeBranchHorizontal,
+      }
     }
 
     return marks
@@ -615,8 +719,14 @@
                 onclick={() => selectNode(row.targetNodeId)}
               >
                 <span class="flex shrink-0 self-stretch">
-                  {#each gutterMarks(row) as mark}
-                    <span class="tree-gutter" data-mark={mark}></span>
+                  {#each gutterMarks(row) as gutter}
+                    <span
+                      class="tree-gutter"
+                      data-mark={gutter.mark}
+                      data-active-vertical-top={gutter.activeVerticalTop}
+                      data-active-vertical-bottom={gutter.activeVerticalBottom}
+                      data-active-horizontal={gutter.activeHorizontal}
+                    ></span>
                   {/each}
                 </span>
                 <span
@@ -625,6 +735,8 @@
                   data-in-path={rowInPath}
                   data-parent-connector={row.parentConnector}
                   data-child-connector={row.childConnector}
+                  data-active-parent-connector={row.activeParentConnector}
+                  data-active-child-connector={row.activeChildConnector}
                 >
                   <Icon class="size-3.5" />
                 </span>
@@ -671,8 +783,14 @@
                 onclick={() => selectRun(row.run)}
               >
                 <span class="flex shrink-0 self-stretch">
-                  {#each gutterMarks(row) as mark}
-                    <span class="tree-gutter" data-mark={mark}></span>
+                  {#each gutterMarks(row) as gutter}
+                    <span
+                      class="tree-gutter"
+                      data-mark={gutter.mark}
+                      data-active-vertical-top={gutter.activeVerticalTop}
+                      data-active-vertical-bottom={gutter.activeVerticalBottom}
+                      data-active-horizontal={gutter.activeHorizontal}
+                    ></span>
                   {/each}
                 </span>
                 <span
@@ -683,6 +801,8 @@
                   data-in-path="true"
                   data-parent-connector={row.parentConnector}
                   data-child-connector={row.childConnector}
+                  data-active-parent-connector={row.activeParentConnector}
+                  data-active-child-connector={row.activeChildConnector}
                 >
                   <CircleNotchIcon class="size-3.5 animate-spin" />
                 </span>
@@ -726,6 +846,7 @@
 
   .tree-icon {
     --tree-branch-line: var(--muted-foreground);
+    --tree-path-line: var(--tree-active-branch);
     --tree-branch-line-width: 2px;
     position: relative;
     color: color-mix(in oklch, var(--tree-tone) 88%, var(--foreground));
@@ -740,6 +861,11 @@
     border-radius: 9999px;
     background: var(--tree-branch-line);
     content: '';
+  }
+
+  .tree-icon[data-active-parent-connector='true']::before,
+  .tree-icon[data-active-child-connector='true']::after {
+    background: var(--tree-path-line);
   }
 
   .tree-icon[data-parent-connector='true']::before {
@@ -789,6 +915,7 @@
 
   .tree-gutter {
     --tree-branch-line: var(--muted-foreground);
+    --tree-path-line: var(--tree-active-branch);
     --tree-branch-line-width: 2px;
     position: relative;
     display: inline-flex;
@@ -838,5 +965,33 @@
     border-radius: 9999px;
     background: var(--tree-branch-line);
     content: '';
+  }
+
+  .tree-gutter[data-active-vertical-top='true'][data-active-vertical-bottom='true']::before {
+    background: var(--tree-path-line);
+  }
+
+  .tree-gutter[data-active-vertical-top='true'][data-active-vertical-bottom='false']::before {
+    background: linear-gradient(
+      to bottom,
+      var(--tree-path-line) 0,
+      var(--tree-path-line) 50%,
+      var(--tree-branch-line) 50%,
+      var(--tree-branch-line) 100%
+    );
+  }
+
+  .tree-gutter[data-active-vertical-top='false'][data-active-vertical-bottom='true']::before {
+    background: linear-gradient(
+      to bottom,
+      var(--tree-branch-line) 0,
+      var(--tree-branch-line) 50%,
+      var(--tree-path-line) 50%,
+      var(--tree-path-line) 100%
+    );
+  }
+
+  .tree-gutter[data-active-horizontal='true']::after {
+    background: var(--tree-path-line);
   }
 </style>

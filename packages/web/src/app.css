@@ -39,6 +39,7 @@
   --tree-summary: oklch(0.82 0.13 82);
   --tree-tool: oklch(0.76 0.1 295);
   --tree-system: oklch(0.72 0.01 250);
+  --tree-active-branch: oklch(0.72 0.14 42);
   --warning: oklch(0.76 0.12 78);
   --warning-hover: oklch(0.81 0.13 78);
   --warning-foreground: oklch(0.22 0.04 78);
@@ -82,6 +83,7 @@
   --color-tree-summary: var(--tree-summary);
   --color-tree-tool: var(--tree-tool);
   --color-tree-system: var(--tree-system);
+  --color-tree-active-branch: var(--tree-active-branch);
   --color-warning: var(--warning);
   --color-warning-hover: var(--warning-hover);
   --color-warning-foreground: var(--warning-foreground);
