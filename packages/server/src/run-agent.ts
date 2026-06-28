@@ -289,17 +289,12 @@ const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
   const storage = yield* SessionStorage
   const bus = yield* EventBus
 
-  startEventReplay(
-    sessionId,
-    request.runId,
-    compactRange.baseHeadNodeId,
-    'summary'
-  )
+  startEventReplay(sessionId, request.runId, request.baseNodeId, 'summary')
   yield* bus.publish({
     _tag: 'RunStart',
     sessionId,
     runId: request.runId,
-    baseNodeId: compactRange.baseHeadNodeId,
+    baseNodeId: request.baseNodeId,
     kind: 'summary',
   })
 

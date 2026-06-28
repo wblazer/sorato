@@ -223,15 +223,15 @@ const decodePromptMessageOption = (
 
 const summaryEncoded = (content: string): StoredMessageEncoded =>
   Schema.decodeUnknownSync(StoredMessage)({
-    role: 'system',
+    role: 'user',
     content,
-    source: 'system-prompt',
+    source: 'summary',
     display: { title: 'Summary' },
   })
 
 const promptSummaryEncoded = (content: string): Prompt.MessageEncoded =>
   Schema.decodeUnknownSync(Prompt.Message)({
-    role: 'system',
+    role: 'user',
     content,
   })
 

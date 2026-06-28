@@ -28,7 +28,9 @@ export class SessionSelectedHeadController {
     resolveRenderHead(
       messagesStore.messagesForTab(this.tabId()),
       this.selectedHead,
-      (runId) => sessionStore.isRunActive(runId)
+      (runId) => sessionStore.isRunActive(runId),
+      (runId) =>
+        messagesStore.finalRunRefreshCompletedForTab(this.tabId(), runId)
     )
   )
 
@@ -107,7 +109,11 @@ export class SessionSelectedHeadController {
 
       if (
         this.selectedHead?.type === 'run' &&
-        !sessionStore.isRunActive(this.selectedHead.runId)
+        !sessionStore.isRunActive(this.selectedHead.runId) &&
+        messagesStore.finalRunRefreshCompletedForTab(
+          this.tabId(),
+          this.selectedHead.runId
+        )
       ) {
         const finalNode = finalPersistedRunNode(
           messages,
@@ -213,9 +219,15 @@ function selectedMessagePath(
 function resolveRenderHead(
   messages: ReadonlyArray<MessageNode>,
   head: SelectedHead,
-  isRunActive: (runId: string) => boolean
+  isRunActive: (runId: string) => boolean,
+  finalRunRefreshCompleted: (runId: string) => boolean
 ): SelectedHead {
-  if (head?.type !== 'run' || isRunActive(head.runId)) return head
+  if (
+    head?.type !== 'run' ||
+    isRunActive(head.runId) ||
+    !finalRunRefreshCompleted(head.runId)
+  )
+    return head
 
   const finalNode = finalPersistedRunNode(messages, head.runId, head.baseNodeId)
   return finalNode ? { type: 'node', nodeId: finalNode.id } : head
@@ -280,22 +292,11 @@ function finalPersistedRunNode(
   baseNodeId: string | null
 ): MessageNode | null {
   const runMessages = messages.filter(
-    (message) => message.runId === runId && !isOptimisticNode(message)
+    (message) =>
+      message.runId === runId &&
+      !isOptimisticNode(message) &&
+      isDescendantOrSame(messages, message.id, baseNodeId)
   )
-  const generatedRunIds = new Set(
-    runMessages
-      .filter(
-        (message) =>
-          message.kind === 'summary' ||
-          message.encoded.role === 'assistant' ||
-          message.encoded.role === 'tool' ||
-          message.encoded.role === 'system'
-      )
-      .map((message) => message.id)
-  )
-  const hasGeneratedOutput = generatedRunIds.size > 0
-  if (!hasGeneratedOutput) return null
-
   const runIds = new Set(runMessages.map((message) => message.id))
   const parentIds = new Set(
     runMessages
@@ -305,22 +306,10 @@ function finalPersistedRunNode(
 
   const runLeaf = runMessages
     .toReversed()
-    .find(
-      (message) =>
-        generatedRunIds.has(message.id) &&
-        !parentIds.has(message.id) &&
-        isDescendantOrSame(messages, message.id, baseNodeId)
-    )
-  if (runLeaf) return runLeaf
+    .find((message) => !parentIds.has(message.id))
+  if (!runLeaf) return null
 
-  const compactedRoot = runMessages
-    .toReversed()
-    .find(
-      (message) =>
-        message.kind === 'summary' ||
-        messages.some((candidate) => candidate.parentId === message.id)
-    )
-  return compactedRoot
-    ? deepestDescendantLeaf(messages, compactedRoot.id)
-    : null
+  return runLeaf.kind === 'summary'
+    ? deepestDescendantLeaf(messages, runLeaf.id)
+    : runLeaf
 }

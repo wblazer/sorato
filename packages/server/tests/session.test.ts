@@ -435,6 +435,33 @@ describe('SessionStorage', () => {
         })
 
         expect(result.summaryNodeId).toBeTruthy()
+        const summaryMessages = yield* storage.messages(
+          session.id,
+          result.summaryNodeId
+        )
+        const summaryMessage = expectDefined(
+          summaryMessages.at(-1),
+          'expected summary message'
+        )
+        expect(summaryMessage.kind).toBe('summary')
+        expect(summaryMessage.encoded.role).toBe('user')
+        expect(
+          summaryMessage.encoded.role === 'user'
+            ? summaryMessage.encoded.source
+            : undefined
+        ).toBe('summary')
+        const prompt = yield* storage.conversation(
+          session.id,
+          result.summaryNodeId
+        )
+        const summaryPromptMessage = expectDefined(
+          prompt.content.at(-1),
+          'expected summary prompt message'
+        )
+        expect(summaryPromptMessage.role).toBe('user')
+        expect(summaryPromptMessage.content).toMatchObject([
+          { type: 'text', text: 'summary' },
+        ])
         expect(systemNodeId).toBeTruthy()
         expect(userNodeId).toBeTruthy()
       }).pipe(Effect.provide(testLayer()))

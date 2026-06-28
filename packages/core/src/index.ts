@@ -61,6 +61,7 @@ export {
   StoredToolResultPart,
   StoredUserMessage,
   SystemMessageSource,
+  UserMessageSource,
 } from './message.ts'
 export type { StoredMessageEncoded } from './message.ts'
 

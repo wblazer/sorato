@@ -596,6 +596,18 @@ const enqueueRunRequest = Effect.fn('Sessions.enqueueRunRequest')((
   )
 })
 
+const compactRunBaseNodeId = Effect.fn('Sessions.compactRunBaseNodeId')(
+  function* (
+    storage: SessionStorageApi,
+    sessionId: string,
+    baseHeadNodeId: string,
+    startNodeId: string
+  ) {
+    const path = yield* storage.messages(sessionId, baseHeadNodeId)
+    return path.find((message) => message.id === startNodeId)?.parentId ?? null
+  }
+)
+
 const mapStorageError = StorageUnavailable.fromStorage
 const mapProjectError = ProjectOperationFailed.fromProject
 
@@ -716,7 +728,15 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
               )
             )
           ),
-          Effect.flatMap(() =>
+          Effect.andThen(
+            compactRunBaseNodeId(
+              storage,
+              params.id,
+              payload.baseHeadNodeId,
+              payload.startNodeId
+            ).pipe(Effect.mapError(mapStorageError))
+          ),
+          Effect.flatMap((compactBaseNodeId) =>
             enqueueRunRequest(
               storage,
               params.id,
@@ -724,7 +744,7 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
               [],
               payload.model,
               { thinkingLevel: 'off' },
-              payload.baseHeadNodeId,
+              compactBaseNodeId,
               null,
               {
                 baseHeadNodeId: payload.baseHeadNodeId,

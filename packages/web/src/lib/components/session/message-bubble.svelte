@@ -57,6 +57,11 @@
   const isUser = $derived(role === 'user')
   const isSystem = $derived(role === 'system')
   const isAssistant = $derived(role === 'assistant')
+  const isPrettySummary = $derived(
+    clientSettingsStore.prettyTranscript &&
+      message.encoded.role === 'user' &&
+      message.encoded.source === 'summary',
+  )
   let copyTooltipOpen = $state(false)
   let previewOpen = $state(false)
   let previewImage = $state<FilePart | null>(null)
@@ -68,9 +73,11 @@
   )
   const userTimestamp = $derived(formatTimestamp(message.createdAt))
   const canEditRetry = $derived(
-    isUser && !!onEditRetry && userText.trim().length > 0,
+    isUser && !isPrettySummary && !!onEditRetry && userText.trim().length > 0,
   )
-  const canCopy = $derived(isUser && userText.trim().length > 0)
+  const canCopy = $derived(
+    isUser && !isPrettySummary && userText.trim().length > 0,
+  )
   const userImageParts = $derived(
     parts.filter((part): part is FilePart => isImagePart(part)),
   )
@@ -91,15 +98,21 @@
     message.encoded.role === 'assistant' &&
       message.encoded.metadata?.interrupted === true,
   )
+  const userDisplay = $derived(
+    message.encoded.role === 'user' ? message.encoded.display : undefined,
+  )
+  const systemDisplay = $derived(
+    message.encoded.role === 'system' ? message.encoded.display : undefined,
+  )
   const systemTitle = $derived(
-    message.encoded.role === 'system'
-      ? (message.encoded.display?.title ?? 'System')
-      : 'System',
+    isPrettySummary
+      ? (userDisplay?.title ?? 'Summary')
+      : systemDisplay
+        ? (systemDisplay.title ?? 'System')
+        : 'System',
   )
   const systemSubtitle = $derived(
-    message.encoded.role === 'system'
-      ? message.encoded.display?.subtitle
-      : undefined,
+    isPrettySummary ? userDisplay?.subtitle : systemDisplay?.subtitle,
   )
 
   const itemAccordionKey = (item: TranscriptItem, index: number): string => {
@@ -165,13 +178,13 @@
   <div
     class={isAssistant
       ? ''
-      : isSystem
+      : isSystem || isPrettySummary
         ? 'flex flex-col gap-2 py-1'
         : 'flex flex-col gap-2 pt-2.5 pb-1'}
   >
     {#if parts.length === 0}
       <span class="text-xs italic text-muted-foreground">(empty)</span>
-    {:else if isUser}
+    {:else if isUser && !isPrettySummary}
       <div class="group/user-message flex w-full flex-col items-end">
         {#if userImageParts.length > 0}
           <div
@@ -273,7 +286,7 @@
           {/if}
         </div>
       </div>
-    {:else if isSystem}
+    {:else if isSystem || isPrettySummary}
       <SystemTranscript
         items={renderParts}
         title={systemTitle}

@@ -10,6 +10,8 @@ export const SystemMessageSource = Schema.Literals([
   'agents-md',
 ])
 
+export const UserMessageSource = Schema.Literals(['summary'])
+
 export const AssistantMessageMetadata = Schema.Struct({
   interrupted: Schema.optionalKey(Schema.Boolean),
 })
@@ -59,6 +61,8 @@ export const StoredSystemMessage = Schema.Struct({
 export const StoredUserMessage = Schema.Struct({
   ...PromptSchemas.UserMessage.fields,
   content: Schema.Union([Schema.String, Schema.Array(StoredPart)]),
+  source: Schema.optionalKey(UserMessageSource),
+  display: Schema.optionalKey(MessageHeaderDisplaySchema),
 })
 
 export const StoredAssistantMessage = Schema.Struct({

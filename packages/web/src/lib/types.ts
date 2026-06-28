@@ -173,6 +173,8 @@ export interface SystemUiMessage {
 export interface UserMessage {
   role: 'user'
   content: string | ReadonlyArray<TextPart | FilePart>
+  source?: 'summary'
+  display?: MessageHeaderDisplay
 }
 
 export interface AssistantMessage {

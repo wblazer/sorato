@@ -47,6 +47,7 @@ function createMessagesStore() {
   let streamedSessionId = $state<string | null>(null)
   let streamedRunId = $state<string | null>(null)
   let streamedRunBaseNodeId = $state<string | null>(null)
+  let finalRunRefreshes = $state<Record<string, ReadonlySet<string>>>({})
 
   function updateTabState(
     tabId: string,
@@ -60,6 +61,12 @@ function createMessagesStore() {
 
   function stateFor(tabId: string | null): MessageTabState {
     return tabId === null ? emptyTabState : (tabStates[tabId] ?? emptyTabState)
+  }
+
+  function loadedTabsForSession(sessionId: string): ReadonlyArray<string> {
+    return Object.entries(tabStates)
+      .filter(([, state]) => state.sessionId === sessionId && state.loaded)
+      .map(([tabId]) => tabId)
   }
 
   const getLastCursor = (runId: string) => lastCursors.get(runId) ?? null
@@ -81,6 +88,25 @@ function createMessagesStore() {
       return
     }
     lastCursors.delete(runId)
+  }
+
+  function markFinalRunRefresh(tabId: string, runId: string) {
+    finalRunRefreshes = {
+      ...finalRunRefreshes,
+      [tabId]: new Set([...(finalRunRefreshes[tabId] ?? []), runId]),
+    }
+  }
+
+  function clearFinalRunRefresh(tabId: string, runId: string) {
+    const existing = finalRunRefreshes[tabId]
+    if (!existing?.has(runId)) return
+
+    const nextSet = new Set(existing)
+    nextSet.delete(runId)
+    finalRunRefreshes = {
+      ...finalRunRefreshes,
+      [tabId]: nextSet,
+    }
   }
 
   function closeRunStream() {
@@ -158,11 +184,6 @@ function createMessagesStore() {
                 break
 
               case 'RunEnd':
-                void Effect.runPromise(
-                  refreshMessages(tabId, sessionId, {
-                    clearPartsForRun: event.runId,
-                  })
-                )
                 break
 
               case 'RunFailed':
@@ -179,11 +200,6 @@ function createMessagesStore() {
                 break
 
               case 'MessagesAppended':
-                void Effect.runPromise(
-                  refreshMessages(tabId, sessionId, {
-                    clearStreamingPartsForRun: event.runId,
-                  })
-                )
                 break
 
               case 'SessionUpdated':
@@ -223,6 +239,7 @@ function createMessagesStore() {
     if (streamedRunId !== null) resetCursor(streamedRunId)
     streamingParts = []
     resetCursor(runId)
+    clearFinalRunRefresh(tabId, runId)
     streamedTabId = tabId
     streamedSessionId = sessionId
     streamedRunId = runId
@@ -414,7 +431,11 @@ function createMessagesStore() {
   function refreshMessages(
     tabId: string,
     sessionId: string,
-    opts?: { clearPartsForRun?: string; clearStreamingPartsForRun?: string }
+    opts?: {
+      clearPartsForRun?: string
+      clearStreamingPartsForRun?: string
+      markFinalRefreshForRun?: string
+    }
   ) {
     return Effect.gen(function* () {
       if (stateFor(tabId).sessionId !== sessionId) return
@@ -435,6 +456,10 @@ function createMessagesStore() {
           loaded: true,
           error: null,
         }))
+
+        if (opts?.markFinalRefreshForRun) {
+          markFinalRunRefresh(tabId, opts.markFinalRefreshForRun)
+        }
 
         if (streamedTabId === tabId && streamedSessionId === sessionId) {
           if (
@@ -465,16 +490,24 @@ function createMessagesStore() {
   }
 
   sseStore.onEvent((event) => {
-    if (
-      event._tag === 'MessagesAppended' &&
-      streamedTabId !== null &&
-      streamedSessionId === event.sessionId
-    ) {
-      void Effect.runPromise(
-        refreshMessages(streamedTabId, event.sessionId, {
-          clearStreamingPartsForRun: event.runId,
-        })
-      )
+    if (event._tag === 'MessagesAppended') {
+      for (const tabId of loadedTabsForSession(event.sessionId)) {
+        void Effect.runPromise(
+          refreshMessages(tabId, event.sessionId, {
+            clearStreamingPartsForRun: event.runId,
+          })
+        )
+      }
+    }
+    if (event._tag === 'RunEnd') {
+      for (const tabId of loadedTabsForSession(event.sessionId)) {
+        void Effect.runPromise(
+          refreshMessages(tabId, event.sessionId, {
+            clearPartsForRun: event.runId,
+            markFinalRefreshForRun: event.runId,
+          })
+        )
+      }
     }
   })
 
@@ -488,6 +521,9 @@ function createMessagesStore() {
       streamedRunId = null
       streamedRunBaseNodeId = null
     }
+    const nextRefreshes = { ...finalRunRefreshes }
+    delete nextRefreshes[tabId]
+    finalRunRefreshes = nextRefreshes
     const next = { ...tabStates }
     delete next[tabId]
     tabStates = next
@@ -501,6 +537,7 @@ function createMessagesStore() {
     streamedSessionId = null
     streamedRunId = null
     streamedRunBaseNodeId = null
+    finalRunRefreshes = {}
   }
 
   function clearAll() {
@@ -529,6 +566,9 @@ function createMessagesStore() {
     },
     loadedForTab(tabId: string | null) {
       return stateFor(tabId).loaded
+    },
+    finalRunRefreshCompletedForTab(tabId: string | null, runId: string) {
+      return tabId !== null && (finalRunRefreshes[tabId]?.has(runId) ?? false)
     },
     errorForTab(tabId: string | null) {
       return stateFor(tabId).error
