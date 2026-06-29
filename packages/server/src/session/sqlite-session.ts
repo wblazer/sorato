@@ -221,18 +221,35 @@ const decodePromptMessageOption = (
   }
 }
 
+const summaryMessageContent = (content: string): string =>
+  [
+    'This is a summary of earlier conversation messages, generated to preserve context while reducing transcript length.',
+    '<summary>',
+    content,
+    '</summary>',
+  ].join('\n')
+
+const summaryDisplayContent = (content: string): string => {
+  const match = content.match(/<summary>\n([\s\S]*)\n<\/summary>$/)
+  return match?.[1] ?? content
+}
+
+const summaryModelContent = (content: string): string =>
+  content.includes('<summary>') ? content : summaryMessageContent(content)
+
 const summaryEncoded = (content: string): StoredMessageEncoded =>
   Schema.decodeUnknownSync(StoredMessage)({
     role: 'user',
-    content,
+    content: summaryModelContent(content),
     source: 'summary',
     display: { title: 'Summary' },
+    metadata: { summary: { content: summaryDisplayContent(content) } },
   })
 
 const promptSummaryEncoded = (content: string): Prompt.MessageEncoded =>
   Schema.decodeUnknownSync(Prompt.Message)({
     role: 'user',
-    content,
+    content: summaryModelContent(content),
   })
 
 const toMessageNode = (row: NodeRow): MessageNode => ({
@@ -885,7 +902,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
               ) VALUES (
                 ${summaryId},
                 ${input.sessionId},
-                ${input.summaryContent},
+                ${summaryMessageContent(input.summaryContent)},
                 ${input.startNodeId},
                 ${input.endNodeId},
                 ${input.runId},

@@ -34,6 +34,8 @@ export interface ActiveRunInfo {
   readonly sessionId: string
   readonly runId: string
   readonly baseNodeId: string | null
+  readonly kind: 'agent' | 'summary'
+  readonly visibility: 'primary' | 'background'
 }
 
 interface RunQueueState {
@@ -43,6 +45,8 @@ interface RunQueueState {
   activeRunFiber: Fiber.Fiber<void, never> | null
   activeRunId: string | null
   activeBaseNodeId: string | null
+  activeRunKind: 'agent' | 'summary'
+  activeRunVisibility: 'primary' | 'background'
   queuedRuns: Array<RunRequest>
   stopRequested: boolean
 }
@@ -93,6 +97,8 @@ export function startRunQueue(
     activeRunFiber: null,
     activeRunId: null,
     activeBaseNodeId: null,
+    activeRunKind: 'agent',
+    activeRunVisibility: 'primary',
     queuedRuns: [request],
     stopRequested: false,
   })
@@ -130,12 +136,16 @@ export function registerActiveFiber(
   queueId: string,
   runId: string,
   baseNodeId: string | null,
+  kind: 'agent' | 'summary',
+  visibility: 'primary' | 'background',
   fiber: Fiber.Fiber<void, never>
 ): void {
   const state = queues.get(queueId) ?? missingQueueState('active run', queueId)
   state.activeRunFiber = fiber
   state.activeRunId = runId
   state.activeBaseNodeId = baseNodeId
+  state.activeRunKind = kind
+  state.activeRunVisibility = visibility
   runQueues.set(runId, queueId)
 }
 
@@ -145,6 +155,8 @@ export function clearActiveFiber(queueId: string): void {
   state.activeRunFiber = null
   state.activeRunId = null
   state.activeBaseNodeId = null
+  state.activeRunKind = 'agent'
+  state.activeRunVisibility = 'primary'
 }
 
 export function shiftQueuedRun(queueId: string): RunRequest | undefined {
@@ -214,6 +226,8 @@ export function getActiveRuns(sessionId: string): ReadonlyArray<ActiveRunInfo> {
             sessionId,
             runId: state.activeRunId,
             baseNodeId: state.activeBaseNodeId,
+            kind: state.activeRunKind,
+            visibility: state.activeRunVisibility,
           },
         ]
       : []

@@ -35,6 +35,10 @@ describe('EventReplay', () => {
       runId: 'run-1',
       baseNodeId: null,
       kind: 'agent',
+      visibility: 'primary',
+      title: undefined,
+      parentRunId: undefined,
+      toolCallId: undefined,
       events: [
         {
           _tag: 'TextDelta',

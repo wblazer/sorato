@@ -43,26 +43,42 @@
   } = $props()
 
   const role = $derived(message.encoded.role)
-
-  /** Normalize content to an array of parts for uniform rendering. */
-  const parts = $derived(messageParts(message))
-
-  const renderParts = $derived.by(
-    (): ReadonlyArray<TranscriptItem> =>
-      transcriptItems ??
-      projectTranscript(persistedSources([message]), {
-        pretty: clientSettingsStore.prettyTranscript,
-      }),
-  )
-
-  const isUser = $derived(role === 'user')
-  const isSystem = $derived(role === 'system')
-  const isAssistant = $derived(role === 'assistant')
   const isPrettySummary = $derived(
     clientSettingsStore.prettyTranscript &&
       message.encoded.role === 'user' &&
       message.encoded.source === 'summary',
   )
+
+  /** Normalize content to an array of parts for uniform rendering. */
+  const parts = $derived(messageParts(message))
+
+  const renderParts = $derived.by((): ReadonlyArray<TranscriptItem> => {
+    if (transcriptItems !== undefined) return transcriptItems
+    const summaryContent =
+      message.encoded.role === 'user'
+        ? message.encoded.metadata?.summary?.content
+        : undefined
+    if (isPrettySummary && summaryContent !== undefined) {
+      return projectTranscript(
+        [
+          {
+            type: 'persisted',
+            message,
+            part: { type: 'text', text: summaryContent },
+          },
+        ],
+        { pretty: true },
+      )
+    }
+
+    return projectTranscript(persistedSources([message]), {
+      pretty: clientSettingsStore.prettyTranscript,
+    })
+  })
+
+  const isUser = $derived(role === 'user')
+  const isSystem = $derived(role === 'system')
+  const isAssistant = $derived(role === 'assistant')
   let copyTooltipOpen = $state(false)
   let previewOpen = $state(false)
   let previewImage = $state<FilePart | null>(null)

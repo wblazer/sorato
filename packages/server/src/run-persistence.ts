@@ -1,5 +1,5 @@
 import { Prompt } from 'effect/unstable/ai'
-import { Effect, Schema } from 'effect'
+import { Effect, Ref, Schema } from 'effect'
 import type { HarnessEvent, HarnessHook, HarnessResult } from '@sorato/core'
 import {
   SessionStorage,
@@ -119,7 +119,7 @@ export const createPersistenceHook = Effect.fn(
   sessionId: SessionId,
   runId: string,
   messageCountBeforeRun: number,
-  appendBaseNodeId: string | null,
+  appendBaseNodeId: Ref.Ref<string | null>,
   pricing: {
     readonly providerId: string
     readonly modelId: string
@@ -130,7 +130,6 @@ export const createPersistenceHook = Effect.fn(
   const bus = yield* EventBus
   let nextMessageIndex = messageCountBeforeRun
   let nextModelCallIndex = 0
-  let nextAppendBaseNodeId = appendBaseNodeId
   const persistResult = Effect.fn('RunPersistence.persistResult')(function* (
     result: HarnessResult,
     interrupted: boolean
@@ -178,13 +177,14 @@ export const createPersistenceHook = Effect.fn(
       interrupted,
     })
 
+    const currentAppendBaseNodeId = yield* Ref.get(appendBaseNodeId)
     const nodeIds = yield* storage.append(
       sessionId,
       runId,
       newMessages,
-      nextAppendBaseNodeId
+      currentAppendBaseNodeId
     )
-    nextAppendBaseNodeId = nodeIds.at(-1) ?? nextAppendBaseNodeId
+    yield* Ref.set(appendBaseNodeId, nodeIds.at(-1) ?? currentAppendBaseNodeId)
     nextMessageIndex += encodedNewMessages.length
 
     const assistantNodeIds = newMessages.flatMap((message, index) => {

@@ -1,6 +1,7 @@
 import { apiClient, runApiEffect } from '$lib/api-client.js'
 import type { UiApiError } from '$lib/api-errors.js'
 import type {
+  ActiveRunSummary,
   ModelOptions,
   RunAttachment,
   Session,
@@ -50,17 +51,7 @@ function createSessionStore() {
   let queuedMessages = $state(new Map<string, QueuedMessageDraft[]>())
   let pendingRunStarts = $state(new Map<string, number>())
   let sessionStatuses = $state(new Map<string, SessionRunStatus>())
-  let activeRuns = $state(
-    new Map<
-      string,
-      {
-        sessionId: string
-        runId: string
-        baseNodeId: string | null
-        kind: 'agent' | 'summary'
-      }
-    >()
-  )
+  let activeRuns = $state(new Map<string, ActiveRunSummary>())
   let latestRunStart = $state<{
     sessionId: string
     runId: string
@@ -73,8 +64,35 @@ function createSessionStore() {
     void Effect.runPromise(refreshSession(sessionId))
   })
 
+  function hydrateActiveRuns(nextSessions: ReadonlyArray<Session>) {
+    const refreshedSessionIds = new Set(
+      nextSessions.map((session) => session.id)
+    )
+    const next = new Map(
+      [...activeRuns].filter(
+        ([, run]) => !refreshedSessionIds.has(run.sessionId)
+      )
+    )
+
+    for (const session of nextSessions) {
+      for (const run of session.activeRuns ?? []) {
+        if (run.visibility === 'background' && run.parentRunId !== undefined)
+          continue
+        next.set(run.runId, run)
+      }
+    }
+
+    activeRuns = next
+    messagesStore.hydrateBackgroundSummaries(
+      nextSessions.flatMap((session) => session.activeRuns ?? [])
+    )
+  }
+
   sseStore.onEvent((event) => {
     if (event._tag === 'RunStart') {
+      if (event.visibility === 'background' && event.parentRunId !== undefined)
+        return
+
       const pendingStarts = pendingRunStarts.get(event.sessionId) ?? 0
       if (pendingStarts > 0) {
         const next = new Map(pendingRunStarts)
@@ -104,6 +122,7 @@ function createSessionStore() {
         runId: event.runId,
         baseNodeId: event.baseNodeId,
         kind: event.kind ?? 'agent',
+        visibility: event.visibility ?? 'primary',
       })
       activeRuns = nextActiveRuns
       latestRunStart = {
@@ -180,6 +199,7 @@ function createSessionStore() {
 
       yield* Effect.sync(() => {
         sessions = sessions.map((s) => (s.id === sessionId ? fresh : s))
+        hydrateActiveRuns([fresh])
         tabStore.updateSessionTitle(fresh.id, fresh.title)
 
         if (fresh.status === 'idle') {
@@ -216,6 +236,7 @@ function createSessionStore() {
 
       yield* Effect.sync(() => {
         sessions = [...result]
+        hydrateActiveRuns(result)
       })
     }).pipe(
       Effect.catch((cause: UiApiError) =>

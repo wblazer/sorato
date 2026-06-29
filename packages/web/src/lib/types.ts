@@ -40,6 +40,18 @@ export interface Session {
   lastUserMessageAt: number | null
   createdAt: number
   updatedAt: number
+  activeRuns?: ReadonlyArray<ActiveRunSummary>
+}
+
+export interface ActiveRunSummary {
+  sessionId: string
+  runId: string
+  baseNodeId: string | null
+  kind: 'agent' | 'summary'
+  visibility: 'primary' | 'background'
+  title?: string
+  parentRunId?: string
+  toolCallId?: string
 }
 
 export type ThinkingLevel =
@@ -175,6 +187,11 @@ export interface UserMessage {
   content: string | ReadonlyArray<TextPart | FilePart>
   source?: 'summary'
   display?: MessageHeaderDisplay
+  metadata?: {
+    summary?: {
+      content: string
+    }
+  }
 }
 
 export interface AssistantMessage {

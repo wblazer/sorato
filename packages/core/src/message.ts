@@ -12,6 +12,14 @@ export const SystemMessageSource = Schema.Literals([
 
 export const UserMessageSource = Schema.Literals(['summary'])
 
+export const UserMessageMetadata = Schema.Struct({
+  summary: Schema.optionalKey(
+    Schema.Struct({
+      content: Schema.String,
+    })
+  ),
+})
+
 export const AssistantMessageMetadata = Schema.Struct({
   interrupted: Schema.optionalKey(Schema.Boolean),
 })
@@ -63,6 +71,7 @@ export const StoredUserMessage = Schema.Struct({
   content: Schema.Union([Schema.String, Schema.Array(StoredPart)]),
   source: Schema.optionalKey(UserMessageSource),
   display: Schema.optionalKey(MessageHeaderDisplaySchema),
+  metadata: Schema.optionalKey(UserMessageMetadata),
 })
 
 export const StoredAssistantMessage = Schema.Struct({

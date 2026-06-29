@@ -89,7 +89,14 @@ describe('RunRegistry', () => {
       registerWorkerFiber(run.queueId, worker)
 
       const active = yield* Effect.forkDetach(Effect.void)
-      registerActiveFiber(run.queueId, run.runId, null, active)
+      registerActiveFiber(
+        run.queueId,
+        run.runId,
+        null,
+        'agent',
+        'primary',
+        active
+      )
 
       expect(getFibers('session-1')).toEqual([active])
 

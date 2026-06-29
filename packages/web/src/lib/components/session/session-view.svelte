@@ -91,8 +91,14 @@
       ? messagesStore.streamingPartsForTab(tabId)
       : [],
   )
+  const backgroundSummaries = $derived.by(() =>
+    messagesStore
+      .backgroundSummariesForSession(sessionId)
+      .filter((summary) => shouldShowBackgroundSummary(summary)),
+  )
   const showStreamingIndicator = $derived(
     selectedHeadValue?.type === 'run' &&
+      followedRun?.visibility !== 'background' &&
       (isFollowingActiveRun || followedStreamingParts.length > 0),
   )
   const draftStorageKey = $derived(
@@ -353,6 +359,19 @@
     sessionStore.clearSessionError(sessionId)
   }
 
+  function shouldShowBackgroundSummary(summary: {
+    readonly runId: string
+    readonly parentRunId: string | undefined
+    readonly baseNodeId: string | null
+  }) {
+    const head = selectedHeadValue
+    if (head?.type === 'run') {
+      return head.runId === (summary.parentRunId ?? summary.runId)
+    }
+
+    return false
+  }
+
   function retryMessages() {
     void Effect.runPromise(
       messagesStore.loadMessages(tabId, sessionId, { force: true }),
@@ -444,6 +463,10 @@
                     variant={followedRun?.kind === 'summary'
                       ? 'system'
                       : 'assistant'}
+                    title={followedRun?.kind === 'summary'
+                      ? 'Summarizing selected range'
+                      : 'Summary'}
+                    defaultOpen={followedRun?.kind !== 'summary'}
                     {accordionState}
                     accordionKey={row.key}
                   />
@@ -499,6 +522,7 @@
     draftText={composerDraftText}
     draftKey={composerDraftKey}
     {sessionStatus}
+    {backgroundSummaries}
     tokenUsageMessages={visibleMessages}
     disabled={isStopping}
   />

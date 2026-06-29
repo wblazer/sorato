@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js'
+  import * as Accordion from '$lib/components/ui/accordion/index.js'
   import * as Item from '$lib/components/ui/item/index.js'
   import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import * as Tooltip from '$lib/components/ui/tooltip/index.js'
@@ -22,7 +23,9 @@
     RunAttachment,
     SessionRunStatus,
   } from '$lib/types.js'
+  import type { BackgroundSummaryRun } from '$lib/stores/messages.svelte.js'
   import ArrowUpIcon from 'phosphor-svelte/lib/ArrowUpIcon'
+  import CircleNotchIcon from 'phosphor-svelte/lib/CircleNotchIcon'
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
   import StopIcon from 'phosphor-svelte/lib/StopIcon'
   import XIcon from 'phosphor-svelte/lib/XIcon'
@@ -64,6 +67,7 @@
     draftKey,
     placeholder,
     sessionStatus = null,
+    backgroundSummaries = [],
     tokenUsageMessages = [],
   }: {
     onSend: (
@@ -93,6 +97,7 @@
     draftKey?: string | number | null
     placeholder?: string
     sessionStatus?: SessionRunStatus | null
+    backgroundSummaries?: ReadonlyArray<BackgroundSummaryRun>
     tokenUsageMessages?: ReadonlyArray<MessageNode>
   } = $props()
 
@@ -686,6 +691,45 @@
 <div class="bg-background pb-5 pt-0">
   <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
     <div class="relative">
+      {#if backgroundSummaries.length > 0}
+        {#each backgroundSummaries as summary (summary.runId)}
+          <Accordion.Root
+            type="multiple"
+            class="relative z-0 -mb-2 overflow-hidden rounded-t-lg border border-border bg-inset shadow-sm shadow-shadow/30"
+          >
+            <Accordion.Item value="content" class="bg-inset data-open:bg-inset">
+              <Accordion.Trigger
+                level={4}
+                class="flex w-full items-center gap-x-2 gap-y-1 border-0 border-b border-border px-3 pb-4 pt-2 text-sm font-normal text-foreground no-underline hover:bg-inset-hover hover:no-underline aria-expanded:pb-2"
+              >
+                <span
+                  class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1"
+                >
+                  <CircleNotchIcon
+                    class="size-4 shrink-0 animate-spin text-muted-foreground"
+                  />
+                  <span class="font-semibold">Generating summary</span>
+                </span>
+              </Accordion.Trigger>
+
+              <Accordion.Content>
+                <ScrollArea
+                  orientation="vertical"
+                  class="max-h-40"
+                  viewportClass="max-h-40 rounded-none"
+                >
+                  <div
+                    class="whitespace-pre-wrap bg-inset px-3 py-2 font-mono text-xs leading-relaxed text-muted-foreground"
+                  >
+                    {summary.text}
+                  </div>
+                </ScrollArea>
+              </Accordion.Content>
+            </Accordion.Item>
+          </Accordion.Root>
+        {/each}
+      {/if}
+
       {#if status}
         <Item.Root
           variant={status.variant}

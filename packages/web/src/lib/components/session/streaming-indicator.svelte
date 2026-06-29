@@ -10,12 +10,16 @@
     parts,
     isRunning,
     variant = 'assistant',
+    title = 'Summary',
+    defaultOpen = true,
     accordionState,
     accordionKey,
   }: {
     parts: MessagePart[]
     isRunning: boolean
     variant?: 'assistant' | 'system'
+    title?: string
+    defaultOpen?: boolean
     accordionState: Record<string, string[]>
     accordionKey: string
   } = $props()
@@ -37,9 +41,9 @@
   {#if variant === 'system'}
     <SystemTranscript
       items={renderParts}
-      title="Summary"
+      {title}
       icon={roleIcons.summary}
-      defaultOpen={true}
+      {defaultOpen}
       {accordionState}
       accordionKey={`${accordionKey}:system-streaming`}
     />

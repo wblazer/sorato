@@ -142,6 +142,10 @@ const liveRunStream = (
           runId,
           baseNodeId: replaySnapshot.baseNodeId,
           kind: replaySnapshot.kind,
+          visibility: replaySnapshot.visibility,
+          title: replaySnapshot.title,
+          parentRunId: replaySnapshot.parentRunId,
+          toolCallId: replaySnapshot.toolCallId,
         },
       ][Number(replaySnapshot !== null && cursor?.runId !== runId && true)]
       const resetReason = getReplayResetReason(runId, cursor)

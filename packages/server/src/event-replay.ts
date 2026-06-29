@@ -17,6 +17,10 @@ interface ActiveReplayState {
   readonly runId: string
   readonly baseNodeId: string | null
   readonly kind: 'agent' | 'summary'
+  readonly visibility: 'primary' | 'background'
+  readonly title: string | undefined
+  readonly parentRunId: string | undefined
+  readonly toolCallId: string | undefined
   nextEventId: number
   readonly events: ContentEvent[]
 }
@@ -45,7 +49,13 @@ export function startEventReplay(
   sessionId: string,
   runId: string,
   baseNodeId: string | null = null,
-  kind: 'agent' | 'summary' = 'agent'
+  kind: 'agent' | 'summary' = 'agent',
+  options: {
+    readonly visibility?: 'primary' | 'background'
+    readonly title?: string
+    readonly parentRunId?: string
+    readonly toolCallId?: string
+  } = {}
 ): void {
   buffers.set(runId, {
     status: 'active',
@@ -53,6 +63,10 @@ export function startEventReplay(
     runId,
     baseNodeId,
     kind,
+    visibility: options.visibility ?? 'primary',
+    title: options.title,
+    parentRunId: options.parentRunId,
+    toolCallId: options.toolCallId,
     nextEventId: 1,
     events: [],
   })
@@ -96,6 +110,10 @@ export function getReplaySnapshot(runId: string): {
   readonly runId: string
   readonly baseNodeId: string | null
   readonly kind: 'agent' | 'summary'
+  readonly visibility: 'primary' | 'background'
+  readonly title: string | undefined
+  readonly parentRunId: string | undefined
+  readonly toolCallId: string | undefined
   readonly events: readonly ContentEvent[]
 } | null {
   const state = buffers.get(runId)
@@ -106,8 +124,44 @@ export function getReplaySnapshot(runId: string): {
     runId: state.runId,
     baseNodeId: state.baseNodeId,
     kind: state.kind,
+    visibility: state.visibility,
+    title: state.title,
+    parentRunId: state.parentRunId,
+    toolCallId: state.toolCallId,
     events: [...state.events],
   }
+}
+
+export function getActiveBackgroundReplayRuns(
+  sessionId: string
+): ReadonlyArray<{
+  readonly sessionId: string
+  readonly runId: string
+  readonly baseNodeId: string | null
+  readonly kind: 'agent' | 'summary'
+  readonly visibility: 'background'
+  readonly title: string | undefined
+  readonly parentRunId: string | undefined
+  readonly toolCallId: string | undefined
+}> {
+  return [...buffers.values()].flatMap((state) =>
+    state.status === 'active' &&
+    state.sessionId === sessionId &&
+    state.visibility === 'background'
+      ? [
+          {
+            sessionId: state.sessionId,
+            runId: state.runId,
+            baseNodeId: state.baseNodeId,
+            kind: state.kind,
+            visibility: state.visibility,
+            title: state.title,
+            parentRunId: state.parentRunId,
+            toolCallId: state.toolCallId,
+          },
+        ]
+      : []
+  )
 }
 
 export function getReplayBufferSince(

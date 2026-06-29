@@ -10,6 +10,7 @@ import type { UiApiError } from '$lib/api-errors.js'
 import type {
   MessageNode,
   MessagePart,
+  ActiveRunSummary,
   RunAttachment,
   StreamCursor,
 } from '$lib/types.js'
@@ -28,6 +29,15 @@ interface MessageTabState {
   readonly error: string | null
 }
 
+export interface BackgroundSummaryRun {
+  readonly sessionId: string
+  readonly runId: string
+  readonly baseNodeId: string | null
+  readonly parentRunId: string | undefined
+  readonly title: string
+  readonly text: string
+}
+
 const emptyTabState: MessageTabState = {
   sessionId: null,
   messages: [],
@@ -40,9 +50,11 @@ function createMessagesStore() {
   let tabStates = $state<Record<string, MessageTabState>>({})
 
   let streamingParts = $state<MessagePart[]>([])
+  let backgroundSummaries = $state(new Map<string, BackgroundSummaryRun>())
   const lastCursors = new Map<string, StreamCursor>()
 
   let streamFiber: Fiber.Fiber<void, SseError> | null = null
+  const backgroundFibers = new Map<string, Fiber.Fiber<void, SseError>>()
   let streamedTabId = $state<string | null>(null)
   let streamedSessionId = $state<string | null>(null)
   let streamedRunId = $state<string | null>(null)
@@ -112,6 +124,16 @@ function createMessagesStore() {
   function closeRunStream() {
     if (streamFiber) Effect.runFork(Fiber.interrupt(streamFiber))
     streamFiber = null
+  }
+
+  function closeBackgroundStream(runId: string) {
+    const fiber = backgroundFibers.get(runId)
+    if (fiber) Effect.runFork(Fiber.interrupt(fiber))
+    backgroundFibers.delete(runId)
+  }
+
+  function closeBackgroundStreams() {
+    for (const runId of backgroundFibers.keys()) closeBackgroundStream(runId)
   }
 
   function openRunStream(tabId: string, sessionId: string, runId: string) {
@@ -211,6 +233,63 @@ function createMessagesStore() {
     )
   }
 
+  function openBackgroundSummaryStream(summary: BackgroundSummaryRun) {
+    if (backgroundFibers.has(summary.runId)) return
+
+    const apiBase = connectionsStore.getApiBase()
+    if (!apiBase) return
+
+    resetCursor(summary.runId)
+    setRunCursor(summary.runId)
+
+    const fiber = Effect.runFork(
+      serverEvents(apiBase, {
+        runId: summary.runId,
+        getSince: () => getLastCursor(summary.runId),
+      }).pipe(
+        Stream.runForEach((event) =>
+          Effect.sync(() => {
+            if (
+              !('sessionId' in event) ||
+              event.sessionId !== summary.sessionId
+            )
+              return
+            if ('runId' in event && event.runId !== summary.runId) return
+
+            switch (event._tag) {
+              case 'RunStart':
+                setRunCursor(event.runId)
+                break
+
+              case 'TextDelta':
+                setContentCursor(event.runId, event.eventId)
+                appendBackgroundSummaryDelta(event.runId, event.delta)
+                break
+
+              case 'RunEnd':
+                removeBackgroundSummary(event.runId)
+                break
+
+              case 'RunFailed':
+              case 'ReplayReset':
+                removeBackgroundSummary(event.runId)
+                break
+
+              case 'ReasoningDelta':
+              case 'ToolCall':
+              case 'ToolResult':
+              case 'MessagesAppended':
+              case 'RunRetrying':
+              case 'SessionUpdated':
+                break
+            }
+          })
+        )
+      )
+    )
+    backgroundFibers.set(summary.runId, fiber)
+  }
+
   function selectRunStream(
     tabId: string,
     sessionId: string,
@@ -268,6 +347,45 @@ function createMessagesStore() {
       ]
     } else {
       streamingParts = [...streamingParts, { type: 'reasoning', text: delta }]
+    }
+  }
+
+  function appendBackgroundSummaryDelta(runId: string, delta: string) {
+    const existing = backgroundSummaries.get(runId)
+    if (!existing) return
+
+    const next = new Map(backgroundSummaries)
+    next.set(runId, { ...existing, text: existing.text + delta })
+    backgroundSummaries = next
+  }
+
+  function removeBackgroundSummary(runId: string) {
+    closeBackgroundStream(runId)
+    resetCursor(runId)
+    if (!backgroundSummaries.has(runId)) return
+
+    const next = new Map(backgroundSummaries)
+    next.delete(runId)
+    backgroundSummaries = next
+  }
+
+  function hydrateBackgroundSummaries(runs: ReadonlyArray<ActiveRunSummary>) {
+    for (const run of runs) {
+      if (run.kind !== 'summary' || run.visibility !== 'background') continue
+      if (backgroundSummaries.has(run.runId)) continue
+
+      const summary = {
+        sessionId: run.sessionId,
+        runId: run.runId,
+        baseNodeId: run.baseNodeId,
+        parentRunId: run.parentRunId,
+        title: run.title ?? 'Generating summary',
+        text: '',
+      }
+      const next = new Map(backgroundSummaries)
+      next.set(run.runId, summary)
+      backgroundSummaries = next
+      openBackgroundSummaryStream(summary)
     }
   }
 
@@ -490,6 +608,24 @@ function createMessagesStore() {
   }
 
   sseStore.onEvent((event) => {
+    if (
+      event._tag === 'RunStart' &&
+      event.kind === 'summary' &&
+      event.visibility === 'background'
+    ) {
+      const summary = {
+        sessionId: event.sessionId,
+        runId: event.runId,
+        baseNodeId: event.baseNodeId,
+        parentRunId: event.parentRunId,
+        title: event.title ?? 'Summarizing selected range',
+        text: '',
+      }
+      const next = new Map(backgroundSummaries)
+      next.set(event.runId, summary)
+      backgroundSummaries = next
+      openBackgroundSummaryStream(summary)
+    }
     if (event._tag === 'MessagesAppended') {
       for (const tabId of loadedTabsForSession(event.sessionId)) {
         void Effect.runPromise(
@@ -500,6 +636,7 @@ function createMessagesStore() {
       }
     }
     if (event._tag === 'RunEnd') {
+      removeBackgroundSummary(event.runId)
       for (const tabId of loadedTabsForSession(event.sessionId)) {
         void Effect.runPromise(
           refreshMessages(tabId, event.sessionId, {
@@ -531,7 +668,9 @@ function createMessagesStore() {
 
   function clearActiveStream() {
     closeRunStream()
+    closeBackgroundStreams()
     streamingParts = []
+    backgroundSummaries = new Map()
     resetCursor()
     streamedTabId = null
     streamedSessionId = null
@@ -558,6 +697,13 @@ function createMessagesStore() {
     get activeStreamTabId() {
       return streamedTabId
     },
+    backgroundSummariesForSession(sessionId: string | null) {
+      if (sessionId === null) return []
+      return [...backgroundSummaries.values()].filter(
+        (summary) => summary.sessionId === sessionId
+      )
+    },
+    hydrateBackgroundSummaries,
     messagesForTab(tabId: string | null) {
       return stateFor(tabId).messages
     },

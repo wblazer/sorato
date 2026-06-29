@@ -122,6 +122,11 @@ export class SessionSelectedHeadController {
         )
         if (finalNode) {
           this.setSelectedHead({ type: 'node', nodeId: finalNode.id })
+        } else if (this.selectedHead.baseNodeId !== null) {
+          this.setSelectedHead({
+            type: 'node',
+            nodeId: this.selectedHead.baseNodeId,
+          })
         }
       }
     })
@@ -230,7 +235,10 @@ function resolveRenderHead(
     return head
 
   const finalNode = finalPersistedRunNode(messages, head.runId, head.baseNodeId)
-  return finalNode ? { type: 'node', nodeId: finalNode.id } : head
+  if (finalNode) return { type: 'node', nodeId: finalNode.id }
+  return head.baseNodeId === null
+    ? head
+    : { type: 'node', nodeId: head.baseNodeId }
 }
 
 function selectedMessages(
@@ -291,6 +299,32 @@ function finalPersistedRunNode(
   runId: string,
   baseNodeId: string | null
 ): MessageNode | null {
+  const summaryNode = messages
+    .toReversed()
+    .find(
+      (message) =>
+        message.runId === runId &&
+        message.kind === 'summary' &&
+        !isOptimisticNode(message)
+    )
+  if (summaryNode) return deepestDescendantLeaf(messages, summaryNode.id)
+
+  const branchSwitchedRunMessages = messages.filter(
+    (message) => message.runId === runId && !isOptimisticNode(message)
+  )
+  const branchSwitchedRunIds = new Set(
+    branchSwitchedRunMessages.map((message) => message.id)
+  )
+  const branchSwitchedParentIds = new Set(
+    branchSwitchedRunMessages
+      .map((message) => message.parentId)
+      .filter((id): id is string => id !== null && branchSwitchedRunIds.has(id))
+  )
+  const latestRunLeaf = branchSwitchedRunMessages
+    .toReversed()
+    .find((message) => !branchSwitchedParentIds.has(message.id))
+  if (latestRunLeaf) return latestRunLeaf
+
   const runMessages = messages.filter(
     (message) =>
       message.runId === runId &&
@@ -307,9 +341,7 @@ function finalPersistedRunNode(
   const runLeaf = runMessages
     .toReversed()
     .find((message) => !parentIds.has(message.id))
-  if (!runLeaf) return null
+  if (runLeaf) return runLeaf
 
-  return runLeaf.kind === 'summary'
-    ? deepestDescendantLeaf(messages, runLeaf.id)
-    : runLeaf
+  return null
 }

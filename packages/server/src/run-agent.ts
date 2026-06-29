@@ -7,7 +7,16 @@
  *   - Persists the conversation to SessionStorage after completion
  *   - Runs as a daemon fiber (fire-and-forget from the HTTP handler)
  */
-import { Cause, Duration, Effect, Layer, Match, Option, Stream } from 'effect'
+import {
+  Cause,
+  Duration,
+  Effect,
+  Layer,
+  Match,
+  Option,
+  Ref,
+  Stream,
+} from 'effect'
 import {
   AiError,
   Chat,
@@ -19,12 +28,16 @@ import { CurrentFiles, CurrentShell, run, Sandbox } from '@sorato/core'
 import { ProjectStorage } from './project/project.ts'
 import {
   SessionStorage,
+  type MessageNode,
   type SessionId,
   type StoredMessageEncoded,
 } from './session/session.ts'
 import {
   AGENTS_MD_PATH,
   AllTools,
+  type CompactBoundary,
+  type CompactConversationInput,
+  CurrentCompaction,
   SYSTEM_PROMPT,
   loadAgentsMd,
 } from './agent-config.ts'
@@ -218,6 +231,8 @@ Return only the summary. Do not include preambles or explanations.
 Preserve the user's goals, constraints, decisions, code/file changes, tool results that matter, unresolved tasks, and exact facts needed to continue.
 Omit redundant chatter and details that are not useful for future work.`
 
+const compactionSuccessMessage = 'Compaction successful.'
+
 const emptyMessageText = '[empty]'
 
 const messageText = (message: StoredMessageEncoded): string => {
@@ -233,13 +248,13 @@ const messageText = (message: StoredMessageEncoded): string => {
         case 'file':
           return part.fileName ? `[file: ${part.fileName}]` : '[file]'
         case 'tool-call':
-          return `[tool call: ${part.name}] ${JSON.stringify(part.params)}`
+          return `[tool call: ${part.name} id=${part.id}] ${JSON.stringify(part.params)}`
         case 'tool-result':
-          return `[tool result: ${part.name}] ${part.result}`
+          return `[tool result: ${part.name} id=${part.id}] ${part.result}`
         case 'tool-approval-request':
-          return `[tool approval request: ${part.name}]`
+          return `[tool approval request: ${part.name} id=${part.id}]`
         case 'tool-approval-response':
-          return `[tool approval response: ${part.name}] ${part.approved ? 'approved' : 'rejected'}`
+          return `[tool approval response: ${part.name} id=${part.id}] ${part.approved ? 'approved' : 'rejected'}`
       }
     })
     .join('\n')
@@ -278,6 +293,226 @@ const summaryPrompt = (
     },
   ])
 
+const compactNodeSearchText = (message: {
+  readonly id: string
+  readonly messageId: string | null
+  readonly summaryId: string | null
+  readonly kind: 'message' | 'summary'
+  readonly encoded: StoredMessageEncoded
+}) =>
+  [
+    message.id,
+    message.messageId,
+    message.summaryId,
+    message.kind,
+    message.encoded.role,
+    messageText(message.encoded),
+  ]
+    .filter((part): part is string => typeof part === 'string')
+    .join('\n')
+
+const compactCandidatePreview = (message: StoredMessageEncoded): string =>
+  messageText(message).replace(/\s+/g, ' ').trim().slice(0, 180)
+
+const compactCandidateDescription = (message: MessageNode): string =>
+  `node_id=${message.id} kind=${message.kind} role=${message.encoded.role} preview=${JSON.stringify(compactCandidatePreview(message.encoded))}`
+
+const normalizedCompactMatch = (value: string): string =>
+  value.trim().toLowerCase()
+
+const compactToolCallSearchText = (part: {
+  readonly id: string
+  readonly name: string
+  readonly params?: unknown
+}): string =>
+  [part.id, part.name, JSON.stringify(part.params ?? null)].join('\n')
+
+const compactToolResultSearchText = (part: {
+  readonly id: string
+  readonly name: string
+  readonly result: unknown
+}): string => [part.id, part.name, String(part.result)].join('\n')
+
+const compactSelectorMatches = (
+  path: ReadonlyArray<MessageNode>,
+  selector: CompactBoundary
+): ReadonlyArray<MessageNode> => {
+  if (selector.type === 'node') {
+    return path.filter((message) => message.id === selector.nodeId)
+  }
+
+  const needle = normalizedCompactMatch(selector.match)
+  if (needle.length === 0) return []
+
+  if (selector.type === 'message') {
+    return path.filter((message) => {
+      const matchesRole =
+        selector.role === 'any' ||
+        (selector.role === 'summary'
+          ? message.kind === 'summary' ||
+            (message.encoded.role === 'user' &&
+              message.encoded.source === 'summary')
+          : message.kind === 'message' &&
+            message.encoded.role === selector.role)
+      return (
+        matchesRole &&
+        compactNodeSearchText(message).toLowerCase().includes(needle)
+      )
+    })
+  }
+
+  return path.filter((message) =>
+    compactToolSelectorMatches(message, selector, needle)
+  )
+}
+
+const compactToolSelectorMatches = (
+  message: MessageNode,
+  selector: Extract<CompactBoundary, { readonly type: 'tool' }>,
+  needle: string
+): boolean => {
+  const content = message.encoded.content
+  if (!Array.isArray(content)) return false
+
+  return content.some((part) => {
+    if (selector.role === 'tool_call') {
+      return (
+        part.type === 'tool-call' &&
+        part.name === selector.toolName &&
+        compactToolCallSearchText(part).toLowerCase().includes(needle)
+      )
+    }
+    return (
+      part.type === 'tool-result' &&
+      part.name === selector.toolName &&
+      compactToolResultSearchText(part).toLowerCase().includes(needle)
+    )
+  })
+}
+
+const compactSelectorLabel = (selector: CompactBoundary): string => {
+  switch (selector.type) {
+    case 'node':
+      return `node_id ${JSON.stringify(selector.nodeId)}`
+    case 'message':
+      return `${selector.role} message matching ${JSON.stringify(selector.match)}`
+    case 'tool':
+      return `${selector.role} ${JSON.stringify(selector.toolName)} matching ${JSON.stringify(selector.match)}`
+  }
+}
+
+const isCompactConversationToolMessage = (message: MessageNode): boolean => {
+  const content = message.encoded.content
+  if (!Array.isArray(content)) return false
+  return content.some(
+    (part) =>
+      (part.type === 'tool-call' || part.type === 'tool-result') &&
+      part.name === 'CompactConversation'
+  )
+}
+
+const compactResolutionFailure = (
+  input: CompactConversationInput,
+  path: ReadonlyArray<MessageNode>
+): string => {
+  const describe = (
+    label: 'start' | 'end',
+    selector: CompactBoundary
+  ): string => {
+    const matches = compactSelectorMatches(path, selector)
+    if (selector.type !== 'node' && selector.match.trim().length === 0) {
+      return `${label}: empty match text.`
+    }
+    if (matches.length === 0) {
+      return `${label}: no current-branch node matched ${compactSelectorLabel(selector)}.`
+    }
+
+    return [
+      `${label}: ${matches.length} current-branch nodes matched ${compactSelectorLabel(selector)}; retry with type=node and an exact nodeId from these candidates.`,
+      ...matches.slice(0, 8).map(compactCandidateDescription),
+      matches.length > 8
+        ? `... ${matches.length - 8} more matches omitted.`
+        : null,
+    ]
+      .filter((line): line is string => line !== null)
+      .join('\n')
+  }
+
+  return [
+    'Compaction range boundaries must each match exactly one non-compaction node on the current branch.',
+    describe('start', input.start),
+    describe('end', input.end),
+    'Retry with type=node and exact nodeId values when snippets are absent or ambiguous.',
+  ].join('\n')
+}
+
+const compactResolvedRange = (
+  fullPath: ReadonlyArray<MessageNode>,
+  resolutionPath: ReadonlyArray<MessageNode>,
+  input: CompactConversationInput
+):
+  | {
+      readonly _tag: 'Resolved'
+      readonly startIndex: number
+      readonly endIndex: number
+    }
+  | { readonly _tag: 'Failed'; readonly message: string } => {
+  const startMatches = compactSelectorMatches(resolutionPath, input.start)
+  const endMatches = compactSelectorMatches(resolutionPath, input.end)
+  if (startMatches.length !== 1 || endMatches.length !== 1) {
+    return {
+      _tag: 'Failed',
+      message: compactResolutionFailure(input, resolutionPath),
+    }
+  }
+
+  const startNode = startMatches[0]
+  const endNode = endMatches[0]
+  if (startNode === undefined || endNode === undefined) {
+    return {
+      _tag: 'Failed',
+      message: compactResolutionFailure(input, resolutionPath),
+    }
+  }
+
+  const startBoundaryIndex = fullPath.findIndex(
+    (message) => message.id === startNode.id
+  )
+  const endBoundaryIndex = fullPath.findIndex(
+    (message) => message.id === endNode.id
+  )
+  if (startBoundaryIndex < 0 || endBoundaryIndex < 0) {
+    return {
+      _tag: 'Failed',
+      message: 'Compaction range nodes were not found on the current branch.',
+    }
+  }
+
+  const startIndex = startBoundaryIndex + (input.start.include ? 0 : 1)
+  const endIndex = endBoundaryIndex - (input.end.include ? 0 : 1)
+
+  if (
+    startIndex < 0 ||
+    endIndex < 0 ||
+    startIndex >= fullPath.length ||
+    endIndex >= fullPath.length
+  ) {
+    return {
+      _tag: 'Failed',
+      message: 'Compaction range is empty after applying include flags.',
+    }
+  }
+  if (startIndex > endIndex) {
+    return {
+      _tag: 'Failed',
+      message:
+        'Compaction range must resolve in chronological order and be non-empty after applying include flags.',
+    }
+  }
+
+  return { _tag: 'Resolved', startIndex, endIndex }
+}
+
 const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
   sessionId: SessionId,
   request: RunRequest,
@@ -289,13 +524,19 @@ const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
   const storage = yield* SessionStorage
   const bus = yield* EventBus
 
-  startEventReplay(sessionId, request.runId, request.baseNodeId, 'summary')
+  const summaryTitle = 'Generating summary'
+  startEventReplay(sessionId, request.runId, request.baseNodeId, 'summary', {
+    visibility: 'background',
+    title: summaryTitle,
+  })
   yield* bus.publish({
     _tag: 'RunStart',
     sessionId,
     runId: request.runId,
     baseNodeId: request.baseNodeId,
     kind: 'summary',
+    visibility: 'background',
+    title: summaryTitle,
   })
 
   const path = yield* storage.messages(sessionId, compactRange.baseHeadNodeId)
@@ -587,38 +828,224 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
               messageCountBeforeRun: conversation.content.length,
             })
           ),
-          Effect.flatMap(({ appendBaseNodeId, conversation }) => {
-            const messageCountBeforeRun = conversation.content.length
-            return Effect.all([
-              createBusHook(sessionId, runId),
-              createPersistenceHook(
+          Effect.flatMap(({ appendBaseNodeId, conversation }) =>
+            Effect.fn('RunAgent.runHarnessWithCompaction')(function* () {
+              const messageCountBeforeRun = conversation.content.length
+              const appendBaseRef = yield* Ref.make(appendBaseNodeId)
+              const compactToolCallIdRef = yield* Ref.make<string | null>(null)
+              const busHook = yield* createBusHook(sessionId, runId)
+              const trackedBusHook = {
+                name: 'tracked-event-bus',
+                handle: (event: Parameters<typeof busHook.handle>[0]) =>
+                  (event._tag === 'ToolCall' &&
+                  event.name === 'CompactConversation'
+                    ? Ref.set(compactToolCallIdRef, event.id)
+                    : Effect.void
+                  ).pipe(Effect.andThen(busHook.handle(event))),
+              }
+              const persistHook = yield* createPersistenceHook(
                 sessionId,
                 runId,
                 messageCountBeforeRun,
-                appendBaseNodeId,
+                appendBaseRef,
                 {
                   providerId: resolvedModel.providerId,
                   modelId: resolvedModel.modelId,
                   billingMode,
                   cost: resolvedModel.model.cost,
                 }
-              ),
-            ]).pipe(
-              Effect.flatMap(([busHook, persistHook]) =>
-                Effect.provide(
-                  run(conversation, {
-                    toolkit: AllTools,
-                    hooks: [busHook, persistHook],
-                  }),
-                  Layer.mergeAll(
-                    Layer.succeed(CurrentShell, shell),
-                    Layer.succeed(CurrentFiles, files),
-                    modelServices
-                  )
+              )
+
+              const compaction = {
+                compactRange: (input: CompactConversationInput) =>
+                  Effect.fn('RunAgent.compactConversationTool')(function* () {
+                    const baseHeadNodeId = yield* Ref.get(appendBaseRef)
+                    if (baseHeadNodeId === null) {
+                      return yield* Effect.fail(
+                        'Cannot compact an empty conversation branch.'
+                      )
+                    }
+
+                    const path = yield* storage.messages(
+                      sessionId,
+                      baseHeadNodeId
+                    )
+                    const resolutionPath = path.filter(
+                      (message) => !isCompactConversationToolMessage(message)
+                    )
+                    const resolvedRange = compactResolvedRange(
+                      path,
+                      resolutionPath,
+                      input
+                    )
+                    if (resolvedRange._tag === 'Failed') {
+                      return yield* Effect.fail(resolvedRange.message)
+                    }
+
+                    const startNodeId = path[resolvedRange.startIndex]?.id
+                    const endNodeId = path[resolvedRange.endIndex]?.id
+                    if (startNodeId === undefined || endNodeId === undefined) {
+                      return yield* Effect.fail(
+                        'Compaction range could not be resolved.'
+                      )
+                    }
+
+                    const compactToolCallId =
+                      yield* Ref.get(compactToolCallIdRef)
+                    if (compactToolCallId === null) {
+                      return yield* Effect.fail(
+                        'Compaction tool call could not be associated with the active run.'
+                      )
+                    }
+
+                    const summaryRunId = crypto.randomUUID()
+                    yield* storage.createRun({
+                      id: summaryRunId,
+                      sessionId,
+                      providerId: resolvedModel.providerId,
+                      modelId: resolvedModel.modelId,
+                      billingMode,
+                      baseNodeId: baseHeadNodeId,
+                    })
+
+                    return yield* Effect.fn('RunAgent.finishCompactionTool')(
+                      function* () {
+                        const compactedPath = path.slice(
+                          resolvedRange.startIndex,
+                          resolvedRange.endIndex + 1
+                        )
+                        if (
+                          compactedPath.some(
+                            (message) =>
+                              message.kind === 'message' &&
+                              message.encoded.role === 'system' &&
+                              (message.encoded.source === 'system-prompt' ||
+                                message.encoded.source === 'agents-md')
+                          )
+                        ) {
+                          return yield* Effect.fail(
+                            'Compact range cannot include bootstrap system messages.'
+                          )
+                        }
+
+                        const chat = yield* Chat.fromPrompt(
+                          summaryPrompt(
+                            compactedPath.map((message) => message.encoded),
+                            input.instructions
+                          )
+                        )
+                        const summaryTitle = 'Generating summary'
+                        yield* Effect.sync(() =>
+                          startEventReplay(
+                            sessionId,
+                            summaryRunId,
+                            baseHeadNodeId,
+                            'summary',
+                            {
+                              visibility: 'background',
+                              title: summaryTitle,
+                              parentRunId: runId,
+                              toolCallId: compactToolCallId,
+                            }
+                          )
+                        )
+                        yield* bus.publish({
+                          _tag: 'RunStart',
+                          sessionId,
+                          runId: summaryRunId,
+                          baseNodeId: baseHeadNodeId,
+                          kind: 'summary',
+                          visibility: 'background',
+                          title: summaryTitle,
+                          parentRunId: runId,
+                          toolCallId: compactToolCallId,
+                        })
+
+                        const summary = yield* chat
+                          .streamText({ prompt: [] })
+                          .pipe(
+                            Stream.filter(
+                              (
+                                part
+                              ): part is Extract<
+                                Response.StreamPart<Record<string, never>>,
+                                { type: 'text-delta' }
+                              > => part.type === 'text-delta'
+                            ),
+                            Stream.tap((part) =>
+                              Effect.sync(() =>
+                                appendReplayEvent(sessionId, summaryRunId, {
+                                  _tag: 'TextDelta',
+                                  sessionId,
+                                  runId: summaryRunId,
+                                  delta: part.delta,
+                                })
+                              ).pipe(
+                                Effect.flatMap((event) => bus.publish(event))
+                              )
+                            ),
+                            Stream.map((part) => part.delta),
+                            Stream.mkString,
+                            Effect.provide(modelServices)
+                          )
+                        const result = yield* storage.compactRange({
+                          sessionId,
+                          runId: summaryRunId,
+                          baseHeadNodeId,
+                          startNodeId,
+                          endNodeId,
+                          summaryContent: summary.trim(),
+                        })
+                        yield* Ref.set(appendBaseRef, result.headNodeId)
+                        yield* bus.publish({
+                          _tag: 'MessagesAppended',
+                          sessionId,
+                          runId: summaryRunId,
+                        })
+                        yield* Effect.sync(() =>
+                          endEventReplay(sessionId, summaryRunId)
+                        )
+                        yield* bus.publish({
+                          _tag: 'RunEnd',
+                          sessionId,
+                          runId: summaryRunId,
+                        })
+                        return compactionSuccessMessage
+                      }
+                    )()
+                  })().pipe(
+                    Effect.catch((error) => {
+                      const message =
+                        typeof error === 'string'
+                          ? error
+                          : error instanceof Error
+                            ? error.message
+                            : String(error)
+                      return Effect.fail(message).pipe(
+                        Effect.tapError(() =>
+                          Effect.logWarning('Compaction tool failed', {
+                            message,
+                          })
+                        )
+                      )
+                    })
+                  ),
+              }
+
+              return yield* Effect.provide(
+                run(conversation, {
+                  toolkit: AllTools,
+                  hooks: [trackedBusHook, persistHook],
+                }),
+                Layer.mergeAll(
+                  Layer.succeed(CurrentShell, shell),
+                  Layer.succeed(CurrentFiles, files),
+                  Layer.succeed(CurrentCompaction, compaction),
+                  modelServices
                 )
               )
-            )
-          })
+            })()
+          )
         )
       ),
       Effect.scoped

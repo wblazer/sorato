@@ -102,7 +102,6 @@
   const rows = $derived.by(() =>
     flattenRows(tree, activeRuns, selectedPathIds, selectedHeadValue),
   )
-  const streamingParts = $derived(messagesStore.streamingPartsForTab(tabId))
   const compactRows = $derived.by(() =>
     rows.filter(
       (row): row is Extract<TreeRow, { type: 'node' }> =>
@@ -397,9 +396,29 @@
         .filter((id): id is string => id !== null && runIds.has(id)),
     )
 
+    const runLeaf = runMessages
+      .toReversed()
+      .find((message) => !parentIds.has(message.id))
+    if (runLeaf) return runLeaf
+
+    const branchSwitchedRunMessages = messages.filter(
+      (message) => message.runId === runId,
+    )
+    const branchSwitchedRunIds = new Set(
+      branchSwitchedRunMessages.map((message) => message.id),
+    )
+    const branchSwitchedParentIds = new Set(
+      branchSwitchedRunMessages
+        .map((message) => message.parentId)
+        .filter(
+          (id): id is string => id !== null && branchSwitchedRunIds.has(id),
+        ),
+    )
+
     return (
-      runMessages.toReversed().find((message) => !parentIds.has(message.id)) ??
-      null
+      branchSwitchedRunMessages
+        .toReversed()
+        .find((message) => !branchSwitchedParentIds.has(message.id)) ?? null
     )
   }
 
@@ -729,22 +748,6 @@
   function toolBadgeIcon(tool: ToolCallSummary) {
     return iconForMessageName(tool.icon) ?? roleIcons.tool
   }
-
-  const summaryRunPreview = $derived.by(() =>
-    streamingParts
-      .flatMap((part) => {
-        switch (part.type) {
-          case 'text':
-          case 'reasoning':
-            return [part.text]
-          default:
-            return []
-        }
-      })
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim(),
-  )
 </script>
 
 <aside
@@ -1009,16 +1012,9 @@
                       : 'assistant'}
                   >
                     {row.run.kind === 'summary'
-                      ? 'Summarizing'
+                      ? 'Summarizing range'
                       : 'Streaming branch'}
                   </span>
-                  {#if row.run.kind === 'summary' && summaryRunPreview.length > 0}
-                    <span
-                      class="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
-                    >
-                      {summaryRunPreview}
-                    </span>
-                  {/if}
                 </span>
               </Button>
             {/if}

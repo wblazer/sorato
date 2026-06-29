@@ -450,6 +450,15 @@ describe('SessionStorage', () => {
             ? summaryMessage.encoded.source
             : undefined
         ).toBe('summary')
+        expect(summaryMessage.encoded.content).toContain(
+          'This is a summary of earlier conversation messages'
+        )
+        expect(summaryMessage.encoded.content).toContain('<summary>\nsummary')
+        expect(
+          summaryMessage.encoded.role === 'user'
+            ? summaryMessage.encoded.metadata?.summary?.content
+            : undefined
+        ).toBe('summary')
         const prompt = yield* storage.conversation(
           session.id,
           result.summaryNodeId
@@ -460,7 +469,10 @@ describe('SessionStorage', () => {
         )
         expect(summaryPromptMessage.role).toBe('user')
         expect(summaryPromptMessage.content).toMatchObject([
-          { type: 'text', text: 'summary' },
+          {
+            type: 'text',
+            text: expect.stringContaining('<summary>\nsummary\n</summary>'),
+          },
         ])
         expect(systemNodeId).toBeTruthy()
         expect(userNodeId).toBeTruthy()

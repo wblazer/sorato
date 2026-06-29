@@ -43,6 +43,20 @@ export class SessionResponse extends Schema.Class<SessionResponse>(
   lastUserMessageAt: Schema.NullOr(Schema.Number),
   createdAt: Schema.Number,
   updatedAt: Schema.Number,
+  activeRuns: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        sessionId: Schema.String,
+        runId: Schema.String,
+        baseNodeId: Schema.NullOr(Schema.String),
+        kind: Schema.Literals(['agent', 'summary']),
+        visibility: Schema.Literals(['primary', 'background']),
+        title: Schema.optional(Schema.String),
+        parentRunId: Schema.optional(Schema.String),
+        toolCallId: Schema.optional(Schema.String),
+      })
+    )
+  ),
 }) {}
 
 export class RunUsageResponse extends Schema.Class<RunUsageResponse>(

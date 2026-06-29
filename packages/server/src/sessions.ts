@@ -46,6 +46,7 @@ import {
   shiftQueuedRun,
 } from './run-registry.ts'
 import { EventBus } from './event-bus.ts'
+import { getActiveBackgroundReplayRuns } from './event-replay.ts'
 
 const toSessionResponse = (s: {
   readonly id: string
@@ -56,6 +57,12 @@ const toSessionResponse = (s: {
   readonly archivedAt: number | null
   readonly lastUserMessageAt: number | null
 }) => {
+  const activeRunsById = new Map(
+    [...getActiveRuns(s.id), ...getActiveBackgroundReplayRuns(s.id)].map(
+      (run) => [run.runId, run]
+    )
+  )
+  const activeRuns = [...activeRunsById.values()]
   const status = Match.value(isRunning(s.id)).pipe(
     Match.when(true, () => 'running' as const),
     Match.orElse(() => 'idle' as const)
@@ -70,6 +77,7 @@ const toSessionResponse = (s: {
     lastUserMessageAt: s.lastUserMessageAt,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
+    activeRuns,
   })
 }
 
@@ -86,7 +94,7 @@ const toMessageNodeResponse = (m: MessageNode) =>
     run:
       m.run === null
         ? null
-        : new RunSummaryResponse({
+         : new RunSummaryResponse({
             id: m.run.id,
             status: m.run.status,
             providerId: m.run.providerId,
@@ -130,9 +138,13 @@ const registerActiveRun = Effect.fn('Sessions.registerActiveRun')(
     queueId: string,
     runId: string,
     baseNodeId: string | null,
+    kind: 'agent' | 'summary',
+    visibility: 'primary' | 'background',
     fiber: Fiber.Fiber<void, never>
   ) =>
-    Effect.suspend(() => doRegisterActiveRun(queueId, runId, baseNodeId, fiber))
+    Effect.suspend(() =>
+      doRegisterActiveRun(queueId, runId, baseNodeId, kind, visibility, fiber)
+    )
 )
 
 const clearActiveRun = Effect.fn('Sessions.clearActiveRun')((queueId: string) =>
@@ -166,9 +178,11 @@ const doRegisterActiveRun = (
   queueId: string,
   runId: string,
   baseNodeId: string | null,
+  kind: 'agent' | 'summary',
+  visibility: 'primary' | 'background',
   fiber: Fiber.Fiber<void, never>
 ) => {
-  registerActiveFiber(queueId, runId, baseNodeId, fiber)
+  registerActiveFiber(queueId, runId, baseNodeId, kind, visibility, fiber)
   return Effect.void
 }
 
@@ -365,11 +379,16 @@ function createRunWorker(sessionId: string, queueId: string) {
       const request = yield* resolveRunBase(storage, sessionId, input).pipe(
         Effect.orDie
       )
+      const kind = request.compactRange === undefined ? 'agent' : 'summary'
+      const visibility =
+        request.compactRange === undefined ? 'primary' : 'background'
       const fiber = yield* Effect.forkDetach(runAgent(sessionId, request))
       yield* registerActiveRun(
         queueId,
         request.runId,
         request.baseNodeId,
+        kind,
+        visibility,
         fiber
       )
       yield* Effect.logInfo('Session run worker registered active run')
@@ -596,18 +615,6 @@ const enqueueRunRequest = Effect.fn('Sessions.enqueueRunRequest')((
   )
 })
 
-const compactRunBaseNodeId = Effect.fn('Sessions.compactRunBaseNodeId')(
-  function* (
-    storage: SessionStorageApi,
-    sessionId: string,
-    baseHeadNodeId: string,
-    startNodeId: string
-  ) {
-    const path = yield* storage.messages(sessionId, baseHeadNodeId)
-    return path.find((message) => message.id === startNodeId)?.parentId ?? null
-  }
-)
-
 const mapStorageError = StorageUnavailable.fromStorage
 const mapProjectError = ProjectOperationFailed.fromProject
 
@@ -728,15 +735,7 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
               )
             )
           ),
-          Effect.andThen(
-            compactRunBaseNodeId(
-              storage,
-              params.id,
-              payload.baseHeadNodeId,
-              payload.startNodeId
-            ).pipe(Effect.mapError(mapStorageError))
-          ),
-          Effect.flatMap((compactBaseNodeId) =>
+          Effect.flatMap(() =>
             enqueueRunRequest(
               storage,
               params.id,
@@ -744,7 +743,7 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
               [],
               payload.model,
               { thinkingLevel: 'off' },
-              compactBaseNodeId,
+              payload.baseHeadNodeId,
               null,
               {
                 baseHeadNodeId: payload.baseHeadNodeId,
