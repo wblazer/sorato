@@ -3,19 +3,30 @@
   import type { ToolResultDisplay } from '$lib/types.js'
   import { parseToolDiff, toolDiffTheme } from '$lib/tool-output.js'
 
-  let { display }: { display: Extract<ToolResultDisplay, { type: 'diff' }> } =
+  let { display, cacheKey }: { display: ToolResultDisplay; cacheKey: string } =
     $props()
 
-  let fileDiff: FileDiffMetadata = $derived(parseToolDiff(display))
+  interface RenderInput {
+    readonly fileDiff: FileDiffMetadata
+    readonly cacheKey: string
+  }
+
+  const renderInput: RenderInput = $derived({
+    fileDiff: parseToolDiff(display, cacheKey),
+    cacheKey,
+  })
 
   const renderOptions = {
     diffStyle: 'unified' as const,
     disableFileHeader: true,
-    hunkSeparators: 'line-info-basic' as const,
+    hunkSeparators: 'simple' as const,
     diffIndicators: 'bars' as const,
     overflow: 'scroll' as const,
     theme: toolDiffTheme,
     themeType: 'system' as const,
+    lineDiffType: 'none' as const,
+    maxLineDiffLength: 1000,
+    maxLineLengthForHighlighting: 1000,
     unsafeCSS: `
       :host {
         --diffs-gap-block: 0px;
@@ -47,29 +58,32 @@
         width: 0;
         height: 0;
       }
-
-      [data-diff-span] {
-        border-radius: 0.125rem;
-        background: color-mix(in oklch, currentColor 18%, transparent);
-      }
     `,
   }
 
-  function renderDiff(wrapper: HTMLDivElement, instance: FileDiff) {
+  function renderDiff(
+    wrapper: HTMLDivElement,
+    instance: FileDiff,
+    input: RenderInput,
+  ) {
     instance.render({
-      fileDiff,
+      fileDiff: input.fileDiff,
       containerWrapper: wrapper,
       forceRender: true,
     })
   }
 
-  function diffRenderer(wrapper: HTMLDivElement, _fileDiff: FileDiffMetadata) {
+  function diffRenderer(wrapper: HTMLDivElement, input: RenderInput) {
     const instance = new FileDiff(renderOptions)
-    renderDiff(wrapper, instance)
+    let renderedCacheKey = input.cacheKey
+    renderDiff(wrapper, instance, input)
 
     return {
-      update() {
-        renderDiff(wrapper, instance)
+      update(next: RenderInput) {
+        if (next.cacheKey === renderedCacheKey) return
+
+        renderedCacheKey = next.cacheKey
+        renderDiff(wrapper, instance, next)
       },
       destroy() {
         instance.cleanUp()
@@ -78,7 +92,7 @@
   }
 </script>
 
-<div use:diffRenderer={fileDiff} class="tool-diff overflow-hidden"></div>
+<div use:diffRenderer={renderInput} class="tool-diff overflow-hidden"></div>
 
 <style>
   .tool-diff {

@@ -1,12 +1,12 @@
 export {
   MessageHeaderDisplaySchema,
   MessageIconNameSchema,
-  ToolDisplayFileContentsSchema,
   ToolResultDisplaySchema,
 } from './tool/tool-output.ts'
 export type {
+  InlineDiffHunk,
+  InlineDiffHunkLine,
   MessageHeaderDisplay,
   MessageIconName,
-  ToolDisplayFileContents,
   ToolResultDisplay,
 } from './tool/tool-output.ts'

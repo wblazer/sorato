@@ -37,14 +37,14 @@ export { run } from './harness/run.ts'
 export {
   MessageHeaderDisplaySchema,
   MessageIconNameSchema,
-  ToolDisplayFileContentsSchema,
   ToolOutputRegistry,
   ToolResultDisplaySchema,
 } from './tool/tool-output.ts'
 export type {
+  InlineDiffHunk,
+  InlineDiffHunkLine,
   MessageHeaderDisplay,
   MessageIconName,
-  ToolDisplayFileContents,
   ToolResultDisplay,
   ToolResultPresentation,
   ToolOutputRegistryApi,

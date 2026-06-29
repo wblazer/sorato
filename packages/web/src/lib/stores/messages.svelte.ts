@@ -16,7 +16,7 @@ import type {
 } from '$lib/types.js'
 import { Effect, Fiber, Stream } from 'effect'
 import { serverEvents, type SseError } from '$lib/sse.js'
-import { preloadMessageToolDiffs } from '$lib/tool-output.js'
+import { preloadMessageToolDiffs, preloadToolDiff } from '$lib/tool-output.js'
 import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
 import { requestSessionRefresh } from './session-refresh-bus.js'
@@ -191,6 +191,9 @@ function createMessagesStore() {
 
               case 'ToolResult':
                 setContentCursor(event.runId, event.eventId)
+                if (event.bodyDisplay?.type === 'inline-diff') {
+                  void preloadToolDiff(event.bodyDisplay, event.id)
+                }
                 streamingParts = [
                   ...streamingParts,
                   {

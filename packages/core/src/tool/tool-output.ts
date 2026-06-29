@@ -1,14 +1,5 @@
 import { Context, Option, Schema } from 'effect'
 
-export const ToolDisplayFileContentsSchema = Schema.Struct({
-  name: Schema.String,
-  contents: Schema.String,
-  lang: Schema.optionalKey(Schema.String),
-  header: Schema.optionalKey(Schema.String),
-  cacheKey: Schema.optionalKey(Schema.String),
-})
-export type ToolDisplayFileContents = typeof ToolDisplayFileContentsSchema.Type
-
 export const MessageIconNameSchema = Schema.Literals([
   'tool',
   'tool-result',
@@ -29,14 +20,16 @@ export const MessageHeaderDisplaySchema = Schema.Struct({
 })
 export type MessageHeaderDisplay = typeof MessageHeaderDisplaySchema.Type
 
+const DiffSummarySchema = Schema.Struct({
+  additions: Schema.Number,
+  deletions: Schema.Number,
+})
+
 export const ToolResultDisplaySchema = Schema.Struct({
-  type: Schema.Literal('diff'),
-  oldFile: ToolDisplayFileContentsSchema,
-  newFile: ToolDisplayFileContentsSchema,
-  summary: Schema.Struct({
-    additions: Schema.Number,
-    deletions: Schema.Number,
-  }),
+  type: Schema.Literal('inline-diff'),
+  fileName: Schema.String,
+  patch: Schema.String,
+  summary: DiffSummarySchema,
 })
 export type ToolResultDisplay = typeof ToolResultDisplaySchema.Type
 
@@ -225,21 +218,77 @@ export const recordFileDiffPresentation = (
     readonly result: string
   }
 ) => {
+  const oldLines =
+    options.oldContent.length === 0 ? [] : options.oldContent.split('\n')
+  const newLines =
+    options.newContent.length === 0 ? [] : options.newContent.split('\n')
   const summary = diffStats(options.oldContent, options.newContent)
   registry.push({
     toolName: options.toolName,
     result: options.result,
     bodyDisplay: {
-      type: 'diff',
-      oldFile: {
-        name: options.path,
-        contents: options.oldContent,
-      },
-      newFile: {
-        name: options.path,
-        contents: options.newContent,
-      },
+      type: 'inline-diff',
+      fileName: options.path,
+      patch: patchFromLines(options.path, [
+        {
+          oldStart: oldLines.length === 0 ? 0 : 1,
+          newStart: newLines.length === 0 ? 0 : 1,
+          lines: [
+            ...oldLines.map((content) => ({
+              type: 'delete' as const,
+              content,
+            })),
+            ...newLines.map((content) => ({ type: 'add' as const, content })),
+          ],
+        },
+      ]),
       summary,
     },
   })
+}
+
+export interface InlineDiffHunkLine {
+  readonly type: 'add' | 'delete' | 'context'
+  readonly content: string
+}
+
+export interface InlineDiffHunk {
+  readonly oldStart: number
+  readonly newStart: number
+  readonly lines: ReadonlyArray<InlineDiffHunkLine>
+}
+
+export const patchFromLines = (
+  path: string,
+  hunks: ReadonlyArray<InlineDiffHunk>
+): string => {
+  const lines = [`--- ${path}\t`, `+++ ${path}\t`]
+  for (const hunk of hunks) {
+    const oldCount = hunk.lines.filter((line) => line.type !== 'add').length
+    const newCount = hunk.lines.filter((line) => line.type !== 'delete').length
+    lines.push(
+      `@@ -${range(hunk.oldStart, oldCount)} +${range(hunk.newStart, newCount)} @@`
+    )
+    for (const line of hunk.lines) {
+      lines.push(`${linePrefix(line.type)}${line.content}`)
+    }
+  }
+  return `${lines.join('\n')}\n`
+}
+
+const range = (start: number, count: number) => {
+  if (count === 0) return `${Math.max(0, start)},0`
+  if (count === 1) return `${start}`
+  return `${start},${count}`
+}
+
+const linePrefix = (type: InlineDiffHunkLine['type']) => {
+  switch (type) {
+    case 'add':
+      return '+'
+    case 'delete':
+      return '-'
+    case 'context':
+      return ' '
+  }
 }

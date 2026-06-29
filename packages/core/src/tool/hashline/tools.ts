@@ -15,8 +15,9 @@ import { Tool } from 'effect/unstable/ai'
 import { Effect, Match, Option, Schema } from 'effect'
 import { CurrentFiles, SandboxError } from '../../sandbox/sandbox.ts'
 import {
-  recordFileDiffPresentation,
+  patchFromLines,
   ToolOutputRegistry,
+  type InlineDiffHunk,
 } from '../tool-output.ts'
 import {
   encode,
@@ -560,6 +561,151 @@ const validateNoOverlap = (
   return Option.none()
 }
 
+const lineCount = (content: string): number => content.split('\n').length
+const INLINE_DIFF_CONTEXT_LINES = 3
+
+const editSummary = (edits: ReadonlyArray<ResolvedEdit>) =>
+  edits.reduce(
+    (summary, edit) => {
+      switch (edit.type) {
+        case 'replace':
+          return {
+            additions: summary.additions + lineCount(edit.content),
+            deletions: summary.deletions + edit.endIdx - edit.startIdx + 1,
+          }
+        case 'insert':
+          return {
+            additions: summary.additions + lineCount(edit.content),
+            deletions: summary.deletions,
+          }
+        case 'delete':
+          return {
+            additions: summary.additions,
+            deletions: summary.deletions + edit.endIdx - edit.startIdx + 1,
+          }
+      }
+    },
+    { additions: 0, deletions: 0 }
+  )
+
+const inlineDiffHunks = (
+  edits: ReadonlyArray<ResolvedEdit>,
+  originalLines: ReadonlyArray<string>
+): ReadonlyArray<InlineDiffHunk> => {
+  let lineDelta = 0
+  return edits.map((edit) => {
+    switch (edit.type) {
+      case 'replace': {
+        const oldLineCount = edit.endIdx - edit.startIdx + 1
+        const newLines = edit.content.split('\n')
+        const beforeStart = Math.max(
+          0,
+          edit.startIdx - INLINE_DIFF_CONTEXT_LINES
+        )
+        const afterStart = edit.endIdx + 1
+        const afterEnd = Math.min(
+          originalLines.length,
+          afterStart + INLINE_DIFF_CONTEXT_LINES
+        )
+        const beforeDelta = lineDelta
+        lineDelta += newLines.length - oldLineCount
+        return {
+          oldStart: beforeStart + 1,
+          newStart: beforeStart + 1 + beforeDelta,
+          lines: [
+            ...originalLines
+              .slice(beforeStart, edit.startIdx)
+              .map((content) => ({
+                type: 'context' as const,
+                content,
+              })),
+            ...Array.from({ length: oldLineCount }, (_, index) => ({
+              type: 'delete' as const,
+              content: originalLines[edit.startIdx + index] ?? '',
+            })),
+            ...newLines.map((content) => ({
+              type: 'add' as const,
+              content,
+            })),
+            ...originalLines.slice(afterStart, afterEnd).map((content) => ({
+              type: 'context' as const,
+              content,
+            })),
+          ],
+        }
+      }
+      case 'insert': {
+        const newLines = edit.content.split('\n')
+        const beforeStart = Math.max(
+          0,
+          edit.afterIdx - INLINE_DIFF_CONTEXT_LINES + 1
+        )
+        const afterStart = edit.afterIdx + 1
+        const afterEnd = Math.min(
+          originalLines.length,
+          afterStart + INLINE_DIFF_CONTEXT_LINES
+        )
+        const beforeDelta = lineDelta
+        lineDelta += newLines.length
+        return {
+          oldStart: beforeStart + 1,
+          newStart: beforeStart + 1 + beforeDelta,
+          lines: [
+            ...originalLines
+              .slice(beforeStart, edit.afterIdx + 1)
+              .map((content) => ({
+                type: 'context' as const,
+                content,
+              })),
+            ...newLines.map((content) => ({
+              type: 'add' as const,
+              content,
+            })),
+            ...originalLines.slice(afterStart, afterEnd).map((content) => ({
+              type: 'context' as const,
+              content,
+            })),
+          ],
+        }
+      }
+      case 'delete': {
+        const oldLineCount = edit.endIdx - edit.startIdx + 1
+        const beforeStart = Math.max(
+          0,
+          edit.startIdx - INLINE_DIFF_CONTEXT_LINES
+        )
+        const afterStart = edit.endIdx + 1
+        const afterEnd = Math.min(
+          originalLines.length,
+          afterStart + INLINE_DIFF_CONTEXT_LINES
+        )
+        const beforeDelta = lineDelta
+        lineDelta -= oldLineCount
+        return {
+          oldStart: beforeStart + 1,
+          newStart: beforeStart + 1 + beforeDelta,
+          lines: [
+            ...originalLines
+              .slice(beforeStart, edit.startIdx)
+              .map((content) => ({
+                type: 'context' as const,
+                content,
+              })),
+            ...Array.from({ length: oldLineCount }, (_, index) => ({
+              type: 'delete' as const,
+              content: originalLines[edit.startIdx + index] ?? '',
+            })),
+            ...originalLines.slice(afterStart, afterEnd).map((content) => ({
+              type: 'context' as const,
+              content,
+            })),
+          ],
+        }
+      }
+    }
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Edit — handler
 // ---------------------------------------------------------------------------
@@ -662,12 +808,15 @@ export const EditHandler = {
       })
 
       const result = `Successfully applied ${edits.length} edit(s) to ${path}`
-      recordFileDiffPresentation(toolOutputRegistry, {
+      toolOutputRegistry.push({
         toolName: 'Edit',
-        path,
-        oldContent: content,
-        newContent,
         result,
+        bodyDisplay: {
+          type: 'inline-diff',
+          fileName: path,
+          patch: patchFromLines(path, inlineDiffHunks(resolved, originalLines)),
+          summary: editSummary(resolved),
+        },
       })
       return result
     }).pipe(

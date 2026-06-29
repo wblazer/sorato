@@ -75,16 +75,18 @@
     </Accordion.Trigger>
 
     <Accordion.Content>
-      {#if shouldRenderPretty && part.bodyDisplay?.type === 'diff'}
-        <ToolDiff display={part.bodyDisplay} />
-      {:else}
-        <ScrollArea
-          orientation="both"
-          class="max-h-64"
-          viewportClass="max-h-64 rounded-none"
-        >
-          <pre class="min-w-max px-2.5 py-3 text-sm">{part.result}</pre>
-        </ScrollArea>
+      {#if accordionValue.includes('content')}
+        {#if shouldRenderPretty && part.bodyDisplay?.type === 'inline-diff'}
+          <ToolDiff display={part.bodyDisplay} cacheKey={part.id} />
+        {:else}
+          <ScrollArea
+            orientation="both"
+            class="max-h-64"
+            viewportClass="max-h-64 rounded-none"
+          >
+            <pre class="min-w-max px-2.5 py-3 text-sm">{part.result}</pre>
+          </ScrollArea>
+        {/if}
       {/if}
     </Accordion.Content>
   </Accordion.Item>

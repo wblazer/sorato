@@ -1,4 +1,3 @@
-import type { FileContents } from '@pierre/diffs'
 import type { MessageIconName } from '@sorato/core/presentation'
 import type { StoredMessageEncoded } from '@sorato/core/message'
 
@@ -263,13 +262,10 @@ export interface ToolResultPart {
 }
 
 /** Structured display payloads for tool results. Absence means render result raw. */
-export type ToolResultDisplay = {
-  type: 'diff'
-  /** Previous file contents, matching @pierre/diffs FileContents. */
-  oldFile: FileContents
-  /** New file contents, matching @pierre/diffs FileContents. */
-  newFile: FileContents
-  /** Precomputed result summary for the combined tool header. */
+export interface ToolResultDisplay {
+  type: 'inline-diff'
+  fileName: string
+  patch: string
   summary: {
     additions: number
     deletions: number
