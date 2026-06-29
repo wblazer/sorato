@@ -881,7 +881,7 @@
           </Button>
         </div>
       {:else}
-        <div class="border-b border-border p-2">
+        <div class="sticky top-0 z-10 border-b border-border bg-background p-2">
           <Button
             variant="outline"
             size="sm"
