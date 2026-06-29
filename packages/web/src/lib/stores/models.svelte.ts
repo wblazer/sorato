@@ -41,13 +41,13 @@ function createModelsStore() {
 
   function recent() {
     return getJson<StoredModelSelection | null>(
-      selectionKey(connectionsStore.activeConnection?.id),
+      selectionKey(connectionsStore.activeConnectionScopeId),
       null
     )
   }
 
   function remember(model: string, options: ModelOptions = {}) {
-    const id = connectionsStore.activeConnection?.id
+    const id = connectionsStore.activeConnectionScopeId
     if (!id) return
     setJson(selectionKey(id), { model, options })
   }

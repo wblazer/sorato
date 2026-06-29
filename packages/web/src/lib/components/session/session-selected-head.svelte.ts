@@ -18,7 +18,7 @@ export class SessionSelectedHeadController {
 
   get selectedHeadStorageKey() {
     return makeSelectedHeadStorageKey(
-      connectionsStore.activeConnection?.id,
+      connectionsStore.activeConnectionScopeId,
       this.sessionId(),
       this.tabId()
     )

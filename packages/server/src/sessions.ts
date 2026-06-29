@@ -94,7 +94,7 @@ const toMessageNodeResponse = (m: MessageNode) =>
     run:
       m.run === null
         ? null
-         : new RunSummaryResponse({
+        : new RunSummaryResponse({
             id: m.run.id,
             status: m.run.status,
             providerId: m.run.providerId,

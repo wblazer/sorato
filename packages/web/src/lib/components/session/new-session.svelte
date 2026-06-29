@@ -34,12 +34,12 @@
   )
   const draftStorageKey = $derived(
     composerDraftStorageKey(
-      connectionsStore.activeConnection?.id,
+      connectionsStore.activeConnectionScopeId,
       tabStore.activeTab?.id,
     ),
   )
   const historyStorageKey = $derived(
-    composerHistoryStorageKey(connectionsStore.activeConnection?.id),
+    composerHistoryStorageKey(connectionsStore.activeConnectionScopeId),
   )
   function handleModel(value: string, options = {}) {
     modelsStore.select(value, options)
@@ -141,7 +141,7 @@
 
       writeSelectedHead(
         selectedHeadStorageKey(
-          connectionsStore.activeConnection?.id,
+          connectionsStore.activeConnectionScopeId,
           session.id,
           tabId,
         ),

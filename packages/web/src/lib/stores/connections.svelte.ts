@@ -12,6 +12,7 @@
  * triggers a session refresh from the new server.
  */
 import { getJson, setJson } from '$lib/storage.js'
+import { Data, Effect } from 'effect'
 
 export interface Connection {
   id: string
@@ -22,17 +23,83 @@ export interface Connection {
   lastUsedAt: number
 }
 
+type NewConnection = Omit<Connection, 'id' | 'createdAt' | 'lastUsedAt'>
+
+export class ConnectionAlreadyExists extends Data.TaggedError(
+  'ConnectionAlreadyExists'
+)<{
+  readonly source: 'integrated'
+  readonly message: string
+}> {}
+
 const STORAGE_KEY = 'connections'
 const ACTIVE_KEY = 'activeConnectionId'
+const INTEGRATED_CONNECTION_SCOPE = 'local-server'
+
+export function connectionScopeId(
+  connection: Pick<Connection, 'id' | 'source'> | null | undefined
+): string | undefined {
+  if (!connection) return undefined
+  return connection.source === 'integrated'
+    ? INTEGRATED_CONNECTION_SCOPE
+    : connection.id
+}
+
+function normalizeInitialState(
+  storedConnections: ReadonlyArray<Connection>,
+  storedActiveConnectionId: string | null
+): {
+  readonly connections: Connection[]
+  readonly activeConnectionId: string | null
+} {
+  let integratedConnection: Connection | null = null
+  let activeIntegratedRemoved = false
+  const connections: Connection[] = []
+
+  for (const connection of storedConnections) {
+    if (connection.source !== 'integrated') {
+      connections.push(connection)
+      continue
+    }
+
+    if (!integratedConnection) {
+      integratedConnection = {
+        ...connection,
+        name: 'Local Server',
+        source: 'integrated',
+      }
+      connections.push(integratedConnection)
+      continue
+    }
+
+    if (storedActiveConnectionId === connection.id)
+      activeIntegratedRemoved = true
+  }
+
+  if (!storedActiveConnectionId) {
+    return { connections, activeConnectionId: null }
+  }
+
+  const hasActiveConnection = connections.some(
+    (connection) => connection.id === storedActiveConnectionId
+  )
+  const activeConnectionId = hasActiveConnection
+    ? storedActiveConnectionId
+    : activeIntegratedRemoved
+      ? (integratedConnection?.id ?? connections[0]?.id ?? null)
+      : (connections[0]?.id ?? null)
+
+  return { connections, activeConnectionId }
+}
 
 function getInitialState(): {
   readonly connections: Connection[]
   readonly activeConnectionId: string | null
 } {
-  return {
-    connections: getJson<Connection[]>(STORAGE_KEY, []),
-    activeConnectionId: getJson<string | null>(ACTIVE_KEY, null),
-  }
+  return normalizeInitialState(
+    getJson<Connection[]>(STORAGE_KEY, []),
+    getJson<string | null>(ACTIVE_KEY, null)
+  )
 }
 
 function createConnectionsStore() {
@@ -56,105 +123,129 @@ function createConnectionsStore() {
 
   // ── Public API ──────────────────────────────────────────────────────
 
-  function add(
-    connection: Omit<Connection, 'id' | 'createdAt' | 'lastUsedAt'>
-  ): Connection {
-    const now = Date.now()
-    const newConnection: Connection = {
-      ...connection,
-      id: crypto.randomUUID(),
-      createdAt: now,
-      lastUsedAt: now,
+  function add(connection: NewConnection) {
+    if (
+      connection.source === 'integrated' &&
+      connections.some((item) => item.source === 'integrated')
+    ) {
+      return Effect.fail(
+        new ConnectionAlreadyExists({
+          source: 'integrated',
+          message: 'Only one local server connection can exist.',
+        })
+      )
     }
-    connections = [...connections, newConnection]
-    // Auto-switch to new connection if it's the first one
-    if (connections.length === 1 || !activeConnectionId) {
-      activeConnectionId = newConnection.id
-    }
-    persist()
-    return newConnection
+
+    return Effect.sync(() => {
+      const now = Date.now()
+      const newConnection: Connection = {
+        ...connection,
+        id: crypto.randomUUID(),
+        createdAt: now,
+        lastUsedAt: now,
+      }
+      connections = [...connections, newConnection]
+      // Auto-switch to new connection if it's the first one
+      if (connections.length === 1 || !activeConnectionId) {
+        activeConnectionId = newConnection.id
+      }
+      persist()
+      return newConnection
+    })
   }
 
-  function upsertIntegrated(url: string): Connection {
-    const now = Date.now()
-    const existing = connections.find(
-      (connection) => connection.source === 'integrated'
-    )
-
-    if (existing) {
-      connections = connections.map((connection) =>
-        connection.id === existing.id
-          ? {
-              ...connection,
-              url,
-              name: 'Local Server',
-              source: 'integrated',
-              lastUsedAt: now,
-            }
-          : connection
+  function upsertIntegrated(url: string): Effect.Effect<Connection> {
+    return Effect.sync(() => {
+      const now = Date.now()
+      const existing = connections.find(
+        (connection) => connection.source === 'integrated'
       )
-      activeConnectionId = existing.id
-      persist()
-      return {
-        ...existing,
+
+      if (existing) {
+        connections = connections.map((connection) =>
+          connection.id === existing.id
+            ? {
+                ...connection,
+                url,
+                name: 'Local Server',
+                source: 'integrated',
+                lastUsedAt: now,
+              }
+            : connection
+        )
+        activeConnectionId = existing.id
+        persist()
+        return {
+          ...existing,
+          url,
+          name: 'Local Server',
+          source: 'integrated',
+          lastUsedAt: now,
+        }
+      }
+
+      const connection: Connection = {
+        id: crypto.randomUUID(),
         url,
         name: 'Local Server',
         source: 'integrated',
+        createdAt: now,
         lastUsedAt: now,
       }
-    }
-
-    const connection = add({
-      url,
-      name: 'Local Server',
-      source: 'integrated',
+      connections = [...connections, connection]
+      activeConnectionId = connection.id
+      persist()
+      return connection
     })
-    activeConnectionId = connection.id
-    persist()
-    return connection
   }
 
   function update(
     id: string,
     updates: Partial<Pick<Connection, 'url' | 'name'>>
-  ): boolean {
-    const index = connections.findIndex((c) => c.id === id)
-    if (index === -1) return false
+  ): Effect.Effect<boolean> {
+    return Effect.sync(() => {
+      const index = connections.findIndex((c) => c.id === id)
+      if (index === -1) return false
 
-    connections = connections.map((c) =>
-      c.id === id ? { ...c, ...updates } : c
-    )
-    persist()
-    return true
+      connections = connections.map((c) =>
+        c.id === id ? { ...c, ...updates } : c
+      )
+      persist()
+      return true
+    })
   }
 
-  function remove(id: string): boolean {
-    const index = connections.findIndex((c) => c.id === id)
-    if (index === -1) return false
+  function remove(id: string): Effect.Effect<boolean> {
+    return Effect.sync(() => {
+      const index = connections.findIndex((c) => c.id === id)
+      if (index === -1) return false
 
-    connections = connections.filter((c) => c.id !== id)
+      connections = connections.filter((c) => c.id !== id)
 
-    // Clear active if we just removed it
-    if (activeConnectionId === id) {
-      activeConnectionId = connections[0]?.id ?? null
-    }
+      // Clear active if we just removed it
+      if (activeConnectionId === id) {
+        activeConnectionId = connections[0]?.id ?? null
+      }
 
-    persist()
-    return true
+      persist()
+      return true
+    })
   }
 
-  function activate(id: string): boolean {
-    const connection = connections.find((c) => c.id === id)
-    if (!connection) return false
+  function activate(id: string): Effect.Effect<boolean> {
+    return Effect.sync(() => {
+      const connection = connections.find((c) => c.id === id)
+      if (!connection) return false
 
-    // Update lastUsedAt for the connection being activated
-    connections = connections.map((c) =>
-      c.id === id ? { ...c, lastUsedAt: Date.now() } : c
-    )
+      // Update lastUsedAt for the connection being activated
+      connections = connections.map((c) =>
+        c.id === id ? { ...c, lastUsedAt: Date.now() } : c
+      )
 
-    activeConnectionId = id
-    persist()
-    return true
+      activeConnectionId = id
+      persist()
+      return true
+    })
   }
 
   function getApiBase(): string {
@@ -171,6 +262,9 @@ function createConnectionsStore() {
     },
     get hasConnections() {
       return connections.length > 0
+    },
+    get activeConnectionScopeId() {
+      return connectionScopeId(activeConnection)
     },
 
     // Actions

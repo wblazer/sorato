@@ -7,20 +7,24 @@
   } from '$lib/components/ui/popover/index.js'
   import {
     canStartIntegratedServer,
+    restartAndConnectIntegratedServer,
     startAndConnectIntegratedServer,
     stopAndRemoveIntegratedServer,
+    type IntegratedServerError,
   } from '$lib/desktop-server.js'
   import { actionStore } from '$lib/stores/actions.svelte.js'
   import {
     connectionsStore,
     type Connection,
   } from '$lib/stores/connections.svelte.js'
+  import ArrowsClockwiseIcon from 'phosphor-svelte/lib/ArrowsClockwiseIcon'
   import DesktopTowerIcon from 'phosphor-svelte/lib/DesktopTowerIcon'
   import DotsThreeIcon from 'phosphor-svelte/lib/DotsThreeIcon'
   import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon'
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
   import TrashIcon from 'phosphor-svelte/lib/TrashIcon'
   import XIcon from 'phosphor-svelte/lib/XIcon'
+  import { Effect } from 'effect'
   import { onMount } from 'svelte'
   import ConnectionDialog from './connection-dialog.svelte'
 
@@ -28,8 +32,13 @@
   let dialogOpen = $state(false)
   let editingConnection = $state<Connection | null>(null)
   let startingIntegratedServer = $state(false)
+  let restartingIntegratedServer = $state(false)
   let stoppingIntegratedServer = $state(false)
   let integratedServerError = $state('')
+  type IntegratedServerAction =
+    | ReturnType<typeof startAndConnectIntegratedServer>
+    | ReturnType<typeof stopAndRemoveIntegratedServer>
+    | ReturnType<typeof restartAndConnectIntegratedServer>
 
   function handleAdd() {
     popoverOpen = false
@@ -45,59 +54,69 @@
 
   function handleSave(data: { url: string; name?: string }) {
     if (editingConnection) {
-      connectionsStore.update(editingConnection.id, data)
+      Effect.runSync(connectionsStore.update(editingConnection.id, data))
     } else {
-      const connection = connectionsStore.add({ ...data, source: 'remote' })
-      connectionsStore.activate(connection.id)
+      const connection = Effect.runSync(
+        connectionsStore.add({ ...data, source: 'remote' }),
+      )
+      Effect.runSync(connectionsStore.activate(connection.id))
     }
     dialogOpen = false
     editingConnection = null
   }
 
-  async function handleStartIntegratedServer() {
+  function runIntegratedServerAction(
+    action: IntegratedServerAction,
+    setPending: (value: boolean) => void,
+  ) {
     integratedServerError = ''
-    startingIntegratedServer = true
-    try {
-      await startAndConnectIntegratedServer()
-    } catch (error) {
-      integratedServerError =
-        error instanceof Error
-          ? error.message
-          : 'Could not start the local server.'
-    } finally {
-      startingIntegratedServer = false
-    }
+    setPending(true)
+    const clearPending = Effect.sync(() => setPending(false))
+    void Effect.runPromise(
+      action.pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            integratedServerError = error.message
+          }),
+        ),
+        Effect.ensuring(clearPending),
+      ),
+    )
   }
 
-  async function handleStopIntegratedServer() {
-    integratedServerError = ''
-    stoppingIntegratedServer = true
-    try {
-      await stopAndRemoveIntegratedServer()
-    } catch (error) {
-      integratedServerError =
-        error instanceof Error
-          ? error.message
-          : 'Could not stop the local server.'
-    } finally {
-      stoppingIntegratedServer = false
-    }
+  function handleStartIntegratedServer() {
+    runIntegratedServerAction(startAndConnectIntegratedServer(), (value) => {
+      startingIntegratedServer = value
+    })
+  }
+
+  function handleStopIntegratedServer() {
+    runIntegratedServerAction(stopAndRemoveIntegratedServer(), (value) => {
+      stoppingIntegratedServer = value
+    })
+  }
+
+  function handleRestartIntegratedServer() {
+    runIntegratedServerAction(restartAndConnectIntegratedServer(), (value) => {
+      restartingIntegratedServer = value
+    })
   }
 
   function handleActivate(id: string) {
-    connectionsStore.activate(id)
+    Effect.runSync(connectionsStore.activate(id))
   }
 
   function handleDelete(id: string) {
-    connectionsStore.remove(id)
+    Effect.runSync(connectionsStore.remove(id))
   }
 
   function displayName(connection: Connection): string {
+    const localServerName = 'Local Server'
     if (
       connection.source === 'integrated' &&
       connection.name === 'Desktop Server'
     ) {
-      return 'Local Server'
+      return localServerName
     }
     return connection.name || connection.url
   }
@@ -233,10 +252,24 @@
                   >
                     {#if isIntegrated(connection)}
                       <Button
+                        variant="ghost"
+                        size="sm"
+                        onclick={handleRestartIntegratedServer}
+                        disabled={restartingIntegratedServer ||
+                          stoppingIntegratedServer}
+                        class="w-full justify-start"
+                      >
+                        <ArrowsClockwiseIcon />
+                        {restartingIntegratedServer
+                          ? 'Restarting…'
+                          : 'Restart Server'}
+                      </Button>
+                      <Button
                         variant="ghost-destructive"
                         size="sm"
                         onclick={handleStopIntegratedServer}
-                        disabled={stoppingIntegratedServer}
+                        disabled={stoppingIntegratedServer ||
+                          restartingIntegratedServer}
                         class="w-full justify-start"
                       >
                         <TrashIcon />

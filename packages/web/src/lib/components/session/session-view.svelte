@@ -102,10 +102,10 @@
       (isFollowingActiveRun || followedStreamingParts.length > 0),
   )
   const draftStorageKey = $derived(
-    composerDraftStorageKey(connectionsStore.activeConnection?.id, tabId),
+    composerDraftStorageKey(connectionsStore.activeConnectionScopeId, tabId),
   )
   const historyStorageKey = $derived(
-    composerHistoryStorageKey(connectionsStore.activeConnection?.id),
+    composerHistoryStorageKey(connectionsStore.activeConnectionScopeId),
   )
 
   const persistedTranscriptItems = $derived.by(() =>

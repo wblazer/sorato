@@ -2,12 +2,14 @@
   import {
     canStartIntegratedServer,
     startAndConnectIntegratedServer,
+    type IntegratedServerError,
   } from '$lib/desktop-server.js'
   import { actionStore } from '$lib/stores/actions.svelte.js'
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
   import CloudIcon from 'phosphor-svelte/lib/CloudIcon'
   import DesktopTowerIcon from 'phosphor-svelte/lib/DesktopTowerIcon'
   import HardDrivesIcon from 'phosphor-svelte/lib/HardDrivesIcon'
+  import { Effect } from 'effect'
   import { onMount } from 'svelte'
   import ConnectionDialog from './connection-dialog.svelte'
 
@@ -16,24 +18,29 @@
   let integratedServerError = $state('')
 
   function handleSave(data: { url: string; name?: string }) {
-    const newConnection = connectionsStore.add({ ...data, source: 'remote' })
-    connectionsStore.activate(newConnection.id)
+    const newConnection = Effect.runSync(
+      connectionsStore.add({ ...data, source: 'remote' }),
+    )
+    Effect.runSync(connectionsStore.activate(newConnection.id))
     dialogOpen = false
   }
 
-  async function handleStartIntegratedServer() {
+  function handleStartIntegratedServer() {
     integratedServerError = ''
     startingIntegratedServer = true
-    try {
-      await startAndConnectIntegratedServer()
-    } catch (error) {
-      integratedServerError =
-        error instanceof Error
-          ? error.message
-          : 'Could not start the local server.'
-    } finally {
+    const clearPending = Effect.sync(() => {
       startingIntegratedServer = false
-    }
+    })
+    void Effect.runPromise(
+      startAndConnectIntegratedServer().pipe(
+        Effect.catch((error: IntegratedServerError) =>
+          Effect.sync(() => {
+            integratedServerError = error.message
+          }),
+        ),
+        Effect.ensuring(clearPending),
+      ),
+    )
   }
 
   onMount(() => {

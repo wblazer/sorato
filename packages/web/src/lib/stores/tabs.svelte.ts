@@ -52,11 +52,11 @@ function createTabStore() {
   const fallbackTabSet = initialTabSet()
 
   function activeConnectionKey(): string {
-    return connectionsStore.activeConnection?.id ?? '__no_connection__'
+    return connectionsStore.activeConnectionScopeId ?? '__no_connection__'
   }
 
   function activeStorageKey(): string | null {
-    const id = connectionsStore.activeConnection?.id
+    const id = connectionsStore.activeConnectionScopeId
     return id ? tabsKey(id) : null
   }
 

@@ -282,13 +282,10 @@ const range = (start: number, count: number) => {
   return `${start},${count}`
 }
 
-const linePrefix = (type: InlineDiffHunkLine['type']) => {
-  switch (type) {
-    case 'add':
-      return '+'
-    case 'delete':
-      return '-'
-    case 'context':
-      return ' '
-  }
-}
+const linePrefixes = {
+  add: '+',
+  delete: '-',
+  context: ' ',
+} satisfies Record<InlineDiffHunkLine['type'], string>
+
+const linePrefix = (type: InlineDiffHunkLine['type']) => linePrefixes[type]

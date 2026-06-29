@@ -1,3 +1,4 @@
+import { startIntegratedServerConnection } from '$lib/desktop-server.js'
 import { authStore } from './auth.svelte.js'
 import { connectionsStore, type Connection } from './connections.svelte.js'
 import { projectStore } from './projects.svelte.js'
@@ -19,15 +20,8 @@ function createAppRuntime() {
   ): Promise<Connection> {
     if (connection.source !== 'integrated') return connection
 
-    if (!window.soratoDesktop) {
-      throw new Error('Local servers are only available in the desktop app.')
-    }
-
     activationMessage = 'Starting local server…'
-    const server = await window.soratoDesktop.startIntegratedServer()
-    const prepared = connectionsStore.upsertIntegrated(server.url)
-
-    return prepared
+    return await Effect.runPromise(startIntegratedServerConnection())
   }
 
   async function activateConnection(connection: Connection) {
