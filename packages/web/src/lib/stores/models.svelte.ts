@@ -75,10 +75,7 @@ function createModelsStore() {
       next.thinkingLevel = options.thinkingLevel
     }
 
-    if (
-      options.mode &&
-      definition.capabilities.modes.includes(options.mode)
-    ) {
+    if (options.mode && definition.capabilities.modes.includes(options.mode)) {
       next.mode = options.mode
     }
 
