@@ -95,10 +95,10 @@
   const messages = $derived(messagesStore.messagesForTab(tabId))
   const tree = $derived(buildMessageTree(messages))
   const activeRuns = $derived(sessionStore.activeRunsFor(sessionId))
-  const selectedPathIds = $derived(
-    pathIdsForHead(messages, selectedHead.renderHead),
-  )
   const selectedHeadValue = $derived(selectedHead.renderHead)
+  const selectedPathIds = $derived.by(() =>
+    pathIdsForTreeHead(messages, selectedHeadValue, activeRuns),
+  )
   const rows = $derived.by(() =>
     flattenRows(tree, activeRuns, selectedPathIds, selectedHeadValue),
   )
@@ -377,6 +377,21 @@
         ? nodeContainsSelectedPath(entry.node)
         : runContainsSelectedPath(entry.run)
     }
+  }
+
+  function pathIdsForTreeHead(
+    messages: ReadonlyArray<MessageNode>,
+    head: SelectedHead,
+    runs: ReadonlyArray<ActiveRun>,
+  ): ReadonlySet<string> {
+    if (head?.type !== 'run') return pathIdsForHead(messages, head)
+
+    const run = runs.find((run) => run.runId === head.runId)
+    if (run?.kind !== 'agent') return pathIdsForHead(messages, head)
+
+    const baseNodeId =
+      latestRunLeaf(messages, run.runId, run.baseNodeId)?.id ?? run.baseNodeId
+    return pathIdsForHead(messages, { ...head, baseNodeId })
   }
 
   function latestRunLeaf(
