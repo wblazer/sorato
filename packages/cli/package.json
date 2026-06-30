@@ -1,0 +1,20 @@
+{
+  "name": "@sorato/cli",
+  "version": "0.0.1",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "module": "src/main.ts",
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "start": "bun run src/main.ts",
+    "test": "echo 'no cli tests yet'"
+  },
+  "dependencies": {
+    "@effect/platform-bun": "4.0.0-beta.74",
+    "effect": "4.0.0-beta.74"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1"
+  }
+}

@@ -25,6 +25,17 @@
         "effect": "4.0.0-beta.74",
       },
     },
+    "packages/cli": {
+      "name": "@sorato/cli",
+      "version": "0.0.1",
+      "dependencies": {
+        "@effect/platform-bun": "4.0.0-beta.74",
+        "effect": "4.0.0-beta.74",
+      },
+      "devDependencies": {
+        "@types/node": "^25.9.1",
+      },
+    },
     "packages/core": {
       "name": "@sorato/core",
       "dependencies": {
@@ -331,6 +342,8 @@
     "@shikijs/vscode-textmate": ["@shikijs/vscode-textmate@10.0.2", "", {}, "sha512-83yeghZ2xxin3Nj8z1NMd/NCuca+gsYXswywDy5bHvwlWL8tpTQmzGeUuHd9FC3E/SBEMvzJRwWEOz5gGes9Qg=="],
 
     "@sorato/api": ["@sorato/api@workspace:packages/api"],
+
+    "@sorato/cli": ["@sorato/cli@workspace:packages/cli"],
 
     "@sorato/core": ["@sorato/core@workspace:packages/core"],
 

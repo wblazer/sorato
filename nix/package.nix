@@ -52,7 +52,7 @@
 
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
-    outputHash = "sha256-y58LvD12BC90ZvP5KL+U8STLEdjxOmit42IUJYH7Z14=";
+    outputHash = "sha256-TxIo7//Lz4GRzrF5XvW+b05D16KEXItuxxyPRO4/B8s=";
   };
 in
   stdenv.mkDerivation {
@@ -92,6 +92,7 @@ in
 
       bun run --filter @sorato/web build
       bun run --filter @sorato/desktop build
+      bun build packages/cli/src/main.ts --target bun --outfile sorato-cli.js
       bun build packages/server/src/main.ts --target bun --outdir server-dist --entry-naming main.js
       runHook postBuild
     '';
@@ -103,22 +104,45 @@ in
         $out/bin \
         $out/share/sorato/server \
         $out/share/sorato/packages/desktop \
-        $out/share/sorato/packages/web
+        $out/share/sorato/packages/web \
+        $out/share/applications \
+        $out/share/icons/hicolor/scalable/apps
 
       cp -r server-dist/. $out/share/sorato/server/
 
       makeWrapper ${bun}/bin/bun $out/bin/sorato-server \
         --add-flags "$out/share/sorato/server/main.js"
 
-      cp packages/desktop/package.json $out/share/sorato/packages/desktop/package.json
-      cp -r packages/desktop/dist-electron $out/share/sorato/packages/desktop/dist-electron
-      cp -r packages/web/build $out/share/sorato/packages/web/build
+      cp sorato-cli.js $out/share/sorato/cli.js
 
-      makeWrapper ${electron}/bin/electron $out/bin/sorato \
+      cp packages/desktop/package.json $out/share/sorato/packages/desktop/package.json
+      cp -r node_modules $out/share/sorato/node_modules
+      cp -r packages/desktop/dist-electron $out/share/sorato/packages/desktop/dist-electron
+      cp -r packages/desktop/node_modules $out/share/sorato/packages/desktop/node_modules
+      cp -r packages/web/build $out/share/sorato/packages/web/build
+      cp packages/web/src/lib/assets/favicon.svg $out/share/icons/hicolor/scalable/apps/sorato.svg
+
+      makeWrapper ${electron}/bin/electron $out/bin/sorato-desktop \
         --add-flags "$out/share/sorato/packages/desktop" \
         --set ELECTRON_SKIP_BINARY_DOWNLOAD 1 \
         --set ELECTRON_BINARY ${electron}/bin/electron \
         --set SORATO_SERVER_BIN $out/bin/sorato-server
+
+      makeWrapper ${bun}/bin/bun $out/bin/sorato \
+        --add-flags "$out/share/sorato/cli.js" \
+        --set SORATO_DESKTOP_BIN $out/bin/sorato-desktop \
+        --set SORATO_SERVER_BIN $out/bin/sorato-server
+
+      cat > $out/share/applications/sorato.desktop <<EOF
+      [Desktop Entry]
+      Type=Application
+      Name=Sorato
+      Comment=Tree-structured coding agent
+      Exec=$out/bin/sorato desktop
+      Icon=sorato
+      Terminal=false
+      Categories=Development;
+      EOF
 
       runHook postInstall
     '';

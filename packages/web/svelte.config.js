@@ -7,6 +7,15 @@ const config = {
       // SPA mode — all routes fall back to index.html
       fallback: 'index.html',
     }),
+    paths: {
+      relative: true,
+    },
+    output: {
+      bundleStrategy: 'inline',
+    },
+    router: {
+      type: 'hash',
+    },
   },
 }
 
