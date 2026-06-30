@@ -11,10 +11,27 @@
     forEachSupportedSystem = f:
       nixpkgs.lib.genAttrs supportedSystems (system:
         f {
+          inherit system;
           pkgs = import nixpkgs {inherit system;};
         });
   in {
-    devShells = forEachSupportedSystem ({pkgs}: {
+    packages = forEachSupportedSystem ({pkgs, ...}: let
+      sorato = pkgs.callPackage ./nix/package.nix {};
+    in {
+      default = sorato;
+      sorato = sorato;
+    });
+
+    apps = forEachSupportedSystem ({system, ...}: {
+      default = {
+        type = "app";
+        program = "${self.packages.${system}.default}/bin/sorato";
+        meta.description = "Run Sorato";
+      };
+      sorato = self.apps.${system}.default;
+    });
+
+    devShells = forEachSupportedSystem ({pkgs, ...}: {
       default = pkgs.mkShell {
         BIOME_BINARY = "${pkgs.biome}/bin/biome";
         ELECTRON_BINARY = "${pkgs.electron}/bin/electron";

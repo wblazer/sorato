@@ -1,5 +1,6 @@
 {
   "name": "@sorato/core",
+  "license": "MIT",
   "type": "module",
   "module": "src/index.ts",
   "exports": {

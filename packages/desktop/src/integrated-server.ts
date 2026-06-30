@@ -38,6 +38,23 @@ function getWorkspaceRoot(): string {
   return resolve(__dirname, '..', '..', '..')
 }
 
+function getServerSpawnOptions(): {
+  readonly command: string
+  readonly args: ReadonlyArray<string>
+  readonly cwd?: string
+} {
+  const packagedServerBin = process.env.SORATO_SERVER_BIN?.trim()
+  if (packagedServerBin) {
+    return { command: packagedServerBin, args: [] }
+  }
+
+  return {
+    command: 'bun',
+    args: ['run', '--filter', '@sorato/server', 'start'],
+    cwd: getWorkspaceRoot(),
+  }
+}
+
 async function waitForHandshake(url: string): Promise<void> {
   const deadline = Date.now() + 15_000
   let lastError: unknown
@@ -67,8 +84,9 @@ export async function startIntegratedServer(): Promise<IntegratedServerResult> {
 
   const port = await getAvailablePort()
   const url = `http://127.0.0.1:${port}`
-  const child = spawn('bun', ['run', '--filter', '@sorato/server', 'start'], {
-    cwd: getWorkspaceRoot(),
+  const server = getServerSpawnOptions()
+  const child = spawn(server.command, [...server.args], {
+    cwd: server.cwd,
     env: {
       ...process.env,
       SORATO_SERVER_HOST: '127.0.0.1',
