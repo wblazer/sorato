@@ -93,7 +93,7 @@ in
       bun run --filter @sorato/web build
       bun run --filter @sorato/desktop build
       bun build packages/cli/src/main.ts --target bun --outfile sorato-cli.js
-      bun build packages/server/src/main.ts --target bun --outdir server-dist --entry-naming main.js
+      bun build packages/server/src/main.ts --target bun --outdir server-dist --entry-naming main.js --external @ff-labs/fff-node
       runHook postBuild
     '';
 
@@ -109,6 +109,10 @@ in
         $out/share/icons/hicolor/scalable/apps
 
       cp -r server-dist/. $out/share/sorato/server/
+      cp -RL packages/server/node_modules $out/share/sorato/server/node_modules
+      for dependencyModules in node_modules/.bun/@ff-labs+fff-node@*/node_modules node_modules/.bun/ffi-rs@*/node_modules; do
+        cp -RL "$dependencyModules"/. $out/share/sorato/server/node_modules/
+      done
 
       makeWrapper ${bun}/bin/bun $out/bin/sorato-server \
         --add-flags "$out/share/sorato/server/main.js"
