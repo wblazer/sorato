@@ -174,6 +174,11 @@ const publishMessagesAppended = Effect.fn('Sessions.publishMessagesAppended')(
     Effect.suspend(() => doPublishMessagesAppended(sessionId))
 )
 
+const publishRunEnd = Effect.fn('Sessions.publishRunEnd')(
+  (sessionId: string, runId: string) =>
+    Effect.suspend(() => doPublishRunEnd(sessionId, runId))
+)
+
 const doRegisterActiveRun = (
   queueId: string,
   runId: string,
@@ -212,6 +217,12 @@ const doRequestRunStop = (sessionId: string) => {
 const doPublishMessagesAppended = (sessionId: string) => {
   return Effect.flatMap(EventBus, (bus) =>
     bus.publish({ _tag: 'MessagesAppended', sessionId })
+  )
+}
+
+const doPublishRunEnd = (sessionId: string, runId: string) => {
+  return Effect.flatMap(EventBus, (bus) =>
+    bus.publish({ _tag: 'RunEnd', sessionId, runId })
   )
 }
 
@@ -405,6 +416,13 @@ function createRunWorker(sessionId: string, queueId: string) {
         ),
         Effect.ensuring(clearActive)
       )
+
+      if (shouldStop(queueId)) {
+        yield* Effect.logInfo('Session run worker stopped after active run')
+        break
+      }
+
+      yield* publishRunEnd(sessionId, request.runId)
     }
   }).pipe(
     Effect.ensuring(releaseSession),
@@ -467,6 +485,8 @@ const appendStoppedQueuedInputs = (
 ) =>
   Effect.forEach(queuedInputs, (queuedRequest) =>
     Effect.gen(function* () {
+      if (queuedRequest.inputs.length === 0) return
+
       const request = yield* resolveRunBase(storage, sessionId, queuedRequest)
       const runId = request.runId
       const [providerId = 'unknown', ...rest] = request.model.split('/')
@@ -534,19 +554,24 @@ const stopWithActiveFibers = Effect.fn('Sessions.stopWithActiveFibers')(
   function* (
     storage: SessionStorageApi,
     sessionId: string,
-    fibers: ReadonlyArray<Fiber.Fiber<void, never>>
+    fibers: ReadonlyArray<Fiber.Fiber<void, never>>,
+    runIds: ReadonlyArray<string>
   ) {
     const queuedInputs = yield* drainQueuedInputsNow(sessionId)
 
     // Interrupt running fibers and wait for them to finish. Each fiber's
     // uninterruptible cleanup persists partial assistant content before
     // terminating.
-    yield* Effect.forEach(fibers, (fiber) => Fiber.interrupt(fiber), {
+    yield* Effect.forEach(fibers, (fiber) => Fiber.interrupt(fiber).pipe(Effect.exit), {
       concurrency: 'unbounded',
+      discard: true,
     })
 
     yield* appendStoppedQueuedInputs(storage, sessionId, queuedInputs)
     if (queuedInputs.length > 0) yield* publishMessagesAppended(sessionId)
+    yield* Effect.forEach(runIds, (runId) => publishRunEnd(sessionId, runId), {
+      discard: true,
+    })
 
     return new StopResponse({ status: 'stopped' })
   }
@@ -559,9 +584,12 @@ const stopSession = Effect.fn('Sessions.stopSession')(function* (
   yield* Effect.logInfo('Session stop request received', { sessionId })
   yield* requestRunStop(sessionId)
   const fibers = getFibers(sessionId)
+  const activeRunIds = getActiveRuns(sessionId).map((run) => run.runId)
   const stopEffect = Match.value(fibers.length).pipe(
     Match.when(0, () => stopWithoutActiveFiber(storage, sessionId)),
-    Match.orElse(() => stopWithActiveFibers(storage, sessionId, fibers))
+    Match.orElse(() =>
+      stopWithActiveFibers(storage, sessionId, fibers, activeRunIds)
+    )
   )
 
   return yield* stopEffect

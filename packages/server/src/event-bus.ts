@@ -84,8 +84,8 @@ export const createBusHook = Effect.fn('EventBus.createBusHook')(function* (
       Effect.gen(function* () {
         switch (event._tag) {
           case 'RunStart':
-            // RunStart/RunEnd lifecycle events are published by run-agent.ts
-            // (which owns the run lifecycle), not the harness hook.
+            // RunStart/RunEnd lifecycle events are published by server run
+            // orchestration, not the harness hook.
             break
           case 'TextDelta':
             yield* bus.publish(

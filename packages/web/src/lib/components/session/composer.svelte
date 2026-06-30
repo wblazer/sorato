@@ -151,15 +151,7 @@
             description: `Retrying in ${retrySeconds ?? 0}s (${sessionStatus.attempt}/${sessionStatus.maxAttempts}).`,
             dismissible: false,
           }
-        : isStopping
-          ? {
-              variant: 'muted' as const,
-              title: 'Stopping current run',
-              description:
-                'Waiting for the server to confirm the stop request.',
-              dismissible: false,
-            }
-          : null,
+        : null,
   )
 
   function selectThinking(level: NonNullable<ModelOptions['thinkingLevel']>) {

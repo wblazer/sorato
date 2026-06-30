@@ -620,8 +620,6 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
   let runFailed = false
   const finalizeRun = Effect.gen(function* () {
     endEventReplay(sessionId, runId, runFailed ? 'failed' : 'completed')
-    const bus = yield* EventBus
-    yield* bus.publish({ _tag: 'RunEnd', sessionId, runId })
   })
 
   return Effect.gen(function* () {

@@ -136,4 +136,25 @@ describe('RunRegistry', () => {
 
     releaseRunQueue(run.queueId)
   })
+
+  it('keeps messages queued onto a stopping run for stop cleanup', () => {
+    resetRunRegistry()
+
+    const first = runRequest('first')
+    const second = { ...runRequest('second'), afterRunId: first.runId }
+
+    const run = enqueueRun('session-1', first)
+    expect(run.status).toBe('started')
+    expect(shiftQueuedRun(run.queueId)).toEqual(first)
+
+    requestStop('session-1')
+
+    expect(enqueueRun('session-1', second, first.runId)).toMatchObject({
+      status: 'queued',
+      runId: second.runId,
+    })
+    expect(drainQueuedRuns('session-1')).toEqual([second])
+
+    releaseRunQueue(run.queueId)
+  })
 })
