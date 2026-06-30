@@ -9,6 +9,7 @@ const MAX_TITLE_CHARS = 100
 
 const defaultTitleModels = [
   'anthropic/claude-haiku-4-5',
+  'openai/gpt-5.4-mini',
   'openai/gpt-5-nano',
 ] satisfies ReadonlyArray<string>
 
@@ -39,7 +40,7 @@ const selectTitleModel = Effect.fn('SessionTitle.selectModel')(function* (
   const cfg = yield* runtimeConfig.get(dir)
   const models = yield* listModels(dir)
   const available = new Set(models.models.map((model) => model.id))
-  return Option.fromNullishOr(cfg.title_model).pipe(
+  const selected = Option.fromNullishOr(cfg.title_model).pipe(
     Option.filter((model) => available.has(model)),
     Option.orElse(() =>
       Option.fromNullishOr(
@@ -47,6 +48,16 @@ const selectTitleModel = Effect.fn('SessionTitle.selectModel')(function* (
       )
     )
   )
+
+  if (Option.isNone(selected)) {
+    yield* Effect.logInfo('No available session title model', {
+      configuredTitleModel: cfg.title_model,
+      defaultTitleModels,
+      availableModels: models.models.map((model) => model.id),
+    })
+  }
+
+  return selected
 })
 
 const generateWithModel = Effect.fn('SessionTitle.generateWithModel')(

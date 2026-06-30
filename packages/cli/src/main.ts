@@ -62,7 +62,4 @@ const cli = Command.make('sorato', {}, runDesktop).pipe(
 const program =
   process.argv.length <= 2 ? runDesktop() : Command.run(cli, { version })
 
-program.pipe(
-  Effect.provide(BunServices.layer),
-  BunRuntime.runMain
-)
+program.pipe(Effect.provide(BunServices.layer), BunRuntime.runMain)
