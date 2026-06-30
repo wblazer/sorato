@@ -618,7 +618,7 @@ const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
 export const runAgent = (sessionId: SessionId, request: RunRequest) => {
   const runId = request.runId
   let runFailed = false
-  const finalizeRun = Effect.gen(function* () {
+  const finalizeRun = Effect.sync(() => {
     endEventReplay(sessionId, runId, runFailed ? 'failed' : 'completed')
   })
 
