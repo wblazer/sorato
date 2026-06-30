@@ -140,9 +140,7 @@
 
   {#if visibleItems.length > 0 || hasMeta || isRunning}
     <div
-      class={visibleItems.length > 0
-        ? 'assistant-meta flex min-h-5 items-center gap-1.5 text-xs/5 text-muted-foreground'
-        : 'assistant-meta flex min-h-5 items-center gap-1.5 text-xs/5 text-muted-foreground'}
+      class="assistant-meta flex min-h-5 items-center gap-1.5 text-xs/5 text-muted-foreground"
       class:assistant-meta-visible={isRunning}
     >
       {#if hasMeta}
@@ -193,6 +191,14 @@
   .assistant-meta {
     opacity: 0;
     transition: opacity 120ms ease;
+  }
+
+  .assistant-transcript-item + .assistant-meta {
+    margin-top: 0.25rem;
+  }
+
+  .assistant-transcript-item[data-transcript-kind='tool'] + .assistant-meta {
+    margin-top: 0.5rem;
   }
 
   .assistant-message:hover .assistant-meta,

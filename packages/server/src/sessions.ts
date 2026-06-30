@@ -562,10 +562,14 @@ const stopWithActiveFibers = Effect.fn('Sessions.stopWithActiveFibers')(
     // Interrupt running fibers and wait for them to finish. Each fiber's
     // uninterruptible cleanup persists partial assistant content before
     // terminating.
-    yield* Effect.forEach(fibers, (fiber) => Fiber.interrupt(fiber).pipe(Effect.exit), {
-      concurrency: 'unbounded',
-      discard: true,
-    })
+    yield* Effect.forEach(
+      fibers,
+      (fiber) => Fiber.interrupt(fiber).pipe(Effect.exit),
+      {
+        concurrency: 'unbounded',
+        discard: true,
+      }
+    )
 
     yield* appendStoppedQueuedInputs(storage, sessionId, queuedInputs)
     if (queuedInputs.length > 0) yield* publishMessagesAppended(sessionId)
