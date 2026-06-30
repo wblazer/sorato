@@ -252,7 +252,10 @@ function createSessionStore() {
    * Create a new session in the selected project.
    * Returns the new session, or null on error.
    */
-  function createSession(projectId?: string, tabId = tabStore.activeTab?.id) {
+  function createSession(
+    projectId?: string,
+    tabId: string | null | undefined = tabStore.activeTab?.id
+  ) {
     return Effect.gen(function* () {
       const resolvedProjectId =
         projectId ??

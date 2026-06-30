@@ -22,6 +22,8 @@
   import {
     composerDraftStorageKey,
     composerHistoryStorageKey,
+    writeComposerDraft,
+    writeComposerDraftAttachments,
   } from '$lib/composer-storage.js'
   import { Effect } from 'effect'
   import type { RunAttachment } from '$lib/types.js'
@@ -120,7 +122,7 @@
       if (!model) return false
 
       const session = await Effect.runPromise(
-        sessionStore.createSession(activeProjectId, tabId),
+        sessionStore.createSession(activeProjectId, null),
       )
       if (!session) return false
 
@@ -138,6 +140,10 @@
         ),
       )
       if (!response) return false
+
+      writeComposerDraft(draftStorageKey, '')
+      writeComposerDraftAttachments(draftStorageKey, [])
+      tabStore.attachSession(tabId, session)
 
       writeSelectedHead(
         selectedHeadStorageKey(
