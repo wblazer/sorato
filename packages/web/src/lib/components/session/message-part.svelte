@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { MessagePart } from '$lib/types.js'
+  import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
   import * as Accordion from '$lib/components/ui/accordion/index.js'
   import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import MessageIcon from './message-icon.svelte'
@@ -17,7 +18,13 @@
     accordionKey: string
   } = $props()
 
-  const accordionValue = $derived(accordionState[accordionKey] ?? ['content'])
+  const defaultAccordionValue = $derived.by(() => {
+    if (part.type !== 'tool-call') return ['content']
+    return clientSettingsStore.shouldExpandTool(part.name) ? ['content'] : []
+  })
+  const accordionValue = $derived(
+    accordionState[accordionKey] ?? defaultAccordionValue,
+  )
 
   function handleAccordionValue(value: string[]) {
     accordionState[accordionKey] = value
