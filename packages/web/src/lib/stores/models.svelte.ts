@@ -8,11 +8,15 @@ import { Effect } from 'effect'
 
 type StoredModelSelection = {
   readonly model: string
-  readonly options: ModelOptions
+  readonly options?: ModelOptions
 }
+
+type StoredModelOptions = Record<string, ModelOptions>
 
 const selectionKey = (id: string | undefined) =>
   storageKey('connection', id, 'model-selection')
+
+const modelOptionsKey = () => storageKey('model-options')
 
 function createModelsStore() {
   let models = $state<AvailableModelsResponse['models']>([])
@@ -46,18 +50,59 @@ function createModelsStore() {
     )
   }
 
-  function remember(model: string, options: ModelOptions = {}) {
+  function modelOptions(model: string) {
+    return getJson<StoredModelOptions>(modelOptionsKey(), {})[model] ?? {}
+  }
+
+  function rememberModelOptions(model: string, options: ModelOptions) {
+    setJson(modelOptionsKey(), {
+      ...getJson<StoredModelOptions>(modelOptionsKey(), {}),
+      [model]: options,
+    })
+  }
+
+  function normalizeOptions(model: string, options: ModelOptions) {
+    const definition = models.find((item) => item.id === model)
+    if (!definition) return options
+
+    const next: ModelOptions = {}
+
+    if (
+      options.thinkingLevel &&
+      definition.capabilities.reasoning &&
+      definition.capabilities.thinkingLevels.includes(options.thinkingLevel)
+    ) {
+      next.thinkingLevel = options.thinkingLevel
+    }
+
+    if (
+      options.mode &&
+      definition.capabilities.modes.includes(options.mode)
+    ) {
+      next.mode = options.mode
+    }
+
+    return next
+  }
+
+  function optionsForSelection(model: string, options?: ModelOptions) {
+    return normalizeOptions(model, options ?? modelOptions(model))
+  }
+
+  function remember(model: string, options?: ModelOptions) {
     const id = connectionsStore.activeConnectionScopeId
     if (!id) return
     setJson(selectionKey(id), { model, options })
   }
 
-  function select(model: string, options: ModelOptions = {}) {
+  function select(model: string, options?: ModelOptions) {
+    const nextOptions = optionsForSelection(model, options)
     preferredModel = model
-    preferredOptions = options
+    preferredOptions = nextOptions
     selectedModel = model
-    selectedOptions = options
-    remember(model, options)
+    selectedOptions = nextOptions
+    remember(model, nextOptions)
+    rememberModelOptions(model, nextOptions)
   }
 
   function resolvePreferred() {
@@ -69,8 +114,8 @@ function createModelsStore() {
     const noPreference = null
     if (!stored) return noPreference
     preferredModel = stored.model
-    preferredOptions = stored.options
-    return stored
+    preferredOptions = optionsForSelection(stored.model, stored.options)
+    return { model: stored.model, options: preferredOptions }
   }
 
   function pick() {
@@ -88,12 +133,12 @@ function createModelsStore() {
 
     if (preferred && ids.has(preferred.model)) {
       selectedModel = preferred.model
-      selectedOptions = preferred.options
+      selectedOptions = optionsForSelection(preferred.model, preferred.options)
       return
     }
 
     selectedModel = pick()
-    selectedOptions = {}
+    selectedOptions = selectedModel ? optionsForSelection(selectedModel) : {}
   }
 
   function displayName(providerId: string, modelId: string) {

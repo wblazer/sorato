@@ -14,7 +14,12 @@
     composerDraftStorageKey,
     composerHistoryStorageKey,
   } from '$lib/composer-storage.js'
-  import type { MessageNode, ModelCall, RunAttachment } from '$lib/types.js'
+  import type {
+    MessageNode,
+    ModelCall,
+    ModelOptions,
+    RunAttachment,
+  } from '$lib/types.js'
   import {
     persistedSources,
     projectTranscript,
@@ -330,7 +335,7 @@
     void Effect.runPromise(sessionStore.stopAgent(sessionId))
   }
 
-  function handleModel(value: string, modelOptions = {}) {
+  function handleModel(value: string, modelOptions?: ModelOptions) {
     modelsStore.select(value, modelOptions)
   }
 

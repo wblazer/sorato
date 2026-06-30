@@ -26,7 +26,7 @@
     writeComposerDraftAttachments,
   } from '$lib/composer-storage.js'
   import { Effect } from 'effect'
-  import type { RunAttachment } from '$lib/types.js'
+  import type { ModelOptions, RunAttachment } from '$lib/types.js'
 
   let sending = $state(false)
   let sessionSearchOpen = $state(false)
@@ -43,7 +43,7 @@
   const historyStorageKey = $derived(
     composerHistoryStorageKey(connectionsStore.activeConnectionScopeId),
   )
-  function handleModel(value: string, options = {}) {
+  function handleModel(value: string, options?: ModelOptions) {
     modelsStore.select(value, options)
   }
 
