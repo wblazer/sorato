@@ -33,6 +33,38 @@ export const ToolResultDisplaySchema = Schema.Struct({
 })
 export type ToolResultDisplay = typeof ToolResultDisplaySchema.Type
 
+const ToolResultErrorLikeSchema = Schema.Struct({
+  message: Schema.String,
+  operation: Schema.optionalKey(Schema.String),
+})
+
+const decodeToolResultErrorLike = Schema.decodeUnknownOption(
+  ToolResultErrorLikeSchema
+)
+
+const safeJsonStringify = (value: unknown): string | undefined => {
+  try {
+    return JSON.stringify(value, null, 2) ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+export const stringifyToolResult = (result: unknown): string => {
+  if (typeof result === 'string') return result
+  if (typeof result === 'number' || typeof result === 'boolean') {
+    return String(result)
+  }
+
+  const errorLike = decodeToolResultErrorLike(result)
+  if (Option.isSome(errorLike)) {
+    const { message, operation } = errorLike.value
+    return operation === undefined ? message : `${operation} failed: ${message}`
+  }
+
+  return safeJsonStringify(result) ?? String(result)
+}
+
 export interface ToolResultPresentation {
   readonly toolName: string
   readonly result: string

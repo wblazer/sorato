@@ -40,7 +40,11 @@ import type {
 
 import { Cause, Effect, Exit, Ref, Stream } from 'effect'
 import { Chat, Prompt } from 'effect/unstable/ai'
-import { ToolOutputRegistry, toolCallHeader } from '../tool/tool-output.ts'
+import {
+  ToolOutputRegistry,
+  stringifyToolResult,
+  toolCallHeader,
+} from '../tool/tool-output.ts'
 
 /** Maximum agent loop iterations to prevent runaway tool-call cycles. */
 const MAX_TURNS = 25
@@ -282,10 +286,7 @@ export const run = <
             const logToolResult = part.isFailure
               ? Effect.logWarning
               : Effect.logDebug
-            const resultText =
-              typeof part.result === 'string'
-                ? part.result
-                : (JSON.stringify(part.result) ?? String(part.result))
+            const resultText = stringifyToolResult(part.result)
             const presentation = toolOutputRegistry.take(part.name, resultText)
             const callHeader = toolCallHeaders.get(part.id)?.header
             const resultHeader = {

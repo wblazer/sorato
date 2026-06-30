@@ -2,6 +2,7 @@ export {
   MessageHeaderDisplaySchema,
   MessageIconNameSchema,
   ToolResultDisplaySchema,
+  stringifyToolResult,
 } from './tool/tool-output.ts'
 export type {
   InlineDiffHunk,

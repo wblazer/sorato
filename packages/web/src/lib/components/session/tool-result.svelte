@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { stringifyToolResult } from '@sorato/core/presentation'
   import { untrack } from 'svelte'
   import type { ToolCallPart, ToolResultPart } from '$lib/types.js'
   import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
@@ -84,7 +85,9 @@
             class="max-h-64"
             viewportClass="max-h-64 rounded-none"
           >
-            <pre class="min-w-max px-2.5 py-3 text-sm">{part.result}</pre>
+            <pre class="min-w-max px-2.5 py-3 text-sm">{stringifyToolResult(
+                part.result,
+              )}</pre>
           </ScrollArea>
         {/if}
       {/if}

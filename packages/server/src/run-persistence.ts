@@ -1,6 +1,7 @@
 import { Prompt } from 'effect/unstable/ai'
 import { Effect, Ref, Schema } from 'effect'
 import type { HarnessEvent, HarnessHook, HarnessResult } from '@sorato/core'
+import { stringifyToolResult } from '@sorato/core/presentation'
 import {
   SessionStorage,
   StorageError,
@@ -53,6 +54,7 @@ const addToolDisplays = (
 
     return {
       ...part,
+      result: stringifyToolResult(part.result),
       ...(headerPresentation?.header !== undefined
         ? { header: headerPresentation.header }
         : {}),

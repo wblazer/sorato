@@ -39,6 +39,7 @@ export {
   MessageIconNameSchema,
   ToolOutputRegistry,
   ToolResultDisplaySchema,
+  stringifyToolResult,
 } from './tool/tool-output.ts'
 export type {
   InlineDiffHunk,
