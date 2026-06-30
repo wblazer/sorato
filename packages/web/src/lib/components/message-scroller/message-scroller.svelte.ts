@@ -23,6 +23,7 @@ type MessageScrollerItemOptions = {
 const defaultScrollEdgeThreshold = 8
 const defaultScrollPreviousItemPeek = 64
 const scrollPositionEpsilon = 0.5
+const defaultFollowBottomThreshold = scrollPositionEpsilon
 const autoscrollingClearDelay = 180
 const userScrollKeys = new Set([
   'ArrowDown',
@@ -228,6 +229,10 @@ class MessageScrollerController {
     return this.options.scrollEdgeThreshold ?? defaultScrollEdgeThreshold
   }
 
+  private get followBottomThreshold() {
+    return defaultFollowBottomThreshold
+  }
+
   private get scrollMargin() {
     return this.options.scrollMargin ?? 0
   }
@@ -369,12 +374,12 @@ class MessageScrollerController {
     }
   }
 
-  private reconcileFollowMode(scrollable: MessageScrollerScrollable) {
-    if (this.autoScroll && !scrollable.end && this.mode !== 'settling-jump') {
+  private reconcileFollowMode(atFollowBottom: boolean) {
+    if (this.autoScroll && atFollowBottom && this.mode !== 'settling-jump') {
       this.mode = 'following-bottom'
     } else if (
       this.mode === 'following-bottom' &&
-      scrollable.end &&
+      !atFollowBottom &&
       !this.autoscrolling
     ) {
       this.mode = 'free-scrolling'
@@ -389,7 +394,14 @@ class MessageScrollerController {
       viewport: this.viewportElement,
     })
 
-    this.reconcileFollowMode(nextState)
+    this.reconcileFollowMode(
+      getMessageScrollerAtEnd({
+        content: this.contentElement,
+        scrollEdgeThreshold: this.followBottomThreshold,
+        spacer: this.spacerElement,
+        viewport: this.viewportElement,
+      })
+    )
     this.scrollable.start = nextState.start
     this.scrollable.end = nextState.end
     this.writeStateAttributes()
@@ -684,6 +696,27 @@ function getMessageScrollerScrollable({
       contentBottom - viewport.scrollTop - viewport.clientHeight >
       scrollEdgeThreshold,
   }
+}
+
+function getMessageScrollerAtEnd({
+  content,
+  scrollEdgeThreshold,
+  spacer,
+  viewport,
+}: {
+  readonly content: HTMLElement | null
+  readonly scrollEdgeThreshold: number
+  readonly spacer: HTMLElement | null
+  readonly viewport: HTMLElement | null
+}) {
+  if (!viewport || !content) return false
+
+  return (
+    getContentBottom({ content, spacer, viewport }) -
+      viewport.scrollTop -
+      viewport.clientHeight <=
+    scrollEdgeThreshold
+  )
 }
 
 function getMessageScrollerItems(
