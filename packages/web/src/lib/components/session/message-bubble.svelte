@@ -30,6 +30,7 @@
     message,
     transcriptItems,
     modelCall = message.modelCall,
+    isRunning = false,
     accordionState,
     accordionKey,
     onEditRetry,
@@ -37,6 +38,7 @@
     message: MessageNode
     transcriptItems?: ReadonlyArray<TranscriptItem>
     modelCall?: ModelCall | null
+    isRunning?: boolean
     accordionState: Record<string, string[]>
     accordionKey: string
     onEditRetry?: (message: MessageNode, text: string) => void
@@ -320,6 +322,7 @@
       <AssistantTranscript
         items={renderParts}
         {modelCall}
+        {isRunning}
         interrupted={assistantInterrupted}
         {accordionState}
         {accordionKey}

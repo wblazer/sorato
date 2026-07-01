@@ -23,6 +23,7 @@
   import {
     persistedSources,
     projectTranscript,
+    streamingSources,
     type TranscriptItem,
   } from '$lib/transcript.js'
   import MessageBubble from './message-bubble.svelte'
@@ -118,6 +119,11 @@
       pretty: clientSettingsStore.prettyTranscript,
     }),
   )
+  const streamingTranscriptItems = $derived.by(() =>
+    projectTranscript(streamingSources(followedStreamingParts), {
+      pretty: clientSettingsStore.prettyTranscript,
+    }),
+  )
 
   type MessageRenderBlock = {
     readonly key: string
@@ -125,6 +131,8 @@
     readonly items: ReadonlyArray<TranscriptItem>
     readonly modelCall: ModelCall | null
     readonly runId: string | null
+    readonly hasStreamingContent: boolean
+    readonly isStreaming: boolean
   }
 
   type SessionVirtualRow =
@@ -190,6 +198,8 @@
               .find((groupMessage) => groupMessage.modelCall !== null)
               ?.modelCall ?? null,
           runId: message.runId,
+          hasStreamingContent: false,
+          isStreaming: false,
         })
         index = cursor - 1
         continue
@@ -201,10 +211,12 @@
         items: transcriptItemsForMessages([message]),
         modelCall: message.modelCall,
         runId: message.runId,
+        hasStreamingContent: false,
+        isStreaming: false,
       })
     }
 
-    return blocks.map((block, index) => {
+    const resolvedBlocks = blocks.map((block, index) => {
       if (block.runId === null) return block
       if (sessionStore.isRunActive(block.runId)) {
         return { ...block, modelCall: null }
@@ -215,7 +227,38 @@
         .some((laterBlock) => laterBlock.runId === block.runId)
       return isLastBlockForRun ? block : { ...block, modelCall: null }
     })
+
+    const shouldMergeStreaming =
+      selectedHeadValue?.type === 'run' &&
+      followedRun?.visibility !== 'background' &&
+      followedRun?.kind !== 'summary' &&
+      (isFollowingActiveRun || followedStreamingParts.length > 0)
+    if (!shouldMergeStreaming) return resolvedBlocks
+
+    const targetIndex = resolvedBlocks.findLastIndex(
+      (block) =>
+        block.runId === selectedHeadValue.runId &&
+        (block.message.encoded.role === 'assistant' ||
+          block.message.encoded.role === 'tool'),
+    )
+    if (targetIndex === -1) return resolvedBlocks
+
+    return resolvedBlocks.map((block, index) =>
+      index === targetIndex
+        ? {
+            ...block,
+            items: [...block.items, ...streamingTranscriptItems],
+            modelCall: null,
+            hasStreamingContent: true,
+            isStreaming: isFollowingActiveRun,
+          }
+        : block,
+    )
   })
+
+  const isStreamingMerged = $derived(
+    messageBlocks.some((block) => block.hasStreamingContent),
+  )
 
   const transcriptRows = $derived.by(
     (): ReadonlyArray<SessionVirtualRow> => [
@@ -224,7 +267,7 @@
         key: `message:${block.key}`,
         block,
       })),
-      ...(showStreamingIndicator
+      ...(showStreamingIndicator && !isStreamingMerged
         ? [{ type: 'streaming' as const, key: 'streaming' }]
         : []),
       ...queuedMessages.map((message) => ({
@@ -457,6 +500,7 @@
                     message={row.block.message}
                     transcriptItems={row.block.items}
                     modelCall={row.block.modelCall}
+                    isRunning={row.block.isStreaming}
                     {accordionState}
                     accordionKey={row.key}
                     onEditRetry={handleEditRetry}
