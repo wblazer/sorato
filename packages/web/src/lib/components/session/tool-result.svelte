@@ -1,6 +1,5 @@
 <script lang="ts">
   import { stringifyToolResult } from '@sorato/core/presentation'
-  import { untrack } from 'svelte'
   import type { ToolCallPart, ToolResultPart } from '$lib/types.js'
   import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
   import * as Accordion from '$lib/components/ui/accordion/index.js'
@@ -28,16 +27,16 @@
   const header = $derived(call?.header ?? part.header)
   const title = $derived(header?.title ?? call?.name ?? `${part.name} Result`)
   const subtitle = $derived(header?.subtitle ?? summary?.fileName)
-  let accordionValue = $state(
-    untrack(() =>
-      clientSettingsStore.shouldExpandTool(call?.name ?? part.name)
-        ? ['content']
-        : [],
-    ),
+  const defaultAccordionValue = $derived(
+    clientSettingsStore.shouldExpandTool(call?.name ?? part.name)
+      ? ['content']
+      : [],
+  )
+  const accordionValue = $derived(
+    accordionState[accordionKey] ?? defaultAccordionValue,
   )
 
   function handleAccordionValue(value: string[]) {
-    accordionValue = value
     accordionState[accordionKey] = value
   }
 </script>
