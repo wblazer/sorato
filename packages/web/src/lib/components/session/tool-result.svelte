@@ -45,22 +45,29 @@
   type="multiple"
   value={accordionValue}
   onValueChange={handleAccordionValue}
-  class="overflow-hidden rounded-md border bg-inset {part.isFailure
-    ? 'border-danger'
-    : 'border-border'}"
+  class="overflow-hidden rounded-md border border-border bg-inset"
 >
   <Accordion.Item value="content" class="bg-inset data-open:bg-inset">
     <Accordion.Trigger
       level={4}
-      class="flex w-full items-center gap-x-2 gap-y-1 border-0 border-b px-2.5 py-2 text-sm font-normal no-underline hover:bg-inset-hover hover:no-underline {part.isFailure
-        ? 'border-danger text-danger-muted-foreground'
-        : 'border-border text-foreground'}"
+      class="flex w-full items-center gap-x-2 gap-y-1 border-0 border-b border-border px-2.5 py-2 text-sm font-normal no-underline hover:no-underline {part.isFailure
+        ? 'bg-danger-muted text-danger-muted-foreground hover:bg-danger-muted-hover data-open:bg-danger-muted'
+        : 'text-foreground hover:bg-inset-hover'}"
     >
       <span class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-        <MessageIcon name={header?.icon} />
+        <MessageIcon
+          name={header?.icon}
+          class={part.isFailure
+            ? 'size-4 shrink-0 text-danger-muted-foreground'
+            : undefined}
+        />
         <span class="font-semibold">{title}</span>
         {#if subtitle}
-          <span class="min-w-0 truncate font-mono text-muted-foreground">
+          <span
+            class="min-w-0 truncate font-mono {part.isFailure
+              ? 'text-danger-muted-foreground/80'
+              : 'text-muted-foreground'}"
+          >
             {subtitle}
           </span>
         {/if}
