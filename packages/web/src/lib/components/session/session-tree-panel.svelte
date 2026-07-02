@@ -781,13 +781,13 @@
       </Tabs.List>
     </div>
 
-    <Tabs.Content value="tree" class="min-h-0 overflow-auto">
+    <Tabs.Content value="tree" class="flex min-h-0 flex-col overflow-hidden">
       {#if messagesStore.loadingForTab(tabId)}
         <LoadingState />
       {:else if rows.length === 0}
         <div class="p-3 text-sm text-muted-foreground">No messages yet.</div>
       {:else if compactMode}
-        <div class="border-b border-border p-2">
+        <div class="shrink-0 border-b border-border p-2">
           <div class="relative flex h-7 items-center justify-center">
             <Button
               variant="ghost"
@@ -803,7 +803,7 @@
             </div>
           </div>
         </div>
-        <div class="border-b border-border">
+        <div class="min-h-0 flex-1 overflow-auto">
           <div class="flex flex-col p-1.5">
             {#each compactRows as row, index (row.id)}
               {@const selected = isCompactSelected(row.id)}
@@ -868,19 +868,17 @@
               </Button>
             {/each}
           </div>
-          <div class="p-2 pt-1">
-            <Button
-              variant="outline"
-              size="sm"
-              class="w-full"
-              disabled={compactStartNodeId === null}
-              onclick={clearCompactSelection}
-            >
-              Clear selection
-            </Button>
-          </div>
         </div>
-        <div class="flex flex-col gap-2 p-2">
+        <div class="flex shrink-0 flex-col gap-2 border-t border-border p-2">
+          <Button
+            variant="outline"
+            size="sm"
+            class="w-full"
+            disabled={compactStartNodeId === null}
+            onclick={clearCompactSelection}
+          >
+            Clear selection
+          </Button>
           <textarea
             class="min-h-20 w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-ring"
             bind:value={compactInstructions}
@@ -896,7 +894,7 @@
           </Button>
         </div>
       {:else}
-        <div class="sticky top-0 z-10 border-b border-border bg-background p-2">
+        <div class="shrink-0 border-b border-border bg-background p-2">
           <Button
             variant="outline"
             size="sm"
@@ -908,7 +906,8 @@
             Compact
           </Button>
         </div>
-        <div class="flex flex-col p-1.5">
+        <div class="min-h-0 flex-1 overflow-auto">
+          <div class="flex flex-col p-1.5">
           {#each rows as row (row.id)}
             {#if row.type === 'node'}
               {@const selected = isSelectedTreeRow(selectedHeadValue, row)}
@@ -1034,6 +1033,7 @@
               </Button>
             {/if}
           {/each}
+        </div>
         </div>
       {/if}
     </Tabs.Content>
