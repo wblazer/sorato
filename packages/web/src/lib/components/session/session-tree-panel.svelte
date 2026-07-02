@@ -7,8 +7,8 @@
   import type { MessageNode } from '$lib/types.js'
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Tabs from '$lib/components/ui/tabs/index.js'
+  import StreamingDots from '$lib/components/ui/streaming-dots.svelte'
   import GitBranchIcon from 'phosphor-svelte/lib/GitBranchIcon'
-  import CircleNotchIcon from 'phosphor-svelte/lib/CircleNotchIcon'
   import FileTextIcon from 'phosphor-svelte/lib/FileTextIcon'
   import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon'
   import {
@@ -763,6 +763,14 @@
   function toolBadgeIcon(tool: ToolCallSummary) {
     return iconForMessageName(tool.icon) ?? roleIcons.tool
   }
+
+  function runIcon(run: ActiveRun) {
+    return run.kind === 'summary' ? roleIcons.summary : roleIcons.assistant
+  }
+
+  function runTone(run: ActiveRun): TreeTone {
+    return run.kind === 'summary' ? 'summary' : 'assistant'
+  }
 </script>
 
 <aside
@@ -985,6 +993,8 @@
                 selectedHeadValue,
                 row.run.runId,
               )}
+              {@const RunIcon = runIcon(row.run)}
+              {@const tone = runTone(row.run)}
               <Button
                 variant="ghost"
                 size="sm"
@@ -1007,28 +1017,21 @@
                 </span>
                 <span
                   class="tree-icon flex size-5 shrink-0 items-center justify-center"
-                  data-tone={row.run.kind === 'summary'
-                    ? 'summary'
-                    : 'assistant'}
+                  data-tone={tone}
                   data-in-path="true"
                   data-parent-connector={row.parentConnector}
                   data-child-connector={row.childConnector}
                   data-active-parent-connector={row.activeParentConnector}
                   data-active-child-connector={row.activeChildConnector}
                 >
-                  <CircleNotchIcon class="size-3.5 animate-spin" />
+                  <RunIcon class="size-3.5" />
                 </span>
-                <span class="flex min-w-0 flex-1 items-center gap-1.5">
-                  <span
-                    class="tree-preview shrink-0 truncate text-sm font-normal text-foreground"
-                    data-tone={row.run.kind === 'summary'
-                      ? 'summary'
-                      : 'assistant'}
-                  >
-                    {row.run.kind === 'summary'
+                <span class="flex min-w-0 flex-1 items-center pl-1 text-muted-foreground/60">
+                  <StreamingDots
+                    label={row.run.kind === 'summary'
                       ? 'Summarizing range'
                       : 'Streaming branch'}
-                  </span>
+                  />
                 </span>
               </Button>
             {/if}
@@ -1118,6 +1121,7 @@
   .tree-preview[data-tone='summary'] {
     --tree-tone: var(--tree-summary);
   }
+
 
   .tree-icon[data-tone='tool'],
   .tree-preview[data-tone='tool'] {

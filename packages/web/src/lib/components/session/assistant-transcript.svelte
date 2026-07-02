@@ -4,6 +4,7 @@
   import type { TranscriptItem } from '$lib/transcript.js'
   import MessagePartComponent from './message-part.svelte'
   import ToolCallResult from './tool-call-result.svelte'
+  import StreamingDots from '$lib/components/ui/streaming-dots.svelte'
 
   let {
     items,
@@ -150,21 +151,7 @@
           <span>{item}</span>
         {/each}
       {:else if isRunning}
-        <span class="sr-only">Streaming</span>
-        <span
-          class="inline-block h-1 w-1 animate-pulse rounded-full bg-muted-foreground/50"
-          aria-hidden="true"
-        ></span>
-        <span
-          class="inline-block h-1 w-1 animate-pulse rounded-full bg-muted-foreground/50"
-          style="animation-delay: 150ms"
-          aria-hidden="true"
-        ></span>
-        <span
-          class="inline-block h-1 w-1 animate-pulse rounded-full bg-muted-foreground/50"
-          style="animation-delay: 300ms"
-          aria-hidden="true"
-        ></span>
+        <StreamingDots class="text-muted-foreground/50" />
       {/if}
     </div>
   {/if}
