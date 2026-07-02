@@ -138,10 +138,9 @@
   )
 
   const itemAccordionKey = (item: TranscriptItem, index: number): string => {
-    if (item.type === 'combined-tool')
-      return `${accordionKey}:tool:${item.call.id}`
+    if (item.type === 'combined-tool') return `tool:${item.call.id}`
     if (item.type === 'message' && 'id' in item.part) {
-      return `${accordionKey}:part:${item.part.type}:${item.part.id}`
+      return `part:${item.part.type}:${item.part.id}`
     }
     return `${accordionKey}:item:${index}`
   }
