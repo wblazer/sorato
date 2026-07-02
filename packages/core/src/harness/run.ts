@@ -46,8 +46,8 @@ import {
   toolCallHeader,
 } from '../tool/tool-output.ts'
 
-/** Maximum agent loop iterations to prevent runaway tool-call cycles. */
-const MAX_TURNS = 25
+/** Emergency fuse for runaway tool-call cycles. Normal runs should never hit this. */
+const MAX_TURNS = 500
 const INTERRUPTED_TOOL_RESULT = 'Tool execution interrupted.'
 
 type RunUsage = HarnessUsage
