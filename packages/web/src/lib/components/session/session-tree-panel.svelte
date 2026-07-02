@@ -50,12 +50,14 @@
   const groupAgentStepsStorageKey = 'sorato.sessionTree.groupAgentSteps'
   let groupAgentSteps = $state(readGroupAgentStepsSetting())
 
-
   onDestroy(() => {
     compactDragCleanup?.()
   })
 
   type ActiveRun = ReturnType<typeof sessionStore.activeRunsFor>[number]
+
+  const isRunPromptMessage = (message: MessageNode): boolean =>
+    message.encoded.role === 'system' || message.encoded.role === 'user'
   type BranchConnector = 'first' | 'middle' | 'last' | null
   type GutterMark = 'blank' | 'vertical' | 'first' | 'middle' | 'last'
 
@@ -150,17 +152,34 @@
     const runsByBase = new Map<string | null, ActiveRun[]>()
     const activeCombinedAgentRunIds = new Set(
       groupAgentSteps
-        ? runs
-            .filter((run) => run.kind === 'agent')
-            .map((run) => run.runId)
+        ? runs.filter((run) => run.kind === 'agent').map((run) => run.runId)
         : [],
     )
     const effectiveRunBase = (run: ActiveRun): string | null => {
-      if (run.kind !== 'agent' || groupAgentSteps) return run.baseNodeId
+      if (run.kind !== 'agent') return run.baseNodeId
+      if (groupAgentSteps) {
+        return (
+          latestRunLeaf(messages, run.runId, run.baseNodeId, isRunPromptMessage)
+            ?.id ?? run.baseNodeId
+        )
+      }
       return (
         latestRunLeaf(messages, run.runId, run.baseNodeId)?.id ?? run.baseNodeId
       )
     }
+
+    const activeGroupedAgentRunIds = new Set(
+      groupAgentSteps
+        ? runs.filter((run) => run.kind === 'agent').map((run) => run.runId)
+        : [],
+    )
+
+    const isActiveGroupedAgentStep = (message: MessageNode): boolean =>
+      groupAgentSteps &&
+      message.runId !== null &&
+      activeGroupedAgentRunIds.has(message.runId) &&
+      message.encoded.role !== 'system' &&
+      message.encoded.role !== 'user'
 
     for (const run of runs) {
       const baseNodeId = effectiveRunBase(run)
@@ -179,9 +198,10 @@
 
     const summarizeCollapsedAgentRun = (
       startNode: MessageTreeNode,
-    ): CollapsedAgentRunSummary | null => {
+    ): CollapsedAgentRunSummary | undefined => {
       const runId = startNode.message.runId
-      if (runId === null || startNode.message.encoded.role !== 'assistant') return null
+      if (runId === null || startNode.message.encoded.role !== 'assistant')
+        return undefined
 
       const coveredNodeIds: string[] = []
       const toolCalls: ToolCallSummary[] = []
@@ -221,7 +241,7 @@
         cursor = next
       }
 
-      if (coveredNodeIds.length <= 1 && toolCallCount === 0) return null
+      if (coveredNodeIds.length <= 1 && toolCallCount === 0) return undefined
 
       return {
         startNodeId: startNode.message.id,
@@ -234,7 +254,6 @@
         displayMessage,
       }
     }
-
 
     const visit = (
       node: MessageTreeNode,
@@ -282,16 +301,35 @@
         return
       }
 
+      if (isActiveGroupedAgentStep(node.message)) {
+        for (const child of node.children) {
+          visit(
+            child,
+            structuralDepth,
+            branchGutters,
+            branchConnector,
+            parentConnector,
+            activeParentConnector,
+            activeBranchVertical,
+            activeBranchHorizontal,
+          )
+        }
+        return
+      }
+
       const collapsedRun =
-        groupAgentSteps && !activeCombinedAgentRunIds.has(node.message.runId ?? '')
+        groupAgentSteps &&
+        !activeCombinedAgentRunIds.has(node.message.runId ?? '')
           ? summarizeCollapsedAgentRun(node)
-          : null
+          : undefined
       const toolExchange =
-        collapsedRun === null ? summarizeAssistantToolExchange(node) : null
+        collapsedRun === undefined ? summarizeAssistantToolExchange(node) : null
       const targetNodeId =
-        collapsedRun?.targetNodeId ?? toolExchange?.targetNodeId ?? node.message.id
-      const coveredNodeIds =
-        collapsedRun?.coveredNodeIds ?? toolExchange?.coveredNodeIds ?? [node.message.id]
+        collapsedRun?.targetNodeId ??
+        toolExchange?.targetNodeId ??
+        node.message.id
+      const coveredNodeIds = collapsedRun?.coveredNodeIds ??
+        toolExchange?.coveredNodeIds ?? [node.message.id]
       const continuationChildren =
         collapsedRun?.continuationChildren ??
         toolExchange?.continuationChildren ??
@@ -303,11 +341,12 @@
         collapsedRun?.resolvedToolResultCount ??
         toolExchange?.resolvedToolResultCount ??
         0
-      const unresolvedToolCallCount =
-        toolCallCount - resolvedToolResultCount
+      const unresolvedToolCallCount = toolCallCount - resolvedToolResultCount
+      const structuralChildren = continuationChildren.filter(
+        (child) => !isActiveGroupedAgentStep(child.message),
+      )
       const childCount =
-        continuationChildren.length +
-        (runsByBase.get(targetNodeId)?.length ?? 0)
+        structuralChildren.length + (runsByBase.get(targetNodeId)?.length ?? 0)
       const nodeInPath = coveredNodeIds.some((id) => selectedPathIds.has(id))
       rows.push({
         type: 'node',
@@ -325,7 +364,7 @@
         message: node.message,
         startNodeId: collapsedRun?.startNodeId ?? node.message.id,
         displayMessage: collapsedRun?.displayMessage ?? node.message,
-        combinedRun: collapsedRun !== null,
+        combinedRun: collapsedRun !== undefined,
         targetNodeId,
         coveredNodeIds,
         childCount,
@@ -351,10 +390,10 @@
               { level: structuralDepth, continues: false, active: false },
             ]
           : branchGuttersForChildren
-      const visibleChildren = continuationChildren.filter(
+      const visibleChildren = structuralChildren.filter(
         (child) => !isToolMessage(child.message),
       )
-      const hiddenToolChildren = continuationChildren.filter((child) =>
+      const hiddenToolChildren = structuralChildren.filter((child) =>
         isToolMessage(child.message),
       )
       const childEntries: ReadonlyArray<
@@ -505,10 +544,12 @@
     messages: ReadonlyArray<MessageNode>,
     runId: string,
     baseNodeId: string | null,
+    includeMessage: (message: MessageNode) => boolean = () => true,
   ): MessageNode | null {
     const runMessages = messages.filter(
       (message) =>
         message.runId === runId &&
+        includeMessage(message) &&
         isDescendantOrSame(messages, message.id, baseNodeId),
     )
     const runIds = new Set(runMessages.map((message) => message.id))
@@ -521,27 +562,7 @@
     const runLeaf = runMessages
       .toReversed()
       .find((message) => !parentIds.has(message.id))
-    if (runLeaf) return runLeaf
-
-    const branchSwitchedRunMessages = messages.filter(
-      (message) => message.runId === runId,
-    )
-    const branchSwitchedRunIds = new Set(
-      branchSwitchedRunMessages.map((message) => message.id),
-    )
-    const branchSwitchedParentIds = new Set(
-      branchSwitchedRunMessages
-        .map((message) => message.parentId)
-        .filter(
-          (id): id is string => id !== null && branchSwitchedRunIds.has(id),
-        ),
-    )
-
-    return (
-      branchSwitchedRunMessages
-        .toReversed()
-        .find((message) => !branchSwitchedParentIds.has(message.id)) ?? null
-    )
+    return runLeaf ?? null
   }
 
   function isDescendantOrSame(
@@ -567,21 +588,25 @@
   function findLinearDescendant(
     node: MessageTreeNode,
     targetNodeId: string,
-  ): MessageTreeNode | null {
+  ): MessageTreeNode | undefined {
     let cursor: MessageTreeNode | undefined = node
     while (cursor) {
       if (cursor.message.id === targetNodeId) return cursor
       cursor = cursor.children.length === 1 ? cursor.children[0] : undefined
     }
-    return null
+    return undefined
   }
 
   function nextAgentTurnNode(
     children: ReadonlyArray<MessageTreeNode>,
     runId: string,
   ): MessageTreeNode | null {
-    const runChildren = children.filter((child) => child.message.runId === runId)
-    const nonToolChild = runChildren.find((child) => !isToolMessage(child.message))
+    const runChildren = children.filter(
+      (child) => child.message.runId === runId,
+    )
+    const nonToolChild = runChildren.find(
+      (child) => !isToolMessage(child.message),
+    )
     return nonToolChild ?? runChildren[0] ?? null
   }
 
@@ -599,7 +624,6 @@
     groupAgentSteps = value
     writeGroupAgentStepsSetting(value)
   }
-
 
   function gutterMarks(row: TreeRow): ReadonlyArray<{
     readonly mark: GutterMark
@@ -944,7 +968,9 @@
       {:else if rows.length === 0}
         <div class="p-3 text-sm text-muted-foreground">No messages yet.</div>
       {:else if compactMode}
-        <div class="shrink-0 space-y-2 border-b border-border bg-background p-2">
+        <div
+          class="shrink-0 space-y-2 border-b border-border bg-background p-2"
+        >
           <div class="relative flex h-7 items-center justify-center">
             <Button
               variant="ghost"
@@ -1066,7 +1092,9 @@
           </Button>
         </div>
       {:else}
-        <div class="shrink-0 space-y-2 border-b border-border bg-background p-2">
+        <div
+          class="shrink-0 space-y-2 border-b border-border bg-background p-2"
+        >
           <Button
             variant="outline"
             size="sm"
@@ -1087,135 +1115,137 @@
         </div>
         <div class="min-h-0 flex-1 overflow-auto">
           <div class="flex flex-col p-1.5">
-          {#each rows as row (row.id)}
-            {#if row.type === 'node'}
-              {@const selected = isSelectedTreeRow(selectedHeadValue, row)}
-              {@const rowInPath = row.coveredNodeIds.some((id) =>
-                selectedPathIds.has(id),
-              )}
-              {@const Icon = nodeIcon(row)}
-              {@const preview = rowPreview(row)}
-              {@const tone = messageTone(row.message)}
-              <Button
-                variant="ghost"
-                size="sm"
-                class="h-auto justify-start gap-0.5 px-1.5 py-0.5 text-left hover:bg-base-hover disabled:opacity-70 {selected
-                  ? 'bg-selected text-foreground hover:bg-selected'
-                  : ''}"
-                title={row.canSelect
-                  ? row.targetNodeId
-                  : 'Tool exchange incomplete'}
-                disabled={!row.canSelect}
-                onclick={() => selectNode(row.targetNodeId)}
-              >
-                <span class="flex shrink-0 self-stretch">
-                  {#each gutterMarks(row) as gutter}
-                    <span
-                      class="tree-gutter"
-                      data-mark={gutter.mark}
-                      data-active-vertical-top={gutter.activeVerticalTop}
-                      data-active-vertical-bottom={gutter.activeVerticalBottom}
-                      data-active-horizontal={gutter.activeHorizontal}
-                    ></span>
-                  {/each}
-                </span>
-                <span
-                  class="tree-icon flex size-5 shrink-0 items-center justify-center"
-                  data-tone={tone}
-                  data-in-path={rowInPath}
-                  data-parent-connector={row.parentConnector}
-                  data-child-connector={row.childConnector}
-                  data-active-parent-connector={row.activeParentConnector}
-                  data-active-child-connector={row.activeChildConnector}
+            {#each rows as row (row.id)}
+              {#if row.type === 'node'}
+                {@const selected = isSelectedTreeRow(selectedHeadValue, row)}
+                {@const rowInPath = row.coveredNodeIds.some((id) =>
+                  selectedPathIds.has(id),
+                )}
+                {@const Icon = nodeIcon(row)}
+                {@const preview = rowPreview(row)}
+                {@const tone = messageTone(row.message)}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="h-auto justify-start gap-0.5 px-1.5 py-0.5 text-left hover:bg-base-hover disabled:opacity-70 {selected
+                    ? 'bg-selected text-foreground hover:bg-selected'
+                    : ''}"
+                  title={row.canSelect
+                    ? row.targetNodeId
+                    : 'Tool exchange incomplete'}
+                  disabled={!row.canSelect}
+                  onclick={() => selectNode(row.targetNodeId)}
                 >
-                  <Icon class="size-3.5" />
-                </span>
-                <span class="flex min-w-0 flex-1 items-center gap-1.5">
-                  {#if preview.length > 0}
-                    <span
-                      class="tree-preview truncate text-sm font-normal text-foreground"
-                      data-tone={tone}
-                    >
-                      {preview}
-                    </span>
-                  {/if}
-                  {#if row.toolCallCount > 0 && !row.combinedRun}
-                    {#each toolBadges(row) as tool}
-                      {@const ToolIcon = toolBadgeIcon(tool)}
+                  <span class="flex shrink-0 self-stretch">
+                    {#each gutterMarks(row) as gutter}
+                      <span
+                        class="tree-gutter"
+                        data-mark={gutter.mark}
+                        data-active-vertical-top={gutter.activeVerticalTop}
+                        data-active-vertical-bottom={gutter.activeVerticalBottom}
+                        data-active-horizontal={gutter.activeHorizontal}
+                      ></span>
+                    {/each}
+                  </span>
+                  <span
+                    class="tree-icon flex size-5 shrink-0 items-center justify-center"
+                    data-tone={tone}
+                    data-in-path={rowInPath}
+                    data-parent-connector={row.parentConnector}
+                    data-child-connector={row.childConnector}
+                    data-active-parent-connector={row.activeParentConnector}
+                    data-active-child-connector={row.activeChildConnector}
+                  >
+                    <Icon class="size-3.5" />
+                  </span>
+                  <span class="flex min-w-0 flex-1 items-center gap-1.5">
+                    {#if preview.length > 0}
+                      <span
+                        class="tree-preview truncate text-sm font-normal text-foreground"
+                        data-tone={tone}
+                      >
+                        {preview}
+                      </span>
+                    {/if}
+                    {#if row.toolCallCount > 0 && !row.combinedRun}
+                      {#each toolBadges(row) as tool}
+                        {@const ToolIcon = toolBadgeIcon(tool)}
+                        <span
+                          class="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-foreground"
+                        >
+                          <ToolIcon class="size-3" />
+                          {tool.name}
+                        </span>
+                      {/each}
+                      {#if row.unresolvedToolCallCount > 0}
+                        <span
+                          class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs text-foreground"
+                        >
+                          {row.unresolvedToolCallCount} pending
+                        </span>
+                      {/if}
+                    {/if}
+                    {#if row.combinedRun && row.toolCallCount > 0}
                       <span
                         class="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-foreground"
                       >
-                        <ToolIcon class="size-3" />
-                        {tool.name}
-                      </span>
-                    {/each}
-                    {#if row.unresolvedToolCallCount > 0}
-                      <span
-                        class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs text-foreground"
-                      >
-                        {row.unresolvedToolCallCount} pending
+                        <WrenchIcon class="size-3" />
+                        {toolCountLabel(row.toolCallCount)}
                       </span>
                     {/if}
-                  {/if}
-                  {#if row.combinedRun && row.toolCallCount > 0}
-                    <span
-                      class="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-foreground"
-                    >
-                      <WrenchIcon class="size-3" />
-                      {toolCountLabel(row.toolCallCount)}
-                    </span>
-                  {/if}
-                </span>
-              </Button>
-            {:else}
-              {@const selected = isSelectedRun(
-                selectedHeadValue,
-                row.run.runId,
-              )}
-              {@const RunIcon = runIcon(row.run)}
-              {@const tone = runTone(row.run)}
-              <Button
-                variant="ghost"
-                size="sm"
-                class="h-auto justify-start gap-0.5 px-1.5 py-0.5 text-left hover:bg-base-hover {selected
-                  ? 'bg-selected text-foreground hover:bg-selected'
-                  : ''}"
-                title={row.run.runId}
-                onclick={() => selectRun(row.run)}
-              >
-                <span class="flex shrink-0 self-stretch">
-                  {#each gutterMarks(row) as gutter}
-                    <span
-                      class="tree-gutter"
-                      data-mark={gutter.mark}
-                      data-active-vertical-top={gutter.activeVerticalTop}
-                      data-active-vertical-bottom={gutter.activeVerticalBottom}
-                      data-active-horizontal={gutter.activeHorizontal}
-                    ></span>
-                  {/each}
-                </span>
-                <span
-                  class="tree-icon flex size-5 shrink-0 items-center justify-center"
-                  data-tone={tone}
-                  data-in-path="true"
-                  data-parent-connector={row.parentConnector}
-                  data-child-connector={row.childConnector}
-                  data-active-parent-connector={row.activeParentConnector}
-                  data-active-child-connector={row.activeChildConnector}
+                  </span>
+                </Button>
+              {:else}
+                {@const selected = isSelectedRun(
+                  selectedHeadValue,
+                  row.run.runId,
+                )}
+                {@const RunIcon = runIcon(row.run)}
+                {@const tone = runTone(row.run)}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="h-auto justify-start gap-0.5 px-1.5 py-0.5 text-left hover:bg-base-hover {selected
+                    ? 'bg-selected text-foreground hover:bg-selected'
+                    : ''}"
+                  title={row.run.runId}
+                  onclick={() => selectRun(row.run)}
                 >
-                  <RunIcon class="size-3.5" />
-                </span>
-                <span class="flex min-w-0 flex-1 items-center pl-1 text-muted-foreground/60">
-                  <StreamingDots
-                    label={row.run.kind === 'summary'
-                      ? 'Summarizing range'
-                      : 'Streaming branch'}
-                  />
-                </span>
-              </Button>
-            {/if}
-          {/each}
-        </div>
+                  <span class="flex shrink-0 self-stretch">
+                    {#each gutterMarks(row) as gutter}
+                      <span
+                        class="tree-gutter"
+                        data-mark={gutter.mark}
+                        data-active-vertical-top={gutter.activeVerticalTop}
+                        data-active-vertical-bottom={gutter.activeVerticalBottom}
+                        data-active-horizontal={gutter.activeHorizontal}
+                      ></span>
+                    {/each}
+                  </span>
+                  <span
+                    class="tree-icon flex size-5 shrink-0 items-center justify-center"
+                    data-tone={tone}
+                    data-in-path="true"
+                    data-parent-connector={row.parentConnector}
+                    data-child-connector={row.childConnector}
+                    data-active-parent-connector={row.activeParentConnector}
+                    data-active-child-connector={row.activeChildConnector}
+                  >
+                    <RunIcon class="size-3.5" />
+                  </span>
+                  <span
+                    class="flex min-w-0 flex-1 items-center pl-1 text-muted-foreground/60"
+                  >
+                    <StreamingDots
+                      label={row.run.kind === 'summary'
+                        ? 'Summarizing range'
+                        : 'Streaming branch'}
+                    />
+                  </span>
+                </Button>
+              {/if}
+            {/each}
+          </div>
         </div>
       {/if}
     </Tabs.Content>
@@ -1300,7 +1330,6 @@
   .tree-preview[data-tone='summary'] {
     --tree-tone: var(--tree-summary);
   }
-
 
   .tree-icon[data-tone='tool'],
   .tree-preview[data-tone='tool'] {

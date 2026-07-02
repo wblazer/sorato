@@ -50,7 +50,7 @@ import {
 import { modelLayer, resolveModel } from './model-catalog.ts'
 import { dataDir } from './data-dir.ts'
 import { createPersistenceHook } from './run-persistence.ts'
-import type { RunRequest } from './run-registry.ts'
+import { updateActiveRunBase, type RunRequest } from './run-registry.ts'
 import { generateSessionTitle } from './session-title.ts'
 import { getAuth } from './provider-auth.ts'
 import type { BillingMode } from './session/session.ts'
@@ -995,6 +995,13 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                           summaryContent: summary.trim(),
                         })
                         yield* Ref.set(appendBaseRef, result.headNodeId)
+                        updateActiveRunBase(runId, result.headNodeId)
+                        yield* bus.publish({
+                          _tag: 'RunBaseUpdated',
+                          sessionId,
+                          runId,
+                          baseNodeId: result.headNodeId,
+                        })
                         yield* bus.publish({
                           _tag: 'MessagesAppended',
                           sessionId,

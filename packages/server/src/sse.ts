@@ -61,6 +61,7 @@ const formatEvent = Match.type<ServerEvent>().pipe(
     RunRetrying: formatLifecycleEvent,
     RunStart: formatLifecycleEvent,
     SessionUpdated: formatLifecycleEvent,
+    RunBaseUpdated: formatLifecycleEvent,
     ReplayReset: formatLifecycleEvent,
     ReasoningDelta: formatContentEvent,
     TextDelta: formatContentEvent,
@@ -125,6 +126,7 @@ const liveRunStream = (
               ? []
               : [formatEvent(event)],
           SessionUpdated: (event) => [formatEvent(event)],
+          RunBaseUpdated: (event) => [formatEvent(event)],
           ReplayReset: (event) => [formatEvent(event)],
           ReasoningDelta: formatRunContentEvent,
           TextDelta: formatRunContentEvent,

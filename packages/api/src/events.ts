@@ -57,6 +57,11 @@ export const ServerEvent = Schema.Union([
     parentRunId: Schema.optional(Schema.String),
     toolCallId: Schema.optional(Schema.String),
   }),
+  Schema.TaggedStruct('RunBaseUpdated', {
+    sessionId: Schema.String,
+    runId: Schema.String,
+    baseNodeId: Schema.NullOr(Schema.String),
+  }),
   Schema.TaggedStruct('RunEnd', {
     sessionId: Schema.String,
     runId: Schema.String,

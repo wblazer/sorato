@@ -21,6 +21,7 @@ const EVENT_TAGS = [
   'ToolResult',
   'RunStart',
   'RunEnd',
+  'RunBaseUpdated',
   'RunRetrying',
   'RunFailed',
   'ReplayReset',

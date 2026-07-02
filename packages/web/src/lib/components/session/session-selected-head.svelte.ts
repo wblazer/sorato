@@ -140,6 +140,13 @@ export class SessionSelectedHeadController {
           this.selectedHead?.type === 'run' &&
           this.selectedHead.runId === runStart.runId
         ) {
+          if (this.selectedHead.baseNodeId !== runStart.baseNodeId) {
+            this.setSelectedHead({
+              type: 'run',
+              runId: runStart.runId,
+              baseNodeId: runStart.baseNodeId,
+            })
+          }
           return
         }
 
@@ -248,10 +255,16 @@ function selectedMessages(
   if (head === null) return []
   if (head.type === 'node') return selectedMessagePath(messages, head.nodeId)
 
-  return [
-    ...selectedMessagePath(messages, head.baseNodeId),
-    ...messages.filter((message) => message.runId === head.runId),
-  ]
+  const path = selectedMessagePath(messages, head.baseNodeId)
+  const pathIds = new Set(path.map((message) => message.id))
+  const runMessages = messages.filter(
+    (message) =>
+      message.runId === head.runId &&
+      !pathIds.has(message.id) &&
+      isDescendantOrSame(messages, message.id, head.baseNodeId)
+  )
+
+  return [...path, ...runMessages]
 }
 
 function isDescendantOrSame(
@@ -305,25 +318,10 @@ function finalPersistedRunNode(
       (message) =>
         message.runId === runId &&
         message.kind === 'summary' &&
-        !isOptimisticNode(message)
+        !isOptimisticNode(message) &&
+        isDescendantOrSame(messages, message.id, baseNodeId)
     )
   if (summaryNode) return deepestDescendantLeaf(messages, summaryNode.id)
-
-  const branchSwitchedRunMessages = messages.filter(
-    (message) => message.runId === runId && !isOptimisticNode(message)
-  )
-  const branchSwitchedRunIds = new Set(
-    branchSwitchedRunMessages.map((message) => message.id)
-  )
-  const branchSwitchedParentIds = new Set(
-    branchSwitchedRunMessages
-      .map((message) => message.parentId)
-      .filter((id): id is string => id !== null && branchSwitchedRunIds.has(id))
-  )
-  const latestRunLeaf = branchSwitchedRunMessages
-    .toReversed()
-    .find((message) => !branchSwitchedParentIds.has(message.id))
-  if (latestRunLeaf) return latestRunLeaf
 
   const runMessages = messages.filter(
     (message) =>

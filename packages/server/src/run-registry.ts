@@ -149,6 +149,16 @@ export function registerActiveFiber(
   runQueues.set(runId, queueId)
 }
 
+export function updateActiveRunBase(
+  runId: string,
+  baseNodeId: string | null
+): void {
+  const queueId = runQueues.get(runId)
+  const state = queueId ? queues.get(queueId) : undefined
+  if (!state || state.activeRunId !== runId) return
+  state.activeBaseNodeId = baseNodeId
+}
+
 export function clearActiveFiber(queueId: string): void {
   const state = queues.get(queueId)
   if (!state) return

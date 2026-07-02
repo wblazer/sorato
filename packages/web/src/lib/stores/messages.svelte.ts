@@ -224,6 +224,11 @@ function createMessagesStore() {
                 )
                 break
 
+              case 'RunBaseUpdated':
+                streamedRunBaseNodeId = event.baseNodeId
+                void Effect.runPromise(refreshMessages(tabId, sessionId))
+                break
+
               case 'MessagesAppended':
                 break
 
@@ -284,6 +289,7 @@ function createMessagesStore() {
               case 'MessagesAppended':
               case 'RunRetrying':
               case 'SessionUpdated':
+              case 'RunBaseUpdated':
                 break
             }
           })
@@ -636,6 +642,11 @@ function createMessagesStore() {
             clearStreamingPartsForRun: event.runId,
           })
         )
+      }
+    }
+    if (event._tag === 'RunBaseUpdated') {
+      for (const tabId of loadedTabsForSession(event.sessionId)) {
+        void Effect.runPromise(refreshMessages(tabId, event.sessionId))
       }
     }
     if (event._tag === 'RunEnd') {

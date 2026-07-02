@@ -141,6 +141,24 @@ function createSessionStore() {
         next.delete(event.sessionId)
         sessionStatuses = next
       }
+    } else if (event._tag === 'RunBaseUpdated') {
+      const existing = activeRuns.get(event.runId)
+      if (existing) {
+        const nextActiveRuns = new Map(activeRuns)
+        nextActiveRuns.set(event.runId, {
+          ...existing,
+          baseNodeId: event.baseNodeId,
+        })
+        activeRuns = nextActiveRuns
+      }
+
+      if (latestRunStart?.runId === event.runId) {
+        latestRunStart = {
+          ...latestRunStart,
+          baseNodeId: event.baseNodeId,
+          sequence: ++runStartSequence,
+        }
+      }
     } else if (event._tag === 'RunRetrying') {
       const next = new Map(sessionStatuses)
       next.set(event.sessionId, {
