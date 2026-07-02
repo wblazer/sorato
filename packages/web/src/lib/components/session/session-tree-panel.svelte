@@ -6,11 +6,13 @@
   import type { SelectedHead } from '$lib/selected-head-storage.js'
   import type { MessageNode } from '$lib/types.js'
   import { Button } from '$lib/components/ui/button/index.js'
+  import { Checkbox } from '$lib/components/ui/checkbox/index.js'
   import * as Tabs from '$lib/components/ui/tabs/index.js'
   import StreamingDots from '$lib/components/ui/streaming-dots.svelte'
   import GitBranchIcon from 'phosphor-svelte/lib/GitBranchIcon'
   import FileTextIcon from 'phosphor-svelte/lib/FileTextIcon'
   import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon'
+  import WrenchIcon from 'phosphor-svelte/lib/WrenchIcon'
   import {
     buildMessageTree,
     messageNarrativePreview,
@@ -45,6 +47,9 @@
   let compactInstructions = $state('')
   let compactDragCleanup: (() => void) | null = null
   let compactDragFixedNodeId = $state<string | null>(null)
+  const groupAgentStepsStorageKey = 'sorato.sessionTree.groupAgentSteps'
+  let groupAgentSteps = $state(readGroupAgentStepsSetting())
+
 
   onDestroy(() => {
     compactDragCleanup?.()
@@ -73,6 +78,17 @@
     readonly activeBranchHorizontal: boolean
   }
 
+  interface CollapsedAgentRunSummary {
+    readonly startNodeId: string
+    readonly targetNodeId: string
+    readonly coveredNodeIds: ReadonlyArray<string>
+    readonly continuationChildren: ReadonlyArray<MessageTreeNode>
+    readonly toolCallCount: number
+    readonly toolCalls: ReadonlyArray<ToolCallSummary>
+    readonly resolvedToolResultCount: number
+    readonly displayMessage: MessageNode
+  }
+
   type TreeRow =
     | ({
         readonly type: 'node'
@@ -80,6 +96,9 @@
         readonly message: MessageNode
         readonly targetNodeId: string
         readonly coveredNodeIds: ReadonlyArray<string>
+        readonly startNodeId: string
+        readonly displayMessage: MessageNode
+        readonly combinedRun: boolean
         readonly childCount: number
         readonly toolCallCount: number
         readonly toolCalls: ReadonlyArray<ToolCallSummary>
@@ -100,7 +119,13 @@
     pathIdsForTreeHead(messages, selectedHeadValue, activeRuns),
   )
   const rows = $derived.by(() =>
-    flattenRows(tree, activeRuns, selectedPathIds, selectedHeadValue),
+    flattenRows(
+      tree,
+      activeRuns,
+      selectedPathIds,
+      selectedHeadValue,
+      groupAgentSteps,
+    ),
   )
   const compactRows = $derived.by(() =>
     rows.filter(
@@ -119,11 +144,19 @@
     runs: ReadonlyArray<ActiveRun>,
     selectedPathIds: ReadonlySet<string>,
     selectedHead: SelectedHead,
+    groupAgentSteps: boolean,
   ): ReadonlyArray<TreeRow> {
     const rows: TreeRow[] = []
     const runsByBase = new Map<string | null, ActiveRun[]>()
+    const activeCombinedAgentRunIds = new Set(
+      groupAgentSteps
+        ? runs
+            .filter((run) => run.kind === 'agent')
+            .map((run) => run.runId)
+        : [],
+    )
     const effectiveRunBase = (run: ActiveRun): string | null => {
-      if (run.kind !== 'agent') return run.baseNodeId
+      if (run.kind !== 'agent' || groupAgentSteps) return run.baseNodeId
       return (
         latestRunLeaf(messages, run.runId, run.baseNodeId)?.id ?? run.baseNodeId
       )
@@ -143,6 +176,65 @@
 
     const runContainsSelectedPath = (run: ActiveRun): boolean =>
       selectedHead?.type === 'run' && selectedHead.runId === run.runId
+
+    const summarizeCollapsedAgentRun = (
+      startNode: MessageTreeNode,
+    ): CollapsedAgentRunSummary | null => {
+      const runId = startNode.message.runId
+      if (runId === null || startNode.message.encoded.role !== 'assistant') return null
+
+      const coveredNodeIds: string[] = []
+      const toolCalls: ToolCallSummary[] = []
+      let toolCallCount = 0
+      let resolvedToolResultCount = 0
+      let cursor: MessageTreeNode = startNode
+      let displayMessage = startNode.message
+
+      while (true) {
+        coveredNodeIds.push(cursor.message.id)
+        if (!isToolMessage(cursor.message)) displayMessage = cursor.message
+
+        const toolExchange = summarizeAssistantToolExchange(cursor)
+        if (toolExchange !== null) {
+          toolCallCount += toolExchange.toolCallCount
+          resolvedToolResultCount += toolExchange.resolvedToolResultCount
+          toolCalls.push(...toolExchange.toolCalls)
+          for (const coveredNodeId of toolExchange.coveredNodeIds.slice(1)) {
+            coveredNodeIds.push(coveredNodeId)
+          }
+          const targetNode = findLinearDescendant(
+            cursor,
+            toolExchange.targetNodeId,
+          )
+          if (!targetNode) break
+          const next = nextAgentTurnNode(targetNode.children, runId)
+          if (!next) {
+            cursor = targetNode
+            break
+          }
+          cursor = next
+          continue
+        }
+
+        const next = nextAgentTurnNode(cursor.children, runId)
+        if (!next) break
+        cursor = next
+      }
+
+      if (coveredNodeIds.length <= 1 && toolCallCount === 0) return null
+
+      return {
+        startNodeId: startNode.message.id,
+        targetNodeId: cursor.message.id,
+        coveredNodeIds,
+        continuationChildren: cursor.children,
+        toolCallCount,
+        toolCalls,
+        resolvedToolResultCount,
+        displayMessage,
+      }
+    }
+
 
     const visit = (
       node: MessageTreeNode,
@@ -190,17 +282,29 @@
         return
       }
 
-      const toolExchange = summarizeAssistantToolExchange(node)
-      const targetNodeId = toolExchange?.targetNodeId ?? node.message.id
-      const coveredNodeIds = toolExchange?.coveredNodeIds ?? [node.message.id]
+      const collapsedRun =
+        groupAgentSteps && !activeCombinedAgentRunIds.has(node.message.runId ?? '')
+          ? summarizeCollapsedAgentRun(node)
+          : null
+      const toolExchange =
+        collapsedRun === null ? summarizeAssistantToolExchange(node) : null
+      const targetNodeId =
+        collapsedRun?.targetNodeId ?? toolExchange?.targetNodeId ?? node.message.id
+      const coveredNodeIds =
+        collapsedRun?.coveredNodeIds ?? toolExchange?.coveredNodeIds ?? [node.message.id]
       const continuationChildren =
-        toolExchange?.continuationChildren ?? node.children
-      const toolCallCount = toolExchange?.toolCallCount ?? 0
-      const toolCalls = toolExchange?.toolCalls ?? []
+        collapsedRun?.continuationChildren ??
+        toolExchange?.continuationChildren ??
+        node.children
+      const toolCallCount =
+        collapsedRun?.toolCallCount ?? toolExchange?.toolCallCount ?? 0
+      const toolCalls = collapsedRun?.toolCalls ?? toolExchange?.toolCalls ?? []
+      const resolvedToolResultCount =
+        collapsedRun?.resolvedToolResultCount ??
+        toolExchange?.resolvedToolResultCount ??
+        0
       const unresolvedToolCallCount =
-        toolExchange === null
-          ? 0
-          : toolExchange.toolCallCount - toolExchange.resolvedToolResultCount
+        toolCallCount - resolvedToolResultCount
       const childCount =
         continuationChildren.length +
         (runsByBase.get(targetNodeId)?.length ?? 0)
@@ -219,6 +323,9 @@
         activeBranchVertical,
         activeBranchHorizontal,
         message: node.message,
+        startNodeId: collapsedRun?.startNodeId ?? node.message.id,
+        displayMessage: collapsedRun?.displayMessage ?? node.message,
+        combinedRun: collapsedRun !== null,
         targetNodeId,
         coveredNodeIds,
         childCount,
@@ -457,6 +564,43 @@
     return false
   }
 
+  function findLinearDescendant(
+    node: MessageTreeNode,
+    targetNodeId: string,
+  ): MessageTreeNode | null {
+    let cursor: MessageTreeNode | undefined = node
+    while (cursor) {
+      if (cursor.message.id === targetNodeId) return cursor
+      cursor = cursor.children.length === 1 ? cursor.children[0] : undefined
+    }
+    return null
+  }
+
+  function nextAgentTurnNode(
+    children: ReadonlyArray<MessageTreeNode>,
+    runId: string,
+  ): MessageTreeNode | null {
+    const runChildren = children.filter((child) => child.message.runId === runId)
+    const nonToolChild = runChildren.find((child) => !isToolMessage(child.message))
+    return nonToolChild ?? runChildren[0] ?? null
+  }
+
+  function readGroupAgentStepsSetting() {
+    if (typeof localStorage === 'undefined') return true
+    return localStorage.getItem(groupAgentStepsStorageKey) !== 'false'
+  }
+
+  function writeGroupAgentStepsSetting(value: boolean) {
+    if (typeof localStorage === 'undefined') return
+    localStorage.setItem(groupAgentStepsStorageKey, String(value))
+  }
+
+  function setGroupAgentSteps(value: boolean) {
+    groupAgentSteps = value
+    writeGroupAgentStepsSetting(value)
+  }
+
+
   function gutterMarks(row: TreeRow): ReadonlyArray<{
     readonly mark: GutterMark
     readonly activeVerticalTop: boolean
@@ -685,7 +829,7 @@
     if (start < 0 || end < 0) return
     const startRow = compactRows[Math.min(start, end)]
     const endRow = compactRows[Math.max(start, end)]
-    const startNodeId = startRow?.message.id
+    const startNodeId = startRow?.startNodeId
     const orderedEndNodeId = endRow?.targetNodeId
     if (!startNodeId || !orderedEndNodeId) return
 
@@ -729,12 +873,17 @@
   }
 
   function rowPreview(row: Extract<TreeRow, { type: 'node' }>) {
+    if (row.combinedRun) return messageNarrativePreview(row.displayMessage)
     if (row.toolCallCount === 0) return messagePreview(row.message)
     return messageNarrativePreview(row.message)
   }
 
   function toolBadges(row: Extract<TreeRow, { type: 'node' }>) {
     return row.toolCalls
+  }
+
+  function toolCountLabel(count: number) {
+    return count === 1 ? '1 tool' : `${count} tools`
   }
 
   type TreeTone = 'user' | 'assistant' | 'tool' | 'system' | 'summary'
@@ -795,7 +944,7 @@
       {:else if rows.length === 0}
         <div class="p-3 text-sm text-muted-foreground">No messages yet.</div>
       {:else if compactMode}
-        <div class="shrink-0 border-b border-border p-2">
+        <div class="shrink-0 space-y-2 border-b border-border bg-background p-2">
           <div class="relative flex h-7 items-center justify-center">
             <Button
               variant="ghost"
@@ -810,6 +959,13 @@
               Select a range to compact
             </div>
           </div>
+          <label class="flex items-center gap-2 text-sm text-foreground">
+            <Checkbox
+              checked={groupAgentSteps}
+              onCheckedChange={setGroupAgentSteps}
+            />
+            <span>Group agent steps</span>
+          </label>
         </div>
         <div class="min-h-0 flex-1 overflow-auto">
           <div class="flex flex-col p-1.5">
@@ -854,7 +1010,7 @@
                       {preview}
                     </span>
                   {/if}
-                  {#if row.toolCallCount > 0}
+                  {#if row.toolCallCount > 0 && !row.combinedRun}
                     {#each toolBadges(row) as tool}
                       {@const ToolIcon = toolBadgeIcon(tool)}
                       <span
@@ -871,6 +1027,14 @@
                         {row.unresolvedToolCallCount} pending
                       </span>
                     {/if}
+                  {/if}
+                  {#if row.combinedRun && row.toolCallCount > 0}
+                    <span
+                      class="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-foreground"
+                    >
+                      <WrenchIcon class="size-3" />
+                      {toolCountLabel(row.toolCallCount)}
+                    </span>
                   {/if}
                 </span>
               </Button>
@@ -902,7 +1066,7 @@
           </Button>
         </div>
       {:else}
-        <div class="shrink-0 border-b border-border bg-background p-2">
+        <div class="shrink-0 space-y-2 border-b border-border bg-background p-2">
           <Button
             variant="outline"
             size="sm"
@@ -913,6 +1077,13 @@
             <FileTextIcon class="size-3.5" />
             Compact
           </Button>
+          <label class="flex items-center gap-2 text-sm text-foreground">
+            <Checkbox
+              checked={groupAgentSteps}
+              onCheckedChange={setGroupAgentSteps}
+            />
+            <span>Group agent steps</span>
+          </label>
         </div>
         <div class="min-h-0 flex-1 overflow-auto">
           <div class="flex flex-col p-1.5">
@@ -968,7 +1139,7 @@
                       {preview}
                     </span>
                   {/if}
-                  {#if row.toolCallCount > 0}
+                  {#if row.toolCallCount > 0 && !row.combinedRun}
                     {#each toolBadges(row) as tool}
                       {@const ToolIcon = toolBadgeIcon(tool)}
                       <span
@@ -985,6 +1156,14 @@
                         {row.unresolvedToolCallCount} pending
                       </span>
                     {/if}
+                  {/if}
+                  {#if row.combinedRun && row.toolCallCount > 0}
+                    <span
+                      class="inline-flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs text-foreground"
+                    >
+                      <WrenchIcon class="size-3" />
+                      {toolCountLabel(row.toolCallCount)}
+                    </span>
                   {/if}
                 </span>
               </Button>
