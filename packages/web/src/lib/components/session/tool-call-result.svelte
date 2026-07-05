@@ -27,7 +27,9 @@
     <div
       class="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-2.5 py-2 text-sm text-foreground"
     >
-      <CircleNotchIcon class="size-4 shrink-0 animate-spin text-muted-foreground" />
+      <CircleNotchIcon
+        class="size-4 shrink-0 animate-spin text-muted-foreground"
+      />
       <span class="font-semibold">{title}</span>
       {#if subtitle}
         <span class="min-w-0 truncate font-mono text-muted-foreground">

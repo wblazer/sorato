@@ -1,18 +1,30 @@
 import { BunRuntime, BunServices } from '@effect/platform-bun'
 import { spawn } from 'node:child_process'
 import { Command } from 'effect/unstable/cli'
-import { Effect } from 'effect'
+import { Data, Effect } from 'effect'
 
 const version = '0.0.1'
 
+class ProcessError extends Data.TaggedError('ProcessError')<{
+  readonly command: string
+  readonly message: string
+  readonly cause?: Error
+}> {}
+
 const runProcess = (command: string, args: ReadonlyArray<string>) =>
-  Effect.callback<void, Error>((resume) => {
+  Effect.callback<void, ProcessError>((resume) => {
     const child = spawn(command, [...args], {
       env: process.env,
       stdio: 'inherit',
     })
 
-    child.once('error', (error) => resume(Effect.fail(error)))
+    child.once('error', (error) =>
+      resume(
+        Effect.fail(
+          new ProcessError({ command, message: error.message, cause: error })
+        )
+      )
+    )
     child.once('exit', (code, signal) => {
       if (signal) {
         process.kill(process.pid, signal)
@@ -24,7 +36,14 @@ const runProcess = (command: string, args: ReadonlyArray<string>) =>
         return
       }
 
-      resume(Effect.fail(new Error(`${command} exited with code ${code}`)))
+      resume(
+        Effect.fail(
+          new ProcessError({
+            command,
+            message: `${command} exited with code ${code}`,
+          })
+        )
+      )
     })
 
     return Effect.sync(() => {

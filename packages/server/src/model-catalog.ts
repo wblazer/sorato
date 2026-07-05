@@ -1,4 +1,4 @@
-import { Effect, Match, Option } from 'effect'
+import { Context, Effect, Match, Option } from 'effect'
 import {
   ModelOption,
   ModelsResponse,
@@ -317,3 +317,12 @@ export const modelLayer = (dataDir: string, selection: ModelSelection) =>
     Effect.annotateLogs({ package: 'server', subsystem: 'model-catalog' }),
     Effect.withLogSpan('server.modelLayer')
   )
+
+export interface ModelLayerResolverApi {
+  readonly resolve: typeof modelLayer
+}
+
+export const ModelLayerResolver = Context.Reference<ModelLayerResolverApi>(
+  '@sorato/server/ModelLayerResolver',
+  { defaultValue: () => ({ resolve: modelLayer }) }
+)

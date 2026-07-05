@@ -47,7 +47,7 @@ import {
   endEventReplay,
   startEventReplay,
 } from './event-replay.ts'
-import { modelLayer, resolveModel } from './model-catalog.ts'
+import { ModelLayerResolver, resolveModel } from './model-catalog.ts'
 import { dataDir } from './data-dir.ts'
 import { createPersistenceHook } from './run-persistence.ts'
 import { updateActiveRunBase, type RunRequest } from './run-registry.ts'
@@ -635,6 +635,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     const projects = yield* ProjectStorage
     const sandbox = yield* Sandbox
     const bus = yield* EventBus
+    const modelResolver = yield* ModelLayerResolver
 
     const session = yield* storage.get(sessionId)
     const projectPath = yield* projects.resolvePath(session.projectId)
@@ -664,38 +665,40 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       baseNodeId: request.baseNodeId ?? null,
     })
 
-    const modelServices = yield* modelLayer(dataDir, {
-      id: request.model,
-      sessionId,
-      onRetry: (info) => {
-        const retryAt = Date.now() + Duration.toMillis(info.delay)
-        Effect.runFork(
-          bus.publish({
-            _tag: 'RunRetrying',
-            sessionId,
-            runId,
-            title: aiRunRetryingMessage(info.error),
-            message: '',
-            retryAt,
-            attempt: info.attempt,
-            maxAttempts: info.maxAttempts,
-          })
-        )
-      },
-      ...request.modelOptions,
-    }).pipe(
-      Effect.flatMap((layer) =>
-        Effect.fromNullishOr(layer).pipe(
-          Effect.mapError(
-            () =>
-              new Error(
-                `Model is not supported by this server: ${request.model}`
-              )
-          ),
-          Effect.orDie
+    const modelServices = yield* modelResolver
+      .resolve(dataDir, {
+        id: request.model,
+        sessionId,
+        onRetry: (info) => {
+          const retryAt = Date.now() + Duration.toMillis(info.delay)
+          Effect.runFork(
+            bus.publish({
+              _tag: 'RunRetrying',
+              sessionId,
+              runId,
+              title: aiRunRetryingMessage(info.error),
+              message: '',
+              retryAt,
+              attempt: info.attempt,
+              maxAttempts: info.maxAttempts,
+            })
+          )
+        },
+        ...request.modelOptions,
+      })
+      .pipe(
+        Effect.flatMap((layer) =>
+          Effect.fromNullishOr(layer).pipe(
+            Effect.mapError(
+              () =>
+                new Error(
+                  `Model is not supported by this server: ${request.model}`
+                )
+            ),
+            Effect.orDie
+          )
         )
       )
-    )
     yield* Effect.logInfo('Agent run resolved model layer', { runId })
 
     const compacted = yield* runCompactRange(sessionId, request, modelServices)
@@ -827,7 +830,8 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
             })
           ),
           Effect.flatMap(({ appendBaseNodeId, conversation }) =>
-            Effect.fn('RunAgent.runHarnessWithCompaction')(function* () {
+            // oxlint-disable-next-line sorato/no-nested-effect-gen -- diagnostics prefer Effect.gen over immediate Effect.fn here; extracting this large scoped closure is separate cleanup
+            Effect.gen(function* () {
               const messageCountBeforeRun = conversation.content.length
               const appendBaseRef = yield* Ref.make(appendBaseNodeId)
               const compactToolCallIdRef = yield* Ref.make<string | null>(null)
@@ -856,7 +860,8 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
 
               const compaction = {
                 compactRange: (input: CompactConversationInput) =>
-                  Effect.fn('RunAgent.compactConversationTool')(function* () {
+                  // oxlint-disable-next-line sorato/no-nested-effect-gen -- compact tool implementation is an effectful callback closed over run state
+                  Effect.gen(function* () {
                     const baseHeadNodeId = yield* Ref.get(appendBaseRef)
                     if (baseHeadNodeId === null) {
                       return yield* Effect.fail(
@@ -906,119 +911,118 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                       baseNodeId: baseHeadNodeId,
                     })
 
-                    return yield* Effect.fn('RunAgent.finishCompactionTool')(
-                      function* () {
-                        const compactedPath = path.slice(
-                          resolvedRange.startIndex,
-                          resolvedRange.endIndex + 1
+                    // oxlint-disable-next-line sorato/no-nested-effect-gen -- summary run finalization is intentionally sequenced after validation and run creation
+                    return yield* Effect.gen(function* () {
+                      const compactedPath = path.slice(
+                        resolvedRange.startIndex,
+                        resolvedRange.endIndex + 1
+                      )
+                      if (
+                        compactedPath.some(
+                          (message) =>
+                            message.kind === 'message' &&
+                            message.encoded.role === 'system' &&
+                            (message.encoded.source === 'system-prompt' ||
+                              message.encoded.source === 'agents-md')
                         )
-                        if (
-                          compactedPath.some(
-                            (message) =>
-                              message.kind === 'message' &&
-                              message.encoded.role === 'system' &&
-                              (message.encoded.source === 'system-prompt' ||
-                                message.encoded.source === 'agents-md')
-                          )
-                        ) {
-                          return yield* Effect.fail(
-                            'Compact range cannot include bootstrap system messages.'
-                          )
-                        }
-
-                        const chat = yield* Chat.fromPrompt(
-                          summaryPrompt(
-                            compactedPath.map((message) => message.encoded),
-                            input.instructions
-                          )
+                      ) {
+                        return yield* Effect.fail(
+                          'Compact range cannot include bootstrap system messages.'
                         )
-                        const summaryTitle = 'Generating summary'
-                        yield* Effect.sync(() =>
-                          startEventReplay(
-                            sessionId,
-                            summaryRunId,
-                            baseHeadNodeId,
-                            'summary',
-                            {
-                              visibility: 'background',
-                              title: summaryTitle,
-                              parentRunId: runId,
-                              toolCallId: compactToolCallId,
-                            }
-                          )
-                        )
-                        yield* bus.publish({
-                          _tag: 'RunStart',
-                          sessionId,
-                          runId: summaryRunId,
-                          baseNodeId: baseHeadNodeId,
-                          kind: 'summary',
-                          visibility: 'background',
-                          title: summaryTitle,
-                          parentRunId: runId,
-                          toolCallId: compactToolCallId,
-                        })
-
-                        const summary = yield* chat
-                          .streamText({ prompt: [] })
-                          .pipe(
-                            Stream.filter(
-                              (
-                                part
-                              ): part is Extract<
-                                Response.StreamPart<Record<string, never>>,
-                                { type: 'text-delta' }
-                              > => part.type === 'text-delta'
-                            ),
-                            Stream.tap((part) =>
-                              Effect.sync(() =>
-                                appendReplayEvent(sessionId, summaryRunId, {
-                                  _tag: 'TextDelta',
-                                  sessionId,
-                                  runId: summaryRunId,
-                                  delta: part.delta,
-                                })
-                              ).pipe(
-                                Effect.flatMap((event) => bus.publish(event))
-                              )
-                            ),
-                            Stream.map((part) => part.delta),
-                            Stream.mkString,
-                            Effect.provide(modelServices)
-                          )
-                        const result = yield* storage.compactRange({
-                          sessionId,
-                          runId: summaryRunId,
-                          baseHeadNodeId,
-                          startNodeId,
-                          endNodeId,
-                          summaryContent: summary.trim(),
-                        })
-                        yield* Ref.set(appendBaseRef, result.headNodeId)
-                        updateActiveRunBase(runId, result.headNodeId)
-                        yield* bus.publish({
-                          _tag: 'RunBaseUpdated',
-                          sessionId,
-                          runId,
-                          baseNodeId: result.headNodeId,
-                        })
-                        yield* bus.publish({
-                          _tag: 'MessagesAppended',
-                          sessionId,
-                          runId: summaryRunId,
-                        })
-                        yield* Effect.sync(() =>
-                          endEventReplay(sessionId, summaryRunId)
-                        )
-                        yield* bus.publish({
-                          _tag: 'RunEnd',
-                          sessionId,
-                          runId: summaryRunId,
-                        })
-                        return compactionSuccessMessage
                       }
-                    )()
-                  })().pipe(
+
+                      const chat = yield* Chat.fromPrompt(
+                        summaryPrompt(
+                          compactedPath.map((message) => message.encoded),
+                          input.instructions
+                        )
+                      )
+                      const summaryTitle = 'Generating summary'
+                      yield* Effect.sync(() =>
+                        startEventReplay(
+                          sessionId,
+                          summaryRunId,
+                          baseHeadNodeId,
+                          'summary',
+                          {
+                            visibility: 'background',
+                            title: summaryTitle,
+                            parentRunId: runId,
+                            toolCallId: compactToolCallId,
+                          }
+                        )
+                      )
+                      yield* bus.publish({
+                        _tag: 'RunStart',
+                        sessionId,
+                        runId: summaryRunId,
+                        baseNodeId: baseHeadNodeId,
+                        kind: 'summary',
+                        visibility: 'background',
+                        title: summaryTitle,
+                        parentRunId: runId,
+                        toolCallId: compactToolCallId,
+                      })
+
+                      const summary = yield* chat
+                        .streamText({ prompt: [] })
+                        .pipe(
+                          Stream.filter(
+                            (
+                              part
+                            ): part is Extract<
+                              Response.StreamPart<Record<string, never>>,
+                              { type: 'text-delta' }
+                            > => part.type === 'text-delta'
+                          ),
+                          Stream.tap((part) =>
+                            Effect.sync(() =>
+                              appendReplayEvent(sessionId, summaryRunId, {
+                                _tag: 'TextDelta',
+                                sessionId,
+                                runId: summaryRunId,
+                                delta: part.delta,
+                              })
+                            ).pipe(
+                              Effect.flatMap((event) => bus.publish(event))
+                            )
+                          ),
+                          Stream.map((part) => part.delta),
+                          Stream.mkString,
+                          Effect.provide(modelServices)
+                        )
+                      const result = yield* storage.compactRange({
+                        sessionId,
+                        runId: summaryRunId,
+                        baseHeadNodeId,
+                        startNodeId,
+                        endNodeId,
+                        summaryContent: summary.trim(),
+                      })
+                      yield* Ref.set(appendBaseRef, result.headNodeId)
+                      updateActiveRunBase(runId, result.headNodeId)
+                      yield* bus.publish({
+                        _tag: 'RunBaseUpdated',
+                        sessionId,
+                        runId,
+                        baseNodeId: result.headNodeId,
+                      })
+                      yield* bus.publish({
+                        _tag: 'MessagesAppended',
+                        sessionId,
+                        runId: summaryRunId,
+                      })
+                      yield* Effect.sync(() =>
+                        endEventReplay(sessionId, summaryRunId)
+                      )
+                      yield* bus.publish({
+                        _tag: 'RunEnd',
+                        sessionId,
+                        runId: summaryRunId,
+                      })
+                      return compactionSuccessMessage
+                    })
+                  }).pipe(
                     Effect.catch((error) => {
                       const message =
                         typeof error === 'string'
@@ -1049,7 +1053,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                   modelServices
                 )
               )
-            })()
+            }).pipe(Effect.withSpan('RunAgent.runHarnessWithCompaction'))
           )
         )
       ),
