@@ -19,7 +19,7 @@ describe('RunScenario', () => {
         (event) =>
           event._tag === 'MessagesAppended' && event.runId === run.runId
       )
-      yield* Fiber.join(run.fiber)
+      if (run.fiber) yield* Fiber.join(run.fiber)
 
       const events = yield* scenario.eventsForRun(run.runId)
       expect(events.map((event) => event._tag)).toContain('RunStart')
@@ -62,7 +62,7 @@ describe('RunScenario', () => {
       ).toBe(false)
 
       yield* scenario.model.releaseCheckpoint('mid-stream')
-      yield* Fiber.join(run.fiber)
+      if (run.fiber) yield* Fiber.join(run.fiber)
 
       const latest = yield* scenario.latestNodeForRun(run.runId)
       expect(String(latest?.encoded.content)).toContain('before')
@@ -100,5 +100,35 @@ describe('RunScenario', () => {
       ).toBe(false)
       expect(yield* scenario.isRunActive(run.runId)).toBe(false)
     }).pipe(Effect.scoped)
+  )
+
+  it.effect(
+    'can pause the production worker after queue shift before active registration',
+    () =>
+      Effect.gen(function* () {
+        const scenario = yield* makeRunScenario({
+          model: [Scripted.text('worker started'), Scripted.finish()],
+        })
+        const run = yield* scenario.enqueueRun({
+          input: 'Start through worker',
+        })
+        const runId = run.runId
+
+        yield* scenario.checkpoints.waitFor(
+          'afterQueueShiftBeforeActiveRegister',
+          runId
+        )
+        expect(yield* scenario.isRunActive(runId)).toBe(false)
+
+        yield* scenario.checkpoints.release(
+          'afterQueueShiftBeforeActiveRegister',
+          runId
+        )
+        yield* scenario.waitForRunEnd(runId)
+
+        const latest = yield* scenario.latestNodeForRun(runId)
+        expect(latest?.encoded.role).toBe('assistant')
+        expect(latest?.encoded.content).toBe('worker started')
+      }).pipe(Effect.scoped)
   )
 })

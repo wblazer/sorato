@@ -4,13 +4,18 @@ import { BunServices } from '@effect/platform-bun'
 import { Context, Effect, Fiber, Layer, Scope } from 'effect'
 import { SqlClient } from 'effect/unstable/sql/SqlClient'
 import type { Sandbox } from '@sorato/core'
-import type { ServerEvent, StopResponse } from '@sorato/api'
+import type { ServerEvent, StopResponse, StorageUnavailable } from '@sorato/api'
 import { makeSqlitePersistenceLive } from '../../src/db/sqlite.ts'
 import { EventBus, type EventBusApi } from '../../src/event-bus.ts'
 import { ProjectStorage, type Project } from '../../src/project/project.ts'
 import { ProviderAuthStore } from '../../src/provider-auth.ts'
 import { runAgent } from '../../src/run-agent.ts'
-import { stopSession } from '../../src/sessions.ts'
+import { enqueueRunRequest, stopSession } from '../../src/sessions.ts'
+import {
+  installRunLifecycleCheckpointController,
+  type RunLifecycleCheckpoint,
+  type RunLifecycleCheckpointName,
+} from '../../src/run-lifecycle-checkpoints.ts'
 import {
   clearActiveFiber,
   isRunActive,
@@ -26,11 +31,16 @@ import {
   type MessageNode,
   type Run,
   type Session,
+  type SessionStorageApi,
   type StorageError,
 } from '../../src/session/session.ts'
 import { SqliteSession } from '../../src/session/sqlite-session.ts'
 import { RuntimeConfigService } from '../../src/runtime-config.ts'
-import { recordedEventBusLayer, EventRecorder } from './event-recorder.ts'
+import {
+  recordedEventBusLayer,
+  EventRecorder,
+  type EventRecorderApi,
+} from './event-recorder.ts'
 import { mockSandboxLayer, type MockSandboxOptions } from './mock-sandbox.ts'
 import {
   ScriptedModelController,
@@ -58,7 +68,19 @@ export interface StartRunOptions {
 export interface StartedRun {
   readonly sessionId: string
   readonly runId: string
-  readonly fiber: Fiber.Fiber<void | undefined, never>
+  readonly fiber?: Fiber.Fiber<void | undefined, never> | undefined
+}
+
+export interface RunScenarioCheckpointsApi {
+  readonly waitFor: (
+    name: RunLifecycleCheckpointName,
+    runId: string
+  ) => Effect.Effect<void>
+  readonly release: (
+    name: RunLifecycleCheckpointName,
+    runId: string
+  ) => Effect.Effect<void>
+  readonly reached: Effect.Effect<ReadonlyArray<RunLifecycleCheckpoint>>
 }
 
 export interface RunScenarioApi {
@@ -66,10 +88,18 @@ export interface RunScenarioApi {
   readonly startRun: (
     options: StartRunOptions
   ) => Effect.Effect<StartedRun, never, Scope.Scope>
+  readonly enqueueRun: (
+    options: StartRunOptions
+  ) => Effect.Effect<StartedRun, StorageError | StorageUnavailable>
   readonly stopSession: () => Effect.Effect<StopResponse, StorageError>
   readonly interruptFiber: (runId: string) => Effect.Effect<void>
   readonly waitForEvent: (
     predicate: (event: ServerEvent) => boolean
+  ) => Effect.Effect<ServerEvent>
+  readonly waitForRunStart: (runId: string) => Effect.Effect<ServerEvent>
+  readonly waitForRunEnd: (runId: string) => Effect.Effect<ServerEvent>
+  readonly waitForMessagesAppended: (
+    runId: string
   ) => Effect.Effect<ServerEvent>
   readonly events: Effect.Effect<ReadonlyArray<ServerEvent>>
   readonly eventsForRun: (
@@ -78,12 +108,16 @@ export interface RunScenarioApi {
   readonly messages: (
     headNodeId?: string | null
   ) => Effect.Effect<ReadonlyArray<MessageNode>, StorageError>
+  readonly messagesForRun: (
+    runId: string
+  ) => Effect.Effect<ReadonlyArray<MessageNode>, StorageError>
   readonly latestNodeForRun: (
     runId: string
   ) => Effect.Effect<MessageNode | null, StorageError>
   readonly getRun: (runId: string) => Effect.Effect<Run, StorageError>
   readonly isRunActive: (runId: string) => Effect.Effect<boolean>
   readonly model: ScriptedModelControllerApi
+  readonly checkpoints: RunScenarioCheckpointsApi
 }
 
 type RunScenarioServices =
@@ -164,6 +198,17 @@ const requestFor = (options: StartRunOptions, runId: string): RunRequest => ({
   afterRunId: null,
 })
 
+const stableRunId = (runId?: string) => runId ?? crypto.randomUUID()
+
+const queueStartArgs = (options: StartRunOptions) =>
+  [
+    options.input,
+    [] as const,
+    TEST_MODEL,
+    { thinkingLevel: 'off' as const },
+    options.baseNodeId ?? null,
+    null,
+  ] as const
 const cleanupDirectRun = (runId: string) =>
   Effect.sync(() => {
     clearActiveFiber(runId)
@@ -179,7 +224,7 @@ const makeStartRun =
   ) =>
   (startOptions: StartRunOptions) =>
     Effect.gen(function* () {
-      const runId = startOptions.runId ?? crypto.randomUUID()
+      const runId = stableRunId(startOptions.runId)
       const request = requestFor(startOptions, runId)
       startRunQueue(session.id, request)
       shiftQueuedRun(runId)
@@ -201,6 +246,28 @@ const makeStartRun =
       return { sessionId: session.id, runId, fiber }
     })
 
+const makeEnqueueRun =
+  (
+    session: Session,
+    storage: SessionStorageApi,
+    layerContext: Context.Context<RunScenarioServices>
+  ) =>
+  (startOptions: StartRunOptions) =>
+    Effect.gen(function* () {
+      const runId = stableRunId(startOptions.runId)
+      const args = queueStartArgs({ ...startOptions, runId })
+      const response = yield* enqueueRunRequest(
+        storage,
+        session.id,
+        ...args
+      ).pipe(Effect.provideContext(layerContext))
+      return {
+        sessionId: session.id,
+        runId: response.runId,
+        fiber: undefined,
+      }
+    })
+
 const makeInterruptFiber =
   (
     session: Session,
@@ -218,6 +285,29 @@ const makeInterruptFiber =
       yield* bus.publish({ _tag: 'RunEnd', sessionId: session.id, runId })
     })
 
+const waitForRunEvent =
+  (recorder: EventRecorderApi, tag: ServerEvent['_tag']) => (runId: string) =>
+    recorder.waitFor(
+      (event) => 'runId' in event && event._tag === tag && event.runId === runId
+    )
+
+const messagesForRun =
+  (storage: SessionStorageApi, sessionId: string) => (runId: string) =>
+    storage
+      .messages(sessionId)
+      .pipe(
+        Effect.map((messages) =>
+          messages.filter((message) => message.runId === runId)
+        )
+      )
+
+const latestMessageForRun =
+  (storage: SessionStorageApi, sessionId: string) => (runId: string) =>
+    messagesForRun(
+      storage,
+      sessionId
+    )(runId).pipe(Effect.map((messages) => messages.at(-1) ?? null))
+
 const buildScenarioApi = (
   layerContext: Context.Context<RunScenarioServices>,
   scope: Scope.Scope
@@ -229,33 +319,32 @@ const buildScenarioApi = (
     const model = yield* ScriptedModelController
     const session = yield* storage.create(TEST_PROJECT_ID, 'scenario')
     const fibers = new Map<string, Fiber.Fiber<void, never>>()
+    const checkpointController = yield* installRunLifecycleCheckpointController
+    yield* Scope.addFinalizer(scope, checkpointController.reset)
 
     return {
       session,
       startRun: makeStartRun(session, layerContext, scope, fibers),
+      enqueueRun: makeEnqueueRun(session, storage, layerContext),
       stopSession: () =>
         stopSession(storage, session.id).pipe(
           Effect.provideContext(layerContext)
         ),
       interruptFiber: makeInterruptFiber(session, bus, fibers),
       waitForEvent: recorder.waitFor,
+      waitForRunStart: waitForRunEvent(recorder, 'RunStart'),
+      waitForRunEnd: waitForRunEvent(recorder, 'RunEnd'),
+      waitForMessagesAppended: waitForRunEvent(recorder, 'MessagesAppended'),
       events: recorder.events,
       eventsForRun: recorder.eventsForRun,
       messages: (headNodeId?: string | null) =>
         storage.messages(session.id, headNodeId),
-      latestNodeForRun: (runId: string) =>
-        storage
-          .messages(session.id)
-          .pipe(
-            Effect.map(
-              (messages) =>
-                messages.filter((message) => message.runId === runId).at(-1) ??
-                null
-            )
-          ),
+      messagesForRun: messagesForRun(storage, session.id),
+      latestNodeForRun: latestMessageForRun(storage, session.id),
       getRun: (runId: string) => storage.getRun(runId),
       isRunActive: (runId: string) => Effect.sync(() => isRunActive(runId)),
       model,
+      checkpoints: checkpointController,
     } satisfies RunScenarioApi
   }).pipe(Effect.provideContext(layerContext))
 

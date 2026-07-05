@@ -47,6 +47,7 @@ import {
 } from './run-registry.ts'
 import { EventBus } from './event-bus.ts'
 import { getActiveBackgroundReplayRuns } from './event-replay.ts'
+import { runLifecycleCheckpoint } from './run-lifecycle-checkpoints.ts'
 
 const toSessionResponse = (s: {
   readonly id: string
@@ -378,6 +379,10 @@ function createRunWorker(sessionId: string, queueId: string) {
         yield* Effect.logInfo('Session run worker queue drained')
         break
       }
+      yield* runLifecycleCheckpoint(
+        'afterQueueShiftBeforeActiveRegister',
+        input.runId
+      )
 
       yield* Effect.logInfo('Session run worker starting queued run', {
         model: input.model,
@@ -599,7 +604,7 @@ export const stopSession = Effect.fn('Sessions.stopSession')(function* (
   return yield* stopEffect
 })
 
-const enqueueRunRequest = Effect.fn('Sessions.enqueueRunRequest')((
+export const enqueueRunRequest = Effect.fn('Sessions.enqueueRunRequest')((
   storage: SessionStorageApi,
   sessionId: string,
   input: string,
