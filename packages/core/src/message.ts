@@ -20,14 +20,6 @@ export const UserMessageMetadata = Schema.Struct({
   ),
 })
 
-export const AssistantMessageMetadata = Schema.Struct({
-  interrupted: Schema.optionalKey(Schema.Boolean),
-})
-
-export const ToolResultPartMetadata = Schema.Struct({
-  interrupted: Schema.optionalKey(Schema.Boolean),
-})
-
 export const StoredToolCallPart = Schema.Struct({
   ...PromptSchemas.ToolCallPart.fields,
   header: Schema.optionalKey(MessageHeaderDisplaySchema),
@@ -37,7 +29,7 @@ export const StoredToolResultPart = Schema.Struct({
   ...PromptSchemas.ToolResultPart.fields,
   header: Schema.optionalKey(MessageHeaderDisplaySchema),
   bodyDisplay: Schema.optionalKey(ToolResultDisplaySchema),
-  metadata: Schema.optionalKey(ToolResultPartMetadata),
+  metadata: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
 })
 
 export const StoredPart = Schema.Union([
@@ -77,7 +69,6 @@ export const StoredUserMessage = Schema.Struct({
 export const StoredAssistantMessage = Schema.Struct({
   ...PromptSchemas.AssistantMessage.fields,
   content: Schema.Union([Schema.String, Schema.Array(StoredPart)]),
-  metadata: Schema.optionalKey(AssistantMessageMetadata),
 })
 
 export const StoredToolMessage = Schema.Struct({

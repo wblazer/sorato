@@ -121,12 +121,11 @@ const assistantMsg = (text: string): StoredMessageEncoded =>
     })
   )
 
-const interruptedAssistantMsg = (text: string): StoredMessageEncoded =>
+const partialAssistantMsg = (text: string): StoredMessageEncoded =>
   encodeMessage(
     Schema.decodeUnknownSync(StoredMessage)({
       role: 'assistant',
       content: text,
-      metadata: { interrupted: true },
     })
   )
 
@@ -394,10 +393,10 @@ describe('SessionStorage', () => {
       }).pipe(Effect.provide(testLayer()))
     )
 
-    it.effect('allows ranges that include interrupted assistant messages', () =>
+    it.effect('allows ranges that include partial assistant messages', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
-        const session = yield* storage.create(TEST_DIR, 'interrupted-compact')
+        const session = yield* storage.create(TEST_DIR, 'partial-compact')
         const [systemNodeId, userNodeId] = yield* append(storage, session.id, [
           bootstrapSystemMsg('System'),
           userMsg('Hello'),
@@ -405,7 +404,7 @@ describe('SessionStorage', () => {
         const [assistantNodeId, nextUserNodeId] = yield* append(
           storage,
           session.id,
-          [interruptedAssistantMsg('Partial'), userMsg('Continue')],
+          [partialAssistantMsg('Partial'), userMsg('Continue')],
           expectDefined(userNodeId, 'expected user node id')
         )
         const resolvedNextUserNodeId = expectDefined(

@@ -115,7 +115,7 @@
   const copied = $derived(copyAction.state === 'success')
   const assistantInterrupted = $derived(
     message.encoded.role === 'assistant' &&
-      message.encoded.metadata?.interrupted === true,
+      message.run?.status === 'interrupted',
   )
   const userDisplay = $derived(
     message.encoded.role === 'user' ? message.encoded.display : undefined,

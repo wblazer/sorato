@@ -2,8 +2,12 @@ import { Effect } from 'effect'
 import * as Migrator from 'effect/unstable/sql/Migrator'
 
 import Migration001 from './migrations/001-initial.ts'
+import Migration002 from './migrations/002-run-status.ts'
 
-export const migrationEntries = [[1, 'Initial', Migration001]] as const
+export const migrationEntries = [
+  [1, 'Initial', Migration001],
+  [2, 'RunStatus', Migration002],
+] as const
 
 export const makeMigrationLoader = (throughId?: number) =>
   Migrator.fromRecord(

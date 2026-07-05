@@ -85,7 +85,7 @@ export interface RunUsage {
 export interface Run extends RunUsage {
   readonly id: RunId
   readonly sessionId: SessionId
-  /** Ephemeral compatibility status; persisted runs do not store status. */
+  /** Durable lifecycle status for this run. */
   readonly status: RunStatus
   readonly providerId: string
   readonly modelId: string
@@ -103,6 +103,12 @@ export interface CreateRunInput {
   readonly billingMode?: BillingMode
   readonly baseNodeId: NodeId | null
   readonly createdAt?: number
+}
+
+export interface CompleteRunInput {
+  readonly id: RunId
+  readonly status: Exclude<RunStatus, 'running'>
+  readonly completedAt?: number
 }
 
 /** A session — a container for a tree of messages. */
@@ -199,6 +205,9 @@ export interface SessionStorageApi {
 
   /** Get a persisted run. */
   readonly getRun: (id: RunId) => Effect<Run, StorageError>
+
+  /** Mark a run as terminal. */
+  readonly completeRun: (input: CompleteRunInput) => Effect<void, StorageError>
 
   /** Persist per-model-call usage/cost on the original assistant node. */
   readonly createModelCall: (

@@ -36,19 +36,24 @@ export interface ActiveRunInfo {
   readonly baseNodeId: string | null
   readonly kind: 'agent' | 'summary'
   readonly visibility: 'primary' | 'background'
+  readonly parentRunId: string | undefined
+  readonly toolCallId: string | undefined
 }
 
 interface RunQueueState {
   readonly id: string
   readonly sessionId: string
-  workerFiber: Fiber.Fiber<void, never> | null
+  workerFiber: Fiber.Fiber<void, never> | Fiber.Fiber<void, unknown> | null
   activeRunFiber: Fiber.Fiber<void, never> | null
   activeRunId: string | null
   activeBaseNodeId: string | null
   activeRunKind: 'agent' | 'summary'
   activeRunVisibility: 'primary' | 'background'
+  parentRunId: string | undefined
+  toolCallId: string | undefined
+  startingRun: RunRequest | null
   queuedRuns: Array<RunRequest>
-  stopRequested: boolean
+  stopRequestedRunIds: Set<string>
 }
 
 const queues = new Map<string, RunQueueState>()
@@ -99,8 +104,11 @@ export function startRunQueue(
     activeBaseNodeId: null,
     activeRunKind: 'agent',
     activeRunVisibility: 'primary',
+    parentRunId: undefined,
+    toolCallId: undefined,
+    startingRun: null,
     queuedRuns: [request],
-    stopRequested: false,
+    stopRequestedRunIds: new Set(),
   })
   runQueues.set(request.runId, queueId)
   return { status: 'started' as const, runId: request.runId, queueId }
@@ -126,7 +134,7 @@ export function enqueueRun(
 
 export function registerWorkerFiber(
   queueId: string,
-  fiber: Fiber.Fiber<void, never>
+  fiber: Fiber.Fiber<void, never> | Fiber.Fiber<void, unknown>
 ): void {
   const state = queues.get(queueId) ?? missingQueueState('worker', queueId)
   state.workerFiber = fiber
@@ -149,6 +157,18 @@ export function registerActiveFiber(
   runQueues.set(runId, queueId)
 }
 
+export function updateActiveRunParent(
+  childRunId: string,
+  parentRunId: string,
+  toolCallId?: string | undefined
+): void {
+  const queueId = runQueues.get(childRunId)
+  const state = queueId ? queues.get(queueId) : undefined
+  if (!state) return
+  state.parentRunId = parentRunId
+  state.toolCallId = toolCallId
+}
+
 export function updateActiveRunBase(
   runId: string,
   baseNodeId: string | null
@@ -167,20 +187,57 @@ export function clearActiveFiber(queueId: string): void {
   state.activeBaseNodeId = null
   state.activeRunKind = 'agent'
   state.activeRunVisibility = 'primary'
+  state.parentRunId = undefined
+  state.toolCallId = undefined
 }
 
 export function shiftQueuedRun(queueId: string): RunRequest | undefined {
-  return queues.get(queueId)?.queuedRuns.shift()
+  const state = queues.get(queueId)
+  const request = state?.queuedRuns.shift()
+  if (state && request) state.startingRun = request
+  return request
+}
+
+export function clearStartingRun(queueId: string, runId: string): void {
+  const state = queues.get(queueId)
+  if (state?.startingRun?.runId === runId) state.startingRun = null
 }
 
 export function requestStop(sessionId: string): void {
   for (const state of queues.values()) {
-    if (state.sessionId === sessionId) state.stopRequested = true
+    if (state.sessionId !== sessionId) continue
+    if (state.activeRunId !== null)
+      state.stopRequestedRunIds.add(state.activeRunId)
+    if (state.startingRun !== null)
+      state.stopRequestedRunIds.add(state.startingRun.runId)
+    for (const request of state.queuedRuns) {
+      state.stopRequestedRunIds.add(request.runId)
+    }
   }
 }
 
+export function requestRunStop(runId: string): void {
+  const queueId = runQueues.get(runId)
+  const state = queueId ? queues.get(queueId) : undefined
+  if (!state) return
+  state.stopRequestedRunIds.add(runId)
+}
+
 export function shouldStop(queueId: string): boolean {
-  return queues.get(queueId)?.stopRequested ?? false
+  const state = queues.get(queueId)
+  if (!state) return false
+  return (
+    (state.activeRunId !== null &&
+      state.stopRequestedRunIds.has(state.activeRunId)) ||
+    (state.startingRun !== null &&
+      state.stopRequestedRunIds.has(state.startingRun.runId))
+  )
+}
+
+export function shouldStopRun(runId: string): boolean {
+  const queueId = runQueues.get(runId)
+  const state = queueId ? queues.get(queueId) : undefined
+  return state?.stopRequestedRunIds.has(runId) ?? false
 }
 
 export function drainQueuedRuns(sessionId: string): Array<RunRequest> {
@@ -191,6 +248,75 @@ export function drainQueuedRuns(sessionId: string): Array<RunRequest> {
     state.queuedRuns = []
   }
   return queued
+}
+
+export interface RunStopSnapshot {
+  readonly sessionId: string
+  readonly queueId: string
+  readonly runId: string
+  readonly activeFiber: Fiber.Fiber<void, never> | null
+  readonly workerFiber:
+    | Fiber.Fiber<void, never>
+    | Fiber.Fiber<void, unknown>
+    | null
+  readonly isActive: boolean
+  readonly startingRun: RunRequest | null
+  readonly queuedRuns: ReadonlyArray<RunRequest>
+  readonly parentRunId: string | undefined
+  readonly childRunIds: ReadonlyArray<string>
+}
+
+export function getRunStopSnapshot(runId: string): RunStopSnapshot | undefined {
+  const queueId = runQueues.get(runId)
+  if (queueId === undefined) return undefined
+  const state = queues.get(queueId)
+  if (!state) return undefined
+
+  const startingRun =
+    state.startingRun?.runId === runId ? state.startingRun : null
+  const queuedRuns = state.queuedRuns.filter(
+    (request) => request.runId === runId
+  )
+  const childRunIds = [...queues.values()]
+    .filter((candidate) => candidate.parentRunId === runId)
+    .map((candidate) => candidate.activeRunId ?? candidate.startingRun?.runId)
+    .filter((id): id is string => id !== undefined && id !== null)
+
+  return {
+    sessionId: state.sessionId,
+    queueId,
+    runId,
+    activeFiber: state.activeRunId === runId ? state.activeRunFiber : null,
+    workerFiber: state.workerFiber,
+    isActive: state.activeRunId === runId && state.activeRunFiber !== null,
+    startingRun,
+    queuedRuns,
+    parentRunId: state.parentRunId,
+    childRunIds,
+  }
+}
+
+export function drainQueuedRunsForRun(runId: string): Array<RunRequest> {
+  const queueId = runQueues.get(runId)
+  const state = queueId ? queues.get(queueId) : undefined
+  if (!state) return []
+
+  const drained: Array<RunRequest> = []
+  state.queuedRuns = state.queuedRuns.filter((request) => {
+    if (request.runId !== runId) return true
+    drained.push(request)
+    return false
+  })
+  return drained
+}
+
+export function takeStartingRun(runId: string): RunRequest | undefined {
+  const queueId = runQueues.get(runId)
+  const state = queueId ? queues.get(queueId) : undefined
+  if (state?.startingRun?.runId !== runId) return undefined
+  const request = state.startingRun
+  state.startingRun = null
+  return request
 }
 
 export function releaseRunQueue(queueId: string): void {
@@ -222,6 +348,10 @@ export function isRunActive(runId: string): boolean {
   return state?.activeRunId === runId && state.activeRunFiber !== null
 }
 
+export function isRunRegistered(runId: string): boolean {
+  return runQueues.has(runId)
+}
+
 export function getQueuedRunCount(sessionId: string): number {
   return [...queues.values()]
     .filter((state) => state.sessionId === sessionId)
@@ -238,6 +368,8 @@ export function getActiveRuns(sessionId: string): ReadonlyArray<ActiveRunInfo> {
             baseNodeId: state.activeBaseNodeId,
             kind: state.activeRunKind,
             visibility: state.activeRunVisibility,
+            parentRunId: state.parentRunId,
+            toolCallId: state.toolCallId,
           },
         ]
       : []

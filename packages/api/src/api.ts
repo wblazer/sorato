@@ -503,6 +503,13 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
       error: StorageUnavailable.pipe(HttpApiSchema.status(503)),
     })
   )
+  .add(
+    HttpApiEndpoint.post('stopRun', '/runs/:id/stop', {
+      params: { id: Schema.String },
+      success: StopResponse,
+      error: StorageUnavailable.pipe(HttpApiSchema.status(503)),
+    })
+  )
   .prefix('/sessions') {}
 
 // ── Projects Group ─────────────────────────────────────────────────

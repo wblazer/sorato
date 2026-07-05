@@ -37,6 +37,14 @@ export const NodeKind = Schema.Literals(['message', 'summary'])
 export type NodeKind = typeof NodeKind.Type
 
 export const ProviderAuthKind = Schema.Literals(['api', 'oauth'])
+
+export const RunStatus = Schema.Literals([
+  'running',
+  'completed',
+  'interrupted',
+  'failed',
+])
+export type RunStatus = typeof RunStatus.Type
 export type ProviderAuthKind = typeof ProviderAuthKind.Type
 
 export class ProjectTableRow extends Schema.Class<ProjectTableRow>(
@@ -66,6 +74,8 @@ export class RunTableRow extends Schema.Class<RunTableRow>('RunTableRow')({
   id: RunId,
   session_id: SessionId,
   base_node_id: Schema.NullOr(NodeId),
+  status: RunStatus,
+  completed_at: Schema.NullOr(IsoDateTime),
   created_at: IsoDateTime,
 }) {}
 
@@ -154,6 +164,8 @@ export class MessageNodeRow extends Schema.Class<MessageNodeRow>(
   summary_created_at: Schema.NullOr(IsoDateTime),
   run_created_at: Schema.NullOr(IsoDateTime),
   run_base_node_id: Schema.NullOr(NodeId),
+  run_status: Schema.NullOr(RunStatus),
+  run_completed_at: Schema.NullOr(IsoDateTime),
   model_call_id: Schema.NullOr(Schema.String),
   model_call_provider_id: Schema.NullOr(Schema.String),
   model_call_model_id: Schema.NullOr(Schema.String),

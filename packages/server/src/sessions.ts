@@ -31,19 +31,26 @@ import type { RunAttachment, RunRequest } from './run-registry.ts'
 import { runAgent } from './run-agent.ts'
 import {
   clearActiveFiber,
+  clearStartingRun,
   drainQueuedRuns as drainQueuedInputs,
+  drainQueuedRunsForRun,
   enqueueRun,
   getActiveRuns,
   getFibers,
   getQueuedRunCount,
-  isRunning,
+  getRunStopSnapshot,
   isRunActive,
-  requestStop,
+  isRunRegistered,
+  isRunning,
   registerActiveFiber,
   registerWorkerFiber,
   releaseRunQueue,
+  requestRunStop,
+  requestStop,
   shouldStop,
+  shouldStopRun,
   shiftQueuedRun,
+  takeStartingRun,
 } from './run-registry.ts'
 import { EventBus } from './event-bus.ts'
 import { getActiveBackgroundReplayRuns } from './event-replay.ts'
@@ -157,12 +164,18 @@ const releaseQueuedRun = Effect.fn('Sessions.releaseQueuedRun')(
 )
 
 const registerRunWorker = Effect.fn('Sessions.registerRunWorker')(
-  (queueId: string, fiber: Fiber.Fiber<void, never>) =>
-    Effect.suspend(() => doRegisterRunWorker(queueId, fiber))
+  (
+    queueId: string,
+    fiber: Fiber.Fiber<void, never> | Fiber.Fiber<void, unknown>
+  ) => Effect.suspend(() => doRegisterRunWorker(queueId, fiber))
 )
 
-const requestRunStop = Effect.fn('Sessions.requestRunStop')(
-  (sessionId: string) => Effect.suspend(() => doRequestRunStop(sessionId))
+const requestSessionStop = Effect.fn('Sessions.requestSessionStop')(
+  (sessionId: string) => Effect.suspend(() => doRequestSessionStop(sessionId))
+)
+
+const requestSingleRunStop = Effect.fn('Sessions.requestRunStop')(
+  (runId: string) => Effect.suspend(() => doRequestRunStop(runId))
 )
 
 const drainQueuedInputsNow = Effect.fn('Sessions.drainQueuedInputs')(
@@ -204,16 +217,37 @@ const doReleaseQueuedRun = (queueId: string) => {
 
 const doRegisterRunWorker = (
   queueId: string,
-  fiber: Fiber.Fiber<void, never>
+  fiber: Fiber.Fiber<void, never> | Fiber.Fiber<void, unknown>
 ) => {
   registerWorkerFiber(queueId, fiber)
   return Effect.void
 }
 
-const doRequestRunStop = (sessionId: string) => {
+const doRequestSessionStop = (sessionId: string) => {
   requestStop(sessionId)
   return Effect.void
 }
+
+const doRequestRunStop = (runId: string) => {
+  requestRunStop(runId)
+  return Effect.void
+}
+
+const completeRun = Effect.fn('Sessions.completeRun')(function* (
+  storage: SessionStorageApi,
+  runId: string,
+  status: 'completed' | 'interrupted' | 'failed'
+) {
+  yield* storage.completeRun({ id: runId, status }).pipe(
+    Effect.catch((error) =>
+      Effect.logWarning('Failed to mark run terminal', {
+        runId,
+        status,
+        error: error.message,
+      })
+    )
+  )
+})
 
 const doPublishMessagesAppended = (sessionId: string) => {
   return Effect.flatMap(EventBus, (bus) =>
@@ -384,6 +418,23 @@ function createRunWorker(sessionId: string, queueId: string) {
         input.runId
       )
 
+      if (shouldStopRun(input.runId)) {
+        const stoppedInput = takeStartingRun(input.runId)
+        yield* Effect.logInfo(
+          'Session run worker stopping shifted run before active registration',
+          {
+            runId: input.runId,
+            handledByStopRequest: stoppedInput === undefined,
+          }
+        )
+        if (stoppedInput !== undefined) {
+          yield* appendStoppedQueuedInputs(storage, sessionId, [stoppedInput])
+          yield* publishMessagesAppended(sessionId)
+          yield* publishRunEnd(sessionId, input.runId)
+        }
+        break
+      }
+
       yield* Effect.logInfo('Session run worker starting queued run', {
         model: input.model,
         modelOptions: input.modelOptions,
@@ -395,6 +446,7 @@ function createRunWorker(sessionId: string, queueId: string) {
       const request = yield* resolveRunBase(storage, sessionId, input).pipe(
         Effect.orDie
       )
+      clearStartingRun(queueId, request.runId)
       const kind = request.compactRange === undefined ? 'agent' : 'summary'
       const visibility =
         request.compactRange === undefined ? 'primary' : 'background'
@@ -422,12 +474,12 @@ function createRunWorker(sessionId: string, queueId: string) {
         Effect.ensuring(clearActive)
       )
 
-      if (shouldStop(queueId)) {
-        yield* Effect.logInfo('Session run worker stopped after active run')
-        break
+      if (shouldStopRun(request.runId)) {
+        yield* Effect.logInfo('Session run worker observed stopped active run')
+      } else {
+        yield* completeRun(storage, request.runId, 'completed')
+        yield* publishRunEnd(sessionId, request.runId)
       }
-
-      yield* publishRunEnd(sessionId, request.runId)
     }
   }).pipe(
     Effect.ensuring(releaseSession),
@@ -526,8 +578,66 @@ const appendStoppedQueuedInputs = (
         })),
         request.baseNodeId
       )
+      yield* completeRun(storage, runId, 'interrupted')
     })
   )
+
+const appendStoppedRunRequests = Effect.fn('Sessions.appendStoppedRunRequests')(
+  function* (
+    storage: SessionStorageApi,
+    sessionId: string,
+    requests: ReadonlyArray<RunRequest>
+  ) {
+    yield* appendStoppedQueuedInputs(storage, sessionId, requests)
+    if (requests.length > 0) yield* publishMessagesAppended(sessionId)
+  }
+)
+
+const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
+  storage: SessionStorageApi,
+  rootRunId: string
+) {
+  const visited = new Set<string>()
+  const pendingRunIds = [rootRunId]
+  let stopped = false
+
+  while (pendingRunIds.length > 0) {
+    const runId = pendingRunIds.pop()
+    if (runId === undefined || visited.has(runId)) continue
+    visited.add(runId)
+
+    const snapshot = getRunStopSnapshot(runId)
+    if (snapshot === undefined) continue
+
+    yield* requestSingleRunStop(runId)
+    pendingRunIds.push(...snapshot.childRunIds)
+
+    const queuedRequests = drainQueuedRunsForRun(runId)
+    const startingRequest = takeStartingRun(runId)
+    const stoppedRequests = [
+      ...queuedRequests,
+      ...(startingRequest === undefined ? [] : [startingRequest]),
+    ]
+    if (stoppedRequests.length > 0) {
+      yield* appendStoppedRunRequests(
+        storage,
+        snapshot.sessionId,
+        stoppedRequests
+      )
+      yield* publishRunEnd(snapshot.sessionId, runId)
+      stopped = true
+    }
+
+    if (snapshot.activeFiber !== null) {
+      yield* Fiber.interrupt(snapshot.activeFiber).pipe(Effect.exit)
+      yield* clearActiveRun(snapshot.queueId)
+      yield* publishRunEnd(snapshot.sessionId, runId)
+      stopped = true
+    }
+  }
+
+  return stopped
+})
 
 function stopWithoutActiveFiber(storage: SessionStorageApi, sessionId: string) {
   const isSessionRunning = Number(isRunning(sessionId))
@@ -591,7 +701,7 @@ export const stopSession = Effect.fn('Sessions.stopSession')(function* (
   sessionId: string
 ) {
   yield* Effect.logInfo('Session stop request received', { sessionId })
-  yield* requestRunStop(sessionId)
+  yield* requestSessionStop(sessionId)
   const fibers = getFibers(sessionId)
   const activeRunIds = getActiveRuns(sessionId).map((run) => run.runId)
   const stopEffect = Match.value(fibers.length).pipe(
@@ -602,6 +712,18 @@ export const stopSession = Effect.fn('Sessions.stopSession')(function* (
   )
 
   return yield* stopEffect
+})
+
+export const stopRun = Effect.fn('Sessions.stopRun')(function* (
+  storage: SessionStorageApi,
+  runId: string
+) {
+  yield* Effect.logInfo('Run stop request received', { runId })
+  if (!isRunRegistered(runId))
+    return new StopResponse({ status: 'not_running' })
+
+  const stopped = yield* stopRunAndChildren(storage, runId)
+  return new StopResponse({ status: stopped ? 'stopped' : 'not_running' })
 })
 
 export const enqueueRunRequest = Effect.fn('Sessions.enqueueRunRequest')((
@@ -802,6 +924,9 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
       )
       .handle('stop', ({ params }) =>
         stopSession(storage, params.id).pipe(Effect.mapError(mapStorageError))
+      )
+      .handle('stopRun', ({ params }) =>
+        stopRun(storage, params.id).pipe(Effect.mapError(mapStorageError))
       )
   })
 )

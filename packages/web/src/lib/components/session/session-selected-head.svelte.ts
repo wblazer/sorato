@@ -287,59 +287,19 @@ function isDescendantOrSame(
   return false
 }
 
-function deepestDescendantLeaf(
-  messages: ReadonlyArray<MessageNode>,
-  nodeId: string
-): MessageNode | null {
-  const childrenByParent = new Map<string | null, MessageNode[]>()
-  for (const message of messages) {
-    const children = childrenByParent.get(message.parentId) ?? []
-    children.push(message)
-    childrenByParent.set(message.parentId, children)
-  }
-
-  let best = messages.find((message) => message.id === nodeId) ?? null
-  const visit = (message: MessageNode) => {
-    best = message
-    for (const child of childrenByParent.get(message.id) ?? []) visit(child)
-  }
-  if (best) visit(best)
-  return best
-}
-
 function finalPersistedRunNode(
   messages: ReadonlyArray<MessageNode>,
   runId: string,
   baseNodeId: string | null
 ): MessageNode | null {
-  const summaryNode = messages
-    .toReversed()
-    .find(
-      (message) =>
-        message.runId === runId &&
-        message.kind === 'summary' &&
-        !isOptimisticNode(message) &&
-        isDescendantOrSame(messages, message.id, baseNodeId)
-    )
-  if (summaryNode) return deepestDescendantLeaf(messages, summaryNode.id)
-
-  const runMessages = messages.filter(
-    (message) =>
-      message.runId === runId &&
-      !isOptimisticNode(message) &&
-      isDescendantOrSame(messages, message.id, baseNodeId)
+  return (
+    messages
+      .toReversed()
+      .find(
+        (message) =>
+          message.runId === runId &&
+          !isOptimisticNode(message) &&
+          isDescendantOrSame(messages, message.id, baseNodeId)
+      ) ?? null
   )
-  const runIds = new Set(runMessages.map((message) => message.id))
-  const parentIds = new Set(
-    runMessages
-      .map((message) => message.parentId)
-      .filter((id): id is string => id !== null && runIds.has(id))
-  )
-
-  const runLeaf = runMessages
-    .toReversed()
-    .find((message) => !parentIds.has(message.id))
-  if (runLeaf) return runLeaf
-
-  return null
 }

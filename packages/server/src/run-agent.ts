@@ -50,7 +50,11 @@ import {
 import { ModelLayerResolver, resolveModel } from './model-catalog.ts'
 import { dataDir } from './data-dir.ts'
 import { createPersistenceHook } from './run-persistence.ts'
-import { updateActiveRunBase, type RunRequest } from './run-registry.ts'
+import {
+  updateActiveRunBase,
+  updateActiveRunParent,
+  type RunRequest,
+} from './run-registry.ts'
 import { generateSessionTitle } from './session-title.ts'
 import { getAuth } from './provider-auth.ts'
 import type { BillingMode } from './session/session.ts'
@@ -618,8 +622,29 @@ const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
 export const runAgent = (sessionId: SessionId, request: RunRequest) => {
   const runId = request.runId
   let runFailed = false
-  const finalizeRun = Effect.sync(() => {
-    endEventReplay(sessionId, runId, runFailed ? 'failed' : 'completed')
+  let runInterrupted = false
+  let completedHarness = false
+  const terminalRunStatus = () =>
+    runFailed
+      ? 'failed'
+      : runInterrupted || !completedHarness
+        ? 'interrupted'
+        : 'completed'
+  const finalizeRun = Effect.gen(function* () {
+    const status = terminalRunStatus()
+    yield* Effect.sync(() => {
+      endEventReplay(sessionId, runId, runFailed ? 'failed' : 'completed')
+    })
+    const storage = yield* SessionStorage
+    yield* storage.completeRun({ id: runId, status }).pipe(
+      Effect.catch((error) =>
+        Effect.logWarning('Failed to mark agent run terminal', {
+          runId,
+          status,
+          error: error.message,
+        })
+      )
+    )
   })
 
   return Effect.gen(function* () {
@@ -910,6 +935,11 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                       billingMode,
                       baseNodeId: baseHeadNodeId,
                     })
+                    updateActiveRunParent(
+                      summaryRunId,
+                      runId,
+                      compactToolCallId
+                    )
 
                     // oxlint-disable-next-line sorato/no-nested-effect-gen -- summary run finalization is intentionally sequenced after validation and run creation
                     return yield* Effect.gen(function* () {
@@ -1015,6 +1045,10 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                       yield* Effect.sync(() =>
                         endEventReplay(sessionId, summaryRunId)
                       )
+                      yield* storage.completeRun({
+                        id: summaryRunId,
+                        status: 'completed',
+                      })
                       yield* bus.publish({
                         _tag: 'RunEnd',
                         sessionId,
@@ -1061,11 +1095,13 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     )
 
     yield* Effect.logInfo('Agent run completed harness', { runId })
+    completedHarness = true
   }).pipe(
     Effect.catchCause((cause) =>
       Effect.gen(function* () {
         if (Cause.hasInterruptsOnly(cause)) {
           yield* Effect.logInfo('Agent run interrupted', { runId })
+          runInterrupted = true
         } else {
           runFailed = true
           yield* Effect.logError('Agent run failed', {

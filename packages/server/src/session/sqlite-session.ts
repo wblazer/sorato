@@ -145,14 +145,14 @@ const toSession = (row: SessionRow): Session => ({
 const toRun = (row: RunTableRow): Run => ({
   id: row.id,
   sessionId: row.session_id,
-  status: 'completed',
+  status: row.status,
   providerId: 'unknown',
   modelId: 'unknown',
   billingMode: 'api-key',
   baseNodeId: row.base_node_id,
   ...emptyUsage,
   createdAt: Date.parse(row.created_at),
-  completedAt: null,
+  completedAt: toMillis(row.completed_at),
 })
 
 const runFromNodeRow = (row: NodeRow): Run | null =>
@@ -161,14 +161,14 @@ const runFromNodeRow = (row: NodeRow): Run | null =>
     : {
         id: row.run_id,
         sessionId: row.session_id,
-        status: 'completed',
+        status: row.run_status ?? 'completed',
         providerId: row.model_call_provider_id ?? 'unknown',
         modelId: row.model_call_model_id ?? 'unknown',
         billingMode: row.model_call_billing_mode ?? 'api-key',
         baseNodeId: row.run_base_node_id,
         ...emptyUsage,
         createdAt: Date.parse(row.run_created_at),
-        completedAt: null,
+        completedAt: toMillis(row.run_completed_at),
       }
 
 const modelCallFromNodeRow = (row: NodeRow): ModelCall | null =>
@@ -357,6 +357,8 @@ const nodeSelection = (sql: SqlClient) => sql`
     s.created_at AS summary_created_at,
     r.created_at AS run_created_at,
     r.base_node_id AS run_base_node_id,
+    r.status AS run_status,
+    r.completed_at AS run_completed_at,
     mc.id AS model_call_id,
     mc.provider_id AS model_call_provider_id,
     mc.model_id AS model_call_model_id,
@@ -399,6 +401,8 @@ const chainNodeSelection = (sql: SqlClient) => sql`
     s.created_at AS summary_created_at,
     r.created_at AS run_created_at,
     r.base_node_id AS run_base_node_id,
+    r.status AS run_status,
+    r.completed_at AS run_completed_at,
     mc.id AS model_call_id,
     mc.provider_id AS model_call_provider_id,
     mc.model_id AS model_call_model_id,
@@ -457,8 +461,8 @@ export const SqliteSession = (options: { readonly path: string }) =>
       const insertRunRow = SqlSchema.void({
         Request: CreateRunRowInput,
         execute: (row) => sql`
-          INSERT INTO runs (id, session_id, base_node_id, created_at)
-          VALUES (${row.id}, ${row.session_id}, ${row.base_node_id}, ${row.created_at})
+          INSERT INTO runs (id, session_id, base_node_id, status, created_at)
+          VALUES (${row.id}, ${row.session_id}, ${row.base_node_id}, 'running', ${row.created_at})
         `,
       })
 
@@ -466,7 +470,20 @@ export const SqliteSession = (options: { readonly path: string }) =>
         Request: RunIdInput,
         Result: RunTableRow,
         execute: ({ id }) =>
-          sql`SELECT id, session_id, base_node_id, created_at FROM runs WHERE id = ${id}`,
+          sql`SELECT id, session_id, base_node_id, status, completed_at, created_at FROM runs WHERE id = ${id}`,
+      })
+
+      const completeRunRow = SqlSchema.void({
+        Request: Schema.Struct({
+          id: RunIdInput.fields.id,
+          status: Schema.Literals(['completed', 'interrupted', 'failed']),
+          completed_at: Schema.String,
+        }),
+        execute: (row) => sql`
+          UPDATE runs
+          SET status = ${row.status}, completed_at = ${row.completed_at}
+          WHERE id = ${row.id}
+        `,
       })
 
       const insertModelCallRow = SqlSchema.void({
@@ -634,6 +651,21 @@ export const SqliteSession = (options: { readonly path: string }) =>
           onNone: () => Effect.fail(notFound('getRun', `Run not found: ${id}`)),
           onSome: (run) => Effect.succeed(toRun(run)),
         })
+      })
+
+      const completeRun: SessionStorageApi['completeRun'] = Effect.fn(
+        'SessionStorage.completeRun'
+      )(function* (input) {
+        yield* getRun(input.id)
+        yield* completeRunRow({
+          id: input.id,
+          status: input.status,
+          completed_at: new Date(input.completedAt ?? Date.now()).toISOString(),
+        }).pipe(
+          Effect.mapError(
+            sqlFailure('completeRun', `Failed to complete run: ${input.id}`)
+          )
+        )
       })
 
       const createModelCall: SessionStorageApi['createModelCall'] = Effect.fn(
@@ -952,6 +984,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
         list,
         createRun,
         getRun,
+        completeRun,
         createModelCall,
         setTitle,
         delete: del,

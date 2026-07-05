@@ -34,24 +34,14 @@ export type TranscriptItem =
       source: TranscriptSource
     }
 
-const isInterruptedAssistantSource = (source: TranscriptSource): boolean =>
+const isInterruptedRunAgentSource = (source: TranscriptSource): boolean =>
   source.type === 'persisted' &&
-  source.message.encoded.role === 'assistant' &&
-  source.message.encoded.metadata?.interrupted === true
+  source.message.run?.status === 'interrupted' &&
+  (source.message.encoded.role === 'assistant' ||
+    source.message.encoded.role === 'tool')
 
-const isLastSourceForMessage = (
-  sources: ReadonlyArray<TranscriptSource>,
-  source: TranscriptSource,
-  index: number
-): boolean =>
-  source.type === 'persisted' &&
-  !sources
-    .slice(index + 1)
-    .some(
-      (candidate) =>
-        candidate.type === 'persisted' &&
-        candidate.message.id === source.message.id
-    )
+const sourceRunId = (source: TranscriptSource): string | null =>
+  source.type === 'persisted' ? source.message.runId : null
 
 export const messageParts = (
   message: MessageNode
@@ -97,11 +87,19 @@ export const projectTranscript = (
     }
   }
 
+  const lastInterruptedRunSourceIndex = new Map<string, number>()
+  sources.forEach((source, index) => {
+    if (!isInterruptedRunAgentSource(source)) return
+    const runId = sourceRunId(source)
+    if (runId === null) return
+    lastInterruptedRunSourceIndex.set(runId, index)
+  })
+
   return sources.flatMap((source, index): TranscriptItem[] => {
     const part = source.part
+    const runId = sourceRunId(source)
     const appendInterruption =
-      isInterruptedAssistantSource(source) &&
-      isLastSourceForMessage(sources, source, index)
+      runId !== null && lastInterruptedRunSourceIndex.get(runId) === index
     const interruption = appendInterruption
       ? [{ type: 'interruption' as const, source }]
       : []

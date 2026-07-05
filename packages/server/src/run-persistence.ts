@@ -12,8 +12,6 @@ import { StoredMessage, type StoredMessageEncoded } from '@sorato/core/message'
 import { EventBus } from './event-bus.ts'
 import { pricedUsage, type CostInfo } from './run-cost.ts'
 
-const INTERRUPTED_TOOL_RESULT = 'Tool execution interrupted.'
-
 const nullUsage = {
   inputTokens: null,
   outputTokens: null,
@@ -61,9 +59,6 @@ const addToolDisplays = (
       ...(bodyPresentation?.bodyDisplay !== undefined
         ? { bodyDisplay: bodyPresentation.bodyDisplay }
         : {}),
-      ...(part.isFailure && part.result === INTERRUPTED_TOOL_RESULT
-        ? { metadata: { interrupted: true } }
-        : {}),
     }
   }
 
@@ -95,24 +90,6 @@ const addToolDisplays = (
 
     return Schema.decodeUnknownSync(StoredMessage)(withDisplay)
   })
-}
-
-const markLastAssistantInterrupted = (
-  messages: ReadonlyArray<StoredMessageEncoded>
-): ReadonlyArray<StoredMessageEncoded> => {
-  const index = messages.findLastIndex(
-    (message) => message.role === 'assistant'
-  )
-  if (index === -1) return messages
-
-  return messages.map((message, messageIndex) =>
-    messageIndex === index && message.role === 'assistant'
-      ? {
-          ...message,
-          metadata: { ...message.metadata, interrupted: true },
-        }
-      : message
-  )
 }
 
 export const createPersistenceHook = Effect.fn(
@@ -153,9 +130,7 @@ export const createPersistenceHook = Effect.fn(
       result.toolResultHeaders,
       result.toolResultBodyDisplays
     )
-    const newMessages = interrupted
-      ? markLastAssistantInterrupted(displayMessages)
-      : displayMessages
+    const newMessages = displayMessages
 
     if (newMessages.length === 0) return
 

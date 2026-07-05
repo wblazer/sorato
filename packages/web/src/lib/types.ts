@@ -200,9 +200,6 @@ export interface AssistantMessage {
     | ReadonlyArray<
         TextPart | FilePart | ReasoningPart | ToolCallPart | ToolResultPart
       >
-  metadata?: {
-    interrupted?: boolean
-  }
 }
 
 export interface ToolMessage {
@@ -256,9 +253,7 @@ export interface ToolResultPart {
   header?: MessageHeaderDisplay
   /** Optional structured human-facing body display payload. */
   bodyDisplay?: ToolResultDisplay
-  metadata?: {
-    interrupted?: boolean
-  }
+  metadata?: Record<string, unknown>
 }
 
 /** Structured display payloads for tool results. Absence means render result raw. */

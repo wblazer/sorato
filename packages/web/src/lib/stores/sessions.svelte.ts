@@ -43,11 +43,9 @@ function createSessionStore() {
   // field on sessions fetched from the server.
   //
   // `stopping` is a frontend-only transitional state: the user has
-  // requested a stop but the server hasn't confirmed it yet (RunEnd
-  // hasn't arrived). Used for immediate visual feedback and to block
-  // duplicate stop requests.
+  // requested a stop and the run-scoped HTTP request is pending.
 
-  let stoppingSessions = $state(new Set<string>())
+  let stoppingRuns = $state(new Set<string>())
   let queuedMessages = $state(new Map<string, QueuedMessageDraft[]>())
   let pendingRunStarts = $state(new Map<string, number>())
   let sessionStatuses = $state(new Map<string, SessionRunStatus>())
@@ -192,13 +190,10 @@ function createSessionStore() {
       nextActiveRuns.delete(event.runId)
       activeRuns = nextActiveRuns
 
-      if (
-        !activeRunsFor(event.sessionId).length &&
-        stoppingSessions.has(event.sessionId)
-      ) {
-        const next = new Set(stoppingSessions)
-        next.delete(event.sessionId)
-        stoppingSessions = next
+      if (stoppingRuns.has(event.runId)) {
+        const next = new Set(stoppingRuns)
+        next.delete(event.runId)
+        stoppingRuns = next
       }
       void Effect.runPromise(refreshSession(event.sessionId))
     } else if (event._tag === 'SessionUpdated') {
@@ -436,45 +431,33 @@ function createSessionStore() {
   }
 
   /**
-   * Stop an active agent run on a session.
+   * Stop an active agent run.
    *
-   * Transitions to 'stopping' immediately for visual feedback, then
-   * fires the server request. The 'stopping' state is cleared when
-   * RunEnd arrives via SSE, not when the HTTP response returns —
-   * this ensures the UI stays in "stopping" until the run is truly done.
+   * `stopping` is local to the pending HTTP request. Run lifecycle truth comes
+   * from SSE and persisted state refreshes.
    */
-  function stopAgent(sessionId: string) {
-    // Guard: don't send duplicate stop requests.
-    if (stoppingSessions.has(sessionId))
-      return Effect.succeed('stopped' as const)
+  function stopAgent(runId: string) {
+    if (stoppingRuns.has(runId)) return Effect.succeed('stopped' as const)
 
-    // Optimistic: mark as stopping immediately for UI feedback.
-    stoppingSessions = new Set([...stoppingSessions, sessionId])
+    stoppingRuns = new Set([...stoppingRuns, runId])
+    const clearStopping = Effect.sync(() => {
+      const next = new Set(stoppingRuns)
+      next.delete(runId)
+      stoppingRuns = next
+    })
 
     return Effect.gen(function* () {
       const client = yield* apiClient(connectionsStore.getApiBase())
       const data = yield* runApiEffect(
-        client.sessions.stop({ params: { id: sessionId } }),
+        client.sessions.stopRun({ params: { id: runId } }),
         'Failed to stop agent run'
       )
 
-      return yield* Effect.sync(() => {
-        // If the server says it wasn't running, clear stopping state
-        // immediately (no RunEnd will arrive).
-        if (data.status === 'not_running') {
-          const next = new Set(stoppingSessions)
-          next.delete(sessionId)
-          stoppingSessions = next
-        }
-        return data.status
-      })
+      return yield* Effect.sync(() => data.status)
     }).pipe(
+      Effect.ensuring(clearStopping),
       Effect.catch((cause: UiApiError) =>
         Effect.sync(() => {
-          // On error, clear stopping state so the user can retry.
-          const next = new Set(stoppingSessions)
-          next.delete(sessionId)
-          stoppingSessions = next
           error = cause.message
           return 'error' as const
         })
@@ -500,9 +483,9 @@ function createSessionStore() {
     return runId === null ? null : (activeRuns.get(runId) ?? null)
   }
 
-  /** Check if a stop has been requested but hasn't completed yet. */
-  function isStopping(sessionId: string): boolean {
-    return stoppingSessions.has(sessionId)
+  /** Check if a stop request for a run is pending. */
+  function isStopping(runId: string | null): boolean {
+    return runId !== null && stoppingRuns.has(runId)
   }
 
   function queuedMessagesFor(sessionId: string): QueuedMessageDraft[] {

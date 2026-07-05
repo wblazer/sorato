@@ -103,6 +103,82 @@ describe('RunScenario', () => {
   )
 
   it.effect(
+    'stops an active run through the run-scoped production stop path',
+    () =>
+      Effect.gen(function* () {
+        const scenario = yield* makeRunScenario({
+          model: [
+            Scripted.textStart('text'),
+            Scripted.textDelta('text', 'before stop'),
+            Scripted.checkpoint('run-stop-mid-stream'),
+            Scripted.textDelta('text', 'after stop'),
+            Scripted.textEnd('text'),
+            Scripted.finish(),
+          ],
+        })
+
+        const run = yield* scenario.startRun({
+          input: 'Pause then stop by run',
+        })
+        yield* scenario.model.waitForCheckpoint('run-stop-mid-stream')
+        yield* scenario.waitForEvent(
+          (event) => event._tag === 'TextDelta' && event.runId === run.runId
+        )
+
+        const response = yield* scenario.stopRun(run.runId)
+        expect(response.status).toBe('stopped')
+
+        const events = yield* scenario.eventsForRun(run.runId)
+        expect(events.map((event) => event._tag)).toContain('RunEnd')
+        expect(
+          events.some(
+            (event) =>
+              event._tag === 'TextDelta' && event.delta === 'after stop'
+          )
+        ).toBe(false)
+        expect(yield* scenario.isRunActive(run.runId)).toBe(false)
+        expect((yield* scenario.getRun(run.runId)).status).toBe('interrupted')
+        const latest = yield* scenario.latestNodeForRun(run.runId)
+        expect(latest?.encoded.role).toBe('assistant')
+        if (latest?.encoded.role === 'assistant') {
+          expect('metadata' in latest.encoded).toBe(false)
+        }
+      }).pipe(Effect.scoped)
+  )
+
+  it.effect(
+    'stops a worker run after queue shift before active registration',
+    () =>
+      Effect.gen(function* () {
+        const scenario = yield* makeRunScenario({
+          model: [Scripted.text('should not run'), Scripted.finish()],
+        })
+        const run = yield* scenario.enqueueRun({
+          input: 'Stop while starting',
+        })
+        const runId = run.runId
+
+        yield* scenario.checkpoints.waitFor(
+          'afterQueueShiftBeforeActiveRegister',
+          runId
+        )
+        expect(yield* scenario.isRunActive(runId)).toBe(false)
+
+        const response = yield* scenario.stopRun(runId)
+        expect(response.status).toBe('stopped')
+        yield* scenario.checkpoints.release(
+          'afterQueueShiftBeforeActiveRegister',
+          runId
+        )
+
+        const events = yield* scenario.eventsForRun(runId)
+        expect(events.map((event) => event._tag)).toContain('RunEnd')
+        expect(events.map((event) => event._tag)).not.toContain('TextDelta')
+        expect((yield* scenario.getRun(runId)).status).toBe('interrupted')
+      }).pipe(Effect.scoped)
+  )
+
+  it.effect(
     'can pause the production worker after queue shift before active registration',
     () =>
       Effect.gen(function* () {

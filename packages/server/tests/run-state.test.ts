@@ -13,6 +13,7 @@ import {
   releaseRunQueue,
   resetRunRegistry,
   shouldStop,
+  shouldStopRun,
   shiftQueuedRun,
 } from '../src/run-registry.ts'
 import type { RunRequest } from '../src/run-registry.ts'
@@ -109,7 +110,7 @@ describe('RunRegistry', () => {
     })
   )
 
-  it('marks a session as stopping and drains queued inputs', () => {
+  it('records session stop requests and drains queued inputs', () => {
     resetRunRegistry()
 
     const first = runRequest('first')
@@ -122,7 +123,8 @@ describe('RunRegistry', () => {
 
     requestStop('session-1')
 
-    expect(shouldStop(run.queueId)).toBe(true)
+    expect(shouldStop(run.queueId)).toBe(false)
+    expect(shouldStopRun(first.runId)).toBe(true)
     expect(drainQueuedRuns('session-1')).toEqual([
       {
         ...first,

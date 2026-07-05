@@ -68,8 +68,16 @@
 
   // Running state is derived from the session store — the single source
   // of truth. The messages store only tracks streaming *content*.
-  const isRunning = $derived(sessionStore.isRunning(sessionId))
-  const isStopping = $derived(sessionStore.isStopping(sessionId))
+  const activeRuns = $derived(sessionStore.activeRunsFor(sessionId))
+  const primaryActiveRun = $derived(
+    activeRuns.find((run) => run.visibility === 'primary') ??
+      activeRuns[0] ??
+      null,
+  )
+  const isRunning = $derived(primaryActiveRun !== null)
+  const isStopping = $derived(
+    sessionStore.isStopping(primaryActiveRun?.runId ?? null),
+  )
   const queuedMessages = $derived(sessionStore.queuedMessagesFor(sessionId))
   const sessionStatus = $derived(sessionStore.sessionStatus(sessionId))
   const selectedSession = $derived(
@@ -375,7 +383,9 @@
   }
 
   function handleStop() {
-    void Effect.runPromise(sessionStore.stopAgent(sessionId))
+    const runId = primaryActiveRun?.runId
+    if (!runId) return
+    void Effect.runPromise(sessionStore.stopAgent(runId))
   }
 
   function handleModel(value: string, modelOptions?: ModelOptions) {

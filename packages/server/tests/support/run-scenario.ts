@@ -10,7 +10,7 @@ import { EventBus, type EventBusApi } from '../../src/event-bus.ts'
 import { ProjectStorage, type Project } from '../../src/project/project.ts'
 import { ProviderAuthStore } from '../../src/provider-auth.ts'
 import { runAgent } from '../../src/run-agent.ts'
-import { enqueueRunRequest, stopSession } from '../../src/sessions.ts'
+import { enqueueRunRequest, stopRun, stopSession } from '../../src/sessions.ts'
 import {
   installRunLifecycleCheckpointController,
   type RunLifecycleCheckpoint,
@@ -18,6 +18,7 @@ import {
 } from '../../src/run-lifecycle-checkpoints.ts'
 import {
   clearActiveFiber,
+  clearStartingRun,
   isRunActive,
   releaseRunQueue,
   registerActiveFiber,
@@ -92,6 +93,7 @@ export interface RunScenarioApi {
     options: StartRunOptions
   ) => Effect.Effect<StartedRun, StorageError | StorageUnavailable>
   readonly stopSession: () => Effect.Effect<StopResponse, StorageError>
+  readonly stopRun: (runId: string) => Effect.Effect<StopResponse, StorageError>
   readonly interruptFiber: (runId: string) => Effect.Effect<void>
   readonly waitForEvent: (
     predicate: (event: ServerEvent) => boolean
@@ -228,6 +230,7 @@ const makeStartRun =
       const request = requestFor(startOptions, runId)
       startRunQueue(session.id, request)
       shiftQueuedRun(runId)
+      clearStartingRun(runId, runId)
       const cleanupRun = cleanupDirectRun(runId)
       const fiber = yield* runAgent(session.id, request).pipe(
         Effect.ensuring(cleanupRun),
@@ -330,6 +333,8 @@ const buildScenarioApi = (
         stopSession(storage, session.id).pipe(
           Effect.provideContext(layerContext)
         ),
+      stopRun: (runId: string) =>
+        stopRun(storage, runId).pipe(Effect.provideContext(layerContext)),
       interruptFiber: makeInterruptFiber(session, bus, fibers),
       waitForEvent: recorder.waitFor,
       waitForRunStart: waitForRunEvent(recorder, 'RunStart'),
