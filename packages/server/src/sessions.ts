@@ -581,7 +581,7 @@ const stopWithActiveFibers = Effect.fn('Sessions.stopWithActiveFibers')(
   }
 )
 
-const stopSession = Effect.fn('Sessions.stopSession')(function* (
+export const stopSession = Effect.fn('Sessions.stopSession')(function* (
   storage: SessionStorageApi,
   sessionId: string
 ) {

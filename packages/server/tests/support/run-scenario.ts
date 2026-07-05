@@ -4,12 +4,13 @@ import { BunServices } from '@effect/platform-bun'
 import { Context, Effect, Fiber, Layer, Scope } from 'effect'
 import { SqlClient } from 'effect/unstable/sql/SqlClient'
 import type { Sandbox } from '@sorato/core'
-import type { ServerEvent } from '@sorato/api'
+import type { ServerEvent, StopResponse } from '@sorato/api'
 import { makeSqlitePersistenceLive } from '../../src/db/sqlite.ts'
 import { EventBus, type EventBusApi } from '../../src/event-bus.ts'
 import { ProjectStorage, type Project } from '../../src/project/project.ts'
 import { ProviderAuthStore } from '../../src/provider-auth.ts'
 import { runAgent } from '../../src/run-agent.ts'
+import { stopSession } from '../../src/sessions.ts'
 import {
   clearActiveFiber,
   isRunActive,
@@ -17,6 +18,7 @@ import {
   registerActiveFiber,
   resetRunRegistry,
   startRunQueue,
+  shiftQueuedRun,
   type RunRequest,
 } from '../../src/run-registry.ts'
 import {
@@ -64,7 +66,8 @@ export interface RunScenarioApi {
   readonly startRun: (
     options: StartRunOptions
   ) => Effect.Effect<StartedRun, never, Scope.Scope>
-  readonly interruptRun: (runId: string) => Effect.Effect<void>
+  readonly stopSession: () => Effect.Effect<StopResponse, StorageError>
+  readonly interruptFiber: (runId: string) => Effect.Effect<void>
   readonly waitForEvent: (
     predicate: (event: ServerEvent) => boolean
   ) => Effect.Effect<ServerEvent>
@@ -161,6 +164,12 @@ const requestFor = (options: StartRunOptions, runId: string): RunRequest => ({
   afterRunId: null,
 })
 
+const cleanupDirectRun = (runId: string) =>
+  Effect.sync(() => {
+    clearActiveFiber(runId)
+    releaseRunQueue(runId)
+  })
+
 const makeStartRun =
   (
     session: Session,
@@ -173,7 +182,10 @@ const makeStartRun =
       const runId = startOptions.runId ?? crypto.randomUUID()
       const request = requestFor(startOptions, runId)
       startRunQueue(session.id, request)
+      shiftQueuedRun(runId)
+      const cleanupRun = cleanupDirectRun(runId)
       const fiber = yield* runAgent(session.id, request).pipe(
+        Effect.ensuring(cleanupRun),
         Effect.provideContext(layerContext),
         Effect.forkIn(scope)
       )
@@ -189,7 +201,7 @@ const makeStartRun =
       return { sessionId: session.id, runId, fiber }
     })
 
-const makeInterruptRun =
+const makeInterruptFiber =
   (
     session: Session,
     bus: EventBusApi,
@@ -221,7 +233,11 @@ const buildScenarioApi = (
     return {
       session,
       startRun: makeStartRun(session, layerContext, scope, fibers),
-      interruptRun: makeInterruptRun(session, bus, fibers),
+      stopSession: () =>
+        stopSession(storage, session.id).pipe(
+          Effect.provideContext(layerContext)
+        ),
+      interruptFiber: makeInterruptFiber(session, bus, fibers),
       waitForEvent: recorder.waitFor,
       events: recorder.events,
       eventsForRun: recorder.eventsForRun,

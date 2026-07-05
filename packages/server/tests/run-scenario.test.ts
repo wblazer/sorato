@@ -68,4 +68,37 @@ describe('RunScenario', () => {
       expect(String(latest?.encoded.content)).toContain('before')
     }).pipe(Effect.scoped)
   )
+
+  it.effect('stops an active run through the production stop path', () =>
+    Effect.gen(function* () {
+      const scenario = yield* makeRunScenario({
+        model: [
+          Scripted.textStart('text'),
+          Scripted.textDelta('text', 'before stop'),
+          Scripted.checkpoint('mid-stream'),
+          Scripted.textDelta('text', 'after stop'),
+          Scripted.textEnd('text'),
+          Scripted.finish(),
+        ],
+      })
+
+      const run = yield* scenario.startRun({ input: 'Pause then stop' })
+      yield* scenario.model.waitForCheckpoint('mid-stream')
+      yield* scenario.waitForEvent(
+        (event) => event._tag === 'TextDelta' && event.runId === run.runId
+      )
+
+      const response = yield* scenario.stopSession()
+      expect(response.status).toBe('stopped')
+
+      const events = yield* scenario.eventsForRun(run.runId)
+      expect(events.map((event) => event._tag)).toContain('RunEnd')
+      expect(
+        events.some(
+          (event) => event._tag === 'TextDelta' && event.delta === 'after stop'
+        )
+      ).toBe(false)
+      expect(yield* scenario.isRunActive(run.runId)).toBe(false)
+    }).pipe(Effect.scoped)
+  )
 })
