@@ -55,6 +55,7 @@ import {
   updateActiveRunParent,
   type RunRequest,
 } from './run-registry.ts'
+import { runLifecycleCheckpoint } from './run-lifecycle-checkpoints.ts'
 import { generateSessionTitle } from './session-title.ts'
 import { getAuth } from './provider-auth.ts'
 import type { BillingMode } from './session/session.ts'
@@ -814,6 +815,9 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
               appendedMessages: preamble.length,
               wasEmptySession: isFirstMessage,
             })
+          ),
+          Effect.tap(() =>
+            runLifecycleCheckpoint('afterAgentPreambleAppended', runId)
           ),
           Effect.tap(() => {
             const startReplay = Effect.sync(() => {

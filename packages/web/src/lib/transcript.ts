@@ -87,19 +87,32 @@ export const projectTranscript = (
     }
   }
 
-  const lastInterruptedRunSourceIndex = new Map<string, number>()
+  const toolCallSourceIndexes = new Map<string, number>()
+  sources.forEach((source, index) => {
+    if (source.part.type === 'tool-call') {
+      toolCallSourceIndexes.set(source.part.id, index)
+    }
+  })
+
+  const lastInterruptedRunRenderedSourceIndex = new Map<string, number>()
   sources.forEach((source, index) => {
     if (!isInterruptedRunAgentSource(source)) return
     const runId = sourceRunId(source)
     if (runId === null) return
-    lastInterruptedRunSourceIndex.set(runId, index)
+
+    const renderedIndex =
+      source.part.type === 'tool-result'
+        ? (toolCallSourceIndexes.get(source.part.id) ?? index)
+        : index
+    lastInterruptedRunRenderedSourceIndex.set(runId, renderedIndex)
   })
 
   return sources.flatMap((source, index): TranscriptItem[] => {
     const part = source.part
     const runId = sourceRunId(source)
     const appendInterruption =
-      runId !== null && lastInterruptedRunSourceIndex.get(runId) === index
+      runId !== null &&
+      lastInterruptedRunRenderedSourceIndex.get(runId) === index
     const interruption = appendInterruption
       ? [{ type: 'interruption' as const, source }]
       : []
@@ -117,7 +130,7 @@ export const projectTranscript = (
         ...interruption,
       ]
     }
-    if (part.type === 'tool-result') return []
+    if (part.type === 'tool-result') return interruption
     return [{ type: 'message', source, part }, ...interruption]
   })
 }

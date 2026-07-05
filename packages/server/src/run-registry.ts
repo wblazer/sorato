@@ -51,6 +51,7 @@ interface RunQueueState {
   activeRunVisibility: 'primary' | 'background'
   parentRunId: string | undefined
   toolCallId: string | undefined
+  activeRunRequest: RunRequest | null
   startingRun: RunRequest | null
   queuedRuns: Array<RunRequest>
   stopRequestedRunIds: Set<string>
@@ -106,6 +107,7 @@ export function startRunQueue(
     activeRunVisibility: 'primary',
     parentRunId: undefined,
     toolCallId: undefined,
+    activeRunRequest: null,
     startingRun: null,
     queuedRuns: [request],
     stopRequestedRunIds: new Set(),
@@ -146,7 +148,8 @@ export function registerActiveFiber(
   baseNodeId: string | null,
   kind: 'agent' | 'summary',
   visibility: 'primary' | 'background',
-  fiber: Fiber.Fiber<void, never>
+  fiber: Fiber.Fiber<void, never>,
+  request: RunRequest | null = null
 ): void {
   const state = queues.get(queueId) ?? missingQueueState('active run', queueId)
   state.activeRunFiber = fiber
@@ -154,6 +157,7 @@ export function registerActiveFiber(
   state.activeBaseNodeId = baseNodeId
   state.activeRunKind = kind
   state.activeRunVisibility = visibility
+  state.activeRunRequest = request
   runQueues.set(runId, queueId)
 }
 
@@ -189,6 +193,7 @@ export function clearActiveFiber(queueId: string): void {
   state.activeRunVisibility = 'primary'
   state.parentRunId = undefined
   state.toolCallId = undefined
+  state.activeRunRequest = null
 }
 
 export function shiftQueuedRun(queueId: string): RunRequest | undefined {
@@ -261,6 +266,7 @@ export interface RunStopSnapshot {
     | null
   readonly isActive: boolean
   readonly startingRun: RunRequest | null
+  readonly activeRunRequest: RunRequest | null
   readonly queuedRuns: ReadonlyArray<RunRequest>
   readonly parentRunId: string | undefined
   readonly childRunIds: ReadonlyArray<string>
@@ -289,6 +295,8 @@ export function getRunStopSnapshot(runId: string): RunStopSnapshot | undefined {
     activeFiber: state.activeRunId === runId ? state.activeRunFiber : null,
     workerFiber: state.workerFiber,
     isActive: state.activeRunId === runId && state.activeRunFiber !== null,
+    activeRunRequest:
+      state.activeRunId === runId ? state.activeRunRequest : null,
     startingRun,
     queuedRuns,
     parentRunId: state.parentRunId,

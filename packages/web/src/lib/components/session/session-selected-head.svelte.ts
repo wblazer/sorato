@@ -127,6 +127,8 @@ export class SessionSelectedHeadController {
             type: 'node',
             nodeId: this.selectedHead.baseNodeId,
           })
+        } else {
+          this.setSelectedHead(null)
         }
       }
     })
@@ -244,7 +246,7 @@ function resolveRenderHead(
   const finalNode = finalPersistedRunNode(messages, head.runId, head.baseNodeId)
   if (finalNode) return { type: 'node', nodeId: finalNode.id }
   return head.baseNodeId === null
-    ? head
+    ? null
     : { type: 'node', nodeId: head.baseNodeId }
 }
 

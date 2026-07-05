@@ -147,6 +147,36 @@ describe('RunScenario', () => {
   )
 
   it.effect(
+    'focuses the interrupted run on its user input before model output',
+    () =>
+      Effect.gen(function* () {
+        const scenario = yield* makeRunScenario({
+          model: [Scripted.text('should not run'), Scripted.finish()],
+        })
+        const run = yield* scenario.startRun({
+          input: 'Stop before model output',
+        })
+
+        yield* scenario.checkpoints.waitFor(
+          'afterAgentPreambleAppended',
+          run.runId
+        )
+
+        const response = yield* scenario.stopRun(run.runId)
+        expect(response.status).toBe('stopped')
+
+        const events = yield* scenario.eventsForRun(run.runId)
+        expect(events.map((event) => event._tag)).toContain('RunEnd')
+        expect(events.map((event) => event._tag)).not.toContain('TextDelta')
+        expect((yield* scenario.getRun(run.runId)).status).toBe('interrupted')
+
+        const latest = yield* scenario.latestNodeForRun(run.runId)
+        expect(latest?.encoded.role).toBe('user')
+        expect(latest?.encoded.content).toBe('Stop before model output')
+      }).pipe(Effect.scoped)
+  )
+
+  it.effect(
     'stops a worker run after queue shift before active registration',
     () =>
       Effect.gen(function* () {
@@ -164,17 +194,25 @@ describe('RunScenario', () => {
         )
         expect(yield* scenario.isRunActive(runId)).toBe(false)
 
-        const response = yield* scenario.stopRun(runId)
-        expect(response.status).toBe('stopped')
+        const stopFiber = yield* Effect.forkDetach(scenario.stopRun(runId))
+        yield* scenario.waitForEvent(
+          (event) => event._tag === 'MessagesAppended'
+        )
         yield* scenario.checkpoints.release(
           'afterQueueShiftBeforeActiveRegister',
           runId
         )
+        const response = yield* Fiber.join(stopFiber)
+        expect(response.status).toBe('stopped')
 
         const events = yield* scenario.eventsForRun(runId)
         expect(events.map((event) => event._tag)).toContain('RunEnd')
         expect(events.map((event) => event._tag)).not.toContain('TextDelta')
-        expect((yield* scenario.getRun(runId)).status).toBe('interrupted')
+        const messages = yield* scenario.messagesForRun(runId)
+        expect(messages.map((message) => message.encoded.role)).toEqual([
+          'user',
+        ])
+        expect(messages[0]?.run?.status).toBe('interrupted')
       }).pipe(Effect.scoped)
   )
 

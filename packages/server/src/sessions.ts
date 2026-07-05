@@ -2,6 +2,7 @@
  * Sessions group handler implementation.
  *
  * Delegates to server-owned SessionStorage. The handler Layer requires
+ * Delegates to server-owned SessionStorage. The handler Layer requires
  * SessionStorage in its environment — the caller provides it (e.g. SqliteSession).
  */
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
@@ -148,10 +149,19 @@ const registerActiveRun = Effect.fn('Sessions.registerActiveRun')(
     baseNodeId: string | null,
     kind: 'agent' | 'summary',
     visibility: 'primary' | 'background',
-    fiber: Fiber.Fiber<void, never>
+    fiber: Fiber.Fiber<void, never>,
+    request: RunRequest | null = null
   ) =>
     Effect.suspend(() =>
-      doRegisterActiveRun(queueId, runId, baseNodeId, kind, visibility, fiber)
+      doRegisterActiveRun(
+        queueId,
+        runId,
+        baseNodeId,
+        kind,
+        visibility,
+        fiber,
+        request
+      )
     )
 )
 
@@ -199,9 +209,18 @@ const doRegisterActiveRun = (
   baseNodeId: string | null,
   kind: 'agent' | 'summary',
   visibility: 'primary' | 'background',
-  fiber: Fiber.Fiber<void, never>
+  fiber: Fiber.Fiber<void, never>,
+  request: RunRequest | null = null
 ) => {
-  registerActiveFiber(queueId, runId, baseNodeId, kind, visibility, fiber)
+  registerActiveFiber(
+    queueId,
+    runId,
+    baseNodeId,
+    kind,
+    visibility,
+    fiber,
+    request
+  )
   return Effect.void
 }
 
@@ -457,7 +476,8 @@ function createRunWorker(sessionId: string, queueId: string) {
         request.baseNodeId,
         kind,
         visibility,
-        fiber
+        fiber,
+        request
       )
       yield* Effect.logInfo('Session run worker registered active run')
 
@@ -582,6 +602,26 @@ const appendStoppedQueuedInputs = (
     })
   )
 
+const appendActiveRunInputsIfMissing = (
+  storage: SessionStorageApi,
+  sessionId: string,
+  request: RunRequest
+) =>
+  Effect.gen(function* () {
+    if (request.inputs.length === 0) return false
+
+    const runAlreadyHasNodes = yield* storage.messages(sessionId).pipe(
+      Effect.map((messages) =>
+        messages.some((message) => message.runId === request.runId)
+      ),
+      Effect.catchTag('StorageError', () => Effect.succeed(false))
+    )
+    if (runAlreadyHasNodes) return false
+
+    yield* appendStoppedQueuedInputs(storage, sessionId, [request])
+    return true
+  })
+
 const appendStoppedRunRequests = Effect.fn('Sessions.appendStoppedRunRequests')(
   function* (
     storage: SessionStorageApi,
@@ -592,6 +632,16 @@ const appendStoppedRunRequests = Effect.fn('Sessions.appendStoppedRunRequests')(
     if (requests.length > 0) yield* publishMessagesAppended(sessionId)
   }
 )
+
+const awaitWorkerStop = (snapshot: {
+  readonly workerFiber:
+    | Fiber.Fiber<void, never>
+    | Fiber.Fiber<void, unknown>
+    | null
+}) =>
+  snapshot.workerFiber === null
+    ? Effect.void
+    : Fiber.join(snapshot.workerFiber).pipe(Effect.exit, Effect.asVoid)
 
 const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
   storage: SessionStorageApi,
@@ -624,13 +674,24 @@ const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
         snapshot.sessionId,
         stoppedRequests
       )
+      if (startingRequest !== undefined) yield* awaitWorkerStop(snapshot)
       yield* publishRunEnd(snapshot.sessionId, runId)
       stopped = true
     }
 
     if (snapshot.activeFiber !== null) {
       yield* Fiber.interrupt(snapshot.activeFiber).pipe(Effect.exit)
+      const appendedInputs =
+        snapshot.activeRunRequest === null
+          ? false
+          : yield* appendActiveRunInputsIfMissing(
+              storage,
+              snapshot.sessionId,
+              snapshot.activeRunRequest
+            )
+      if (appendedInputs) yield* publishMessagesAppended(snapshot.sessionId)
       yield* clearActiveRun(snapshot.queueId)
+      yield* awaitWorkerStop(snapshot)
       yield* publishRunEnd(snapshot.sessionId, runId)
       stopped = true
     }

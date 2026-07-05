@@ -1,6 +1,8 @@
 import { Deferred, Effect, Ref } from 'effect'
 
-export type RunLifecycleCheckpointName = 'afterQueueShiftBeforeActiveRegister'
+export type RunLifecycleCheckpointName =
+  | 'afterQueueShiftBeforeActiveRegister'
+  | 'afterAgentPreambleAppended'
 
 export interface RunLifecycleCheckpoint {
   readonly name: RunLifecycleCheckpointName
@@ -14,6 +16,7 @@ interface Gate {
 
 interface ControllerState {
   readonly gates: Map<string, Gate>
+  readonly enabled: Set<string>
   readonly reached: Ref.Ref<ReadonlyArray<RunLifecycleCheckpoint>>
 }
 
@@ -45,7 +48,7 @@ export const runLifecycleCheckpoint = (
 ) =>
   Effect.gen(function* () {
     const state = controllerState
-    if (state === null) return
+    if (state === null || !state.enabled.has(gateKey(name, runId))) return
 
     const gate = yield* getGate(state, name, runId)
     yield* Ref.update(state.reached, (checkpoints) => [
@@ -59,12 +62,19 @@ export const runLifecycleCheckpoint = (
 export const installRunLifecycleCheckpointController = Effect.gen(function* () {
   const previous = controllerState
   const reached = yield* Ref.make<ReadonlyArray<RunLifecycleCheckpoint>>([])
-  const state: ControllerState = { gates: new Map(), reached }
+  const state: ControllerState = {
+    gates: new Map(),
+    enabled: new Set(),
+    reached,
+  }
   controllerState = state
 
   return {
     waitFor: (name: RunLifecycleCheckpointName, runId: string) =>
-      getGate(state, name, runId).pipe(
+      Effect.sync(() => {
+        state.enabled.add(gateKey(name, runId))
+      }).pipe(
+        Effect.andThen(getGate(state, name, runId)),
         Effect.flatMap((gate) => Deferred.await(gate.reached))
       ),
     release: (name: RunLifecycleCheckpointName, runId: string) =>
