@@ -55,7 +55,6 @@
   const parts = $derived(messageParts(message))
 
   const renderParts = $derived.by((): ReadonlyArray<TranscriptItem> => {
-    if (transcriptItems !== undefined) return transcriptItems
     const summaryContent =
       message.encoded.role === 'user'
         ? message.encoded.metadata?.summary?.content
@@ -72,6 +71,8 @@
         { pretty: true },
       )
     }
+
+    if (transcriptItems !== undefined) return transcriptItems
 
     return projectTranscript(persistedSources([message]), {
       pretty: clientSettingsStore.prettyTranscript,

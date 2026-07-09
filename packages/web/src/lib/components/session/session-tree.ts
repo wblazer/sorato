@@ -174,6 +174,8 @@ function toolResultIds(message: MessageNode): ReadonlyArray<string> {
 }
 
 function encodedPreview(message: MessageEncoded): string {
+  const summary = summaryDisplayContent(message)
+  if (summary !== null) return compactWhitespace(summary)
   if (message.role === 'tool') return partsText(message.content)
   const content = message.content
   if (typeof content === 'string') return compactWhitespace(content)
@@ -182,11 +184,18 @@ function encodedPreview(message: MessageEncoded): string {
 }
 
 function encodedNarrativePreview(message: MessageEncoded): string {
+  const summary = summaryDisplayContent(message)
+  if (summary !== null) return compactWhitespace(summary)
   if (message.role === 'tool') return ''
   const content = message.content
   if (typeof content === 'string') return compactWhitespace(content)
   if (!content) return ''
   return narrativePartsText(content)
+}
+
+function summaryDisplayContent(message: MessageEncoded): string | null {
+  if (message.role !== 'user' || message.source !== 'summary') return null
+  return message.metadata?.summary?.content ?? ''
 }
 
 function partsText(
