@@ -51,3 +51,5 @@ data
 .screenshots
 
 .opencode/package-lock.json
+
+.sorato/
