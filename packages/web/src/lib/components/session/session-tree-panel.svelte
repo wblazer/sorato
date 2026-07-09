@@ -8,6 +8,7 @@
   import { Button } from '$lib/components/ui/button/index.js'
   import { Checkbox } from '$lib/components/ui/checkbox/index.js'
   import * as Tabs from '$lib/components/ui/tabs/index.js'
+  import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import StreamingDots from '$lib/components/ui/streaming-dots.svelte'
   import GitBranchIcon from 'phosphor-svelte/lib/GitBranchIcon'
   import FileTextIcon from 'phosphor-svelte/lib/FileTextIcon'
@@ -993,7 +994,7 @@
             <span>Group agent steps</span>
           </label>
         </div>
-        <div class="min-h-0 flex-1 overflow-auto">
+        <ScrollArea class="min-h-0 flex-1" orientation="vertical">
           <div class="flex flex-col p-1.5">
             {#each compactRows as row, index (row.id)}
               {@const selected = isCompactSelected(row.id)}
@@ -1066,7 +1067,7 @@
               </Button>
             {/each}
           </div>
-        </div>
+        </ScrollArea>
         <div class="flex shrink-0 flex-col gap-2 border-t border-border p-2">
           <Button
             variant="outline"
@@ -1113,7 +1114,7 @@
             <span>Group agent steps</span>
           </label>
         </div>
-        <div class="min-h-0 flex-1 overflow-auto">
+        <ScrollArea class="min-h-0 flex-1" orientation="vertical">
           <div class="flex flex-col p-1.5">
             {#each rows as row (row.id)}
               {#if row.type === 'node'}
@@ -1246,7 +1247,7 @@
               {/if}
             {/each}
           </div>
-        </div>
+        </ScrollArea>
       {/if}
     </Tabs.Content>
 
