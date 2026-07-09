@@ -627,13 +627,20 @@ const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
     Effect.provide(modelServices)
   )
 
-  yield* storage.compactRange({
+  const result = yield* storage.compactRange({
     sessionId,
     runId: request.runId,
     baseHeadNodeId: compactRange.baseHeadNodeId,
     startNodeId: compactRange.startNodeId,
     endNodeId: compactRange.endNodeId,
     summaryContent: summary.trim(),
+  })
+  updateActiveRunBase(request.runId, result.headNodeId)
+  yield* bus.publish({
+    _tag: 'RunBaseUpdated',
+    sessionId,
+    runId: request.runId,
+    baseNodeId: result.headNodeId,
   })
   yield* bus.publish({ _tag: 'MessagesAppended', sessionId })
   return true

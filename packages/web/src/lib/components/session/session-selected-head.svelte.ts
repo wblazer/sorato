@@ -83,13 +83,10 @@ export class SessionSelectedHeadController {
 
       if (this.initializedSelectedHeadKey !== key) {
         const stored = readSelectedHead(key)
-        const latest = latestPersistedNodeId(messages)
-        const fallback: SelectedHead =
-          latest === null ? null : { type: 'node', nodeId: latest }
         const next =
           stored.exists && isStoredHeadValid(stored.value, ids)
             ? stored.value
-            : fallback
+            : null
 
         this.selectedHead = next
         this.initializedSelectedHeadKey = key
@@ -101,10 +98,7 @@ export class SessionSelectedHeadController {
         this.selectedHead?.type === 'node' &&
         !ids.has(this.selectedHead.nodeId)
       ) {
-        const latest = latestPersistedNodeId(messages)
-        this.setSelectedHead(
-          latest === null ? null : { type: 'node', nodeId: latest }
-        )
+        this.setSelectedHead(null)
       }
 
       if (
@@ -197,15 +191,6 @@ function isStoredHeadValid(head: SelectedHead, ids: ReadonlySet<string>) {
 
 function isOptimisticNode(message: MessageNode) {
   return message.id.startsWith('optimistic-')
-}
-
-function latestPersistedNodeId(
-  messages: ReadonlyArray<MessageNode>
-): string | null {
-  return (
-    messages.toReversed().find((message) => !isOptimisticNode(message))?.id ??
-    null
-  )
 }
 
 function selectedMessagePath(
