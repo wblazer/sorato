@@ -33,6 +33,7 @@ import { runAgent } from './run-agent.ts'
 import {
   clearActiveFiber,
   clearStartingRun,
+  clearRunMapping,
   drainQueuedRuns as drainQueuedInputs,
   drainQueuedRunsForRun,
   enqueueRun,
@@ -498,7 +499,6 @@ function createRunWorker(sessionId: string, queueId: string) {
         yield* Effect.logInfo('Session run worker observed stopped active run')
       } else {
         yield* completeRun(storage, request.runId, 'completed')
-        yield* publishRunEnd(sessionId, request.runId)
       }
     }
   }).pipe(
@@ -658,6 +658,7 @@ const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
 
     const snapshot = getRunStopSnapshot(runId)
     if (snapshot === undefined) continue
+    let handled = false
 
     yield* requestSingleRunStop(runId)
     pendingRunIds.push(...snapshot.childRunIds)
@@ -677,6 +678,7 @@ const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
       if (startingRequest !== undefined) yield* awaitWorkerStop(snapshot)
       yield* publishRunEnd(snapshot.sessionId, runId)
       stopped = true
+      handled = true
     }
 
     if (snapshot.activeFiber !== null) {
@@ -690,11 +692,12 @@ const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
               snapshot.activeRunRequest
             )
       if (appendedInputs) yield* publishMessagesAppended(snapshot.sessionId)
-      yield* clearActiveRun(snapshot.queueId)
       yield* awaitWorkerStop(snapshot)
-      yield* publishRunEnd(snapshot.sessionId, runId)
       stopped = true
+      handled = true
     }
+
+    if (handled) yield* Effect.sync(() => clearRunMapping(runId))
   }
 
   return stopped

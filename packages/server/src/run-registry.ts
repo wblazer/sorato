@@ -59,6 +59,8 @@ interface RunQueueState {
 
 const queues = new Map<string, RunQueueState>()
 const runQueues = new Map<string, string>()
+const childRunParents = new Map<string, string>()
+const childRunToolCallIds = new Map<string, string | undefined>()
 
 const missingQueueState = (kind: string, queueId: string): never => {
   throw new Error(`Cannot register ${kind} for unknown run queue ${queueId}`)
@@ -158,6 +160,11 @@ export function registerActiveFiber(
   state.activeRunKind = kind
   state.activeRunVisibility = visibility
   state.activeRunRequest = request
+  const parentRunId = childRunParents.get(runId)
+  if (parentRunId !== undefined) {
+    state.parentRunId = parentRunId
+    state.toolCallId = childRunToolCallIds.get(runId)
+  }
   runQueues.set(runId, queueId)
 }
 
@@ -166,11 +173,37 @@ export function updateActiveRunParent(
   parentRunId: string,
   toolCallId?: string | undefined
 ): void {
-  const queueId = runQueues.get(childRunId)
-  const state = queueId ? queues.get(queueId) : undefined
+  childRunParents.set(childRunId, parentRunId)
+  childRunToolCallIds.set(childRunId, toolCallId)
+
+  const queueId = runQueues.get(childRunId) ?? runQueues.get(parentRunId)
+  if (queueId === undefined) return
+  const state = queues.get(queueId)
   if (!state) return
-  state.parentRunId = parentRunId
-  state.toolCallId = toolCallId
+  runQueues.set(childRunId, queueId)
+
+  if (
+    state.activeRunId === childRunId ||
+    state.startingRun?.runId === childRunId
+  ) {
+    state.parentRunId = parentRunId
+    state.toolCallId = toolCallId
+  }
+}
+
+export function clearActiveRunParent(childRunId: string): void {
+  childRunParents.delete(childRunId)
+  childRunToolCallIds.delete(childRunId)
+  if (runQueues.has(childRunId)) {
+    const queueId = runQueues.get(childRunId)
+    const state = queueId ? queues.get(queueId) : undefined
+    if (
+      state?.activeRunId !== childRunId &&
+      state?.startingRun?.runId !== childRunId
+    ) {
+      runQueues.delete(childRunId)
+    }
+  }
 }
 
 export function updateActiveRunBase(
@@ -283,10 +316,18 @@ export function getRunStopSnapshot(runId: string): RunStopSnapshot | undefined {
   const queuedRuns = state.queuedRuns.filter(
     (request) => request.runId === runId
   )
-  const childRunIds = [...queues.values()]
+  const registryChildRunIds = [...queues.values()]
     .filter((candidate) => candidate.parentRunId === runId)
     .map((candidate) => candidate.activeRunId ?? candidate.startingRun?.runId)
     .filter((id): id is string => id !== undefined && id !== null)
+  const childRunIds = [
+    ...new Set([
+      ...registryChildRunIds,
+      ...[...childRunParents.entries()]
+        .filter(([, parentRunId]) => parentRunId === runId)
+        .map(([childRunId]) => childRunId),
+    ]),
+  ]
 
   return {
     sessionId: state.sessionId,
@@ -302,6 +343,9 @@ export function getRunStopSnapshot(runId: string): RunStopSnapshot | undefined {
     parentRunId: state.parentRunId,
     childRunIds,
   }
+}
+export function clearRunMapping(runId: string): void {
+  runQueues.delete(runId)
 }
 
 export function drainQueuedRunsForRun(runId: string): Array<RunRequest> {
@@ -391,4 +435,6 @@ export function getRunningSessionIds(): ReadonlySet<string> {
 export function resetRunRegistry(): void {
   queues.clear()
   runQueues.clear()
+  childRunParents.clear()
+  childRunToolCallIds.clear()
 }

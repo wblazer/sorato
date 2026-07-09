@@ -216,6 +216,70 @@ describe('RunScenario', () => {
       }).pipe(Effect.scoped)
   )
 
+  it.effect('stops a child background run when stopping its parent run', () =>
+    Effect.gen(function* () {
+      const scenario = yield* makeRunScenario({
+        model: [
+          [
+            Scripted.toolCall('compact-call', 'CompactConversation', {
+              start: {
+                type: 'message',
+                role: 'user',
+                match: 'Parent',
+                include: true,
+              },
+              end: {
+                type: 'message',
+                role: 'user',
+                match: 'Parent',
+                include: true,
+              },
+            }),
+            Scripted.finish('tool-calls'),
+          ],
+          [
+            Scripted.textStart('summary'),
+            Scripted.textDelta('summary', 'partial summary'),
+            Scripted.checkpoint('summary-mid-stream'),
+            Scripted.textDelta('summary', ' after stop'),
+            Scripted.textEnd('summary'),
+            Scripted.finish(),
+          ],
+        ],
+      })
+      const run = yield* scenario.startRun({ input: 'Parent run' })
+
+      const summaryRunId = yield* scenario
+        .waitForEvent(
+          (event) =>
+            event._tag === 'RunStart' &&
+            event.parentRunId === run.runId &&
+            event.visibility === 'background'
+        )
+        .pipe(
+          Effect.map((event) => (event._tag === 'RunStart' ? event.runId : ''))
+        )
+      yield* scenario.model.waitForCheckpoint('summary-mid-stream')
+
+      const response = yield* scenario.stopRun(run.runId)
+      expect(response.status).toBe('stopped')
+
+      const parentEvents = yield* scenario.eventsForRun(run.runId)
+      const summaryEvents = yield* scenario.eventsForRun(summaryRunId)
+      expect(parentEvents.map((event) => event._tag)).toContain('RunEnd')
+      expect(summaryEvents.map((event) => event._tag)).toContain('RunEnd')
+      expect(
+        summaryEvents.some(
+          (event) => event._tag === 'TextDelta' && event.delta === ' after stop'
+        )
+      ).toBe(false)
+      expect((yield* scenario.getRun(run.runId)).status).toBe('interrupted')
+      expect((yield* scenario.getRun(summaryRunId)).status).toBe('interrupted')
+      expect(yield* scenario.isRunActive(run.runId)).toBe(false)
+      expect(yield* scenario.isRunActive(summaryRunId)).toBe(false)
+    }).pipe(Effect.scoped)
+  )
+
   it.effect(
     'can pause the production worker after queue shift before active registration',
     () =>

@@ -59,6 +59,7 @@ import { ModelLayerResolver, resolveModel } from './model-catalog.ts'
 import { dataDir } from './data-dir.ts'
 import { createPersistenceHook } from './run-persistence.ts'
 import {
+  clearActiveRunParent,
   updateActiveRunBase,
   updateActiveRunParent,
   type RunRequest,
@@ -672,6 +673,8 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
         })
       )
     )
+    const bus = yield* EventBus
+    yield* bus.publish({ _tag: 'RunEnd', sessionId, runId })
   })
 
   return Effect.gen(function* () {
@@ -1002,6 +1005,52 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
 
                     // oxlint-disable-next-line sorato/no-nested-effect-gen -- summary run finalization is intentionally sequenced after validation and run creation
                     return yield* Effect.gen(function* () {
+                      let summaryStarted = false
+                      let summaryFailed = false
+                      let summaryCompleted = false
+                      // oxlint-disable-next-line sorato/no-nested-effect-gen -- summary run cleanup must close over mutable terminal state for interruption-safe finalization
+                      const finalizeSummaryRun = Effect.gen(function* () {
+                        const summaryStatus = summaryFailed
+                          ? 'failed'
+                          : summaryCompleted
+                            ? 'completed'
+                            : 'interrupted'
+                        yield* Effect.sync(() =>
+                          endEventReplay(
+                            sessionId,
+                            summaryRunId,
+                            summaryFailed ? 'failed' : 'completed'
+                          )
+                        )
+                        yield* Effect.sync(() =>
+                          clearActiveRunParent(summaryRunId)
+                        )
+                        yield* storage
+                          .completeRun({
+                            id: summaryRunId,
+                            status: summaryStatus,
+                          })
+                          .pipe(
+                            Effect.catch((error) =>
+                              Effect.logWarning(
+                                'Failed to mark summary run terminal',
+                                {
+                                  runId: summaryRunId,
+                                  status: summaryStatus,
+                                  error: error.message,
+                                }
+                              )
+                            )
+                          )
+                        if (summaryStarted) {
+                          yield* bus.publish({
+                            _tag: 'RunEnd',
+                            sessionId,
+                            runId: summaryRunId,
+                          })
+                        }
+                      })
+
                       const compactedPath = path.slice(
                         resolvedRange.startIndex,
                         resolvedRange.endIndex + 1
@@ -1020,100 +1069,104 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                         )
                       }
 
-                      const chat = yield* Chat.fromPrompt(
-                        summaryPrompt(
-                          compactedPath.map((message) => message.encoded),
-                          input.instructions
+                      // oxlint-disable-next-line sorato/no-nested-effect-gen -- summary run body needs an ensuring finalizer around the interruptible stream
+                      return yield* Effect.gen(function* () {
+                        const chat = yield* Chat.fromPrompt(
+                          summaryPrompt(
+                            compactedPath.map((message) => message.encoded),
+                            input.instructions
+                          )
                         )
-                      )
-                      const summaryTitle = 'Generating summary'
-                      yield* Effect.sync(() =>
-                        startEventReplay(
+                        const summaryTitle = 'Generating summary'
+                        yield* Effect.sync(() =>
+                          startEventReplay(
+                            sessionId,
+                            summaryRunId,
+                            baseHeadNodeId,
+                            'summary',
+                            {
+                              visibility: 'background',
+                              title: summaryTitle,
+                              parentRunId: runId,
+                              toolCallId: compactToolCallId,
+                            }
+                          )
+                        )
+                        yield* bus.publish({
+                          _tag: 'RunStart',
                           sessionId,
-                          summaryRunId,
-                          baseHeadNodeId,
-                          'summary',
-                          {
-                            visibility: 'background',
-                            title: summaryTitle,
-                            parentRunId: runId,
-                            toolCallId: compactToolCallId,
-                          }
-                        )
-                      )
-                      yield* bus.publish({
-                        _tag: 'RunStart',
-                        sessionId,
-                        runId: summaryRunId,
-                        baseNodeId: baseHeadNodeId,
-                        kind: 'summary',
-                        visibility: 'background',
-                        title: summaryTitle,
-                        parentRunId: runId,
-                        toolCallId: compactToolCallId,
-                      })
+                          runId: summaryRunId,
+                          baseNodeId: baseHeadNodeId,
+                          kind: 'summary',
+                          visibility: 'background',
+                          title: summaryTitle,
+                          parentRunId: runId,
+                          toolCallId: compactToolCallId,
+                        })
+                        summaryStarted = true
 
-                      const summary = yield* chat
-                        .streamText({ prompt: [] })
-                        .pipe(
-                          Stream.filter(
-                            (
-                              part
-                            ): part is Extract<
-                              Response.StreamPart<Record<string, never>>,
-                              { type: 'text-delta' }
-                            > => part.type === 'text-delta'
-                          ),
-                          Stream.tap((part) =>
-                            Effect.sync(() =>
-                              appendReplayEvent(sessionId, summaryRunId, {
-                                _tag: 'TextDelta',
-                                sessionId,
-                                runId: summaryRunId,
-                                delta: part.delta,
-                              })
-                            ).pipe(
-                              Effect.flatMap((event) => bus.publish(event))
-                            )
-                          ),
-                          Stream.map((part) => part.delta),
-                          Stream.mkString,
-                          Effect.provide(modelServices)
-                        )
-                      const result = yield* storage.compactRange({
-                        sessionId,
-                        runId: summaryRunId,
-                        baseHeadNodeId,
-                        startNodeId,
-                        endNodeId,
-                        summaryContent: summary.trim(),
-                      })
-                      yield* Ref.set(appendBaseRef, result.headNodeId)
-                      updateActiveRunBase(runId, result.headNodeId)
-                      yield* bus.publish({
-                        _tag: 'RunBaseUpdated',
-                        sessionId,
-                        runId,
-                        baseNodeId: result.headNodeId,
-                      })
-                      yield* bus.publish({
-                        _tag: 'MessagesAppended',
-                        sessionId,
-                        runId: summaryRunId,
-                      })
-                      yield* Effect.sync(() =>
-                        endEventReplay(sessionId, summaryRunId)
+                        const summary = yield* chat
+                          .streamText({ prompt: [] })
+                          .pipe(
+                            Stream.filter(
+                              (
+                                part
+                              ): part is Extract<
+                                Response.StreamPart<Record<string, never>>,
+                                { type: 'text-delta' }
+                              > => part.type === 'text-delta'
+                            ),
+                            Stream.tap((part) =>
+                              Effect.sync(() =>
+                                appendReplayEvent(sessionId, summaryRunId, {
+                                  _tag: 'TextDelta',
+                                  sessionId,
+                                  runId: summaryRunId,
+                                  delta: part.delta,
+                                })
+                              ).pipe(
+                                Effect.flatMap((event) => bus.publish(event))
+                              )
+                            ),
+                            Stream.map((part) => part.delta),
+                            Stream.mkString,
+                            Effect.provide(modelServices)
+                          )
+                        const result = yield* storage.compactRange({
+                          sessionId,
+                          runId: summaryRunId,
+                          baseHeadNodeId,
+                          startNodeId,
+                          endNodeId,
+                          summaryContent: summary.trim(),
+                        })
+                        yield* Ref.set(appendBaseRef, result.headNodeId)
+                        updateActiveRunBase(runId, result.headNodeId)
+                        yield* bus.publish({
+                          _tag: 'RunBaseUpdated',
+                          sessionId,
+                          runId,
+                          baseNodeId: result.headNodeId,
+                        })
+                        yield* bus.publish({
+                          _tag: 'MessagesAppended',
+                          sessionId,
+                          runId: summaryRunId,
+                        })
+                        summaryCompleted = true
+                        return compactionSuccessMessage
+                      }).pipe(
+                        Effect.catchCause((cause) => {
+                          const refail = Effect.failCause(cause)
+                          return Effect.sync(() => {
+                            summaryFailed = !Cause.hasInterruptsOnly(cause)
+                          }).pipe(
+                            // oxlint-disable-next-line sorato/no-nested-effect-call -- refail is named for readability in this cause-preserving handler
+                            Effect.andThen(refail)
+                          )
+                        }),
+                        Effect.ensuring(finalizeSummaryRun)
                       )
-                      yield* storage.completeRun({
-                        id: summaryRunId,
-                        status: 'completed',
-                      })
-                      yield* bus.publish({
-                        _tag: 'RunEnd',
-                        sessionId,
-                        runId: summaryRunId,
-                      })
-                      return compactionSuccessMessage
                     })
                   }).pipe(
                     Effect.catch((error) => {

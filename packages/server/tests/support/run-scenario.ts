@@ -6,6 +6,7 @@ import { SqlClient } from 'effect/unstable/sql/SqlClient'
 import type { Sandbox } from '@sorato/core'
 import type { ServerEvent, StopResponse, StorageUnavailable } from '@sorato/api'
 import { makeSqlitePersistenceLive } from '../../src/db/sqlite.ts'
+import { AllToolsLayer } from '../../src/agent-config.ts'
 import { EventBus, type EventBusApi } from '../../src/event-bus.ts'
 import { ProjectStorage, type Project } from '../../src/project/project.ts'
 import { ProviderAuthStore } from '../../src/provider-auth.ts'
@@ -363,6 +364,7 @@ export const makeRunScenario = (options: RunScenarioOptions) => {
     runtimeConfigLayer,
     recordedEventBusLayer,
     mockSandboxLayer({ files: options.files }),
+    AllToolsLayer,
     scriptedModelLayer(options.model)
   )
 
