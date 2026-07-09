@@ -23,16 +23,18 @@
 {#if result}
   <ToolResult {call} part={result} {accordionState} {accordionKey} />
 {:else}
-  <div class="overflow-hidden rounded-md border border-border bg-inset">
+  <div class="rounded-md border border-border bg-inset">
     <div
-      class="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-2.5 py-2 text-sm text-foreground"
+      class="grid grid-cols-[auto_minmax(0,max-content)_minmax(0,1fr)] items-start gap-x-2 gap-y-1 border-b border-border px-2.5 py-2 text-sm text-foreground"
     >
       <CircleNotchIcon
-        class="size-4 shrink-0 animate-spin text-muted-foreground"
+        class="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground"
       />
-      <span class="font-semibold">{title}</span>
+      <span class="whitespace-nowrap font-semibold leading-5">{title}</span>
       {#if subtitle}
-        <span class="min-w-0 truncate font-mono text-muted-foreground">
+        <span
+          class="line-clamp-3 min-w-0 whitespace-normal break-words font-mono leading-5 text-muted-foreground [overflow-wrap:anywhere]"
+        >
           {subtitle}
         </span>
       {/if}

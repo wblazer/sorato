@@ -45,26 +45,28 @@
   type="multiple"
   value={accordionValue}
   onValueChange={handleAccordionValue}
-  class="overflow-hidden rounded-md border border-border bg-inset"
+  class="rounded-md border border-border bg-inset"
 >
   <Accordion.Item value="content" class="bg-inset data-open:bg-inset">
     <Accordion.Trigger
       level={4}
-      class="flex w-full items-center gap-x-2 gap-y-1 border-0 border-b border-border px-2.5 py-2 text-sm font-normal no-underline hover:no-underline {part.isFailure
+      class="flex w-full items-start gap-x-2 gap-y-1 border-0 border-b border-border px-2.5 py-2 text-sm font-normal no-underline hover:no-underline {part.isFailure
         ? 'bg-danger-muted text-danger-muted-foreground hover:bg-danger-muted-hover data-open:bg-danger-muted'
-        : 'text-foreground hover:bg-inset-hover'}"
+        : 'bg-inset text-foreground hover:bg-inset-hover'}"
     >
-      <span class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+      <span
+        class="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,max-content)_minmax(0,1fr)] items-start gap-x-2 gap-y-1"
+      >
         <MessageIcon
           name={header?.icon}
           class={part.isFailure
-            ? 'size-4 shrink-0 text-danger-muted-foreground'
-            : undefined}
+            ? 'mt-0.5 size-4 shrink-0 text-danger-muted-foreground'
+            : 'mt-0.5 size-4 shrink-0 text-muted-foreground'}
         />
-        <span class="font-semibold">{title}</span>
+        <span class="whitespace-nowrap font-semibold leading-5">{title}</span>
         {#if subtitle}
           <span
-            class="min-w-0 truncate font-mono {part.isFailure
+            class="line-clamp-3 min-w-0 whitespace-normal break-words font-mono leading-5 [overflow-wrap:anywhere] {part.isFailure
               ? 'text-danger-muted-foreground/80'
               : 'text-muted-foreground'}"
           >
@@ -73,7 +75,9 @@
         {/if}
       </span>
       {#if summary}
-        <span class="flex shrink-0 items-center gap-1 font-mono text-xs">
+        <span
+          class="flex shrink-0 items-start gap-1 pt-0.5 font-mono text-xs leading-5"
+        >
           <span class="text-success-muted-foreground">+{summary.additions}</span
           >
           <span class="text-danger-muted-foreground">-{summary.deletions}</span>
@@ -88,8 +92,8 @@
         {:else}
           <ScrollArea
             orientation="both"
-            class="max-h-64"
-            viewportClass="max-h-64 rounded-none"
+            class="max-h-[32rem]"
+            viewportClass="max-h-[32rem] rounded-none"
           >
             <pre class="min-w-max px-2.5 py-3 text-sm">{stringifyToolResult(
                 part.result,

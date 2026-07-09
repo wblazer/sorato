@@ -503,7 +503,6 @@
                     row.type === 'message' &&
                     row.block.message.encoded.role === 'user',
                 }}
-                class="[contain-intrinsic-size:0_160px] [content-visibility:auto]"
               >
                 {#if row.type === 'message'}
                   <MessageBubble

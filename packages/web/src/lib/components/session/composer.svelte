@@ -687,28 +687,30 @@
         {#each backgroundSummaries as summary (summary.runId)}
           <Accordion.Root
             type="multiple"
-            class="relative z-0 -mb-2 overflow-hidden rounded-t-lg border border-border bg-inset shadow-sm shadow-shadow/30"
+            class="relative z-0 -mb-2 rounded-t-lg border border-border bg-inset shadow-sm shadow-shadow/30"
           >
             <Accordion.Item value="content" class="bg-inset data-open:bg-inset">
               <Accordion.Trigger
                 level={4}
-                class="flex w-full items-center gap-x-2 gap-y-1 border-0 border-b border-border px-3 pb-4 pt-2 text-sm font-normal text-foreground no-underline hover:bg-inset-hover hover:no-underline aria-expanded:pb-2"
+                class="flex w-full items-start gap-x-2 gap-y-1 border-0 border-b border-border bg-inset px-3 pb-4 pt-2 text-sm font-normal text-foreground no-underline hover:bg-inset-hover hover:no-underline aria-expanded:pb-2"
               >
                 <span
-                  class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1"
+                  class="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,max-content)_minmax(0,1fr)] items-start gap-x-2 gap-y-1"
                 >
                   <CircleNotchIcon
-                    class="size-4 shrink-0 animate-spin text-muted-foreground"
+                    class="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground"
                   />
-                  <span class="font-semibold">Generating summary</span>
+                  <span class="whitespace-nowrap font-semibold leading-5">
+                    Generating summary
+                  </span>
                 </span>
               </Accordion.Trigger>
 
               <Accordion.Content>
                 <ScrollArea
                   orientation="vertical"
-                  class="max-h-40"
-                  viewportClass="max-h-40 rounded-none"
+                  class="max-h-[32rem]"
+                  viewportClass="max-h-[32rem] rounded-none"
                 >
                   <div
                     class="whitespace-pre-wrap bg-inset px-3 py-2 font-mono text-xs leading-relaxed text-muted-foreground"

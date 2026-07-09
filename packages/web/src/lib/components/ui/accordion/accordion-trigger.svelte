@@ -15,7 +15,7 @@
   } = $props()
 </script>
 
-<AccordionPrimitive.Header {level} class="flex">
+<AccordionPrimitive.Header {level} class="sticky top-0 z-20 flex">
   <AccordionPrimitive.Trigger
     data-slot="accordion-trigger"
     bind:ref

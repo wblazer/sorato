@@ -50,20 +50,27 @@
     type="multiple"
     value={accordionValue}
     onValueChange={handleAccordionValue}
-    class="overflow-hidden rounded-md border border-border bg-inset"
+    class="rounded-md border border-border bg-inset"
   >
     <Accordion.Item value="content" class="bg-inset data-open:bg-inset">
       <Accordion.Trigger
         level={4}
-        class="flex w-full items-center gap-x-2 gap-y-1 border-0 border-b border-border px-2.5 py-2 text-sm font-normal text-foreground no-underline hover:bg-inset-hover hover:no-underline"
+        class="flex w-full items-start gap-x-2 gap-y-1 border-0 border-b border-border bg-inset px-2.5 py-2 text-sm font-normal text-foreground no-underline hover:bg-inset-hover hover:no-underline"
       >
         <span
-          class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1"
+          class="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,max-content)_minmax(0,1fr)] items-start gap-x-2 gap-y-1"
         >
-          <MessageIcon name={part.header?.icon} />
-          <span class="font-semibold">{part.header?.title ?? part.name}</span>
+          <MessageIcon
+            name={part.header?.icon}
+            class="mt-0.5 size-4 shrink-0 text-muted-foreground"
+          />
+          <span class="whitespace-nowrap font-semibold leading-5">
+            {part.header?.title ?? part.name}
+          </span>
           {#if part.header?.subtitle}
-            <span class="min-w-0 truncate font-mono text-muted-foreground">
+            <span
+              class="line-clamp-3 min-w-0 whitespace-normal break-words font-mono leading-5 text-muted-foreground [overflow-wrap:anywhere]"
+            >
               {part.header.subtitle}
             </span>
           {/if}
@@ -74,8 +81,8 @@
         {#if part.params != null}
           <ScrollArea
             orientation="both"
-            class="max-h-48"
-            viewportClass="max-h-48 rounded-none"
+            class="max-h-[32rem]"
+            viewportClass="max-h-[32rem] rounded-none"
           >
             <pre class="min-w-max px-2.5 py-3 text-sm">{JSON.stringify(
                 part.params,
