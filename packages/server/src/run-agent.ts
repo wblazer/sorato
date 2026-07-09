@@ -24,7 +24,15 @@ import {
   Prompt,
   type Response,
 } from 'effect/unstable/ai'
-import { CurrentFiles, CurrentShell, run, Sandbox } from '@sorato/core'
+import {
+  CurrentFiles,
+  CurrentShell,
+  SandboxError,
+  run,
+  Sandbox,
+  type Shell,
+  type Files,
+} from '@sorato/core'
 import { ProjectStorage } from './project/project.ts'
 import {
   SessionStorage,
@@ -58,7 +66,18 @@ import {
 import { runLifecycleCheckpoint } from './run-lifecycle-checkpoints.ts'
 import { generateSessionTitle } from './session-title.ts'
 import { getAuth } from './provider-auth.ts'
+import { RuntimeConfigService } from './runtime-config.ts'
+import {
+  resolveRunEnvironment,
+  runEnvironmentErrorToSandboxError,
+  withRunEnvironment,
+} from './run-environment.ts'
 import type { BillingMode } from './session/session.ts'
+
+interface RunSandboxServices {
+  readonly shell: Shell
+  readonly files: Files
+}
 
 const inputText = (input: RunRequest['inputs'][number]) => input.text
 const inputTexts = (inputs: RunRequest['inputs']) => inputs.map(inputText)
@@ -665,6 +684,8 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
 
     const session = yield* storage.get(sessionId)
     const projectPath = yield* projects.resolvePath(session.projectId)
+    const runtimeConfig = yield* RuntimeConfigService
+    const projectConfig = yield* runtimeConfig.get(projectPath)
     yield* Effect.logInfo('Agent run loaded session', {
       runId,
       projectId: session.projectId,
@@ -765,6 +786,33 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
         })
       ),
       Effect.flatMap(({ shell, files }) =>
+        resolveRunEnvironment(
+          shell,
+          projectPath,
+          projectConfig.environment_command
+        ).pipe(
+          Effect.map(
+            (environment) =>
+              ({
+                shell: withRunEnvironment(shell, environment),
+                files,
+              }) satisfies RunSandboxServices
+          ),
+          Effect.catchTag('RunEnvironmentError', (error) =>
+            Effect.fail(runEnvironmentErrorToSandboxError(error))
+          ),
+          Effect.catchTag('SandboxError', (error) =>
+            Effect.fail(
+              new SandboxError({
+                operation: 'resolveRunEnvironment',
+                message: `Failed to run environment command: ${error.message}`,
+                error,
+              })
+            )
+          )
+        )
+      ),
+      Effect.flatMap(({ shell, files }: RunSandboxServices) =>
         storage.messages(sessionId, request.baseNodeId).pipe(
           Effect.flatMap((storedHistory) => {
             const shouldLoadAgentsMd = !hasLoadedInstruction(

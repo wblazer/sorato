@@ -6,6 +6,7 @@ import { Context, Effect, Layer, Option, Schema } from 'effect'
 const RuntimeConfigFileSchema = Schema.Struct({
   default_model: Schema.optional(Schema.String),
   title_model: Schema.optional(Schema.String),
+  environment_command: Schema.optional(Schema.String),
   log_level: Schema.optional(Schema.String),
 })
 
@@ -14,6 +15,7 @@ export type RuntimeConfigFile = typeof RuntimeConfigFileSchema.Type
 export interface RuntimeConfig {
   readonly default_model: string | null
   readonly title_model: string | null
+  readonly environment_command: string | null
 }
 
 export interface RuntimeConfigApi {
@@ -48,6 +50,7 @@ const projectConfigFiles = (dir: string) => [
 const normalizeConfig = (cfg: RuntimeConfigFile): RuntimeConfig => ({
   default_model: cfg.default_model ?? null,
   title_model: cfg.title_model ?? null,
+  environment_command: cfg.environment_command ?? null,
 })
 
 const mergeConfig = (
@@ -56,6 +59,7 @@ const mergeConfig = (
 ): RuntimeConfig => ({
   default_model: override.default_model ?? base.default_model,
   title_model: override.title_model ?? base.title_model,
+  environment_command: override.environment_command ?? base.environment_command,
 })
 
 const charAt = (text: string, index: number) => text[index] ?? ''
@@ -234,14 +238,10 @@ export const RuntimeConfigLive = Layer.effect(
       hasDefaultModel: globalConfig.default_model !== null,
       hasTitleModel: globalConfig.title_model !== null,
     })
-    const projectConfigs = new Map<string, RuntimeConfig>()
 
     const loadProjectConfig = Effect.fn('RuntimeConfig.loadProject')(function* (
       dir: string
     ) {
-      const cached = projectConfigs.get(dir)
-      if (cached) return cached
-
       const config = yield* loadFiles(projectConfigFiles(dir)).pipe(
         Effect.map((projectConfig) => mergeConfig(globalConfig, projectConfig)),
         Effect.catchCause((cause) =>
@@ -256,7 +256,6 @@ export const RuntimeConfigLive = Layer.effect(
         hasDefaultModel: config.default_model !== null,
         hasTitleModel: config.title_model !== null,
       })
-      projectConfigs.set(dir, config)
       return config
     })
 

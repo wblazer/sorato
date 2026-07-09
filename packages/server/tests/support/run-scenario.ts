@@ -164,6 +164,7 @@ const runtimeConfigLayer = Layer.succeed(RuntimeConfigService, {
     Effect.succeed({
       default_model: TEST_MODEL,
       title_model: null,
+      environment_command: null,
     }),
 })
 

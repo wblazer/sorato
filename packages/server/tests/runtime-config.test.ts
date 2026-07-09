@@ -37,6 +37,7 @@ describe('RuntimeConfig', () => {
           `{
             // global default
             "default_model": "anthropic/claude-haiku-4-5",
+            "environment_command": "global-env",
           }`
         )
       )
@@ -46,6 +47,7 @@ describe('RuntimeConfig', () => {
           join(dir, '.sorato', 'config.json'),
           JSON.stringify({
             default_model: 'anthropic/claude-sonnet-4-20250514',
+            environment_command: 'project-env',
           })
         )
       )
@@ -55,6 +57,7 @@ describe('RuntimeConfig', () => {
       const cfg = yield* loadRuntimeConfig(dir)
 
       expect(cfg.default_model).toBe('anthropic/claude-sonnet-4-20250514')
+      expect(cfg.environment_command).toBe('project-env')
 
       process.env.XDG_CONFIG_HOME = prev
       yield* Effect.tryPromise(() => rm(root, { recursive: true, force: true }))
@@ -74,7 +77,11 @@ describe('RuntimeConfig', () => {
 
       const cfg = yield* loadRuntimeConfig(dir)
 
-      expect(cfg).toEqual({ default_model: null, title_model: null })
+      expect(cfg).toEqual({
+        default_model: null,
+        title_model: null,
+        environment_command: null,
+      })
 
       process.env.XDG_CONFIG_HOME = prev
       yield* Effect.tryPromise(() => rm(root, { recursive: true, force: true }))
