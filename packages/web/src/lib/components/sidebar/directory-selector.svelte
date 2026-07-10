@@ -4,7 +4,7 @@
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { actionStore } from '$lib/stores/actions.svelte.js'
   import CaretUpDownIcon from 'phosphor-svelte/lib/CaretUpDownIcon'
-  import { Effect } from 'effect'
+  import { runConnectionPromise } from '$lib/connection-runtime.js'
   import FolderOpenIcon from 'phosphor-svelte/lib/FolderOpenIcon'
   import { cn } from '$lib/utils.js'
   import { onMount } from 'svelte'
@@ -18,7 +18,7 @@
   }
 
   function handlePickerSelect(path: string) {
-    void Effect.runPromise(projectStore.createLocalProject(path))
+    void runConnectionPromise(projectStore.createLocalProject(path))
   }
 
   onMount(() => {

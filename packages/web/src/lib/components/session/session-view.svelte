@@ -10,6 +10,7 @@
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
   import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
   import { searchProjectFiles } from '$lib/project-file-search.js'
+  import { runConnectionPromise } from '$lib/connection-runtime.js'
   import {
     composerDraftStorageKey,
     composerHistoryStorageKey,
@@ -36,7 +37,6 @@
   import { Badge } from '$lib/components/ui/badge/index.js'
   import { SessionSelectedHeadController } from './session-selected-head.svelte.js'
   import * as Item from '$lib/components/ui/item/index.js'
-  import { Effect } from 'effect'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
   let {
     tabId,
@@ -301,7 +301,7 @@
   $effect(() => {
     if (!active) return
     if (!messagesLoaded && !messagesLoading) {
-      void Effect.runPromise(messagesStore.loadMessages(tabId, sessionId))
+      void runConnectionPromise(messagesStore.loadMessages(tabId, sessionId))
     }
   })
 
@@ -346,7 +346,7 @@
     const afterRunId = selectedHead.selectedAfterRunId
     const wasRunning = sessionStore.isRunning(sessionId)
 
-    const response = await Effect.runPromise(
+    const response = await runConnectionPromise(
       sessionStore.runAgent(
         sessionId,
         input,
@@ -385,9 +385,9 @@
   async function handleStop() {
     const runId = primaryActiveRun?.runId
     if (!runId) return
-    const response = await Effect.runPromise(sessionStore.stopAgent(runId))
+    const response = await runConnectionPromise(sessionStore.stopAgent(runId))
     if (typeof response === 'object' && response.focusNodeId !== undefined) {
-      await Effect.runPromise(
+      await runConnectionPromise(
         messagesStore.loadMessages(tabId, sessionId, { force: true }),
       )
       selectedHead.setSelectedHead({
@@ -406,7 +406,7 @@
   async function searchFiles(query: string) {
     const projectId = selectedSession?.projectId
     if (!projectId) return []
-    return await Effect.runPromise(searchProjectFiles(projectId, query))
+    return await runConnectionPromise(searchProjectFiles(projectId, query))
   }
 
   function handleEditRetry(message: MessageNode, text: string) {
@@ -440,7 +440,7 @@
   }
 
   function retryMessages() {
-    void Effect.runPromise(
+    void runConnectionPromise(
       messagesStore.loadMessages(tabId, sessionId, { force: true }),
     )
   }

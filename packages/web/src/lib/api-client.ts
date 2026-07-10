@@ -11,20 +11,28 @@ import {
   RunRejected,
   StorageUnavailable,
 } from '@sorato/api'
-import { Cause, Effect, Schema } from 'effect'
+import { Cause, Context, Effect, Layer, Schema } from 'effect'
 import type { Effect as EffectValue } from 'effect/Effect'
 import { HttpClientError } from 'effect/unstable/http'
 import { HttpApiClient } from 'effect/unstable/httpapi'
 import type { UiApiError } from '$lib/api-errors.js'
 import { requestError } from '$lib/api-errors.js'
 
-export type SoratoApiClient = HttpApiClient.ForApi<typeof Api>
+export type SoratoApiClientShape = HttpApiClient.ForApi<typeof Api>
+
+export class SoratoApiClient extends Context.Service<
+  SoratoApiClient,
+  SoratoApiClientShape
+>()('@sorato/web/SoratoApiClient') {}
 
 export function apiClient(baseUrl: string) {
   return HttpApiClient.make(Api, { baseUrl }).pipe(
     Effect.provide(BrowserHttpClient.layerFetch)
   )
 }
+
+export const makeSoratoApiClientLayer = (baseUrl: string) =>
+  Layer.effect(SoratoApiClient, apiClient(baseUrl))
 
 const knownErrorTitles: Record<string, string> = {
   ProviderCredentialsUnavailable: 'Couldn’t read provider credentials',

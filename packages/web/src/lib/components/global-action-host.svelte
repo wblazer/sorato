@@ -10,10 +10,9 @@
   import { authStore } from '$lib/stores/auth.svelte.js'
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
-  import { serverInfoStore } from '$lib/stores/server-info.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { tabStore } from '$lib/stores/tabs.svelte.js'
-  import { Effect } from 'effect'
+  import { runConnectionPromise } from '$lib/connection-runtime.js'
   import { onMount } from 'svelte'
 
   let open = $state(false)
@@ -24,18 +23,13 @@
   let settingsOpen = $state(false)
 
   async function handleProjectPath(path: string) {
-    const project = await Effect.runPromise(
+    const project = await runConnectionPromise(
       projectStore.createLocalProject(path),
     )
     if (project && tabStore.activeTab) {
       tabStore.setDraftProject(tabStore.activeTab.id, project.id)
     }
   }
-
-  $effect(() => {
-    connectionsStore.activeConnection
-    void Effect.runPromise(serverInfoStore.refresh())
-  })
 
   onMount(() => {
     const unregister = [

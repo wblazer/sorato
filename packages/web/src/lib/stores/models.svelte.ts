@@ -1,4 +1,4 @@
-import { apiClient, runApiEffect } from '$lib/api-client.js'
+import { ModelsApi } from '$lib/connection-services.js'
 import type { UiApiError } from '$lib/api-errors.js'
 import type { ModelsResponse as AvailableModelsResponse } from '@sorato/api'
 import type { ModelOptions } from '$lib/types.js'
@@ -148,8 +148,7 @@ function createModelsStore() {
 
   function load(nextProjectId: string) {
     return Effect.gen(function* () {
-      const api = connectionsStore.getApiBase()
-      if (!api) {
+      if (!connectionsStore.activeConnection) {
         yield* Effect.sync(clear)
         return
       }
@@ -163,11 +162,8 @@ function createModelsStore() {
         error = null
       })
 
-      const client = yield* apiClient(api)
-      const result = yield* runApiEffect(
-        client.models.list({ query: { projectId: nextProjectId } }),
-        'Failed to load models'
-      ).pipe(
+      const modelsApi = yield* ModelsApi
+      const result = yield* modelsApi.list(nextProjectId).pipe(
         Effect.catch((cause: UiApiError) =>
           Effect.sync(() => {
             const failedResult = null

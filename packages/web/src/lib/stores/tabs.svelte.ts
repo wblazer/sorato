@@ -8,6 +8,7 @@ import {
 import { connectionsStore } from './connections.svelte.js'
 import { messagesStore } from './messages.svelte.js'
 import { Effect } from 'effect'
+import { runConnectionPromise } from '$lib/connection-runtime.js'
 
 interface TabSet {
   readonly tabs: AppTab[]
@@ -156,6 +157,11 @@ function createTabStore() {
     const state = ensureTabSet()
     setTabSet({ ...state, activeTabId: id })
     const tab = state.tabs.find((item) => item.id === id)
+    if (tab?.sessionId) {
+      void runConnectionPromise(
+        messagesStore.loadMessages(tab.id, tab.sessionId)
+      )
+    }
     if (!tab?.sessionId) messagesStore.clearActiveStream()
   }
 

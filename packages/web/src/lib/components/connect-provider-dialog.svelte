@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { apiClient, runApiEffect } from '$lib/api-client.js'
+  import { AuthApi } from '$lib/connection-services.js'
+  import { runConnectionPromise } from '$lib/connection-runtime.js'
   import { requestErrorMessage } from '$lib/api-errors.js'
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Command from '$lib/components/ui/command/index.js'
@@ -7,7 +8,6 @@
   import { Input } from '$lib/components/ui/input/index.js'
   import * as Item from '$lib/components/ui/item/index.js'
   import { Label } from '$lib/components/ui/label/index.js'
-  import { connectionsStore } from '$lib/stores/connections.svelte.js'
   import { authStore } from '$lib/stores/auth.svelte.js'
   import { modelsStore } from '$lib/stores/models.svelte.js'
   import { useId } from 'bits-ui'
@@ -58,29 +58,22 @@
   })
 
   async function submit() {
-    const api = connectionsStore.getApiBase()
     const providerId = provider?.id
     const apiKey = key.trim()
-    if (!api || !providerId || !apiKey || saving) return
+    if (!providerId || !apiKey || saving) return
 
     saving = true
     error = null
     try {
       const connectProvider = Effect.gen(function* () {
-        const client = yield* apiClient(api)
-        yield* runApiEffect(
-          client.auth.set({
-            params: { provider: providerId },
-            payload: { key: apiKey },
-          }),
-          'Failed to connect provider',
-        )
+        const authApi = yield* AuthApi
+        yield* authApi.set(providerId, apiKey)
         yield* authStore.load()
         if (modelsStore.projectId)
           yield* modelsStore.load(modelsStore.projectId)
       })
 
-      await Effect.runPromise(connectProvider)
+      await runConnectionPromise(connectProvider)
       open = false
     } catch (cause) {
       error = effectErrorMessage(cause, 'Failed to connect provider')
@@ -90,26 +83,22 @@
   }
 
   async function signInWithChatGpt() {
-    const api = connectionsStore.getApiBase()
-    if (!api || provider?.id !== 'openai' || oauthSaving) return
+    if (provider?.id !== 'openai' || oauthSaving) return
 
     oauthSaving = true
     error = null
     try {
       const authorize = Effect.gen(function* () {
-        const client = yield* apiClient(api)
-        return yield* runApiEffect(
-          client.auth.oauthAuthorize({ params: { provider: 'openai' } }),
-          'Failed to start ChatGPT sign-in',
-        )
+        const authApi = yield* AuthApi
+        return yield* authApi.oauthAuthorize('openai')
       })
 
-      const result = await Effect.runPromise(authorize)
+      const result = await runConnectionPromise(authorize)
       window.open(result.url, '_blank', 'noopener,noreferrer')
       window.setTimeout(() => {
-        void Effect.runPromise(authStore.load())
+        void runConnectionPromise(authStore.load())
         if (modelsStore.projectId) {
-          void Effect.runPromise(modelsStore.load(modelsStore.projectId))
+          void runConnectionPromise(modelsStore.load(modelsStore.projectId))
         }
       }, 2500)
     } catch (cause) {

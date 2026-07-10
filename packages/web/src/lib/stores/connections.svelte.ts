@@ -248,10 +248,6 @@ function createConnectionsStore() {
     })
   }
 
-  function getApiBase(): string {
-    return activeConnection?.url ?? ''
-  }
-
   return {
     // Getters for reactive state
     get connections() {
@@ -273,7 +269,6 @@ function createConnectionsStore() {
     update,
     remove,
     activate,
-    getApiBase,
   }
 }
 

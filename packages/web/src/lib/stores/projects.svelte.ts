@@ -1,8 +1,8 @@
-import { apiClient, runApiEffect } from '$lib/api-client.js'
+import { ProjectsApi } from '$lib/connection-services.js'
+import { runConnectionPromise } from '$lib/connection-runtime.js'
 import type { UiApiError } from '$lib/api-errors.js'
 import type { Project } from '$lib/types.js'
 import { Effect } from 'effect'
-import { connectionsStore } from './connections.svelte.js'
 import { modelsStore } from './models.svelte.js'
 
 function createProjectStore() {
@@ -22,11 +22,8 @@ function createProjectStore() {
         error = null
       })
 
-      const client = yield* apiClient(connectionsStore.getApiBase())
-      const result = yield* runApiEffect(
-        client.projects.list(),
-        'Failed to load projects'
-      )
+      const projectsApi = yield* ProjectsApi
+      const result = yield* projectsApi.list()
 
       yield* Effect.sync(() => {
         projects = [...result]
@@ -34,7 +31,7 @@ function createProjectStore() {
           selectedProjectId = projects[0]?.id ?? null
         }
         if (selectedProjectId) {
-          void Effect.runPromise(modelsStore.load(selectedProjectId))
+          void runConnectionPromise(modelsStore.load(selectedProjectId))
         }
       })
     }).pipe(
@@ -49,11 +46,8 @@ function createProjectStore() {
 
   function createLocalProject(path: string) {
     return Effect.gen(function* () {
-      const client = yield* apiClient(connectionsStore.getApiBase())
-      const project = yield* runApiEffect(
-        client.projects.create({ payload: { path } }),
-        'Failed to create project'
-      )
+      const projectsApi = yield* ProjectsApi
+      const project = yield* projectsApi.create(path)
 
       return yield* Effect.sync(() => {
         const created: Project = project
@@ -74,19 +68,13 @@ function createProjectStore() {
 
   function selectProject(id: string | null) {
     selectedProjectId = id
-    if (id) void Effect.runPromise(modelsStore.load(id))
+    if (id) void runConnectionPromise(modelsStore.load(id))
   }
 
   function archiveProject(id: string, archiveSessions: boolean) {
     return Effect.gen(function* () {
-      const client = yield* apiClient(connectionsStore.getApiBase())
-      yield* runApiEffect(
-        client.projects.archive({
-          params: { id },
-          payload: { archiveSessions },
-        }),
-        'Failed to archive project'
-      )
+      const projectsApi = yield* ProjectsApi
+      yield* projectsApi.archive(id, archiveSessions)
 
       return yield* Effect.sync(() => {
         projects = projects.filter((project) => project.id !== id)

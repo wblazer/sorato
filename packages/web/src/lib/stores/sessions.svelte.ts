@@ -1,4 +1,5 @@
-import { apiClient, runApiEffect } from '$lib/api-client.js'
+import { SessionsApi } from '$lib/connection-services.js'
+import { runConnectionPromise } from '$lib/connection-runtime.js'
 import type { UiApiError } from '$lib/api-errors.js'
 import type {
   ActiveRunSummary,
@@ -9,7 +10,6 @@ import type {
 } from '$lib/types.js'
 import { Effect } from 'effect'
 import { sseStore } from './sse.svelte.js'
-import { connectionsStore } from './connections.svelte.js'
 import { messagesStore } from './messages.svelte.js'
 import { projectStore } from './projects.svelte.js'
 import { onSessionRefreshRequest } from './session-refresh-bus.js'
@@ -59,7 +59,7 @@ function createSessionStore() {
   let runStartSequence = 0
 
   onSessionRefreshRequest((sessionId) => {
-    void Effect.runPromise(refreshSession(sessionId))
+    void runConnectionPromise(refreshSession(sessionId))
   })
 
   function hydrateActiveRuns(nextSessions: ReadonlyArray<Session>) {
@@ -195,20 +195,17 @@ function createSessionStore() {
         next.delete(event.runId)
         stoppingRuns = next
       }
-      void Effect.runPromise(refreshSession(event.sessionId))
+      void runConnectionPromise(refreshSession(event.sessionId))
     } else if (event._tag === 'SessionUpdated') {
-      void Effect.runPromise(refreshSession(event.sessionId))
+      void runConnectionPromise(refreshSession(event.sessionId))
     }
   })
 
   /** Re-fetch a single session's metadata (background, silent). */
   function refreshSession(sessionId: string) {
     return Effect.gen(function* () {
-      const client = yield* apiClient(connectionsStore.getApiBase())
-      const fresh = yield* runApiEffect(
-        client.sessions.get({ params: { id: sessionId } }),
-        'Failed to refresh session'
-      )
+      const sessionsApi = yield* SessionsApi
+      const fresh = yield* sessionsApi.get(sessionId)
 
       yield* Effect.sync(() => {
         sessions = sessions.map((s) => (s.id === sessionId ? fresh : s))
@@ -241,11 +238,8 @@ function createSessionStore() {
         error = null
       })
 
-      const client = yield* apiClient(connectionsStore.getApiBase())
-      const result = yield* runApiEffect(
-        client.sessions.list(),
-        'Failed to load sessions'
-      )
+      const sessionsApi = yield* SessionsApi
+      const result = yield* sessionsApi.list()
 
       yield* Effect.sync(() => {
         sessions = [...result]
@@ -277,11 +271,10 @@ function createSessionStore() {
       const noSession = null
       if (!resolvedProjectId) return noSession
 
-      const client = yield* apiClient(connectionsStore.getApiBase())
-      const session = yield* runApiEffect(
-        client.sessions.create({ payload: { projectId: resolvedProjectId } }),
-        'Failed to create session'
-      )
+      const sessionsApi = yield* SessionsApi
+      const session = yield* sessionsApi.create({
+        projectId: resolvedProjectId,
+      })
 
       return yield* Effect.sync(() => {
         sessions = [session, ...sessions]
@@ -313,21 +306,16 @@ function createSessionStore() {
     modelOptions: ModelOptions = {}
   ) {
     return Effect.gen(function* () {
-      const client = yield* apiClient(connectionsStore.getApiBase())
-      const data = yield* runApiEffect(
-        client.sessions.run({
-          params: { id: sessionId },
-          payload: {
-            input,
-            attachments,
-            model,
-            baseNodeId,
-            afterRunId,
-            modelOptions,
-          },
-        }),
-        'Failed to start agent run'
-      )
+      const sessionsApi = yield* SessionsApi
+      const data = yield* sessionsApi.run({
+        sessionId,
+        input,
+        attachments,
+        model,
+        baseNodeId,
+        afterRunId,
+        modelOptions,
+      })
 
       return yield* Effect.sync(() => {
         sessions = sessions.map((s) =>
@@ -384,20 +372,15 @@ function createSessionStore() {
     instructions?: string
   ) {
     return Effect.gen(function* () {
-      const client = yield* apiClient(connectionsStore.getApiBase())
-      const result = yield* runApiEffect(
-        client.sessions.compactRange({
-          params: { id: sessionId },
-          payload: {
-            model,
-            baseHeadNodeId,
-            startNodeId,
-            endNodeId,
-            instructions,
-          },
-        }),
-        'Failed to start summarization'
-      )
+      const sessionsApi = yield* SessionsApi
+      const result = yield* sessionsApi.compactRange({
+        sessionId,
+        model,
+        baseHeadNodeId,
+        startNodeId,
+        endNodeId,
+        instructions,
+      })
 
       return yield* Effect.sync(() => {
         sessions = sessions.map((s) =>
@@ -451,11 +434,8 @@ function createSessionStore() {
     })
 
     return Effect.gen(function* () {
-      const client = yield* apiClient(connectionsStore.getApiBase())
-      const data = yield* runApiEffect(
-        client.sessions.stopRun({ params: { id: runId } }),
-        'Failed to stop agent run'
-      )
+      const sessionsApi = yield* SessionsApi
+      const data = yield* sessionsApi.stopRun(runId)
 
       return data
     }).pipe(
@@ -536,7 +516,7 @@ function createSessionStore() {
       if (!session || !tab) return
 
       tabStore.attachSession(tab.id, session)
-      void Effect.runPromise(messagesStore.loadMessages(tab.id, id))
+      void runConnectionPromise(messagesStore.loadMessages(tab.id, id))
     },
     isRunning,
     isRunActive,

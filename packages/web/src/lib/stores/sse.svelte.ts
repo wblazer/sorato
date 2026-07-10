@@ -14,9 +14,10 @@
  * without fanning out full TextDelta / tool payloads to every client.
  */
 import { Effect, Fiber, Stream } from 'effect'
-import { serverEvents, type SseError } from '$lib/sse.js'
+import { ServerEventSource } from '$lib/connection-services.js'
+import { runConnectionFork } from '$lib/connection-runtime.js'
+import type { SseError } from '$lib/sse.js'
 import type { ServerEvent } from '$lib/types.js'
-import { connectionsStore } from './connections.svelte.js'
 
 type EventHandler = (event: ServerEvent) => void
 
@@ -30,18 +31,19 @@ function createSseStore() {
    */
   function connect() {
     if (fiber) return
-    const apiBase = connectionsStore.getApiBase()
-    if (!apiBase) return
-    fiber = Effect.runFork(
-      serverEvents(apiBase).pipe(
-        Stream.runForEach((event) =>
-          Effect.sync(() => {
-            for (const listener of listeners) {
-              listener(event)
-            }
-          })
+    fiber = runConnectionFork(
+      Effect.gen(function* () {
+        const events = yield* ServerEventSource
+        yield* events.stream().pipe(
+          Stream.runForEach((event) =>
+            Effect.sync(() => {
+              for (const listener of listeners) {
+                listener(event)
+              }
+            })
+          )
         )
-      )
+      })
     )
   }
 

@@ -4,7 +4,7 @@
   import * as Item from '$lib/components/ui/item/index.js'
   import { actionStore } from '$lib/stores/actions.svelte.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
-  import { Effect } from 'effect'
+  import { runConnectionPromise } from '$lib/connection-runtime.js'
   import FolderOpenIcon from 'phosphor-svelte/lib/FolderOpenIcon'
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
@@ -47,7 +47,7 @@
             <Button
               variant="outline"
               onclick={() =>
-                void Effect.runPromise(projectStore.fetchProjects())}
+                void runConnectionPromise(projectStore.fetchProjects())}
             >
               Retry
             </Button>

@@ -4,7 +4,7 @@
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { tabStore } from '$lib/stores/tabs.svelte.js'
   import { cn } from '$lib/utils.js'
-  import { Effect } from 'effect'
+  import { runConnectionPromise } from '$lib/connection-runtime.js'
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
 
@@ -55,7 +55,7 @@
               <Button
                 variant="outline"
                 onclick={() =>
-                  void Effect.runPromise(sessionStore.fetchSessions())}
+                  void runConnectionPromise(sessionStore.fetchSessions())}
               >
                 Retry
               </Button>

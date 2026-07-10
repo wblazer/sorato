@@ -1,36 +1,80 @@
-import { Effect } from 'effect'
-import type { Effect as EffectValue } from 'effect/Effect'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { Deferred, Effect, Layer } from 'effect'
+import { afterEach, describe, expect, it } from 'vitest'
+import { MessageToolPreloader, MessagesApi } from '$lib/connection-services.js'
 import type { MessageNode } from '$lib/types.js'
+import { messagesStore } from './messages.svelte.js'
 
-const controlledApi = vi.hoisted(() => ({
-  responses: [] as Array<Promise<ReadonlyArray<MessageNode>>>,
-}))
+interface ControlledMessagesApi {
+  readonly layer: Layer.Layer<MessagesApi | MessageToolPreloader>
+  readonly waitForRequestCount: (count: number) => Effect.Effect<void>
+  readonly resolve: (
+    index: number,
+    messages: ReadonlyArray<MessageNode>
+  ) => Effect.Effect<boolean>
+}
 
-vi.mock('$lib/api-client.js', () => ({
-  apiClient: () =>
-    Effect.succeed({
-      sessions: {
-        messages: () =>
-          Effect.promise(() => {
-            const response = controlledApi.responses.shift()
-            if (response === undefined) {
-              return Promise.reject(new Error('Missing controlled response'))
-            }
-            return response
-          }),
-      },
-    }),
-  runApiEffect: <A, E, R>(effect: EffectValue<A, E, R>) => effect,
-}))
+const makeControlledMessagesApi = (): ControlledMessagesApi => {
+  const requests: Array<Deferred.Deferred<ReadonlyArray<MessageNode>>> = []
+  const requestWaiters: Array<{
+    readonly count: number
+    readonly deferred: Deferred.Deferred<void>
+  }> = []
 
-vi.mock('$lib/tool-output.js', () => ({
-  preloadMessageToolDiffs: () => Promise.resolve(),
-  preloadToolDiff: () => Promise.resolve(),
-}))
+  const waitForRequestCount = (count: number): Effect.Effect<void> =>
+    Effect.suspend(() => {
+      if (requests.length >= count) return Effect.void
+      return Deferred.make<void>().pipe(
+        Effect.tap((deferred) =>
+          Effect.sync(() => {
+            requestWaiters.push({ count, deferred })
+          })
+        ),
+        Effect.flatMap(Deferred.await)
+      )
+    })
 
-// oxlint-disable-next-line sorato/no-dynamic-import -- the store must load after Vitest installs its API and tool-output mocks
-const { messagesStore } = await import('./messages.svelte.js')
+  const messagesLayer = Layer.succeed(
+    MessagesApi,
+    MessagesApi.of({
+      list: () =>
+        Deferred.make<ReadonlyArray<MessageNode>>().pipe(
+          Effect.tap((response) =>
+            Effect.sync(() => {
+              requests.push(response)
+            })
+          ),
+          Effect.tap(() =>
+            Effect.forEach(
+              requestWaiters.filter(
+                (waiter) => requests.length >= waiter.count
+              ),
+              (waiter) => Deferred.succeed(waiter.deferred, undefined),
+              { discard: true }
+            )
+          ),
+          Effect.flatMap(Deferred.await)
+        ),
+    })
+  )
+  const preloaderLayer = Layer.succeed(
+    MessageToolPreloader,
+    MessageToolPreloader.of({
+      preloadMessages: () => Effect.void,
+      preloadTool: () => Effect.void,
+    })
+  )
+
+  return {
+    layer: Layer.merge(messagesLayer, preloaderLayer),
+    waitForRequestCount,
+    resolve: (index, messages) => {
+      const request = requests[index]
+      return request === undefined
+        ? Effect.die(new Error(`Missing controlled request ${index}`))
+        : Deferred.succeed(request, messages)
+    },
+  } satisfies ControlledMessagesApi
+}
 
 const userMessage = (
   id: string,
@@ -51,22 +95,8 @@ const userMessage = (
   createdAt: 0,
 })
 
-const controlledResponse = () => {
-  let resolve!: (messages: ReadonlyArray<MessageNode>) => void
-  const promise = new Promise<ReadonlyArray<MessageNode>>((complete) => {
-    resolve = complete
-  })
-  return { promise, resolve }
-}
-
-const waitForRequestStart = (remainingResponses: number) =>
-  vi.waitFor(() => {
-    expect(controlledApi.responses).toHaveLength(remainingResponses)
-  })
-
 describe('messagesStore refresh ordering', () => {
   afterEach(() => {
-    controlledApi.responses = []
     messagesStore.clearAll()
   })
 
@@ -75,21 +105,23 @@ describe('messagesStore refresh ordering', () => {
     const sessionId = 'intermediate-refresh-session'
     const activePrompt = userMessage('active', sessionId, 'Active prompt')
     const queuedPrompt = userMessage('queued', sessionId, 'Queued prompt')
-    const intermediate = controlledResponse()
-    const newest = controlledResponse()
-    controlledApi.responses.push(intermediate.promise, newest.promise)
+    const controlled = makeControlledMessagesApi()
     messagesStore.prepareSession(tabId, sessionId)
 
     const intermediateRefresh = Effect.runPromise(
-      messagesStore.loadMessages(tabId, sessionId, { force: true })
+      messagesStore
+        .loadMessages(tabId, sessionId, { force: true })
+        .pipe(Effect.provide(controlled.layer))
     )
-    await waitForRequestStart(1)
+    await Effect.runPromise(controlled.waitForRequestCount(1))
     const newestRefresh = Effect.runPromise(
-      messagesStore.loadMessages(tabId, sessionId, { force: true })
+      messagesStore
+        .loadMessages(tabId, sessionId, { force: true })
+        .pipe(Effect.provide(controlled.layer))
     )
-    await waitForRequestStart(0)
+    await Effect.runPromise(controlled.waitForRequestCount(2))
 
-    intermediate.resolve([activePrompt])
+    await Effect.runPromise(controlled.resolve(0, [activePrompt]))
     await intermediateRefresh
     expect(
       messagesStore
@@ -97,7 +129,7 @@ describe('messagesStore refresh ordering', () => {
         .map((message) => message.encoded.content)
     ).toEqual(['Active prompt'])
 
-    newest.resolve([activePrompt, queuedPrompt])
+    await Effect.runPromise(controlled.resolve(1, [activePrompt, queuedPrompt]))
     await newestRefresh
     expect(
       messagesStore
@@ -111,26 +143,25 @@ describe('messagesStore refresh ordering', () => {
     const sessionId = 'queued-message-session'
     const activePrompt = userMessage('active', sessionId, 'Active prompt')
     const queuedPrompt = userMessage('queued', sessionId, 'Queued prompt')
-    const staleRunEnd = controlledResponse()
-    const freshQueuedMessage = controlledResponse()
-    controlledApi.responses.push(
-      staleRunEnd.promise,
-      freshQueuedMessage.promise
-    )
+    const controlled = makeControlledMessagesApi()
     messagesStore.prepareSession(tabId, sessionId)
 
     const runEndRefresh = Effect.runPromise(
-      messagesStore.loadMessages(tabId, sessionId, { force: true })
+      messagesStore
+        .loadMessages(tabId, sessionId, { force: true })
+        .pipe(Effect.provide(controlled.layer))
     )
-    await waitForRequestStart(1)
+    await Effect.runPromise(controlled.waitForRequestCount(1))
     const queuedMessageRefresh = Effect.runPromise(
-      messagesStore.loadMessages(tabId, sessionId, { force: true })
+      messagesStore
+        .loadMessages(tabId, sessionId, { force: true })
+        .pipe(Effect.provide(controlled.layer))
     )
-    await waitForRequestStart(0)
+    await Effect.runPromise(controlled.waitForRequestCount(2))
 
-    freshQueuedMessage.resolve([activePrompt, queuedPrompt])
+    await Effect.runPromise(controlled.resolve(1, [activePrompt, queuedPrompt]))
     await queuedMessageRefresh
-    staleRunEnd.resolve([activePrompt])
+    await Effect.runPromise(controlled.resolve(0, [activePrompt]))
     await runEndRefresh
 
     expect(

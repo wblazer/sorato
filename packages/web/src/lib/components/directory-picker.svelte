@@ -1,11 +1,11 @@
 <script lang="ts">
   import { CommandPalette } from '$lib/components/ui/command-palette/index.js'
-  import { apiClient, runApiEffect } from '$lib/api-client.js'
-  import FolderIcon from 'phosphor-svelte/lib/FolderIcon'
-  import { connectionsStore } from '$lib/stores/connections.svelte.js'
+  import { DirectoriesApi } from '$lib/connection-services.js'
+  import { runConnectionPromise } from '$lib/connection-runtime.js'
   import { cn } from '$lib/utils.js'
   import type { DirectoryEntry } from '@sorato/api'
   import { Effect } from 'effect'
+  import FolderIcon from 'phosphor-svelte/lib/FolderIcon'
 
   interface Props {
     open: boolean
@@ -51,7 +51,7 @@
 
   // Filter entries by the incomplete tail segment (case-insensitive prefix match).
   // Clamp selectedIndex when the list shrinks so it's never out of bounds.
-  const directories = $derived.by(() => {
+  const filteredDirectories = $derived.by(() => {
     const { tail } = parseQuery(query)
     const dirs = entries.filter((e) => e.type === 'directory')
     return !tail
@@ -71,11 +71,8 @@
         error = null
       })
 
-      const client = yield* apiClient(connectionsStore.getApiBase())
-      const result = yield* runApiEffect(
-        client.directories.list({ query: { path } }),
-        'Failed to list directories',
-      ).pipe(
+      const directoriesApi = yield* DirectoriesApi
+      const result = yield* directoriesApi.list(path).pipe(
         Effect.catch((cause) =>
           Effect.sync(() => {
             const noResult = null
@@ -107,7 +104,7 @@
     const { parent } = parseQuery(query)
     if (parent !== lastFetchedParent) {
       lastFetchedParent = parent
-      void Effect.runPromise(fetchEntries(parent))
+      void runConnectionPromise(fetchEntries(parent))
     }
   })
 
@@ -161,14 +158,14 @@
   function handleKeydown(e: KeyboardEvent): boolean | undefined {
     if (e.key === 'Tab') {
       e.preventDefault()
-      const entry = directories[selectedIndex]
+      const entry = filteredDirectories[selectedIndex]
       if (entry) query = `${entryAsQuery(entry)}/`
       return true
     }
   }
 
   function handleConfirm() {
-    const entry = directories[selectedIndex]
+    const entry = filteredDirectories[selectedIndex]
     if (entry) {
       handlePick(entry.path)
     } else if (resolvedPath && !parseQuery(query).tail) {
@@ -200,7 +197,7 @@
   bind:selectedIndex
   placeholder="Type a path... (~ for home, / for root)"
   {loading}
-  itemCount={directories.length}
+  itemCount={filteredDirectories.length}
   onConfirm={handleConfirm}
   onKeydown={handleKeydown}
 >
@@ -210,7 +207,7 @@
         {error}
       </div>
     {:else}
-      {#each directories as entry, i}
+      {#each filteredDirectories as entry, i}
         <button
           type="button"
           data-selected={i === selectedIndex}

@@ -3,13 +3,13 @@
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Empty from '$lib/components/ui/empty/index.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
-  import { Effect } from 'effect'
+  import { runConnectionPromise } from '$lib/connection-runtime.js'
   import FolderOpenIcon from 'phosphor-svelte/lib/FolderOpenIcon'
 
   let pickerOpen = $state(false)
 
   function handlePickerSelect(path: string) {
-    void Effect.runPromise(projectStore.createLocalProject(path))
+    void runConnectionPromise(projectStore.createLocalProject(path))
   }
 </script>
 

@@ -7,6 +7,7 @@
   import { tabStore } from '$lib/stores/tabs.svelte.js'
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
   import { searchProjectFiles } from '$lib/project-file-search.js'
+  import { runConnectionPromise } from '$lib/connection-runtime.js'
   import Composer from './composer.svelte'
   import * as Item from '$lib/components/ui/item/index.js'
   import EmptySessionTreePanel from './empty-session-tree-panel.svelte'
@@ -25,7 +26,6 @@
     writeComposerDraft,
     writeComposerDraftAttachments,
   } from '$lib/composer-storage.js'
-  import { Effect } from 'effect'
   import type { ModelOptions, RunAttachment } from '$lib/types.js'
 
   let sending = $state(false)
@@ -83,7 +83,7 @@
     if (!tabId) return
 
     tabStore.setDraftProject(tabId, projectId)
-    void Effect.runPromise(modelsStore.load(projectId))
+    void runConnectionPromise(modelsStore.load(projectId))
   }
 
   function openSession(sessionId: string) {
@@ -95,12 +95,14 @@
 
   async function searchFiles(query: string) {
     if (!activeProjectId) return []
-    return await Effect.runPromise(searchProjectFiles(activeProjectId, query))
+    return await runConnectionPromise(
+      searchProjectFiles(activeProjectId, query),
+    )
   }
 
   function retryModels() {
     if (activeProjectId)
-      void Effect.runPromise(modelsStore.load(activeProjectId))
+      void runConnectionPromise(modelsStore.load(activeProjectId))
   }
 
   async function handleSend(
@@ -115,20 +117,20 @@
 
     try {
       if (modelsStore.projectId !== activeProjectId || modelsStore.loading) {
-        await Effect.runPromise(modelsStore.load(activeProjectId))
+        await runConnectionPromise(modelsStore.load(activeProjectId))
       }
 
       const model = modelsStore.selectedModel
       if (!model) return false
 
-      const session = await Effect.runPromise(
+      const session = await runConnectionPromise(
         sessionStore.createSession(activeProjectId, null),
       )
       if (!session) return false
 
       messagesStore.prepareSession(tabId, session.id)
 
-      const response = await Effect.runPromise(
+      const response = await runConnectionPromise(
         sessionStore.runAgent(
           session.id,
           input,

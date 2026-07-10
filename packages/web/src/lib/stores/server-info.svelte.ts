@@ -1,4 +1,4 @@
-import { apiClient, runApiEffect } from '$lib/api-client.js'
+import { HandshakeApi } from '$lib/connection-services.js'
 import type { UiApiError } from '$lib/api-errors.js'
 import { connectionsStore } from '$lib/stores/connections.svelte.js'
 import { Effect } from 'effect'
@@ -36,11 +36,8 @@ function createServerInfoStore() {
         loading = true
       })
 
-      const client = yield* apiClient(connection.url)
-      const result = yield* runApiEffect(
-        client.handshake.check(),
-        'Handshake failed'
-      )
+      const handshake = yield* HandshakeApi
+      const result = yield* handshake.check()
 
       yield* Effect.sync(() => {
         if (connectionId !== connection.id) return

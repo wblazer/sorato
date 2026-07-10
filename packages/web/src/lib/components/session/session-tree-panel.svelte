@@ -3,6 +3,7 @@
   import LoadingState from '$lib/components/loading-state.svelte'
   import { messagesStore } from '$lib/stores/messages.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
+  import { runConnectionPromise } from '$lib/connection-runtime.js'
   import type { SelectedHead } from '$lib/selected-head-storage.js'
   import type { MessageNode } from '$lib/types.js'
   import { Button } from '$lib/components/ui/button/index.js'
@@ -28,7 +29,6 @@
   import { groupedAgentRunBase } from './grouped-agent-run-base.js'
   import type { SessionSelectedHeadController } from './session-selected-head.svelte.js'
   import { iconForMessageName, roleIcons } from './message-icons.js'
-  import { Effect } from 'effect'
 
   let {
     tabId,
@@ -876,7 +876,7 @@
     const orderedEndNodeId = endRow?.targetNodeId
     if (!startNodeId || !orderedEndNodeId) return
 
-    const response = await Effect.runPromise(
+    const response = await runConnectionPromise(
       sessionStore.compactRange(
         sessionId,
         model,

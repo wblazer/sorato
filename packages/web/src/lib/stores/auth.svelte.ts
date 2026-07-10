@@ -1,4 +1,4 @@
-import { apiClient, runApiEffect } from '$lib/api-client.js'
+import { AuthApi } from '$lib/connection-services.js'
 import type { UiApiError } from '$lib/api-errors.js'
 import type { AuthProviderStatus } from '@sorato/api'
 import { Effect } from 'effect'
@@ -24,8 +24,7 @@ function createAuthStore() {
     return Effect.gen(function* () {
       const id = ++requestId
       const connectionId = connectionsStore.activeConnection?.id ?? null
-      const api = connectionsStore.getApiBase()
-      if (!api) {
+      if (!connectionsStore.activeConnection) {
         yield* Effect.sync(() => {
           providers = []
           loading = false
@@ -41,11 +40,8 @@ function createAuthStore() {
         error = null
       })
 
-      const client = yield* apiClient(api)
-      const result = yield* runApiEffect(
-        client.auth.status(),
-        'Failed to check provider credentials'
-      )
+      const authApi = yield* AuthApi
+      const result = yield* authApi.status()
 
       yield* Effect.sync(() => {
         if (id !== requestId) return
