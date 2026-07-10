@@ -140,6 +140,7 @@ export class CompactRunResponse extends Schema.Class<CompactRunResponse>(
 
 export class StopResponse extends Schema.Class<StopResponse>('StopResponse')({
   status: Schema.Literals(['stopped', 'not_running']),
+  focusNodeId: Schema.optional(Schema.String),
 }) {}
 
 export class ProjectResponse extends Schema.Class<ProjectResponse>(

@@ -25,6 +25,7 @@
     type MessageTreeNode,
     type ToolCallSummary,
   } from './session-tree.js'
+  import { groupedAgentRunBase } from './grouped-agent-run-base.js'
   import type { SessionSelectedHeadController } from './session-selected-head.svelte.js'
   import { iconForMessageName, roleIcons } from './message-icons.js'
   import { Effect } from 'effect'
@@ -56,9 +57,6 @@
   })
 
   type ActiveRun = ReturnType<typeof sessionStore.activeRunsFor>[number]
-
-  const isRunPromptMessage = (message: MessageNode): boolean =>
-    message.encoded.role === 'system' || message.encoded.role === 'user'
   type BranchConnector = 'first' | 'middle' | 'last' | null
   type GutterMark = 'blank' | 'vertical' | 'first' | 'middle' | 'last'
 
@@ -159,9 +157,11 @@
     const effectiveRunBase = (run: ActiveRun): string | null => {
       if (run.kind !== 'agent') return run.baseNodeId
       if (groupAgentSteps) {
-        return (
-          latestRunLeaf(messages, run.runId, run.baseNodeId, isRunPromptMessage)
-            ?.id ?? run.baseNodeId
+        return groupedAgentRunBase(
+          messages,
+          run.runId,
+          run.baseNodeId,
+          activeCombinedAgentRunIds,
         )
       }
       return (
@@ -169,16 +169,10 @@
       )
     }
 
-    const activeGroupedAgentRunIds = new Set(
-      groupAgentSteps
-        ? runs.filter((run) => run.kind === 'agent').map((run) => run.runId)
-        : [],
-    )
-
     const isActiveGroupedAgentStep = (message: MessageNode): boolean =>
       groupAgentSteps &&
       message.runId !== null &&
-      activeGroupedAgentRunIds.has(message.runId) &&
+      activeCombinedAgentRunIds.has(message.runId) &&
       message.encoded.role !== 'system' &&
       message.encoded.role !== 'user'
 
@@ -495,6 +489,30 @@
     for (const root of orderedRoots)
       visit(root, 0, [], null, false, false, false, false)
     for (const run of runsByBase.get(null) ?? []) {
+      const activeRun = runContainsSelectedPath(run)
+      rows.push({
+        type: 'run',
+        id: runTreeNodeId(run.runId),
+        structuralDepth: 0,
+        visualDepth: 0,
+        branchConnector: null,
+        branchGutters: [],
+        parentConnector: false,
+        childConnector: false,
+        activeParentConnector: false,
+        activeChildConnector: false,
+        activeBranchVertical: activeRun,
+        activeBranchHorizontal: activeRun,
+        run,
+      })
+    }
+
+    // A stale or compacted base must never make an active run disappear.
+    const renderedRunIds = new Set(
+      rows.flatMap((row) => (row.type === 'run' ? [row.run.runId] : [])),
+    )
+    for (const run of runs) {
+      if (renderedRunIds.has(run.runId)) continue
       const activeRun = runContainsSelectedPath(run)
       rows.push({
         type: 'run',

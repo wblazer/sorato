@@ -382,10 +382,19 @@
     return true
   }
 
-  function handleStop() {
+  async function handleStop() {
     const runId = primaryActiveRun?.runId
     if (!runId) return
-    void Effect.runPromise(sessionStore.stopAgent(runId))
+    const response = await Effect.runPromise(sessionStore.stopAgent(runId))
+    if (typeof response === 'object' && response.focusNodeId !== undefined) {
+      await Effect.runPromise(
+        messagesStore.loadMessages(tabId, sessionId, { force: true }),
+      )
+      selectedHead.setSelectedHead({
+        type: 'node',
+        nodeId: response.focusNodeId,
+      })
+    }
   }
 
   function handleModel(value: string, modelOptions?: ModelOptions) {

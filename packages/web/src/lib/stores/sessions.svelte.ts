@@ -437,7 +437,11 @@ function createSessionStore() {
    * from SSE and persisted state refreshes.
    */
   function stopAgent(runId: string) {
-    if (stoppingRuns.has(runId)) return Effect.succeed('stopped' as const)
+    if (stoppingRuns.has(runId))
+      return Effect.succeed({
+        status: 'stopped' as const,
+        focusNodeId: undefined as string | undefined,
+      })
 
     stoppingRuns = new Set([...stoppingRuns, runId])
     const clearStopping = Effect.sync(() => {
@@ -453,7 +457,7 @@ function createSessionStore() {
         'Failed to stop agent run'
       )
 
-      return yield* Effect.sync(() => data.status)
+      return data
     }).pipe(
       Effect.ensuring(clearStopping),
       Effect.catch((cause: UiApiError) =>

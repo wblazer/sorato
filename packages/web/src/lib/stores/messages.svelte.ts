@@ -20,6 +20,7 @@ import { preloadMessageToolDiffs, preloadToolDiff } from '$lib/tool-output.js'
 import { sseStore } from './sse.svelte.js'
 import { connectionsStore } from './connections.svelte.js'
 import { requestSessionRefresh } from './session-refresh-bus.js'
+import { MessageRefreshOrder } from './message-refresh-order.js'
 
 interface MessageTabState {
   readonly sessionId: string | null
@@ -52,6 +53,7 @@ function createMessagesStore() {
   let streamingParts = $state<MessagePart[]>([])
   let backgroundSummaries = $state(new Map<string, BackgroundSummaryRun>())
   const lastCursors = new Map<string, StreamCursor>()
+  const refreshOrder = new MessageRefreshOrder()
 
   let streamFiber: Fiber.Fiber<void, SseError> | null = null
   const backgroundFibers = new Map<string, Fiber.Fiber<void, SseError>>()
@@ -399,6 +401,7 @@ function createMessagesStore() {
   }
 
   function prepareSession(tabId: string, sessionId: string) {
+    refreshOrder.clear(tabId)
     updateTabState(tabId, () => ({
       sessionId,
       messages: [],
@@ -414,7 +417,19 @@ function createMessagesStore() {
     sessionId: string,
     opts?: { readonly force?: boolean }
   ) {
+    let refreshRequest: number | undefined
+    const isFreshRequest = () =>
+      refreshRequest === undefined ||
+      refreshOrder.isFresh(tabId, refreshRequest)
+    const commitIfFreshRequest = (commit: () => void) => {
+      if (refreshRequest === undefined) {
+        commit()
+        return true
+      }
+      return refreshOrder.commitIfFresh(tabId, refreshRequest, commit)
+    }
     const markLoaded = Effect.sync(() => {
+      if (!isFreshRequest()) return
       updateTabState(tabId, (state) => ({
         ...state,
         sessionId,
@@ -428,6 +443,8 @@ function createMessagesStore() {
       const hasExisting =
         existing.sessionId === sessionId && existing.loaded === true
       if (hasExisting && !opts?.force) return
+      const request = refreshOrder.begin()
+      refreshRequest = request
 
       yield* Effect.sync(() => {
         if (streamedTabId === tabId) {
@@ -462,26 +479,30 @@ function createMessagesStore() {
       yield* Effect.promise(() => preloadMessageToolDiffs(serverMessages))
 
       yield* Effect.sync(() => {
-        if (!(hasExisting && serverMessages.length === 0)) {
-          updateTabState(tabId, (state) => ({
-            ...state,
-            sessionId,
-            messages: serverMessages,
-          }))
-        }
+        refreshOrder.commitIfFresh(tabId, request, () => {
+          if (!(hasExisting && serverMessages.length === 0)) {
+            updateTabState(tabId, (state) => ({
+              ...state,
+              sessionId,
+              messages: serverMessages,
+            }))
+          }
+        })
       })
     }).pipe(
       Effect.catch((cause: UiApiError) =>
         Effect.sync(() => {
-          const existing = stateFor(tabId)
-          const hasExisting =
-            existing.sessionId === sessionId && existing.loaded === true
-          updateTabState(tabId, (state) => ({
-            ...state,
-            sessionId,
-            messages: hasExisting ? state.messages : [],
-            error: cause.message,
-          }))
+          commitIfFreshRequest(() => {
+            const existing = stateFor(tabId)
+            const hasExisting =
+              existing.sessionId === sessionId && existing.loaded === true
+            updateTabState(tabId, (state) => ({
+              ...state,
+              sessionId,
+              messages: hasExisting ? state.messages : [],
+              error: cause.message,
+            }))
+          })
         })
       ),
       Effect.ensuring(markLoaded)
@@ -566,6 +587,7 @@ function createMessagesStore() {
   ) {
     return Effect.gen(function* () {
       if (stateFor(tabId).sessionId !== sessionId) return
+      const refreshRequest = refreshOrder.begin()
 
       const client = yield* apiClient(connectionsStore.getApiBase())
       const response = yield* runApiEffect(
@@ -576,36 +598,38 @@ function createMessagesStore() {
       yield* Effect.promise(() => preloadMessageToolDiffs(fresh))
 
       yield* Effect.sync(() => {
-        updateTabState(tabId, (state) => ({
-          ...state,
-          sessionId,
-          messages: fresh,
-          loaded: true,
-          error: null,
-        }))
+        refreshOrder.commitIfFresh(tabId, refreshRequest, () => {
+          updateTabState(tabId, (state) => ({
+            ...state,
+            sessionId,
+            messages: fresh,
+            loaded: true,
+            error: null,
+          }))
 
-        if (opts?.markFinalRefreshForRun) {
-          markFinalRunRefresh(tabId, opts.markFinalRefreshForRun)
-        }
+          if (opts?.markFinalRefreshForRun) {
+            markFinalRunRefresh(tabId, opts.markFinalRefreshForRun)
+          }
 
-        if (streamedTabId === tabId && streamedSessionId === sessionId) {
-          if (
-            opts?.clearStreamingPartsForRun &&
-            streamedRunId === opts.clearStreamingPartsForRun
-          ) {
-            streamingParts = []
+          if (streamedTabId === tabId && streamedSessionId === sessionId) {
+            if (
+              opts?.clearStreamingPartsForRun &&
+              streamedRunId === opts.clearStreamingPartsForRun
+            ) {
+              streamingParts = []
+            }
+            if (
+              opts?.clearPartsForRun &&
+              streamedRunId === opts.clearPartsForRun
+            ) {
+              streamingParts = []
+              resetCursor(opts.clearPartsForRun)
+              streamedRunId = null
+              streamedRunBaseNodeId = null
+              closeRunStream()
+            }
           }
-          if (
-            opts?.clearPartsForRun &&
-            streamedRunId === opts.clearPartsForRun
-          ) {
-            streamingParts = []
-            resetCursor(opts.clearPartsForRun)
-            streamedRunId = null
-            streamedRunBaseNodeId = null
-            closeRunStream()
-          }
-        }
+        })
       })
     }).pipe(
       Effect.catch((cause: UiApiError) =>
@@ -663,6 +687,7 @@ function createMessagesStore() {
   })
 
   function clearTab(tabId: string) {
+    refreshOrder.clear(tabId)
     if (streamedTabId === tabId) {
       closeRunStream()
       streamingParts = []
@@ -694,6 +719,7 @@ function createMessagesStore() {
   }
 
   function clearAll() {
+    refreshOrder.clearAll()
     clearActiveStream()
     tabStates = {}
   }

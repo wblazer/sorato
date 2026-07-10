@@ -216,6 +216,89 @@ describe('RunScenario', () => {
       }).pipe(Effect.scoped)
   )
 
+  it.effect(
+    'persists queued messages after an interrupted run and returns the last focus node',
+    () =>
+      Effect.gen(function* () {
+        const scenario = yield* makeRunScenario({
+          model: [Scripted.text('should not run'), Scripted.finish()],
+        })
+        const active = yield* scenario.enqueueRun({ input: 'Active prompt' })
+        yield* scenario.checkpoints.waitFor(
+          'afterAgentPreambleAppended',
+          active.runId
+        )
+
+        const firstQueued = yield* scenario.enqueueRun({
+          input: 'First queued prompt',
+          afterRunId: active.runId,
+        })
+        const secondQueued = yield* scenario.enqueueRun({
+          input: 'Last queued prompt',
+          afterRunId: active.runId,
+        })
+        expect(firstQueued.runId).toBe(secondQueued.runId)
+
+        const response = yield* scenario.stopRun(active.runId)
+        expect(response.status).toBe('stopped')
+        expect(response.focusNodeId).toBeDefined()
+
+        const messages = yield* scenario.messages()
+        const interruptedRunMessages = messages.filter(
+          (message) => message.runId === active.runId
+        )
+        const queuedRunMessages = messages.filter(
+          (message) => message.runId === firstQueued.runId
+        )
+        const interruptedLeaf = interruptedRunMessages.at(-1)
+
+        expect(interruptedLeaf).toBeDefined()
+        expect(
+          queuedRunMessages.map((message) => message.encoded.content)
+        ).toEqual(['First queued prompt', 'Last queued prompt'])
+        expect(queuedRunMessages[0]?.parentId).toBe(interruptedLeaf?.id)
+        expect(response.focusNodeId).toBe(queuedRunMessages.at(-1)?.id)
+        expect((yield* scenario.getRun(active.runId)).status).toBe(
+          'interrupted'
+        )
+        expect((yield* scenario.getRun(firstQueued.runId)).status).toBe(
+          'interrupted'
+        )
+        const queuedEvents = yield* scenario.eventsForRun(firstQueued.runId)
+        expect(queuedEvents.map((event) => event._tag)).toContain('RunEnd')
+        expect(yield* scenario.isRunActive(firstQueued.runId)).toBe(false)
+      }).pipe(Effect.scoped)
+  )
+
+  it.effect(
+    'persists one queued message when interrupting its active run',
+    () =>
+      Effect.gen(function* () {
+        const scenario = yield* makeRunScenario({
+          model: [Scripted.text('should not run'), Scripted.finish()],
+        })
+        const active = yield* scenario.enqueueRun({ input: 'Active prompt' })
+        yield* scenario.checkpoints.waitFor(
+          'afterAgentPreambleAppended',
+          active.runId
+        )
+
+        const queued = yield* scenario.enqueueRun({
+          input: 'Queued prompt',
+          afterRunId: active.runId,
+        })
+        expect(queued.runId).not.toBe(active.runId)
+
+        const response = yield* scenario.stopRun(active.runId)
+        expect(response.status).toBe('stopped')
+
+        const queuedMessages = yield* scenario.messagesForRun(queued.runId)
+        expect(
+          queuedMessages.map((message) => message.encoded.content)
+        ).toEqual(['Queued prompt'])
+      }).pipe(Effect.scoped)
+  )
+
   it.effect('stops a child background run when stopping its parent run', () =>
     Effect.gen(function* () {
       const scenario = yield* makeRunScenario({

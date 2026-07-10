@@ -65,6 +65,7 @@ export interface StartRunOptions {
   readonly input: string
   readonly baseNodeId?: string | null | undefined
   readonly runId?: string | undefined
+  readonly afterRunId?: string | null | undefined
 }
 
 export interface StartedRun {
@@ -199,7 +200,7 @@ const requestFor = (options: StartRunOptions, runId: string): RunRequest => ({
   model: TEST_MODEL,
   modelOptions: { thinkingLevel: 'off' },
   baseNodeId: options.baseNodeId ?? null,
-  afterRunId: null,
+  afterRunId: options.afterRunId ?? null,
 })
 
 const stableRunId = (runId?: string) => runId ?? crypto.randomUUID()
@@ -211,7 +212,7 @@ const queueStartArgs = (options: StartRunOptions) =>
     TEST_MODEL,
     { thinkingLevel: 'off' as const },
     options.baseNodeId ?? null,
-    null,
+    options.afterRunId ?? null,
   ] as const
 const cleanupDirectRun = (runId: string) =>
   Effect.sync(() => {

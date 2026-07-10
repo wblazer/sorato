@@ -362,6 +362,16 @@ export function drainQueuedRunsForRun(runId: string): Array<RunRequest> {
   return drained
 }
 
+export function drainQueuedRunsAfterRun(runId: string): Array<RunRequest> {
+  const queueId = runQueues.get(runId)
+  const state = queueId ? queues.get(queueId) : undefined
+  if (!state) return []
+
+  const queued = state.queuedRuns
+  state.queuedRuns = []
+  return queued
+}
+
 export function takeStartingRun(runId: string): RunRequest | undefined {
   const queueId = runQueues.get(runId)
   const state = queueId ? queues.get(queueId) : undefined

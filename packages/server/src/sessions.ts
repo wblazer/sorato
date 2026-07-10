@@ -36,6 +36,7 @@ import {
   clearRunMapping,
   drainQueuedRuns as drainQueuedInputs,
   drainQueuedRunsForRun,
+  drainQueuedRunsAfterRun,
   enqueueRun,
   getActiveRuns,
   getFibers,
@@ -327,14 +328,6 @@ function finalPersistedRunNode(
   baseNodeId: string | null
 ): MessageNode | undefined {
   const runMessages = messages.filter((message) => message.runId === runId)
-  const hasGeneratedOutput = runMessages.some(
-    (message) =>
-      message.encoded.role === 'assistant' ||
-      message.encoded.role === 'tool' ||
-      message.encoded.role === 'system'
-  )
-  if (!hasGeneratedOutput) return undefined
-
   const runIds = new Set(runMessages.map((message) => message.id))
   const parentIds = new Set(
     runMessages
@@ -560,9 +553,11 @@ const appendStoppedQueuedInputs = (
   sessionId: string,
   queuedInputs: ReadonlyArray<RunRequest>
 ) =>
-  Effect.forEach(queuedInputs, (queuedRequest) =>
-    Effect.gen(function* () {
-      if (queuedRequest.inputs.length === 0) return
+  Effect.gen(function* () {
+    let lastNodeId: string | undefined
+
+    for (const queuedRequest of queuedInputs) {
+      if (queuedRequest.inputs.length === 0) continue
 
       const request = yield* resolveRunBase(storage, sessionId, queuedRequest)
       const runId = request.runId
@@ -575,7 +570,7 @@ const appendStoppedQueuedInputs = (
         billingMode: 'api-key',
         baseNodeId: request.baseNodeId,
       })
-      yield* storage.append(
+      const nodeIds = yield* storage.append(
         sessionId,
         runId,
         request.inputs.map((input) => ({
@@ -598,9 +593,12 @@ const appendStoppedQueuedInputs = (
         })),
         request.baseNodeId
       )
+      lastNodeId = nodeIds.at(-1) ?? lastNodeId
       yield* completeRun(storage, runId, 'interrupted')
-    })
-  )
+    }
+
+    return lastNodeId
+  })
 
 const appendActiveRunInputsIfMissing = (
   storage: SessionStorageApi,
@@ -628,8 +626,13 @@ const appendStoppedRunRequests = Effect.fn('Sessions.appendStoppedRunRequests')(
     sessionId: string,
     requests: ReadonlyArray<RunRequest>
   ) {
-    yield* appendStoppedQueuedInputs(storage, sessionId, requests)
+    const lastNodeId = yield* appendStoppedQueuedInputs(
+      storage,
+      sessionId,
+      requests
+    )
     if (requests.length > 0) yield* publishMessagesAppended(sessionId)
+    return lastNodeId
   }
 )
 
@@ -650,7 +653,7 @@ const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
   const visited = new Set<string>()
   const pendingRunIds = [rootRunId]
   let stopped = false
-
+  let focusNodeId: string | undefined
   while (pendingRunIds.length > 0) {
     const runId = pendingRunIds.pop()
     if (runId === undefined || visited.has(runId)) continue
@@ -670,11 +673,12 @@ const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
       ...(startingRequest === undefined ? [] : [startingRequest]),
     ]
     if (stoppedRequests.length > 0) {
-      yield* appendStoppedRunRequests(
-        storage,
-        snapshot.sessionId,
-        stoppedRequests
-      )
+      focusNodeId =
+        (yield* appendStoppedRunRequests(
+          storage,
+          snapshot.sessionId,
+          stoppedRequests
+        )) ?? focusNodeId
       if (startingRequest !== undefined) yield* awaitWorkerStop(snapshot)
       yield* publishRunEnd(snapshot.sessionId, runId)
       stopped = true
@@ -682,6 +686,7 @@ const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
     }
 
     if (snapshot.activeFiber !== null) {
+      const queuedFollowers = drainQueuedRunsAfterRun(runId)
       yield* Fiber.interrupt(snapshot.activeFiber).pipe(Effect.exit)
       const appendedInputs =
         snapshot.activeRunRequest === null
@@ -693,6 +698,19 @@ const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
             )
       if (appendedInputs) yield* publishMessagesAppended(snapshot.sessionId)
       yield* awaitWorkerStop(snapshot)
+      if (queuedFollowers.length > 0) {
+        focusNodeId =
+          (yield* appendStoppedRunRequests(
+            storage,
+            snapshot.sessionId,
+            queuedFollowers
+          )) ?? focusNodeId
+        yield* Effect.forEach(
+          queuedFollowers,
+          (request) => publishRunEnd(snapshot.sessionId, request.runId),
+          { discard: true }
+        )
+      }
       stopped = true
       handled = true
     }
@@ -700,7 +718,7 @@ const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
     if (handled) yield* Effect.sync(() => clearRunMapping(runId))
   }
 
-  return stopped
+  return { stopped, focusNodeId }
 })
 
 function stopWithoutActiveFiber(storage: SessionStorageApi, sessionId: string) {
@@ -720,7 +738,7 @@ function stopWithoutActiveFiber(storage: SessionStorageApi, sessionId: string) {
       Effect.void
 
     yield* appendQueuedInputs
-    return new StopResponse({ status: 'stopped' })
+    return new StopResponse({ status: 'stopped', focusNodeId: undefined })
   })
 
   return (
@@ -756,7 +774,7 @@ const stopWithActiveFibers = Effect.fn('Sessions.stopWithActiveFibers')(
       discard: true,
     })
 
-    return new StopResponse({ status: 'stopped' })
+    return new StopResponse({ status: 'stopped', focusNodeId: undefined })
   }
 )
 
@@ -786,8 +804,11 @@ export const stopRun = Effect.fn('Sessions.stopRun')(function* (
   if (!isRunRegistered(runId))
     return new StopResponse({ status: 'not_running' })
 
-  const stopped = yield* stopRunAndChildren(storage, runId)
-  return new StopResponse({ status: stopped ? 'stopped' : 'not_running' })
+  const result = yield* stopRunAndChildren(storage, runId)
+  return new StopResponse({
+    status: result.stopped ? 'stopped' : 'not_running',
+    focusNodeId: result.focusNodeId,
+  })
 })
 
 export const enqueueRunRequest = Effect.fn('Sessions.enqueueRunRequest')((
