@@ -38,6 +38,7 @@
   import { SessionSelectedHeadController } from './session-selected-head.svelte.js'
   import * as Item from '$lib/components/ui/item/index.js'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
+  import { refreshMessagesAfterStop } from './stop-refresh-policy.js'
   let {
     tabId,
     sessionId,
@@ -386,13 +387,18 @@
     const runId = primaryActiveRun?.runId
     if (!runId) return
     const response = await runConnectionPromise(sessionStore.stopAgent(runId))
-    if (typeof response === 'object' && response.focusNodeId !== undefined) {
-      await runConnectionPromise(
-        messagesStore.loadMessages(tabId, sessionId, { force: true }),
-      )
+    const focusNodeId = await runConnectionPromise(
+      refreshMessagesAfterStop(
+        {
+          run: messagesStore.loadMessages(tabId, sessionId, { force: true }),
+        },
+        typeof response === 'object' ? response.focusNodeId : undefined,
+      ),
+    )
+    if (focusNodeId !== undefined) {
       selectedHead.setSelectedHead({
         type: 'node',
-        nodeId: response.focusNodeId,
+        nodeId: focusNodeId,
       })
     }
   }

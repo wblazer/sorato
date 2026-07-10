@@ -299,6 +299,53 @@ describe('RunScenario', () => {
       }).pipe(Effect.scoped)
   )
 
+  it.effect(
+    'persists a queued message when interrupting after active output',
+    () =>
+      Effect.gen(function* () {
+        const scenario = yield* makeRunScenario({
+          model: [
+            Scripted.textStart('text'),
+            Scripted.textDelta('text', 'Partial assistant output'),
+            Scripted.checkpoint('queued-after-output'),
+            Scripted.textDelta('text', ' should not be persisted'),
+            Scripted.textEnd('text'),
+            Scripted.finish(),
+          ],
+        })
+        const active = yield* scenario.enqueueRun({ input: 'Active prompt' })
+        yield* scenario.model.waitForCheckpoint('queued-after-output')
+        yield* scenario.waitForEvent(
+          (event) => event._tag === 'TextDelta' && event.runId === active.runId
+        )
+
+        const queued = yield* scenario.enqueueRun({
+          input: 'Queued prompt after output',
+          afterRunId: active.runId,
+        })
+
+        const response = yield* scenario.stopRun(active.runId)
+        expect(response.status).toBe('stopped')
+
+        const activeMessages = yield* scenario.messagesForRun(active.runId)
+        expect(
+          activeMessages
+            .filter((message) => message.encoded.role !== 'system')
+            .map((message) => message.encoded.role)
+        ).toEqual(['user', 'assistant'])
+        expect(activeMessages.at(-1)?.encoded.content).toBe(
+          'Partial assistant output'
+        )
+
+        const queuedMessages = yield* scenario.messagesForRun(queued.runId)
+        expect(
+          queuedMessages.map((message) => message.encoded.content)
+        ).toEqual(['Queued prompt after output'])
+        expect(queuedMessages[0]?.parentId).toBe(activeMessages.at(-1)?.id)
+        expect(response.focusNodeId).toBe(queuedMessages[0]?.id)
+      }).pipe(Effect.scoped)
+  )
+
   it.effect('stops a child background run when stopping its parent run', () =>
     Effect.gen(function* () {
       const scenario = yield* makeRunScenario({
