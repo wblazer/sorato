@@ -23,7 +23,6 @@ type MessageScrollerItemOptions = {
 const defaultScrollEdgeThreshold = 8
 const defaultScrollPreviousItemPeek = 64
 const scrollPositionEpsilon = 0.5
-const defaultFollowBottomThreshold = scrollPositionEpsilon
 const autoscrollingClearDelay = 180
 const userScrollKeys = new Set([
   'ArrowDown',
@@ -55,7 +54,12 @@ class MessageScrollerController {
   private autoscrollingTimeout: number | null = null
   private defaultScrollPositionApplied = false
   private pendingScrollFrame: number | null = null
+  private pendingScrollToMessage: {
+    messageId: string
+    options?: MessageScrollerScrollOptions
+  } | null = null
   private stateFrame: number | null = null
+  private lastScrollTop = 0
   private spacerGap = 0
   private spacerHeight = 0
   private prependRestore: {
@@ -102,10 +106,16 @@ class MessageScrollerController {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (userScrollKeys.has(event.key)) this.userScrollIntent()
     }
+    let resizeFrame = 0
     const resizeObserver =
       typeof ResizeObserver === 'undefined'
         ? null
-        : new ResizeObserver(() => this.handleResize())
+        : new ResizeObserver(() => {
+            window.cancelAnimationFrame(resizeFrame)
+            resizeFrame = window.requestAnimationFrame(() =>
+              this.handleResize()
+            )
+          })
 
     node.addEventListener('scroll', handleScroll)
     node.addEventListener('wheel', handleIntent)
@@ -123,6 +133,7 @@ class MessageScrollerController {
         node.removeEventListener('wheel', handleIntent)
         node.removeEventListener('touchmove', handleIntent)
         node.removeEventListener('keydown', handleKeyDown)
+        window.cancelAnimationFrame(resizeFrame)
         resizeObserver?.disconnect()
         if (this.viewportElement === node) this.viewportElement = null
       },
@@ -137,10 +148,16 @@ class MessageScrollerController {
       typeof MutationObserver === 'undefined'
         ? null
         : new MutationObserver(() => this.handleContentChange())
+    let resizeFrame = 0
     const resizeObserver =
       typeof ResizeObserver === 'undefined'
         ? null
-        : new ResizeObserver(() => this.handleResize())
+        : new ResizeObserver(() => {
+            window.cancelAnimationFrame(resizeFrame)
+            resizeFrame = window.requestAnimationFrame(() =>
+              this.handleResize()
+            )
+          })
 
     mutationObserver?.observe(node, { childList: true })
     resizeObserver?.observe(node)
@@ -148,6 +165,7 @@ class MessageScrollerController {
     return {
       destroy: () => {
         mutationObserver?.disconnect()
+        window.cancelAnimationFrame(resizeFrame)
         resizeObserver?.disconnect()
         if (this.contentElement === node) this.contentElement = null
       },
@@ -182,6 +200,7 @@ class MessageScrollerController {
       if (next.messageId) {
         node.dataset.messageId = next.messageId
         this.messageElements.set(next.messageId, node)
+        this.schedulePendingScrollToMessageFlush(next.messageId)
       } else {
         delete node.dataset.messageId
       }
@@ -206,6 +225,30 @@ class MessageScrollerController {
     return this.scrollToEnd({ behavior })
   }
 
+  scrollToMessage(messageId: string, options?: MessageScrollerScrollOptions) {
+    const element = this.messageElements.get(messageId)
+
+    if (!element) {
+      if (this.itemCount === 0) {
+        this.pendingScrollToMessage = { messageId, options }
+        this.defaultScrollPositionApplied = true
+        return true
+      }
+
+      return false
+    }
+
+    this.defaultScrollPositionApplied = true
+
+    if (this.scrollToElement(element, options)) {
+      this.pendingScrollToMessage = null
+      return true
+    }
+
+    this.pendingScrollToMessage = { messageId, options }
+    return true
+  }
+
   destroy() {
     if (this.autoscrollingTimeout !== null) {
       window.clearTimeout(this.autoscrollingTimeout)
@@ -227,10 +270,6 @@ class MessageScrollerController {
 
   private get scrollEdgeThreshold() {
     return this.options.scrollEdgeThreshold ?? defaultScrollEdgeThreshold
-  }
-
-  private get followBottomThreshold() {
-    return defaultFollowBottomThreshold
   }
 
   private get scrollMargin() {
@@ -353,9 +392,21 @@ class MessageScrollerController {
       return
     }
 
-    if (!this.reanchorToAnchoredMessage()) {
-      this.scheduleStateCommit()
+    const previousSpacerHeight = this.spacerHeight
+
+    if (this.reanchorToAnchoredMessage()) {
+      if (
+        this.autoScroll &&
+        previousSpacerHeight > 0 &&
+        this.spacerHeight === 0
+      ) {
+        this.scrollToEnd({ behavior: 'auto' })
+      }
+
+      return
     }
+
+    this.scheduleStateCommit()
   }
 
   private syncAfterScroll() {
@@ -374,12 +425,23 @@ class MessageScrollerController {
     }
   }
 
-  private reconcileFollowMode(atFollowBottom: boolean) {
-    if (this.autoScroll && atFollowBottom && this.mode !== 'settling-jump') {
+  private reconcileFollowMode(scrollable: MessageScrollerScrollable) {
+    const scrollTop = this.viewportElement?.scrollTop ?? 0
+    const scrolledUp = scrollTop < this.lastScrollTop - scrollPositionEpsilon
+
+    this.lastScrollTop = scrollTop
+
+    if (
+      this.autoScroll &&
+      !scrollable.end &&
+      this.mode !== 'settling-jump' &&
+      this.mode !== 'anchored-to-message'
+    ) {
       this.mode = 'following-bottom'
     } else if (
       this.mode === 'following-bottom' &&
-      !atFollowBottom &&
+      scrollable.end &&
+      scrolledUp &&
       !this.autoscrolling
     ) {
       this.mode = 'free-scrolling'
@@ -394,16 +456,15 @@ class MessageScrollerController {
       viewport: this.viewportElement,
     })
 
-    this.reconcileFollowMode(
-      getMessageScrollerAtEnd({
-        content: this.contentElement,
-        scrollEdgeThreshold: this.followBottomThreshold,
-        spacer: this.spacerElement,
-        viewport: this.viewportElement,
-      })
-    )
-    this.scrollable.start = nextState.start
-    this.scrollable.end = nextState.end
+    this.reconcileFollowMode(nextState)
+
+    const publishedState =
+      this.mode === 'following-bottom'
+        ? { ...nextState, end: false }
+        : nextState
+
+    this.scrollable.start = publishedState.start
+    this.scrollable.end = publishedState.end
     this.writeStateAttributes()
   }
 
@@ -629,8 +690,33 @@ class MessageScrollerController {
     )
   }
 
+  private schedulePendingScrollToMessageFlush(messageId: string) {
+    if (
+      this.pendingScrollToMessage?.messageId !== messageId ||
+      this.pendingScrollFrame !== null
+    ) {
+      return
+    }
+
+    this.pendingScrollFrame = window.requestAnimationFrame(() => {
+      this.pendingScrollFrame = null
+      if (this.flushPendingScrollToMessage()) this.capturePrependAnchor()
+    })
+  }
+
   private flushPendingScrollToMessage() {
-    return false
+    const pending = this.pendingScrollToMessage
+    if (!pending) return false
+
+    const element = this.messageElements.get(pending.messageId)
+    if (!element) return false
+
+    const handled = this.scrollToElement(element, pending.options)
+    if (!handled) return false
+
+    this.pendingScrollToMessage = null
+    this.defaultScrollPositionApplied = true
+    return true
   }
 
   private capturePrependAnchor() {
@@ -696,27 +782,6 @@ function getMessageScrollerScrollable({
       contentBottom - viewport.scrollTop - viewport.clientHeight >
       scrollEdgeThreshold,
   }
-}
-
-function getMessageScrollerAtEnd({
-  content,
-  scrollEdgeThreshold,
-  spacer,
-  viewport,
-}: {
-  readonly content: HTMLElement | null
-  readonly scrollEdgeThreshold: number
-  readonly spacer: HTMLElement | null
-  readonly viewport: HTMLElement | null
-}) {
-  if (!viewport || !content) return false
-
-  return (
-    getContentBottom({ content, spacer, viewport }) -
-      viewport.scrollTop -
-      viewport.clientHeight <=
-    scrollEdgeThreshold
-  )
 }
 
 function getMessageScrollerItems(

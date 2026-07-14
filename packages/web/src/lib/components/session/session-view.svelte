@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, tick } from 'svelte'
+  import { onDestroy } from 'svelte'
   import LoadingState from '$lib/components/loading-state.svelte'
   import { MessageScrollerController } from '$lib/components/message-scroller/message-scroller.svelte.js'
   import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
@@ -59,9 +59,7 @@
   const scroller = new MessageScrollerController({
     autoScroll: true,
     defaultScrollPosition: 'last-anchor',
-    scrollEdgeThreshold: 80,
   })
-  let initialScrollSessionId: string | null = null
   let accordionState = $state<Record<string, string[]>>({})
   let composerDraftText = $state('')
   let composerDraftKey = $state<string | null>(null)
@@ -287,16 +285,9 @@
     ],
   )
 
-  function jumpToLatest() {
-    scroller.jumpToEnd('auto')
-  }
-
-  function scrollToLatestAfterRender() {
-    tick().then(() =>
-      requestAnimationFrame(() => {
-        scroller.jumpToEnd('auto')
-      }),
-    )
+  function jumpToLatest(event: MouseEvent) {
+    if (event.currentTarget instanceof HTMLElement) event.currentTarget.blur()
+    scroller.jumpToEnd()
   }
 
   $effect(() => {
@@ -322,14 +313,6 @@
       viewport.removeAttribute('aria-label')
       viewport.removeAttribute('tabindex')
     }
-  })
-
-  $effect(() => {
-    if (!active) return
-    if (messagesLoading || transcriptRows.length === 0) return
-    if (initialScrollSessionId === sessionId) return
-    initialScrollSessionId = sessionId
-    scrollToLatestAfterRender()
   })
 
   // Intentionally keep run heads as run heads after completion. Rendering a
@@ -481,7 +464,7 @@
         bind:viewportRef={viewportElement}
         orientation="vertical"
         class="mr-0.5 h-full"
-        viewportClass="scroll-mask-y scroll-mask-y-from-98% outline-none"
+        viewportClass="scroll-mask-y scroll-mask-y-from-98% overscroll-contain contain-content outline-none"
       >
         {#if messagesLoading}
           <LoadingState />
@@ -508,7 +491,7 @@
             role="log"
             aria-relevant="additions"
             aria-busy={isRunning}
-            class="mx-auto flex min-h-full w-full max-w-6xl flex-col gap-1 px-4 py-5 sm:px-6"
+            class="mx-auto flex h-max min-h-full w-full max-w-6xl flex-col gap-1 px-4 py-5 sm:px-6"
           >
             {#each transcriptRows as row (row.key)}
               <div
@@ -518,6 +501,7 @@
                     row.type === 'message' &&
                     row.block.message.encoded.role === 'user',
                 }}
+                class="min-w-0 shrink-0 [contain-intrinsic-size:auto_10rem] [content-visibility:auto]"
               >
                 {#if row.type === 'message'}
                   <MessageBubble
