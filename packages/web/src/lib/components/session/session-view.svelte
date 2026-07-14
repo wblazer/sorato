@@ -39,6 +39,7 @@
   import * as Item from '$lib/components/ui/item/index.js'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
   import { refreshMessagesAfterStop } from './stop-refresh-policy.js'
+  import { activeRunForHead } from './composer-run-control.js'
   let {
     tabId,
     sessionId,
@@ -68,15 +69,7 @@
   // Running state is derived from the session store — the single source
   // of truth. The messages store only tracks streaming *content*.
   const activeRuns = $derived(sessionStore.activeRunsFor(sessionId))
-  const primaryActiveRun = $derived(
-    activeRuns.find((run) => run.visibility === 'primary') ??
-      activeRuns[0] ??
-      null,
-  )
-  const isRunning = $derived(primaryActiveRun !== null)
-  const isStopping = $derived(
-    sessionStore.isStopping(primaryActiveRun?.runId ?? null),
-  )
+  const isSessionRunning = $derived(activeRuns.length > 0)
   const queuedMessages = $derived(sessionStore.queuedMessagesFor(sessionId))
   const sessionStatus = $derived(sessionStore.sessionStatus(sessionId))
   const selectedSession = $derived(
@@ -91,10 +84,9 @@
   const messagesLoaded = $derived(messagesStore.loadedForTab(tabId))
   const messagesError = $derived(messagesStore.errorForTab(tabId))
   const selectedHeadValue = $derived(selectedHead.renderHead)
-  const followedRun = $derived(
-    selectedHeadValue?.type === 'run'
-      ? sessionStore.activeRun(selectedHeadValue.runId)
-      : null,
+  const followedRun = $derived(activeRunForHead(selectedHeadValue, activeRuns))
+  const isStoppingFollowedRun = $derived(
+    sessionStore.isStopping(followedRun?.runId ?? null),
   )
   const isFollowingActiveRun = $derived(followedRun !== null)
   const followedStreamingParts = $derived(
@@ -367,7 +359,7 @@
   }
 
   async function handleStop() {
-    const runId = primaryActiveRun?.runId
+    const runId = followedRun?.runId
     if (!runId) return
     const response = await runConnectionPromise(sessionStore.stopAgent(runId))
     const focusNodeId = await runConnectionPromise(
@@ -485,12 +477,12 @@
               </Item.Actions>
             </Item.Root>
           </div>
-        {:else if messagesLoaded || isRunning}
+        {:else if messagesLoaded || isSessionRunning}
           <div
             use:scroller.content
             role="log"
             aria-relevant="additions"
-            aria-busy={isRunning}
+            aria-busy={isSessionRunning}
             class="mx-auto flex h-max min-h-full w-full max-w-6xl flex-col gap-1 px-4 py-5 sm:px-6"
           >
             {#each transcriptRows as row (row.key)}
@@ -570,8 +562,8 @@
     model={modelsStore.selectedModel}
     modelOptions={modelsStore.selectedOptions}
     modelLoading={modelsStore.loading}
-    {isRunning}
-    {isStopping}
+    isViewingActiveRun={isFollowingActiveRun}
+    isStopping={isStoppingFollowedRun}
     autoFocus={active}
     focusKey={sessionId}
     {draftStorageKey}
@@ -581,6 +573,6 @@
     {sessionStatus}
     {backgroundSummaries}
     tokenUsageMessages={visibleMessages}
-    disabled={isStopping}
+    disabled={isStoppingFollowedRun}
   />
 </SessionShell>

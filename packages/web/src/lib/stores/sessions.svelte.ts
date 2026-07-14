@@ -463,10 +463,6 @@ function createSessionStore() {
     return [...activeRuns.values()].filter((run) => run.sessionId === sessionId)
   }
 
-  function activeRun(runId: string | null) {
-    return runId === null ? null : (activeRuns.get(runId) ?? null)
-  }
-
   /** Check if a stop request for a run is pending. */
   function isStopping(runId: string | null): boolean {
     return runId !== null && stoppingRuns.has(runId)
@@ -521,7 +517,6 @@ function createSessionStore() {
     isRunning,
     isRunActive,
     activeRunsFor,
-    activeRun,
     get latestRunStart() {
       return latestRunStart
     },

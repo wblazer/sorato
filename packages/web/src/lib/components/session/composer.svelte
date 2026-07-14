@@ -56,7 +56,7 @@
     modelOptions = {},
     modelLoading = false,
     modelDisabled = false,
-    isRunning = false,
+    isViewingActiveRun = false,
     isStopping = false,
     disabled = false,
     autoFocus = false,
@@ -86,7 +86,7 @@
     modelOptions?: ModelOptions
     modelLoading?: boolean
     modelDisabled?: boolean
-    isRunning?: boolean
+    isViewingActiveRun?: boolean
     isStopping?: boolean
     disabled?: boolean
     autoFocus?: boolean
@@ -994,7 +994,7 @@
         <div class="flex shrink-0 items-center gap-2">
           <SessionTokenUsage messages={tokenUsageMessages} {models} />
 
-          {#if isRunning}
+          {#if isViewingActiveRun}
             <Button
               onclick={onStop}
               disabled={isStopping}
