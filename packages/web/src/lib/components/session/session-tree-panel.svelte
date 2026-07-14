@@ -4,7 +4,6 @@
   import { messagesStore } from '$lib/stores/messages.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { runConnectionPromise } from '$lib/connection-runtime.js'
-  import type { SelectedHead } from '$lib/selected-head-storage.js'
   import type { MessageNode } from '$lib/types.js'
   import { Button } from '$lib/components/ui/button/index.js'
   import { Checkbox } from '$lib/components/ui/checkbox/index.js'
@@ -15,18 +14,17 @@
   import FileTextIcon from 'phosphor-svelte/lib/FileTextIcon'
   import ArrowLeftIcon from 'phosphor-svelte/lib/ArrowLeftIcon'
   import WrenchIcon from 'phosphor-svelte/lib/WrenchIcon'
+  import { messageNarrativePreview, messagePreview } from './session-tree.js'
   import {
-    buildMessageTree,
-    messageNarrativePreview,
-    messagePreview,
-    isToolMessage,
-    pathIdsForHead,
-    runTreeNodeId,
-    summarizeAssistantToolExchange,
-    type MessageTreeNode,
+    buildSessionTreeModel,
+    compactRangeForHead,
+    headForSessionTreeItem,
+    itemIdForHead,
+    pathItemIdsForHead,
+    type SessionTreeActiveRun,
+    type SessionTreeItem,
     type ToolCallSummary,
-  } from './session-tree.js'
-  import { groupedAgentRunBase } from './grouped-agent-run-base.js'
+  } from './session-tree-model.js'
   import type { SessionSelectedHeadController } from './session-selected-head.svelte.js'
   import { iconForMessageName, roleIcons } from './message-icons.js'
 
@@ -79,17 +77,6 @@
     readonly activeBranchHorizontal: boolean
   }
 
-  interface CollapsedAgentRunSummary {
-    readonly startNodeId: string
-    readonly targetNodeId: string
-    readonly coveredNodeIds: ReadonlyArray<string>
-    readonly continuationChildren: ReadonlyArray<MessageTreeNode>
-    readonly toolCallCount: number
-    readonly toolCalls: ReadonlyArray<ToolCallSummary>
-    readonly resolvedToolResultCount: number
-    readonly displayMessage: MessageNode
-  }
-
   type TreeRow =
     | ({
         readonly type: 'node'
@@ -104,36 +91,35 @@
         readonly toolCallCount: number
         readonly toolCalls: ReadonlyArray<ToolCallSummary>
         readonly unresolvedToolCallCount: number
-        readonly canSelect: boolean
       } & TreeRowLayout)
     | ({
         readonly type: 'run'
         readonly id: string
         readonly run: ActiveRun
+        readonly attachment: SessionTreeActiveRun['attachment']
       } & TreeRowLayout)
 
   const messages = $derived(messagesStore.messagesForTab(tabId))
-  const tree = $derived(buildMessageTree(messages))
   const activeRuns = $derived(sessionStore.activeRunsFor(sessionId))
   const selectedHeadValue = $derived(selectedHead.renderHead)
-  const selectedPathIds = $derived.by(() =>
-    pathIdsForTreeHead(messages, selectedHeadValue, activeRuns),
+  const treeModel = $derived.by(() =>
+    buildSessionTreeModel({ messages, activeRuns, groupAgentSteps }),
+  )
+  const selectedItemId = $derived.by(() =>
+    itemIdForHead(treeModel, selectedHeadValue),
+  )
+  const selectedPathItemIds = $derived.by(() =>
+    pathItemIdsForHead(treeModel, selectedHeadValue),
   )
   const rows = $derived.by(() =>
-    flattenRows(
-      tree,
-      activeRuns,
-      selectedPathIds,
-      selectedHeadValue,
-      groupAgentSteps,
-    ),
+    flattenRows(treeModel.roots, selectedPathItemIds),
   )
   const compactRows = $derived.by(() =>
     rows.filter(
       (row): row is Extract<TreeRow, { type: 'node' }> =>
         row.type === 'node' &&
         canCompactMessage(row.message) &&
-        row.coveredNodeIds.some((id) => selectedPathIds.has(id)),
+        selectedPathItemIds.has(row.id),
     ),
   )
   const baseHeadNodeId = $derived.by(() =>
@@ -141,117 +127,12 @@
   )
 
   function flattenRows(
-    roots: ReadonlyArray<MessageTreeNode>,
-    runs: ReadonlyArray<ActiveRun>,
-    selectedPathIds: ReadonlySet<string>,
-    selectedHead: SelectedHead,
-    groupAgentSteps: boolean,
+    roots: ReadonlyArray<SessionTreeItem>,
+    selectedPathItemIds: ReadonlySet<string>,
   ): ReadonlyArray<TreeRow> {
     const rows: TreeRow[] = []
-    const runsByBase = new Map<string | null, ActiveRun[]>()
-    const activeCombinedAgentRunIds = new Set(
-      groupAgentSteps
-        ? runs.filter((run) => run.kind === 'agent').map((run) => run.runId)
-        : [],
-    )
-    const effectiveRunBase = (run: ActiveRun): string | null => {
-      if (run.kind !== 'agent') return run.baseNodeId
-      if (groupAgentSteps) {
-        return groupedAgentRunBase(
-          messages,
-          run.runId,
-          run.baseNodeId,
-          activeCombinedAgentRunIds,
-        )
-      }
-      return (
-        latestRunLeaf(messages, run.runId, run.baseNodeId)?.id ?? run.baseNodeId
-      )
-    }
-
-    const isActiveGroupedAgentStep = (message: MessageNode): boolean =>
-      groupAgentSteps &&
-      message.runId !== null &&
-      activeCombinedAgentRunIds.has(message.runId) &&
-      message.encoded.role !== 'system' &&
-      message.encoded.role !== 'user'
-
-    for (const run of runs) {
-      const baseNodeId = effectiveRunBase(run)
-      const siblings = runsByBase.get(baseNodeId) ?? []
-      siblings.push(run)
-      runsByBase.set(baseNodeId, siblings)
-    }
-
-    const nodeContainsSelectedPath = (node: MessageTreeNode): boolean => {
-      if (selectedPathIds.has(node.message.id)) return true
-      return node.children.some(nodeContainsSelectedPath)
-    }
-
-    const runContainsSelectedPath = (run: ActiveRun): boolean =>
-      selectedHead?.type === 'run' && selectedHead.runId === run.runId
-
-    const summarizeCollapsedAgentRun = (
-      startNode: MessageTreeNode,
-    ): CollapsedAgentRunSummary | undefined => {
-      const runId = startNode.message.runId
-      if (runId === null || startNode.message.encoded.role !== 'assistant')
-        return undefined
-
-      const coveredNodeIds: string[] = []
-      const toolCalls: ToolCallSummary[] = []
-      let toolCallCount = 0
-      let resolvedToolResultCount = 0
-      let cursor: MessageTreeNode = startNode
-      let displayMessage = startNode.message
-
-      while (true) {
-        coveredNodeIds.push(cursor.message.id)
-        if (!isToolMessage(cursor.message)) displayMessage = cursor.message
-
-        const toolExchange = summarizeAssistantToolExchange(cursor)
-        if (toolExchange !== null) {
-          toolCallCount += toolExchange.toolCallCount
-          resolvedToolResultCount += toolExchange.resolvedToolResultCount
-          toolCalls.push(...toolExchange.toolCalls)
-          for (const coveredNodeId of toolExchange.coveredNodeIds.slice(1)) {
-            coveredNodeIds.push(coveredNodeId)
-          }
-          const targetNode = findLinearDescendant(
-            cursor,
-            toolExchange.targetNodeId,
-          )
-          if (!targetNode) break
-          const next = nextAgentTurnNode(targetNode.children, runId)
-          if (!next) {
-            cursor = targetNode
-            break
-          }
-          cursor = next
-          continue
-        }
-
-        const next = nextAgentTurnNode(cursor.children, runId)
-        if (!next) break
-        cursor = next
-      }
-
-      if (coveredNodeIds.length <= 1 && toolCallCount === 0) return undefined
-
-      return {
-        startNodeId: startNode.message.id,
-        targetNodeId: cursor.message.id,
-        coveredNodeIds,
-        continuationChildren: cursor.children,
-        toolCallCount,
-        toolCalls,
-        resolvedToolResultCount,
-        displayMessage,
-      }
-    }
-
     const visit = (
-      node: MessageTreeNode,
+      item: SessionTreeItem,
       structuralDepth: number,
       branchGutters: ReadonlyArray<BranchGutter>,
       branchConnector: BranchConnector,
@@ -261,113 +142,51 @@
       activeBranchHorizontal: boolean,
     ) => {
       const visualDepth = structuralDepth
-
-      if (isToolMessage(node.message)) {
-        for (const child of node.children) {
-          visit(
-            child,
-            structuralDepth,
-            branchGutters,
-            branchConnector,
-            parentConnector,
-            activeParentConnector,
-            activeBranchVertical,
-            activeBranchHorizontal,
-          )
-        }
-        for (const run of runsByBase.get(node.message.id) ?? []) {
-          const activeRun = runContainsSelectedPath(run)
-          rows.push({
-            type: 'run',
-            id: runTreeNodeId(run.runId),
-            structuralDepth,
-            visualDepth,
-            branchConnector: null,
-            branchGutters,
-            parentConnector: true,
-            childConnector: false,
-            activeParentConnector: activeRun,
-            activeChildConnector: false,
-            activeBranchVertical: activeRun,
-            activeBranchHorizontal: activeRun,
-            run,
-          })
-        }
-        return
+      const childCount = item.children.length
+      const itemInPath = selectedPathItemIds.has(item.id)
+      if (item.type === 'node-group') {
+        rows.push({
+          type: 'node',
+          id: item.id,
+          structuralDepth,
+          visualDepth,
+          branchConnector,
+          branchGutters,
+          parentConnector,
+          childConnector: childCount > 0,
+          activeParentConnector,
+          activeChildConnector: false,
+          activeBranchVertical,
+          activeBranchHorizontal,
+          message: item.message,
+          startNodeId: item.compactRange.startNodeId,
+          displayMessage: item.displayMessage,
+          combinedRun: item.combinedRun,
+          targetNodeId: item.compactRange.endNodeId,
+          coveredNodeIds: item.nodeIds,
+          childCount,
+          toolCallCount: item.toolCallCount,
+          toolCalls: item.toolCalls,
+          unresolvedToolCallCount: item.unresolvedToolCallCount,
+        })
+      } else {
+        rows.push({
+          type: 'run',
+          id: item.id,
+          structuralDepth,
+          visualDepth,
+          branchConnector,
+          branchGutters,
+          parentConnector,
+          childConnector: childCount > 0,
+          activeParentConnector,
+          activeChildConnector: false,
+          activeBranchVertical,
+          activeBranchHorizontal,
+          run: item.run,
+          attachment: item.attachment,
+        })
       }
-
-      if (isActiveGroupedAgentStep(node.message)) {
-        for (const child of node.children) {
-          visit(
-            child,
-            structuralDepth,
-            branchGutters,
-            branchConnector,
-            parentConnector,
-            activeParentConnector,
-            activeBranchVertical,
-            activeBranchHorizontal,
-          )
-        }
-        return
-      }
-
-      const collapsedRun =
-        groupAgentSteps &&
-        !activeCombinedAgentRunIds.has(node.message.runId ?? '')
-          ? summarizeCollapsedAgentRun(node)
-          : undefined
-      const toolExchange =
-        collapsedRun === undefined ? summarizeAssistantToolExchange(node) : null
-      const targetNodeId =
-        collapsedRun?.targetNodeId ??
-        toolExchange?.targetNodeId ??
-        node.message.id
-      const coveredNodeIds = collapsedRun?.coveredNodeIds ??
-        toolExchange?.coveredNodeIds ?? [node.message.id]
-      const continuationChildren =
-        collapsedRun?.continuationChildren ??
-        toolExchange?.continuationChildren ??
-        node.children
-      const toolCallCount =
-        collapsedRun?.toolCallCount ?? toolExchange?.toolCallCount ?? 0
-      const toolCalls = collapsedRun?.toolCalls ?? toolExchange?.toolCalls ?? []
-      const resolvedToolResultCount =
-        collapsedRun?.resolvedToolResultCount ??
-        toolExchange?.resolvedToolResultCount ??
-        0
-      const unresolvedToolCallCount = toolCallCount - resolvedToolResultCount
-      const structuralChildren = continuationChildren.filter(
-        (child) => !isActiveGroupedAgentStep(child.message),
-      )
-      const childCount =
-        structuralChildren.length + (runsByBase.get(targetNodeId)?.length ?? 0)
-      const nodeInPath = coveredNodeIds.some((id) => selectedPathIds.has(id))
-      rows.push({
-        type: 'node',
-        id: node.message.id,
-        structuralDepth,
-        visualDepth,
-        branchConnector,
-        branchGutters,
-        parentConnector,
-        childConnector: childCount > 0,
-        activeParentConnector,
-        activeChildConnector: false,
-        activeBranchVertical,
-        activeBranchHorizontal,
-        message: node.message,
-        startNodeId: collapsedRun?.startNodeId ?? node.message.id,
-        displayMessage: collapsedRun?.displayMessage ?? node.message,
-        combinedRun: collapsedRun !== undefined,
-        targetNodeId,
-        coveredNodeIds,
-        childCount,
-        toolCallCount,
-        toolCalls,
-        unresolvedToolCallCount,
-        canSelect: unresolvedToolCallCount === 0,
-      })
 
       const childStructuralDepth = structuralDepth + (childCount > 1 ? 1 : 0)
       const branchGuttersForChildren =
@@ -385,44 +204,18 @@
               { level: structuralDepth, continues: false, active: false },
             ]
           : branchGuttersForChildren
-      const visibleChildren = structuralChildren.filter(
-        (child) => !isToolMessage(child.message),
+      const orderedChildren = [...item.children].sort(
+        (a, b) => Number(itemInSelectedPath(b)) - Number(itemInSelectedPath(a)),
       )
-      const hiddenToolChildren = structuralChildren.filter((child) =>
-        isToolMessage(child.message),
-      )
-      const childEntries: ReadonlyArray<
-        | { readonly type: 'node'; readonly node: MessageTreeNode }
-        | { readonly type: 'run'; readonly run: ActiveRun }
-      > = [
-        ...visibleChildren.map((child) => ({
-          type: 'node' as const,
-          node: child,
-        })),
-        ...hiddenToolChildren.map((child) => ({
-          type: 'node' as const,
-          node: child,
-        })),
-        ...(runsByBase.get(targetNodeId) ?? []).map((run) => ({
-          type: 'run' as const,
-          run,
-        })),
-      ].sort(
-        (a, b) =>
-          Number(childEntryContainsSelectedPath(b)) -
-          Number(childEntryContainsSelectedPath(a)),
-      )
-      const selectedChildIndex = childEntries.findIndex(
-        childEntryContainsSelectedPath,
-      )
+      const selectedChildIndex = orderedChildren.findIndex(itemInSelectedPath)
 
-      if (nodeInPath && selectedChildIndex >= 0) {
+      if (itemInPath && selectedChildIndex >= 0) {
         const row = rows[rows.length - 1]
         rows[rows.length - 1] = { ...row, activeChildConnector: true }
       }
 
-      childEntries.forEach((entry, index) => {
-        const isLastChild = index === childEntries.length - 1
+      orderedChildren.forEach((child, index) => {
+        const isLastChild = index === orderedChildren.length - 1
         const activeBranchLevel =
           selectedChildIndex >= 0 && index <= selectedChildIndex
         const nextGutters =
@@ -446,187 +239,31 @@
                 : 'middle'
             : null
 
-        if (entry.type === 'node') {
-          const entryInPath = nodeContainsSelectedPath(entry.node)
-          visit(
-            entry.node,
-            childStructuralDepth,
-            nextGutters,
-            childConnector,
-            childConnector === null,
-            childConnector === null && nodeInPath && entryInPath,
-            selectedChildIndex >= 0 && index <= selectedChildIndex,
-            entryInPath,
-          )
-        } else {
-          const activeRun = runContainsSelectedPath(entry.run)
-          rows.push({
-            type: 'run',
-            id: runTreeNodeId(entry.run.runId),
-            structuralDepth: childStructuralDepth,
-            visualDepth: childStructuralDepth,
-            branchConnector: childConnector,
-            branchGutters: nextGutters,
-            parentConnector: childConnector === null,
-            childConnector: false,
-            activeParentConnector:
-              childConnector === null && nodeInPath && activeRun,
-            activeChildConnector: false,
-            activeBranchVertical:
-              selectedChildIndex >= 0 && index <= selectedChildIndex,
-            activeBranchHorizontal: activeRun,
-            run: entry.run,
-          })
-        }
+        const childInPath = itemInSelectedPath(child)
+        visit(
+          child,
+          childStructuralDepth,
+          nextGutters,
+          childConnector,
+          childConnector === null,
+          childConnector === null && itemInPath && childInPath,
+          selectedChildIndex >= 0 && index <= selectedChildIndex,
+          childInPath,
+        )
       })
     }
 
     const orderedRoots = [...roots].sort(
-      (a, b) =>
-        Number(nodeContainsSelectedPath(b)) -
-        Number(nodeContainsSelectedPath(a)),
+      (a, b) => Number(itemInSelectedPath(b)) - Number(itemInSelectedPath(a)),
     )
     for (const root of orderedRoots)
       visit(root, 0, [], null, false, false, false, false)
-    for (const run of runsByBase.get(null) ?? []) {
-      const activeRun = runContainsSelectedPath(run)
-      rows.push({
-        type: 'run',
-        id: runTreeNodeId(run.runId),
-        structuralDepth: 0,
-        visualDepth: 0,
-        branchConnector: null,
-        branchGutters: [],
-        parentConnector: false,
-        childConnector: false,
-        activeParentConnector: false,
-        activeChildConnector: false,
-        activeBranchVertical: activeRun,
-        activeBranchHorizontal: activeRun,
-        run,
-      })
-    }
-
-    // A stale or compacted base must never make an active run disappear.
-    const renderedRunIds = new Set(
-      rows.flatMap((row) => (row.type === 'run' ? [row.run.runId] : [])),
-    )
-    for (const run of runs) {
-      if (renderedRunIds.has(run.runId)) continue
-      const activeRun = runContainsSelectedPath(run)
-      rows.push({
-        type: 'run',
-        id: runTreeNodeId(run.runId),
-        structuralDepth: 0,
-        visualDepth: 0,
-        branchConnector: null,
-        branchGutters: [],
-        parentConnector: false,
-        childConnector: false,
-        activeParentConnector: false,
-        activeChildConnector: false,
-        activeBranchVertical: activeRun,
-        activeBranchHorizontal: activeRun,
-        run,
-      })
-    }
 
     return rows
 
-    function childEntryContainsSelectedPath(
-      entry:
-        | { readonly type: 'node'; readonly node: MessageTreeNode }
-        | { readonly type: 'run'; readonly run: ActiveRun },
-    ) {
-      return entry.type === 'node'
-        ? nodeContainsSelectedPath(entry.node)
-        : runContainsSelectedPath(entry.run)
+    function itemInSelectedPath(item: SessionTreeItem) {
+      return selectedPathItemIds.has(item.id)
     }
-  }
-
-  function pathIdsForTreeHead(
-    messages: ReadonlyArray<MessageNode>,
-    head: SelectedHead,
-    runs: ReadonlyArray<ActiveRun>,
-  ): ReadonlySet<string> {
-    if (head?.type !== 'run') return pathIdsForHead(messages, head)
-
-    const run = runs.find((run) => run.runId === head.runId)
-    if (run?.kind !== 'agent') return pathIdsForHead(messages, head)
-
-    const baseNodeId =
-      latestRunLeaf(messages, run.runId, run.baseNodeId)?.id ?? run.baseNodeId
-    return pathIdsForHead(messages, { ...head, baseNodeId })
-  }
-
-  function latestRunLeaf(
-    messages: ReadonlyArray<MessageNode>,
-    runId: string,
-    baseNodeId: string | null,
-    includeMessage: (message: MessageNode) => boolean = () => true,
-  ): MessageNode | null {
-    const runMessages = messages.filter(
-      (message) =>
-        message.runId === runId &&
-        includeMessage(message) &&
-        isDescendantOrSame(messages, message.id, baseNodeId),
-    )
-    const runIds = new Set(runMessages.map((message) => message.id))
-    const parentIds = new Set(
-      runMessages
-        .map((message) => message.parentId)
-        .filter((id): id is string => id !== null && runIds.has(id)),
-    )
-
-    const runLeaf = runMessages
-      .toReversed()
-      .find((message) => !parentIds.has(message.id))
-    return runLeaf ?? null
-  }
-
-  function isDescendantOrSame(
-    messages: ReadonlyArray<MessageNode>,
-    nodeId: string,
-    ancestorId: string | null,
-  ) {
-    if (ancestorId === null) return true
-
-    const byId = new Map(messages.map((message) => [message.id, message]))
-    const seen = new Set<string>()
-    let cursor: string | null = nodeId
-
-    while (cursor !== null && !seen.has(cursor)) {
-      if (cursor === ancestorId) return true
-      seen.add(cursor)
-      cursor = byId.get(cursor)?.parentId ?? null
-    }
-
-    return false
-  }
-
-  function findLinearDescendant(
-    node: MessageTreeNode,
-    targetNodeId: string,
-  ): MessageTreeNode | undefined {
-    let cursor: MessageTreeNode | undefined = node
-    while (cursor) {
-      if (cursor.message.id === targetNodeId) return cursor
-      cursor = cursor.children.length === 1 ? cursor.children[0] : undefined
-    }
-    return undefined
-  }
-
-  function nextAgentTurnNode(
-    children: ReadonlyArray<MessageTreeNode>,
-    runId: string,
-  ): MessageTreeNode | null {
-    const runChildren = children.filter(
-      (child) => child.message.runId === runId,
-    )
-    const nonToolChild = runChildren.find(
-      (child) => !isToolMessage(child.message),
-    )
-    return nonToolChild ?? runChildren[0] ?? null
   }
 
   function readGroupAgentStepsSetting() {
@@ -640,6 +277,9 @@
   }
 
   function setGroupAgentSteps(value: boolean) {
+    if (value === groupAgentSteps) return
+    clearCompactDrag()
+    clearCompactSelection()
     groupAgentSteps = value
     writeGroupAgentStepsSetting(value)
   }
@@ -690,16 +330,9 @@
     return marks
   }
 
-  function selectNode(nodeId: string) {
-    selectedHead.setSelectedHead({ type: 'node', nodeId })
-  }
-
-  function selectRun(run: ActiveRun) {
-    selectedHead.setSelectedHead({
-      type: 'run',
-      runId: run.runId,
-      baseNodeId: run.baseNodeId,
-    })
+  function selectTreeItem(itemId: string) {
+    const item = treeModel.itemById.get(itemId)
+    if (item) selectedHead.setSelectedHead(headForSessionTreeItem(item))
   }
 
   function resetCompactMode() {
@@ -873,7 +506,9 @@
     const startRow = compactRows[Math.min(start, end)]
     const endRow = compactRows[Math.max(start, end)]
     const startNodeId = startRow?.startNodeId
-    const orderedEndNodeId = endRow?.targetNodeId
+    const orderedEndNodeId = endRow
+      ? compactRangeForHead(treeModel, endRow.id, selectedHeadValue)?.endNodeId
+      : undefined
     if (!startNodeId || !orderedEndNodeId) return
 
     const response = await runConnectionPromise(
@@ -893,17 +528,6 @@
       baseNodeId: response.baseNodeId,
     })
     compactMode = false
-  }
-
-  function isSelectedTreeRow(
-    head: SelectedHead,
-    row: Extract<TreeRow, { type: 'node' }>,
-  ) {
-    return head?.type === 'node' && row.coveredNodeIds.includes(head.nodeId)
-  }
-
-  function isSelectedRun(head: SelectedHead, runId: string) {
-    return head?.type === 'run' && head.runId === runId
   }
 
   function canCompactMessage(message: MessageNode) {
@@ -1136,10 +760,8 @@
           <div class="flex flex-col p-1.5">
             {#each rows as row (row.id)}
               {#if row.type === 'node'}
-                {@const selected = isSelectedTreeRow(selectedHeadValue, row)}
-                {@const rowInPath = row.coveredNodeIds.some((id) =>
-                  selectedPathIds.has(id),
-                )}
+                {@const selected = selectedItemId === row.id}
+                {@const rowInPath = selectedPathItemIds.has(row.id)}
                 {@const Icon = nodeIcon(row)}
                 {@const preview = rowPreview(row)}
                 {@const tone = messageTone(row.message)}
@@ -1149,11 +771,8 @@
                   class="h-auto justify-start gap-0.5 px-1.5 py-0.5 text-left hover:bg-base-hover disabled:opacity-70 {selected
                     ? 'bg-selected text-foreground hover:bg-selected'
                     : ''}"
-                  title={row.canSelect
-                    ? row.targetNodeId
-                    : 'Tool exchange incomplete'}
-                  disabled={!row.canSelect}
-                  onclick={() => selectNode(row.targetNodeId)}
+                  title={row.targetNodeId}
+                  onclick={() => selectTreeItem(row.id)}
                 >
                   <span class="flex shrink-0 self-stretch">
                     {#each gutterMarks(row) as gutter}
@@ -1215,10 +834,7 @@
                   </span>
                 </Button>
               {:else}
-                {@const selected = isSelectedRun(
-                  selectedHeadValue,
-                  row.run.runId,
-                )}
+                {@const selected = selectedItemId === row.id}
                 {@const RunIcon = runIcon(row.run)}
                 {@const tone = runTone(row.run)}
                 <Button
@@ -1227,8 +843,10 @@
                   class="h-auto justify-start gap-0.5 px-1.5 py-0.5 text-left hover:bg-base-hover {selected
                     ? 'bg-selected text-foreground hover:bg-selected'
                     : ''}"
-                  title={row.run.runId}
-                  onclick={() => selectRun(row.run)}
+                  title={row.attachment.type === 'unresolved'
+                    ? `Run anchor ${row.attachment.nodeId} is unavailable`
+                    : row.run.runId}
+                  onclick={() => selectTreeItem(row.id)}
                 >
                   <span class="flex shrink-0 self-stretch">
                     {#each gutterMarks(row) as gutter}
@@ -1244,7 +862,7 @@
                   <span
                     class="tree-icon flex size-5 shrink-0 items-center justify-center"
                     data-tone={tone}
-                    data-in-path="true"
+                    data-in-path={selectedPathItemIds.has(row.id)}
                     data-parent-connector={row.parentConnector}
                     data-child-connector={row.childConnector}
                     data-active-parent-connector={row.activeParentConnector}
@@ -1256,9 +874,11 @@
                     class="flex min-w-0 flex-1 items-center pl-1 text-muted-foreground/60"
                   >
                     <StreamingDots
-                      label={row.run.kind === 'summary'
-                        ? 'Summarizing range'
-                        : 'Streaming branch'}
+                      label={row.attachment.type === 'unresolved'
+                        ? 'Run anchor unavailable'
+                        : row.run.kind === 'summary'
+                          ? 'Summarizing range'
+                          : 'Streaming branch'}
                     />
                   </span>
                 </Button>
