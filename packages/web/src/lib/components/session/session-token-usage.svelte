@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { AvailableModel, MessageNode } from '$lib/types.js'
   import * as Tooltip from '$lib/components/ui/tooltip/index.js'
+  import { sessionTokenUsage } from './session-token-usage.js'
 
   let {
     messages,
@@ -26,55 +27,7 @@
       maximumFractionDigits: micros === 0 ? 0 : 4,
     }).format(micros / 1_000_000)
 
-  const usage = $derived.by(() => {
-    const modelCalls = messages.flatMap((message) =>
-      message.modelCall === null ? [] : [message.modelCall],
-    )
-
-    let totalTokens = 0
-    let totalInputTokens = 0
-    let totalOutputTokens = 0
-    let totalCostMicros = 0
-    let latestContextTokens: number | null = null
-    let latestModelKey: string | null = null
-
-    for (const call of modelCalls) {
-      totalTokens += call.totalTokens ?? 0
-      totalInputTokens +=
-        (call.inputTokens ?? 0) +
-        (call.cacheReadTokens ?? 0) +
-        (call.cacheWriteTokens ?? 0)
-      totalOutputTokens +=
-        (call.outputTokens ?? 0) + (call.reasoningTokens ?? 0)
-      totalCostMicros += call.actualCostMicrosUsd ?? 0
-
-      if (call.contextWindowTokens !== null) {
-        latestContextTokens = call.contextWindowTokens
-        latestModelKey = `${call.providerId}/${call.modelId}`
-      }
-    }
-
-    if (totalTokens === 0 && latestContextTokens === null) return null
-
-    const model = models.find((item) => item.id === latestModelKey) ?? null
-    const maxContextTokens = model?.capabilities.limits.context ?? null
-    const contextPercent =
-      latestContextTokens !== null &&
-      maxContextTokens !== null &&
-      maxContextTokens > 0
-        ? Math.min(100, (latestContextTokens / maxContextTokens) * 100)
-        : null
-
-    return {
-      currentContextTokens: latestContextTokens,
-      maxContextTokens,
-      contextPercent,
-      totalTokens,
-      totalInputTokens,
-      totalOutputTokens,
-      totalCostMicros,
-    }
-  })
+  const usage = $derived(sessionTokenUsage(messages, models))
 
   const percentNumberLabel = $derived.by(() => {
     if (usage?.contextPercent === null || usage?.contextPercent === undefined)
