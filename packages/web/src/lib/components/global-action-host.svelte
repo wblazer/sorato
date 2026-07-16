@@ -13,6 +13,7 @@
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { tabStore } from '$lib/stores/tabs.svelte.js'
   import { runConnectionPromise } from '$lib/connection-runtime.js'
+  import { goto } from '$app/navigation'
   import { onMount } from 'svelte'
 
   let open = $state(false)
@@ -155,6 +156,23 @@
           settingsOpen = true
         },
       }),
+      ...(import.meta.env.DEV
+        ? [
+            actionStore.register({
+              id: 'developer.markdown-playground',
+              title: 'Open Markdown Playground',
+              category: 'Developer',
+              description:
+                'Preview the production agent Markdown renderer with editable fixtures.',
+              keywords: ['components', 'catalog', 'rendering', 'typeset'],
+              run: () => {
+                const url = new URL(window.location.href)
+                url.searchParams.set('developer', 'markdown')
+                void goto(url)
+              },
+            }),
+          ]
+        : []),
     ]
 
     return () => {

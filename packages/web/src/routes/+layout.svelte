@@ -2,6 +2,7 @@
   import '../app.css'
   import favicon from '$lib/assets/favicon.svg'
   import GlobalActionHost from '$lib/components/global-action-host.svelte'
+  import MarkdownPlayground from '$lib/components/markdown-playground.svelte'
   import { Sidebar } from '$lib/components/sidebar/index.js'
   import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
@@ -13,8 +14,16 @@
   import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
   import { onMount } from 'svelte'
   import * as Item from '$lib/components/ui/item/index.js'
+  import { goto } from '$app/navigation'
+  import { page } from '$app/state'
 
   let { children } = $props()
+
+  function closeMarkdownPlayground() {
+    const url = new URL(page.url)
+    url.searchParams.delete('developer')
+    void goto(url)
+  }
 
   onMount(() => {
     void clientSettingsStore.loadFromClientConfig()
@@ -45,7 +54,9 @@
 <GlobalActionHost />
 
 <Tooltip.Provider>
-  {#if !clientSettingsStore.loaded}
+  {#if import.meta.env.DEV && page.url.searchParams.get('developer') === 'markdown'}
+    <MarkdownPlayground onClose={closeMarkdownPlayground} />
+  {:else if !clientSettingsStore.loaded}
     <AppLoading />
   {:else if connectionsStore.hasConnections}
     <div class="flex h-screen overflow-hidden">

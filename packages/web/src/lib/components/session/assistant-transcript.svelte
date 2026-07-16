@@ -130,6 +130,7 @@
           <MessagePartComponent
             part={item.part}
             monospace={false}
+            markdown={item.part.type === 'text'}
             {accordionState}
             accordionKey={itemAccordionKey(item, index)}
           />

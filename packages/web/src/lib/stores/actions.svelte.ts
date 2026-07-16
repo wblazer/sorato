@@ -5,6 +5,7 @@ export type ActionId =
   | 'app.command-palette'
   | 'app.settings'
   | 'connection.add'
+  | 'developer.markdown-playground'
   | 'directory.open'
   | 'project.add'
   | 'project.archive'

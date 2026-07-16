@@ -2,6 +2,8 @@
 
 @import 'tw-animate-css';
 
+@import './lib/components/typeset.css';
+
 @import '@fontsource-variable/nunito-sans';
 @import '@fontsource/jetbrains-mono';
 

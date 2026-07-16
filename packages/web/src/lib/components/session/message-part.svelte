@@ -5,15 +5,18 @@
   import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import MessageIcon from './message-icon.svelte'
   import ToolResult from './tool-result.svelte'
+  import Markdown from '$lib/components/markdown.svelte'
 
   let {
     part,
     monospace = false,
+    markdown = false,
     accordionState,
     accordionKey,
   }: {
     part: MessagePart
     monospace?: boolean
+    markdown?: boolean
     accordionState: Record<string, string[]>
     accordionKey: string
   } = $props()
@@ -32,13 +35,17 @@
 </script>
 
 {#if part.type === 'text'}
-  <div
-    class="whitespace-pre-wrap break-words"
-    class:text-sm={monospace}
-    class:font-mono={monospace}
-  >
-    {part.text}
-  </div>
+  {#if markdown}
+    <Markdown text={part.text} />
+  {:else}
+    <div
+      class="whitespace-pre-wrap break-words"
+      class:text-sm={monospace}
+      class:font-mono={monospace}
+    >
+      {part.text}
+    </div>
+  {/if}
 {:else if part.type === 'reasoning'}
   <div class="text-muted-foreground">
     <div class="whitespace-pre-wrap break-words border-l-3 border-muted pl-3">
