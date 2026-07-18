@@ -44,6 +44,12 @@ export class SseDecodeError extends Schema.TaggedErrorClass<SseDecodeError>()(
 
 export type SseError = SseConnectionError | SseDecodeError
 
+const reconnectSchedule = Schedule.exponential('500 millis').pipe(
+  Schedule.jittered,
+  Schedule.setInputType<SseError>(),
+  Schedule.while(({ input }) => input._tag === 'SseConnectionError')
+)
+
 export interface ServerEventStreamOptions {
   /** Filter events to one run. Omit for global control stream. */
   readonly runId?: string
@@ -78,7 +84,7 @@ const rawServerEvents = (apiBase: string, options: ServerEventStreamOptions) =>
         eventSource.addEventListener(tag, (event: MessageEvent) => {
           const decoded = decodeServerEvent(event.data)
           if (decoded._tag === 'Some') {
-            Queue.offerUnsafe(queue, decoded.value as ServerEventType)
+            Queue.offerUnsafe(queue, decoded.value)
             return
           }
 
@@ -115,7 +121,5 @@ export function serverEvents(
   apiBase: string,
   options: ServerEventStreamOptions = {}
 ) {
-  return rawServerEvents(apiBase, options).pipe(
-    Stream.retry(Schedule.spaced('500 millis'))
-  )
+  return rawServerEvents(apiBase, options).pipe(Stream.retry(reconnectSchedule))
 }

@@ -4,7 +4,8 @@ import { join, resolve } from 'node:path'
 import { stopIntegratedServer } from './integrated-server.ts'
 import { registerIpcHandlers } from './ipc.ts'
 
-const isDevelopment = Boolean(process.env.VITE_DEV_SERVER_URL)
+const devServerUrl = process.env.VITE_DEV_SERVER_URL
+const isDevelopment = devServerUrl !== undefined
 const appName = isDevelopment ? 'Sorato (Dev)' : 'Sorato'
 
 app.setName(appName)
@@ -18,8 +19,8 @@ function getProductionIndexHtmlPath(): string {
 }
 
 async function loadMainWindow(window: BrowserWindow): Promise<void> {
-  if (isDevelopment) {
-    await window.loadURL(process.env.VITE_DEV_SERVER_URL!)
+  if (devServerUrl !== undefined) {
+    await window.loadURL(devServerUrl)
     window.webContents.openDevTools({ mode: 'detach' })
     return
   }

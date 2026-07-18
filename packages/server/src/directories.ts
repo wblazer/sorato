@@ -39,7 +39,7 @@ const toDirectoryEntry = (
   name: string,
   isDirectory: boolean
 ) =>
-  new DirectoryEntry({
+  DirectoryEntry.make({
     name,
     path: join(resolved, name),
     type: entryType(isDirectory),
@@ -91,7 +91,7 @@ export const DirectoriesLive = HttpApiBuilder.group(
               a.name.localeCompare(b.name)
           )
 
-        return new DirectoryListResponse({
+        return DirectoryListResponse.make({
           resolved,
           home: homedir(),
           entries,

@@ -1,4 +1,5 @@
-import { getJson, setJson } from '$lib/storage.js'
+import { Schema } from 'effect'
+import { getJsonWithSchema, setJsonWithSchema } from '$lib/storage.js'
 
 const treePanelOpenKey = 'session-tree-panel-open'
 const treePanelWidthKey = 'session-tree-panel-width'
@@ -15,14 +16,20 @@ function clampTreePanelWidth(width: number) {
 }
 
 function initialTreePanelWidth() {
-  const stored = getJson<number>(treePanelWidthKey, defaultTreePanelWidth)
+  const stored = getJsonWithSchema(
+    treePanelWidthKey,
+    Schema.Number,
+    defaultTreePanelWidth
+  )
   return Number.isFinite(stored)
     ? clampTreePanelWidth(stored)
     : defaultTreePanelWidth
 }
 
 function createSessionLayoutStore() {
-  let treePanelOpen = $state(getJson<boolean>(treePanelOpenKey, true))
+  let treePanelOpen = $state(
+    getJsonWithSchema(treePanelOpenKey, Schema.Boolean, true)
+  )
   let treePanelWidth = $state(initialTreePanelWidth())
 
   return {
@@ -34,17 +41,17 @@ function createSessionLayoutStore() {
     },
     setTreePanelOpen(open: boolean) {
       treePanelOpen = open
-      setJson(treePanelOpenKey, open)
+      setJsonWithSchema(treePanelOpenKey, Schema.Boolean, open)
     },
     toggleTreePanel() {
       const open = !treePanelOpen
       treePanelOpen = open
-      setJson(treePanelOpenKey, open)
+      setJsonWithSchema(treePanelOpenKey, Schema.Boolean, open)
     },
     setTreePanelWidth(width: number) {
       const clamped = clampTreePanelWidth(width)
       treePanelWidth = clamped
-      setJson(treePanelWidthKey, clamped)
+      setJsonWithSchema(treePanelWidthKey, Schema.Number, clamped)
     },
     clampTreePanelWidth,
     minTreePanelWidth,

@@ -6,7 +6,7 @@
  * skip the bulk of git history blobs but can still check out any pinned commit.
  *
  * `ref` may be:
- *   - a tag      (e.g. "effect@4.0.0-beta.74")  -> pinned, reproducible
+ *   - a tag      (e.g. "effect@4.0.0-beta.99")  -> pinned, reproducible
  *   - a commit   (40-char sha)                  -> pinned, reproducible
  *   - a branch   (e.g. "main")                  -> tracks that branch
  *   - "latest"   -> tracks the remote's default branch HEAD
@@ -63,7 +63,10 @@ async function resolveRemoteCommit(url: string, ref: string): Promise<string> {
     const line = out.split('\n').find((l) => /^[0-9a-f]{40}\s/.test(l))
     if (!line)
       throw new Error(`Could not resolve default branch HEAD for ${url}`)
-    return line.split(/\s+/)[0]!
+    const [commit] = line.split(/\s+/)
+    if (!commit)
+      throw new Error(`Could not parse default branch HEAD for ${url}`)
+    return commit
   }
   if (/^[0-9a-f]{40}$/.test(ref)) return ref
   // Tag or branch: prefer the dereferenced tag object (^{}) if present.
@@ -74,7 +77,9 @@ async function resolveRemoteCommit(url: string, ref: string): Promise<string> {
   const direct = lines[0]
   const chosen = deref ?? direct
   if (!chosen) throw new Error(`Could not resolve ref "${ref}" for ${url}`)
-  return chosen.split(/\s+/)[0]!
+  const [commit] = chosen.split(/\s+/)
+  if (!commit) throw new Error(`Could not parse ref "${ref}" for ${url}`)
+  return commit
 }
 
 async function currentCommit(dest: string): Promise<string | null> {
@@ -88,7 +93,16 @@ async function currentCommit(dest: string): Promise<string | null> {
 async function syncRepo(repo: RepoSpec): Promise<void> {
   const dest = join(referenceDir, repo.name)
   const target = await resolveRemoteCommit(repo.url, repo.ref)
-  const have = existsSync(join(dest, '.git')) ? await currentCommit(dest) : null
+  const isRepo = existsSync(join(dest, '.git'))
+
+  if (isRepo) {
+    const origin = (await $`git -C ${dest} remote get-url origin`.text()).trim()
+    if (origin !== repo.url) {
+      await $`git -C ${dest} remote set-url origin ${repo.url}`.quiet()
+    }
+  }
+
+  const have = isRepo ? await currentCommit(dest) : null
 
   if (have === target) {
     console.log(`✓ ${repo.name} up to date (${target.slice(0, 10)})`)

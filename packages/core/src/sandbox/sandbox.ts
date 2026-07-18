@@ -33,7 +33,7 @@ export class SandboxError extends Schema.TaggedErrorClass<SandboxError>()(
   {
     operation: Schema.String,
     message: Schema.String,
-    error: Schema.optional(Schema.Defect),
+    error: Schema.optional(Schema.Defect()),
   }
 ) {}
 

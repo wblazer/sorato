@@ -9,6 +9,7 @@
  */
 import {
   Cause,
+  Clock,
   Duration,
   Effect,
   Layer,
@@ -726,21 +727,21 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       .resolve(dataDir, {
         id: request.model,
         sessionId,
-        onRetry: (info) => {
-          const retryAt = Date.now() + Duration.toMillis(info.delay)
-          Effect.runFork(
-            bus.publish({
-              _tag: 'RunRetrying',
-              sessionId,
-              runId,
-              title: aiRunRetryingMessage(info.error),
-              message: '',
-              retryAt,
-              attempt: info.attempt,
-              maxAttempts: info.maxAttempts,
-            })
-          )
-        },
+        onRetry: (info) =>
+          Clock.currentTimeMillis.pipe(
+            Effect.flatMap((now) =>
+              bus.publish({
+                _tag: 'RunRetrying',
+                sessionId,
+                runId,
+                title: aiRunRetryingMessage(info.error),
+                message: '',
+                retryAt: now + Duration.toMillis(info.delay),
+                attempt: info.attempt,
+                maxAttempts: info.maxAttempts,
+              })
+            )
+          ),
         ...request.modelOptions,
       })
       .pipe(
@@ -917,7 +918,6 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
             })
           ),
           Effect.flatMap(({ appendBaseNodeId, conversation }) =>
-            // oxlint-disable-next-line sorato/no-nested-effect-gen -- diagnostics prefer Effect.gen over immediate Effect.fn here; extracting this large scoped closure is separate cleanup
             Effect.gen(function* () {
               const messageCountBeforeRun = conversation.content.length
               const appendBaseRef = yield* Ref.make(appendBaseNodeId)
@@ -947,7 +947,6 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
 
               const compaction = {
                 compactRange: (input: CompactConversationInput) =>
-                  // oxlint-disable-next-line sorato/no-nested-effect-gen -- compact tool implementation is an effectful callback closed over run state
                   Effect.gen(function* () {
                     const baseHeadNodeId = yield* Ref.get(appendBaseRef)
                     if (baseHeadNodeId === null) {
@@ -1003,12 +1002,10 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                       compactToolCallId
                     )
 
-                    // oxlint-disable-next-line sorato/no-nested-effect-gen -- summary run finalization is intentionally sequenced after validation and run creation
                     return yield* Effect.gen(function* () {
                       let summaryStarted = false
                       let summaryFailed = false
                       let summaryCompleted = false
-                      // oxlint-disable-next-line sorato/no-nested-effect-gen -- summary run cleanup must close over mutable terminal state for interruption-safe finalization
                       const finalizeSummaryRun = Effect.gen(function* () {
                         const summaryStatus = summaryFailed
                           ? 'failed'
@@ -1069,7 +1066,6 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                         )
                       }
 
-                      // oxlint-disable-next-line sorato/no-nested-effect-gen -- summary run body needs an ensuring finalizer around the interruptible stream
                       return yield* Effect.gen(function* () {
                         const chat = yield* Chat.fromPrompt(
                           summaryPrompt(
@@ -1160,10 +1156,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                           const refail = Effect.failCause(cause)
                           return Effect.sync(() => {
                             summaryFailed = !Cause.hasInterruptsOnly(cause)
-                          }).pipe(
-                            // oxlint-disable-next-line sorato/no-nested-effect-call -- refail is named for readability in this cause-preserving handler
-                            Effect.andThen(refail)
-                          )
+                          }).pipe(Effect.andThen(refail))
                         }),
                         Effect.ensuring(finalizeSummaryRun)
                       )

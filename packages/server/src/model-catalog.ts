@@ -1,4 +1,4 @@
-import { Context, Effect, Match, Option } from 'effect'
+import { Context, Effect, Layer, Match, Option } from 'effect'
 import {
   ModelOption,
   ModelsResponse,
@@ -8,7 +8,7 @@ import {
 } from '@sorato/api'
 import { MODEL_PROVIDERS } from './models.generated.ts'
 import { PROVIDER_ADAPTERS } from './provider-adapters.ts'
-import type { ProviderRetryInfo } from './providers/provider-errors.ts'
+import type { ProviderRetryHandler } from './providers/provider-errors.ts'
 import { type ThinkingLevel, thinkingLevelsFor } from './reasoning-options.ts'
 import { RuntimeConfigService } from './runtime-config.ts'
 import {
@@ -62,7 +62,7 @@ type ModelCapabilities = {
 export type ModelSelection = ModelOptions & {
   readonly id: string
   readonly sessionId?: string
-  readonly onRetry?: ((info: ProviderRetryInfo) => void) | undefined
+  readonly onRetry?: ProviderRetryHandler | undefined
 }
 
 const openAiOauthModels = new Set([
@@ -124,7 +124,7 @@ const toEntry = Effect.fn('ModelCatalog.toEntry')(function* (
   const stored = yield* getAuth(provider.id)
   const hasAuth = yield* hasProviderAuth(provider.id, provider.env)
 
-  if (!adapter?.available(provider.env, apiKey) && !hasAuth) return []
+  if (!adapter?.available(apiKey) && !hasAuth) return []
   if (
     provider.id === 'openai' &&
     stored?.type === 'oauth' &&
@@ -132,8 +132,6 @@ const toEntry = Effect.fn('ModelCatalog.toEntry')(function* (
   )
     return []
   if (!adapter.supportsModel(model.id)) return []
-
-  if (apiKey && provider.env[0]) process.env[provider.env[0]] = apiKey
 
   return [
     {
@@ -190,14 +188,13 @@ const listModelsEffect = Effect.fn('ModelCatalog.list')(function* (
   const runtimeConfig = yield* RuntimeConfigService
   const cfg = yield* runtimeConfig.get(dir)
 
-  const items = (yield* availableEntries()).map(
-    (item) =>
-      new ModelOption({
-        id: item.id,
-        name: item.name,
-        provider: item.provider,
-        capabilities: item.capabilities,
-      })
+  const items = (yield* availableEntries()).map((item) =>
+    ModelOption.make({
+      id: item.id,
+      name: item.name,
+      provider: item.provider,
+      capabilities: item.capabilities,
+    })
   )
 
   if (items.length === 0) {
@@ -220,7 +217,7 @@ const listModelsEffect = Effect.fn('ModelCatalog.list')(function* (
     defaultModel,
   })
 
-  return new ModelsResponse({ models: items, defaultModel })
+  return ModelsResponse.make({ models: items, defaultModel })
 })
 
 export const listModels = (dir: string) =>
@@ -322,7 +319,12 @@ export interface ModelLayerResolverApi {
   readonly resolve: typeof modelLayer
 }
 
-export const ModelLayerResolver = Context.Reference<ModelLayerResolverApi>(
-  '@sorato/server/ModelLayerResolver',
-  { defaultValue: () => ({ resolve: modelLayer }) }
+export class ModelLayerResolver extends Context.Service<
+  ModelLayerResolver,
+  ModelLayerResolverApi
+>()('@sorato/server/ModelLayerResolver') {}
+
+export const ModelLayerResolverLive = Layer.succeed(
+  ModelLayerResolver,
+  ModelLayerResolver.of({ resolve: modelLayer })
 )

@@ -310,7 +310,7 @@ export const Edit = Tool.make('Edit', {
   success: Schema.String,
   failure: SandboxError,
   failureMode: 'return',
-  dependencies: [CurrentFiles],
+  dependencies: [CurrentFiles, ToolOutputRegistry],
 })
 
 // ---------------------------------------------------------------------------

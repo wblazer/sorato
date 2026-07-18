@@ -1,32 +1,43 @@
 import { FileSystem, Path } from 'effect'
 import { SqlClient } from 'effect/unstable/sql/SqlClient'
-import { Context, Effect, Layer, Match, Schema } from 'effect'
+import {
+  Config,
+  Context,
+  Effect,
+  Layer,
+  Match,
+  Option,
+  Redacted,
+  Schema,
+} from 'effect'
 
 export class AuthError extends Schema.TaggedErrorClass<AuthError>()(
   'AuthError',
   {
     message: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   }
 ) {}
 
-export class ProviderAuthInfo extends Schema.Class<ProviderAuthInfo>(
-  'ProviderAuthInfo'
-)({
+export const ProviderAuthInfo = Schema.Struct({
   type: Schema.Literal('api'),
   key: Schema.String,
-}) {}
+})
+export interface ProviderAuthInfo extends Schema.Schema.Type<
+  typeof ProviderAuthInfo
+> {}
 
-export class ProviderOauthInfo extends Schema.Class<ProviderOauthInfo>(
-  'ProviderOauthInfo'
-)({
+export const ProviderOauthInfo = Schema.Struct({
   type: Schema.Literal('oauth'),
   refresh: Schema.String,
   access: Schema.String,
   expires: Schema.Number,
   lastRefresh: Schema.optional(Schema.Number),
   accountId: Schema.optional(Schema.String),
-}) {}
+})
+export interface ProviderOauthInfo extends Schema.Schema.Type<
+  typeof ProviderOauthInfo
+> {}
 
 export const ProviderAuthDatabase = Schema.Record(
   Schema.String,
@@ -92,17 +103,34 @@ const SCHEMA = `
 const authFailure = (message: string) => (cause: unknown) =>
   new AuthError({ message, cause })
 
+const credentialConfigFailure = (cause: Config.ConfigError) =>
+  new AuthError({
+    message: `Failed to read provider credential configuration: ${cause.message}`,
+    cause,
+  })
+
+const configuredApiKey = (envKeys: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    for (const key of envKeys) {
+      const configured = yield* Config.redacted(key).pipe(Config.option)
+      if (Option.isNone(configured)) continue
+
+      const value = Redacted.value(configured.value).trim()
+      if (value.length > 0) return value
+    }
+  }).pipe(Effect.mapError(credentialConfigFailure))
+
 const toAuth = (row: ProviderAuthRow | null): ProviderAuth | undefined => {
   if (!row) return
   const apiAuth = Match.value(row.api_key).pipe(
     Match.when(null, () => undefined),
-    Match.orElse((key) => new ProviderAuthInfo({ type: 'api', key }))
+    Match.orElse((key) => ProviderAuthInfo.make({ type: 'api', key }))
   )
   const oauthAuth =
     row.access_token !== null &&
     row.refresh_token !== null &&
     row.expires_at !== null
-      ? new ProviderOauthInfo({
+      ? ProviderOauthInfo.make({
           type: 'oauth',
           access: row.access_token,
           refresh: row.refresh_token,
@@ -236,7 +264,7 @@ export const SqliteProviderAuthStore = (options: { readonly path: string }) =>
         function* (provider: string, envKeys: ReadonlyArray<string>) {
           const stored = yield* getAuth(provider)
           if (stored?.type === 'api' && stored.key.trim()) return stored.key
-          return envKeys.map((key) => process.env[key]?.trim()).find(Boolean)
+          return yield* configuredApiKey(envKeys)
         }
       )
 
@@ -245,7 +273,7 @@ export const SqliteProviderAuthStore = (options: { readonly path: string }) =>
           const stored = yield* getAuth(provider)
           if (stored?.type === 'api' && stored.key.trim()) return true
           if (stored?.type === 'oauth' && stored.refresh.trim()) return true
-          return envKeys.some((key) => !!process.env[key]?.trim())
+          return (yield* configuredApiKey(envKeys)) !== undefined
         }
       )
 

@@ -7,7 +7,7 @@
  *   - Anthropic SSE maps cleanly onto effect's `Response.StreamPart` protocol.
  */
 import { Effect, Layer, Schema, Stream } from 'effect'
-import { LanguageModel, Tool, Toolkit } from 'effect/unstable/ai'
+import { AiError, LanguageModel, Tool, Toolkit } from 'effect/unstable/ai'
 import { HttpClient, HttpClientResponse } from 'effect/unstable/http'
 import { describe, expect, it } from '@effect/vitest'
 import { layer as anthropicLayer } from '../src/providers/anthropic-messages.ts'
@@ -53,14 +53,17 @@ const CANNED_SSE = [
   `event: message_stop`,
   `data: {"type":"message_stop"}`,
   ``,
+  ``,
 ].join('\n')
+
+const TRUNCATED_SSE = CANNED_SSE.replace(/event: message_stop[\s\S]*$/, '')
 
 type Captured = {
   value: unknown
   headers: Readonly<Record<string, string>>
 }
 
-const stubHttpClient = (captured: Captured) =>
+const stubHttpClient = (captured: Captured, sse: string) =>
   HttpClient.make((request) =>
     Effect.sync(() => {
       // Capture the outgoing request body + headers to assert the translation.
@@ -70,7 +73,7 @@ const stubHttpClient = (captured: Captured) =>
       captured.headers = request.headers
       return HttpClientResponse.fromWeb(
         request,
-        new globalThis.Response(CANNED_SSE, {
+        new globalThis.Response(sse, {
           status: 200,
           headers: { 'content-type': 'text/event-stream' },
         })
@@ -84,6 +87,7 @@ interface RunOptions {
   readonly model?: string
   readonly prompt?: Parameters<typeof LanguageModel.streamText>[0]['prompt']
   readonly config?: Partial<Parameters<typeof anthropicLayer>[0]>
+  readonly sse?: string
 }
 
 const run = (opts: RunOptions = {}) =>
@@ -103,7 +107,10 @@ const run = (opts: RunOptions = {}) =>
             ...opts.config,
           }).pipe(
             Layer.provide(
-              Layer.succeed(HttpClient.HttpClient, stubHttpClient(captured))
+              Layer.succeed(
+                HttpClient.HttpClient,
+                stubHttpClient(captured, opts.sse ?? CANNED_SSE)
+              )
             )
           ),
           ToolkitLayer
@@ -169,6 +176,17 @@ describe('AnthropicMessages LanguageModel seam', () => {
 
       // The arbitrary model id is forwarded verbatim to the wire.
       expect(body.model).toBe('claude-sonnet-9-vaporware-20991231')
+    })
+  )
+
+  it.effect('fails when the SSE transport ends before message_stop', () =>
+    Effect.gen(function* () {
+      const error = yield* run({ sse: TRUNCATED_SSE }).pipe(Effect.flip)
+
+      expect(AiError.isAiError(error)).toBe(true)
+      expect(error.message).toContain(
+        'Anthropic stream ended before message_stop'
+      )
     })
   )
 

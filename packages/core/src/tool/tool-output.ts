@@ -1,4 +1,4 @@
-import { Context, Option, Schema } from 'effect'
+import { Context, Layer, Option, Schema } from 'effect'
 
 export const MessageIconNameSchema = Schema.Literals([
   'tool',
@@ -98,9 +98,14 @@ const makeRegistry = (): ToolOutputRegistryApi => {
   }
 }
 
-export const ToolOutputRegistry = Context.Reference<ToolOutputRegistryApi>(
-  '@sorato/ToolOutputRegistry',
-  { defaultValue: makeRegistry }
+export class ToolOutputRegistry extends Context.Service<
+  ToolOutputRegistry,
+  ToolOutputRegistryApi
+>()('@sorato/ToolOutputRegistry') {}
+
+export const ToolOutputRegistryLive = Layer.sync(
+  ToolOutputRegistry,
+  makeRegistry
 )
 
 export const diffStats = (oldContent: string, newContent: string) => {

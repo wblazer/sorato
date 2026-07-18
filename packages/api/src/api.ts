@@ -31,9 +31,7 @@ export interface ProjectErrorLike {
 
 // ── Schemas ─────────────────────────────────────────────────────────
 
-export class SessionResponse extends Schema.Class<SessionResponse>(
-  'SessionResponse'
-)({
+export const SessionResponse = Schema.Struct({
   id: Schema.String,
   projectId: Schema.String,
   title: Schema.NullOr(Schema.String),
@@ -57,11 +55,12 @@ export class SessionResponse extends Schema.Class<SessionResponse>(
       })
     )
   ),
-}) {}
+}).annotate({ identifier: 'SessionResponse' })
+export interface SessionResponse extends Schema.Schema.Type<
+  typeof SessionResponse
+> {}
 
-export class RunUsageResponse extends Schema.Class<RunUsageResponse>(
-  'RunUsageResponse'
-)({
+export const RunUsageResponse = Schema.Struct({
   inputTokens: Schema.NullOr(Schema.Number),
   outputTokens: Schema.NullOr(Schema.Number),
   reasoningTokens: Schema.NullOr(Schema.Number),
@@ -71,11 +70,12 @@ export class RunUsageResponse extends Schema.Class<RunUsageResponse>(
   contextWindowTokens: Schema.NullOr(Schema.Number),
   actualCostMicrosUsd: Schema.NullOr(Schema.Number),
   listPriceMicrosUsd: Schema.NullOr(Schema.Number),
-}) {}
+}).annotate({ identifier: 'RunUsageResponse' })
+export interface RunUsageResponse extends Schema.Schema.Type<
+  typeof RunUsageResponse
+> {}
 
-export class RunSummaryResponse extends Schema.Class<RunSummaryResponse>(
-  'RunSummaryResponse'
-)({
+export const RunSummaryResponse = Schema.Struct({
   id: Schema.String,
   status: Schema.Literals(['running', 'completed', 'interrupted', 'failed']),
   providerId: Schema.String,
@@ -84,11 +84,12 @@ export class RunSummaryResponse extends Schema.Class<RunSummaryResponse>(
   usage: RunUsageResponse,
   createdAt: Schema.Number,
   completedAt: Schema.NullOr(Schema.Number),
-}) {}
+}).annotate({ identifier: 'RunSummaryResponse' })
+export interface RunSummaryResponse extends Schema.Schema.Type<
+  typeof RunSummaryResponse
+> {}
 
-export class MessageNodeResponse extends Schema.Class<MessageNodeResponse>(
-  'MessageNodeResponse'
-)({
+export const MessageNodeResponse = Schema.Struct({
   id: Schema.String,
   sessionId: Schema.String,
   parentId: Schema.NullOr(Schema.String),
@@ -122,30 +123,34 @@ export class MessageNodeResponse extends Schema.Class<MessageNodeResponse>(
   ),
   encoded: Schema.toEncoded(StoredMessage),
   createdAt: Schema.Number,
-}) {}
+}).annotate({ identifier: 'MessageNodeResponse' })
+export interface MessageNodeResponse extends Schema.Schema.Type<
+  typeof MessageNodeResponse
+> {}
 
-export class RunResponse extends Schema.Class<RunResponse>('RunResponse')({
+export const RunResponse = Schema.Struct({
   status: Schema.Literals(['started', 'queued']),
   runId: Schema.String,
   baseNodeId: Schema.NullOr(Schema.String),
-}) {}
+}).annotate({ identifier: 'RunResponse' })
+export interface RunResponse extends Schema.Schema.Type<typeof RunResponse> {}
 
-export class CompactRunResponse extends Schema.Class<CompactRunResponse>(
-  'CompactRunResponse'
-)({
+export const CompactRunResponse = Schema.Struct({
   status: Schema.Literals(['started', 'queued']),
   runId: Schema.String,
   baseNodeId: Schema.NullOr(Schema.String),
-}) {}
+}).annotate({ identifier: 'CompactRunResponse' })
+export interface CompactRunResponse extends Schema.Schema.Type<
+  typeof CompactRunResponse
+> {}
 
-export class StopResponse extends Schema.Class<StopResponse>('StopResponse')({
+export const StopResponse = Schema.Struct({
   status: Schema.Literals(['stopped', 'not_running']),
   focusNodeId: Schema.optional(Schema.String),
-}) {}
+}).annotate({ identifier: 'StopResponse' })
+export interface StopResponse extends Schema.Schema.Type<typeof StopResponse> {}
 
-export class ProjectResponse extends Schema.Class<ProjectResponse>(
-  'ProjectResponse'
-)({
+export const ProjectResponse = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   path: Schema.String,
@@ -153,7 +158,10 @@ export class ProjectResponse extends Schema.Class<ProjectResponse>(
   createdAt: Schema.Number,
   updatedAt: Schema.Number,
   lastOpenedAt: Schema.NullOr(Schema.Number),
-}) {}
+}).annotate({ identifier: 'ProjectResponse' })
+export interface ProjectResponse extends Schema.Schema.Type<
+  typeof ProjectResponse
+> {}
 
 const ErrorCode = Schema.String
 
@@ -252,39 +260,44 @@ export class RunRejected extends Schema.TaggedErrorClass<RunRejected>()(
   }
 ) {}
 
-export class AuthSetResponse extends Schema.Class<AuthSetResponse>(
-  'AuthSetResponse'
-)({
+export const AuthSetResponse = Schema.Struct({
   ok: Schema.Boolean,
-}) {}
+}).annotate({ identifier: 'AuthSetResponse' })
+export interface AuthSetResponse extends Schema.Schema.Type<
+  typeof AuthSetResponse
+> {}
 
-export class AuthProviderStatus extends Schema.Class<AuthProviderStatus>(
-  'AuthProviderStatus'
-)({
+export const AuthProviderStatus = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   authenticated: Schema.Boolean,
-}) {}
+}).annotate({ identifier: 'AuthProviderStatus' })
+export interface AuthProviderStatus extends Schema.Schema.Type<
+  typeof AuthProviderStatus
+> {}
 
-export class AuthStatusResponse extends Schema.Class<AuthStatusResponse>(
-  'AuthStatusResponse'
-)({
+export const AuthStatusResponse = Schema.Struct({
   providers: Schema.Array(AuthProviderStatus),
   hasAuthenticatedProvider: Schema.Boolean,
-}) {}
+}).annotate({ identifier: 'AuthStatusResponse' })
+export interface AuthStatusResponse extends Schema.Schema.Type<
+  typeof AuthStatusResponse
+> {}
 
-export class EventsQuery extends Schema.Class<EventsQuery>('EventsQuery')({
+export const EventsQuery = Schema.Struct({
   runId: Schema.optional(Schema.String),
   since: Schema.optional(Schema.String),
-}) {}
+}).annotate({ identifier: 'EventsQuery' })
+export interface EventsQuery extends Schema.Schema.Type<typeof EventsQuery> {}
 
-export class AuthOauthAuthorizeResponse extends Schema.Class<AuthOauthAuthorizeResponse>(
-  'AuthOauthAuthorizeResponse'
-)({
+export const AuthOauthAuthorizeResponse = Schema.Struct({
   url: Schema.String,
-}) {}
+}).annotate({ identifier: 'AuthOauthAuthorizeResponse' })
+export interface AuthOauthAuthorizeResponse extends Schema.Schema.Type<
+  typeof AuthOauthAuthorizeResponse
+> {}
 
-export class ModelOption extends Schema.Class<ModelOption>('ModelOption')({
+export const ModelOption = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   provider: Schema.String,
@@ -312,50 +325,56 @@ export class ModelOption extends Schema.Class<ModelOption>('ModelOption')({
       output: Schema.Number,
     }),
   }),
-}) {}
+}).annotate({ identifier: 'ModelOption' })
+export interface ModelOption extends Schema.Schema.Type<typeof ModelOption> {}
 
-export class ModelsResponse extends Schema.Class<ModelsResponse>(
-  'ModelsResponse'
-)({
+export const ModelsResponse = Schema.Struct({
   models: Schema.Array(ModelOption),
   defaultModel: Schema.optional(Schema.String),
-}) {}
+}).annotate({ identifier: 'ModelsResponse' })
+export interface ModelsResponse extends Schema.Schema.Type<
+  typeof ModelsResponse
+> {}
 
-export class DirectoryEntry extends Schema.Class<DirectoryEntry>(
-  'DirectoryEntry'
-)({
+export const DirectoryEntry = Schema.Struct({
   /** Entry name (e.g. "src") */
   name: Schema.String,
   /** Fully resolved absolute path */
   path: Schema.String,
   type: Schema.Literals(['directory', 'file']),
-}) {}
+}).annotate({ identifier: 'DirectoryEntry' })
+export interface DirectoryEntry extends Schema.Schema.Type<
+  typeof DirectoryEntry
+> {}
 
-export class DirectoryListResponse extends Schema.Class<DirectoryListResponse>(
-  'DirectoryListResponse'
-)({
+export const DirectoryListResponse = Schema.Struct({
   /** The resolved absolute path of the listed directory */
   resolved: Schema.String,
   /** The user's home directory (for ~ substitution in display) */
   home: Schema.String,
   entries: Schema.Array(DirectoryEntry),
-}) {}
+}).annotate({ identifier: 'DirectoryListResponse' })
+export interface DirectoryListResponse extends Schema.Schema.Type<
+  typeof DirectoryListResponse
+> {}
 
-export class ProjectFileSearchResult extends Schema.Class<ProjectFileSearchResult>(
-  'ProjectFileSearchResult'
-)({
+export const ProjectFileSearchResult = Schema.Struct({
   path: Schema.String,
   name: Schema.String,
   type: Schema.Literals(['directory', 'file']),
   score: Schema.optional(Schema.Number),
-}) {}
+}).annotate({ identifier: 'ProjectFileSearchResult' })
+export interface ProjectFileSearchResult extends Schema.Schema.Type<
+  typeof ProjectFileSearchResult
+> {}
 
-export class ProjectFileSearchResponse extends Schema.Class<ProjectFileSearchResponse>(
-  'ProjectFileSearchResponse'
-)({
+export const ProjectFileSearchResponse = Schema.Struct({
   entries: Schema.Array(ProjectFileSearchResult),
   totalMatched: Schema.Number,
-}) {}
+}).annotate({ identifier: 'ProjectFileSearchResponse' })
+export interface ProjectFileSearchResponse extends Schema.Schema.Type<
+  typeof ProjectFileSearchResponse
+> {}
 
 export const RunAttachment = Schema.Struct({
   mediaType: Schema.String,
@@ -370,21 +389,23 @@ export class DirectoryError extends Schema.TaggedErrorClass<DirectoryError>()(
   { message: Schema.String }
 ) {}
 
-export class ToolInfo extends Schema.Class<ToolInfo>('ToolInfo')({
+export const ToolInfo = Schema.Struct({
   name: Schema.String,
   displayName: Schema.String,
-}) {}
+}).annotate({ identifier: 'ToolInfo' })
+export interface ToolInfo extends Schema.Schema.Type<typeof ToolInfo> {}
 
-export class HandshakeResponse extends Schema.Class<HandshakeResponse>(
-  'HandshakeResponse'
-)({
+export const HandshakeResponse = Schema.Struct({
   /** Server version identifier */
   version: Schema.String,
   /** Server status — 'ok' if healthy */
   status: Schema.Literal('ok'),
   /** Tools available from this server runtime. */
   tools: Schema.Array(ToolInfo),
-}) {}
+}).annotate({ identifier: 'HandshakeResponse' })
+export interface HandshakeResponse extends Schema.Schema.Type<
+  typeof HandshakeResponse
+> {}
 
 // ── Sessions Group ──────────────────────────────────────────────────
 

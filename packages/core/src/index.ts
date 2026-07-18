@@ -38,6 +38,7 @@ export {
   MessageHeaderDisplaySchema,
   MessageIconNameSchema,
   ToolOutputRegistry,
+  ToolOutputRegistryLive,
   ToolResultDisplaySchema,
   stringifyToolResult,
 } from './tool/tool-output.ts'

@@ -1,4 +1,4 @@
-import { Duration, Effect, Option, Schema } from 'effect'
+import { Duration, Effect, Option, Schedule, Schema } from 'effect'
 import { AiError, type Response } from 'effect/unstable/ai'
 import { type HttpClientResponse } from 'effect/unstable/http'
 
@@ -22,6 +22,10 @@ export type ProviderRetryInfo = {
   readonly attempt: number
   readonly maxAttempts: number
 }
+
+export type ProviderRetryHandler = (
+  info: ProviderRetryInfo
+) => Effect.Effect<void>
 
 const OpenAiErrorResponse = Schema.Struct({
   error: Schema.Struct({
@@ -278,39 +282,39 @@ export const toProviderAiError =
     })
   }
 
-// oxlint-disable sorato/no-manual-effect-channels -- retry preserves the wrapped provider effect contract
 export const retryProviderRequest = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
-  onRetry: ((info: ProviderRetryInfo) => void) | undefined
+  onRetry: ProviderRetryHandler | undefined
 ): Effect.Effect<A, E, R> => {
   const maxAttempts = 3
-  // oxlint-disable-next-line sorato/no-manual-effect-channels -- recursive retry loop preserves the wrapped provider effect contract
-  const run = (attempt: number): Effect.Effect<A, E, R> =>
-    effect.pipe(
-      Effect.catch((error) => {
-        if (
-          !AiError.isAiError(error) ||
-          !error.isRetryable ||
-          attempt >= maxAttempts
-        ) {
-          return Effect.fail(error)
-        }
-
-        const delay = error.retryAfter ?? Duration.seconds(2 ** (attempt - 1))
-        const publishRetry = Effect.sync(() =>
-          onRetry?.({ error, delay, attempt, maxAttempts })
-        )
-        const wait = Effect.sleep(delay)
-        return publishRetry.pipe(
-          Effect.andThen(wait),
-          Effect.andThen(run(attempt + 1))
-        )
-      })
+  const schedule = Schedule.exponential(Duration.seconds(1)).pipe(
+    Schedule.jittered,
+    Schedule.upTo({ times: maxAttempts - 1 }),
+    Schedule.setInputType<E>(),
+    Schedule.while(
+      ({ input }) => AiError.isAiError(input) && input.isRetryable
+    ),
+    Schedule.modifyDelay(({ input, duration }) =>
+      Effect.succeed(
+        AiError.isAiError(input) && input.retryAfter !== undefined
+          ? Duration.max(duration, input.retryAfter)
+          : duration
+      )
+    ),
+    Schedule.tap(({ input, duration, attempt }) =>
+      AiError.isAiError(input) && onRetry !== undefined
+        ? onRetry({
+            error: input,
+            delay: duration,
+            attempt,
+            maxAttempts,
+          })
+        : Effect.void
     )
+  )
 
-  return run(1)
+  return Effect.retry(effect, schedule)
 }
-// oxlint-enable sorato/no-manual-effect-channels
 
 const describeCause = (cause: unknown): string => {
   if (AiError.isAiError(cause)) return cause.message

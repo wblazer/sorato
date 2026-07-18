@@ -2,6 +2,7 @@ import { Effect, Fiber } from 'effect'
 import { describe, expect, it } from '@effect/vitest'
 import { makeRunScenario } from './support/run-scenario.ts'
 import { Scripted } from './support/scripted-model.ts'
+import { getRunStopSnapshot } from '../src/run-registry.ts'
 
 describe('RunScenario', () => {
   it.effect('runs a scripted model through real persistence and events', () =>
@@ -29,6 +30,25 @@ describe('RunScenario', () => {
       const latest = yield* scenario.latestNodeForRun(run.runId)
       expect(latest?.encoded.role).toBe('assistant')
       expect(latest?.encoded.content).toBe('Hello from the scripted model.')
+    }).pipe(Effect.scoped)
+  )
+
+  it.effect('keeps a failed queued run failed after its worker joins', () =>
+    Effect.gen(function* () {
+      const scenario = yield* makeRunScenario({
+        model: [Scripted.fail('scripted provider failure')],
+      })
+
+      const run = yield* scenario.enqueueRun({ input: 'Fail this run' })
+      const workerFiber = getRunStopSnapshot(run.runId)?.workerFiber
+      expect(workerFiber).toBeDefined()
+      if (workerFiber) yield* Fiber.join(workerFiber).pipe(Effect.exit)
+
+      const persisted = yield* scenario.getRun(run.runId)
+      expect(persisted.status).toBe('failed')
+      const events = yield* scenario.eventsForRun(run.runId)
+      expect(events.map((event) => event._tag)).toContain('RunFailed')
+      expect(events.map((event) => event._tag)).toContain('RunEnd')
     }).pipe(Effect.scoped)
   )
 

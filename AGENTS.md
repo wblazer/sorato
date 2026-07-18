@@ -55,21 +55,18 @@ bun run server
 - Never bypass Effect's type system with `any` or `unknown` casts
 - Never use synchronous file I/O - always use Effect's async primitives
 
-<!-- effect-solutions:start -->
-
 ## Effect Best Practices
 
-**IMPORTANT:** Always consult effect-solutions before writing Effect code.
+**IMPORTANT:** Always load the project-local `effect` skill before writing or
+reviewing Effect code, then read every reference branch that matches the task.
 
-1. Run `bun run effect-solutions list` to see available guides
-2. Run `bun run effect-solutions show <topic>...` for relevant patterns (supports multiple topics)
-3. Search `.reference/effect-v4/` for real implementations. Start in `.reference/effect-v4/LLMs.md`
+Project conventions and specialized project-local skills take precedence over
+generic guidance. For API details, verify against the installed packages and
+the matching source in `.reference/effect-v4/`; never guess at Effect APIs.
 
-Topics: quick-start, project-setup, tsconfig, basics, services-and-layers, data-modeling, error-handling, config, testing, cli.
-
-Never guess at Effect patterns - check the guide first.
-
-<!-- effect-solutions:end -->
+The Effect skill's scheduling guide was authored across a beta API transition.
+For Effect 4.0.0-beta.99, use `Schedule.tap(({ input }) => ...)`, not the
+removed `Schedule.tapInput(...)`.
 
 ### Breaking Changes
 

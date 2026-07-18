@@ -21,7 +21,7 @@ export class RunEnvironmentError extends Schema.TaggedErrorClass<RunEnvironmentE
   {
     operation: Schema.String,
     message: Schema.String,
-    error: Schema.optional(Schema.Defect),
+    error: Schema.optional(Schema.Defect()),
   }
 ) {}
 

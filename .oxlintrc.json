@@ -3,33 +3,62 @@
   "categories": {
     "correctness": "error"
   },
-  "jsPlugins": ["./packages/oxlint-plugin/index.ts"],
+  "options": {
+    "reportUnusedDisableDirectives": "error"
+  },
   "rules": {
     "eslint/no-unused-expressions": "off",
-    "unicorn/no-empty-file": "off",
-    "sorato/no-dynamic-import": "error",
-    "sorato/no-effect-all-step-sequencing": "error",
-    "sorato/no-effect-as": "error",
-    "sorato/no-effect-async": "error",
-    "sorato/no-effect-bind": "error",
-    "sorato/no-effect-do": "error",
-    "sorato/no-effect-ladder": "error",
-    "sorato/no-effect-never": "error",
-    "sorato/no-effect-sync-console": "error",
-    "sorato/no-effect-type-alias": "error",
-    "sorato/no-effect-zip-right": "error",
-    "sorato/no-fromnullable-nullish-coalesce": "error",
-    "sorato/no-manual-effect-channels": "error",
-    "sorato/no-match-effect-branch": "error",
-    "sorato/no-model-overlay-cast": "error",
-    "sorato/no-nested-effect-call": "error",
-    "sorato/no-nested-effect-gen": "error",
-    "sorato/no-option-as": "error",
-    "sorato/no-option-boolean-normalization": "error",
-    "sorato/no-pipe-ladder": "error",
-    "sorato/no-return-null": "error",
-    "sorato/no-runtime-runfork": "error",
-    "sorato/no-string-sentinel-const": "error",
-    "sorato/no-string-sentinel-return": "error"
-  }
+    "eslint/no-console": "error",
+    "eslint/no-restricted-properties": [
+      "error",
+      {
+        "object": "Schema",
+        "property": "Class",
+        "message": "Use Schema.Struct plus a same-name interface instead of Schema.Class."
+      },
+      {
+        "object": "Schema",
+        "property": "TaggedClass",
+        "message": "Use Schema.TaggedStruct or Schema.TaggedUnion instead of Schema.TaggedClass."
+      }
+    ],
+    "typescript/no-explicit-any": "error",
+    "typescript/no-namespace": "error",
+    "typescript/no-non-null-assertion": "error"
+  },
+  "overrides": [
+    {
+      "files": ["packages/server/src/**/*.ts"],
+      "rules": {
+        "node/no-process-env": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/server/src/data-dir.ts",
+        "packages/server/src/logging.ts",
+        "packages/server/src/runtime-config.ts"
+      ],
+      "rules": {
+        "node/no-process-env": "off"
+      }
+    },
+    {
+      "files": ["packages/web/src/lib/index.ts"],
+      "rules": {
+        "unicorn/no-empty-file": "off"
+      }
+    },
+    {
+      "files": [
+        "scripts/**",
+        "packages/*/scripts/**",
+        "packages/desktop/src/main.ts",
+        "packages/desktop/src/integrated-server.ts"
+      ],
+      "rules": {
+        "eslint/no-console": "off"
+      }
+    }
+  ]
 }

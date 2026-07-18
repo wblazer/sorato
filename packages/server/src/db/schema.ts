@@ -47,9 +47,7 @@ export const RunStatus = Schema.Literals([
 export type RunStatus = typeof RunStatus.Type
 export type ProviderAuthKind = typeof ProviderAuthKind.Type
 
-export class ProjectTableRow extends Schema.Class<ProjectTableRow>(
-  'ProjectTableRow'
-)({
+export const ProjectTableRow = Schema.Struct({
   id: ProjectId,
   name: Schema.String,
   path: Schema.String,
@@ -57,41 +55,45 @@ export class ProjectTableRow extends Schema.Class<ProjectTableRow>(
   updated_at: UnixMillis,
   last_opened_at: Schema.NullOr(UnixMillis),
   archived_at: Schema.NullOr(UnixMillis),
-}) {}
+})
+export interface ProjectTableRow extends Schema.Schema.Type<
+  typeof ProjectTableRow
+> {}
 
-export class SessionTableRow extends Schema.Class<SessionTableRow>(
-  'SessionTableRow'
-)({
+export const SessionTableRow = Schema.Struct({
   id: SessionId,
   project_id: ProjectId,
   title: Schema.NullOr(Schema.String),
   archived_at: Schema.NullOr(UnixMillis),
   created_at: IsoDateTime,
   updated_at: IsoDateTime,
-}) {}
+})
+export interface SessionTableRow extends Schema.Schema.Type<
+  typeof SessionTableRow
+> {}
 
-export class RunTableRow extends Schema.Class<RunTableRow>('RunTableRow')({
+export const RunTableRow = Schema.Struct({
   id: RunId,
   session_id: SessionId,
   base_node_id: Schema.NullOr(NodeId),
   status: RunStatus,
   completed_at: Schema.NullOr(IsoDateTime),
   created_at: IsoDateTime,
-}) {}
+})
+export interface RunTableRow extends Schema.Schema.Type<typeof RunTableRow> {}
 
-export class MessageTableRow extends Schema.Class<MessageTableRow>(
-  'MessageTableRow'
-)({
+export const MessageTableRow = Schema.Struct({
   id: MessageId,
   session_id: SessionId,
   role: MessageRole,
   content: Schema.String,
   created_at: IsoDateTime,
-}) {}
+})
+export interface MessageTableRow extends Schema.Schema.Type<
+  typeof MessageTableRow
+> {}
 
-export class SummaryTableRow extends Schema.Class<SummaryTableRow>(
-  'SummaryTableRow'
-)({
+export const SummaryTableRow = Schema.Struct({
   id: SummaryId,
   session_id: SessionId,
   content: Schema.String,
@@ -99,9 +101,12 @@ export class SummaryTableRow extends Schema.Class<SummaryTableRow>(
   source_end_node_id: NodeId,
   run_id: Schema.NullOr(RunId),
   created_at: IsoDateTime,
-}) {}
+})
+export interface SummaryTableRow extends Schema.Schema.Type<
+  typeof SummaryTableRow
+> {}
 
-export class NodeTableRow extends Schema.Class<NodeTableRow>('NodeTableRow')({
+export const NodeTableRow = Schema.Struct({
   id: NodeId,
   session_id: SessionId,
   parent_node_id: Schema.NullOr(NodeId),
@@ -111,11 +116,10 @@ export class NodeTableRow extends Schema.Class<NodeTableRow>('NodeTableRow')({
   source_node_id: Schema.NullOr(NodeId),
   run_id: Schema.NullOr(RunId),
   created_at: IsoDateTime,
-}) {}
+})
+export interface NodeTableRow extends Schema.Schema.Type<typeof NodeTableRow> {}
 
-export class ModelCallTableRow extends Schema.Class<ModelCallTableRow>(
-  'ModelCallTableRow'
-)({
+export const ModelCallTableRow = Schema.Struct({
   id: Schema.String,
   session_id: SessionId,
   run_id: Schema.NullOr(RunId),
@@ -134,18 +138,20 @@ export class ModelCallTableRow extends Schema.Class<ModelCallTableRow>(
   list_price_micros_usd: Schema.NullOr(Schema.Number),
   started_at: Schema.NullOr(IsoDateTime),
   finished_at: IsoDateTime,
-}) {}
+})
+export interface ModelCallTableRow extends Schema.Schema.Type<
+  typeof ModelCallTableRow
+> {}
 
-export class SessionWithLastUserMessageRow extends Schema.Class<SessionWithLastUserMessageRow>(
-  'SessionWithLastUserMessageRow'
-)({
+export const SessionWithLastUserMessageRow = Schema.Struct({
   ...SessionTableRow.fields,
   last_user_message_at: Schema.NullOr(IsoDateTime),
-}) {}
+})
+export interface SessionWithLastUserMessageRow extends Schema.Schema.Type<
+  typeof SessionWithLastUserMessageRow
+> {}
 
-export class MessageNodeRow extends Schema.Class<MessageNodeRow>(
-  'MessageNodeRow'
-)({
+export const MessageNodeRow = Schema.Struct({
   id: NodeId,
   session_id: SessionId,
   parent_node_id: Schema.NullOr(NodeId),
@@ -183,11 +189,12 @@ export class MessageNodeRow extends Schema.Class<MessageNodeRow>(
   model_call_list_price_micros_usd: Schema.NullOr(Schema.Number),
   model_call_started_at: Schema.NullOr(IsoDateTime),
   model_call_finished_at: Schema.NullOr(IsoDateTime),
-}) {}
+})
+export interface MessageNodeRow extends Schema.Schema.Type<
+  typeof MessageNodeRow
+> {}
 
-export class ProviderAuthTableRow extends Schema.Class<ProviderAuthTableRow>(
-  'ProviderAuthTableRow'
-)({
+export const ProviderAuthTableRow = Schema.Struct({
   provider: Schema.String,
   type: ProviderAuthKind,
   api_key: Schema.NullOr(Schema.String),
@@ -197,15 +204,19 @@ export class ProviderAuthTableRow extends Schema.Class<ProviderAuthTableRow>(
   last_refresh_at: Schema.NullOr(UnixMillis),
   account_id: Schema.NullOr(Schema.String),
   updated_at: UnixMillis,
-}) {}
+})
+export interface ProviderAuthTableRow extends Schema.Schema.Type<
+  typeof ProviderAuthTableRow
+> {}
 
-export class TableColumnInfoRow extends Schema.Class<TableColumnInfoRow>(
-  'TableColumnInfoRow'
-)({
+export const TableColumnInfoRow = Schema.Struct({
   cid: Schema.Number,
   name: Schema.String,
   type: Schema.String,
   notnull: Schema.Number,
   dflt_value: Schema.NullOr(Schema.String),
   pk: Schema.Number,
-}) {}
+})
+export interface TableColumnInfoRow extends Schema.Schema.Type<
+  typeof TableColumnInfoRow
+> {}

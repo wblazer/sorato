@@ -36,7 +36,7 @@ class OpenAiChatGptAuthError extends Schema.TaggedErrorClass<OpenAiChatGptAuthEr
   'OpenAiChatGptAuthError',
   {
     message: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   }
 ) {}
 
@@ -208,7 +208,7 @@ const refreshOpenAiOauthWithStore = Effect.fn(
       }),
   })
 
-  const next = new ProviderOauthInfo({
+  const next = ProviderOauthInfo.make({
     type: 'oauth',
     refresh: tokens.refresh_token,
     access: tokens.access_token,
@@ -223,7 +223,7 @@ const refreshOpenAiOauthWithStore = Effect.fn(
 export const currentOpenAiOauth = Effect.fn('OpenAiChatGptAuth.current')(
   function* (store: ProviderAuthStoreApi) {
     const stored = yield* store.getAuth('openai')
-    const oauth = stored instanceof ProviderOauthInfo ? stored : undefined
+    const oauth = stored?.type === 'oauth' ? stored : undefined
     const current = yield* Effect.fromNullishOr(oauth).pipe(
       Effect.mapError(
         () =>

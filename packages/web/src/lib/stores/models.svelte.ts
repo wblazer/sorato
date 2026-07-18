@@ -3,15 +3,38 @@ import type { UiApiError } from '$lib/api-errors.js'
 import type { ModelsResponse as AvailableModelsResponse } from '@sorato/api'
 import type { ModelOptions } from '$lib/types.js'
 import { connectionsStore } from './connections.svelte.js'
-import { getJson, setJson, storageKey } from '$lib/storage.js'
-import { Effect } from 'effect'
+import {
+  getJsonWithSchema,
+  setJsonWithSchema,
+  storageKey,
+} from '$lib/storage.js'
+import { Effect, Schema } from 'effect'
 
-type StoredModelSelection = {
-  readonly model: string
-  readonly options?: ModelOptions
-}
+const ModelOptionsSchema = Schema.Struct({
+  thinkingLevel: Schema.optionalKey(
+    Schema.Literals([
+      'off',
+      'on',
+      'minimal',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ])
+  ),
+  mode: Schema.optionalKey(Schema.String),
+})
 
-type StoredModelOptions = Record<string, ModelOptions>
+const StoredModelSelectionSchema = Schema.Struct({
+  model: Schema.String,
+  options: Schema.optionalKey(ModelOptionsSchema),
+})
+
+const StoredModelOptionsSchema = Schema.Record(
+  Schema.String,
+  ModelOptionsSchema
+)
 
 const selectionKey = (id: string | undefined) =>
   storageKey('connection', id, 'model-selection')
@@ -44,19 +67,24 @@ function createModelsStore() {
   }
 
   function recent() {
-    return getJson<StoredModelSelection | null>(
+    return getJsonWithSchema(
       selectionKey(connectionsStore.activeConnectionScopeId),
+      Schema.NullOr(StoredModelSelectionSchema),
       null
     )
   }
 
   function modelOptions(model: string) {
-    return getJson<StoredModelOptions>(modelOptionsKey(), {})[model] ?? {}
+    return (
+      getJsonWithSchema(modelOptionsKey(), StoredModelOptionsSchema, {})[
+        model
+      ] ?? {}
+    )
   }
 
   function rememberModelOptions(model: string, options: ModelOptions) {
-    setJson(modelOptionsKey(), {
-      ...getJson<StoredModelOptions>(modelOptionsKey(), {}),
+    setJsonWithSchema(modelOptionsKey(), StoredModelOptionsSchema, {
+      ...getJsonWithSchema(modelOptionsKey(), StoredModelOptionsSchema, {}),
       [model]: options,
     })
   }
@@ -89,7 +117,11 @@ function createModelsStore() {
   function remember(model: string, options?: ModelOptions) {
     const id = connectionsStore.activeConnectionScopeId
     if (!id) return
-    setJson(selectionKey(id), { model, options })
+    setJsonWithSchema(
+      selectionKey(id),
+      StoredModelSelectionSchema,
+      options === undefined ? { model } : { model, options }
+    )
   }
 
   function select(model: string, options?: ModelOptions) {

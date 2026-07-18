@@ -16,16 +16,10 @@ import * as OpenAiResponses from './providers/openai-responses.ts'
 import type { OpenAiReasoning } from './providers/openai-responses.ts'
 import { reasoningOptionsOf, resolveReasoning } from './reasoning-options.ts'
 
-const present = (key: string) => !!process.env[key]?.trim()
-
-const any = (keys: ReadonlyArray<string>, apiKey: string | undefined) =>
-  !!apiKey?.trim() || keys.some(present)
+const available = (apiKey: string | undefined) => !!apiKey?.trim()
 
 type ProviderAdapter = {
-  readonly available: (
-    keys: ReadonlyArray<string>,
-    apiKey: string | undefined
-  ) => boolean
+  readonly available: (apiKey: string | undefined) => boolean
   readonly supportsModel: (model: string) => boolean
   readonly layer: (
     dataDir: string,
@@ -36,7 +30,6 @@ type ProviderAdapter = {
   ) => ModelServiceLayer
 }
 
-// oxlint-disable-next-line sorato/no-manual-effect-channels -- adapter registry needs a shared layer contract
 type ModelServiceLayer = Layer.Layer<
   LanguageModel.LanguageModel,
   Config.ConfigError
@@ -189,7 +182,7 @@ const codexTransformRequest =
 
 export const PROVIDER_ADAPTERS = {
   anthropic: {
-    available: any,
+    available,
     // No generated-enum gate: any catalog model id is accepted, and unknown
     // ids are forwarded verbatim by the provider.
     supportsModel: (model: string) => anthropicCatalogModels.has(model),
@@ -214,7 +207,7 @@ export const PROVIDER_ADAPTERS = {
     },
   },
   openai: {
-    available: any,
+    available,
     // No generated-enum gate: any catalog model id is accepted, and unknown
     // ids are forwarded verbatim by the provider.
     supportsModel: (model: string) => openAiModels.has(model),

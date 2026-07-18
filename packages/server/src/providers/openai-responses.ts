@@ -22,16 +22,7 @@
  *     (`systemAsInstructions`), and reasoning `encrypted_content` round-tripped
  *     across turns — all handled here rather than via fragile body patches.
  */
-import {
-  Data,
-  DateTime,
-  Effect,
-  Filter,
-  Layer,
-  Option,
-  Schema,
-  Stream,
-} from 'effect'
+import { Data, DateTime, Effect, Layer, Option, Schema, Stream } from 'effect'
 import {
   AiError,
   LanguageModel,
@@ -48,7 +39,7 @@ import {
 import {
   ensureOk,
   retryProviderRequest,
-  type ProviderRetryInfo,
+  type ProviderRetryHandler,
   toProviderAiError,
 } from './provider-errors.ts'
 
@@ -106,7 +97,7 @@ export interface OpenAiResponsesConfig {
         response: HttpClientResponse.HttpClientResponse
       ) => HttpClientResponse.HttpClientResponse)
     | undefined
-  readonly onRetry?: ((info: ProviderRetryInfo) => void) | undefined
+  readonly onRetry?: ProviderRetryHandler | undefined
 }
 
 const DEFAULT_API_URL = 'https://api.openai.com/v1'
@@ -155,6 +146,14 @@ const ResponseObject = Schema.Struct({
   usage: Schema.optional(Schema.NullOr(Usage)),
   incomplete_details: Schema.optional(IncompleteDetails),
   service_tier: Schema.optional(Schema.NullOr(Schema.String)),
+  error: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        code: Schema.optional(Schema.NullOr(Schema.String)),
+        message: Schema.optional(Schema.NullOr(Schema.String)),
+      })
+    )
+  ),
 })
 
 // --- output items (shared by non-streaming response + stream item events) ----
@@ -267,6 +266,15 @@ const StreamEvent = Schema.Union([
 ])
 type StreamEvent = typeof StreamEvent.Type
 const decodeStreamEvent = Schema.decodeUnknownOption(StreamEvent)
+const decodeStreamEventEffect = Schema.decodeUnknownEffect(StreamEvent)
+const decodeStreamEventType = Schema.decodeUnknownOption(
+  Schema.Struct({ type: Schema.String })
+)
+const TERMINAL_EVENT_TYPES: ReadonlySet<string> = new Set([
+  'response.completed',
+  'response.incomplete',
+  'response.failed',
+])
 
 // =============================================================================
 // Prompt part options (decoded via Schema rather than property probing)
@@ -598,6 +606,37 @@ const openaiItemMetadata = (
   return Object.keys(openai).length > 0 ? { metadata: { openai } } : undefined
 }
 
+const streamFailure = (description: string): AiError.AiError =>
+  AiError.make({
+    module: 'OpenAiResponses',
+    method: 'streamText',
+    reason: new AiError.InternalProviderError({ description }),
+  })
+
+const malformedTerminalEvent = (
+  type: string,
+  error: Schema.SchemaError
+): AiError.AiError =>
+  AiError.make({
+    module: 'OpenAiResponses',
+    method: 'streamText',
+    reason: new AiError.InvalidOutputError({
+      description: `Malformed ${type} terminal event: ${error.message}`,
+    }),
+  })
+
+const responseFailedError = (
+  response: typeof ResponseObject.Type
+): AiError.AiError => {
+  const code = response.error?.code?.trim() || undefined
+  const message = response.error?.message?.trim() || undefined
+  const detail =
+    code !== undefined && message !== undefined
+      ? `${code}: ${message}`
+      : (message ?? code ?? 'OpenAI response failed without error details')
+  return streamFailure(detail)
+}
+
 // =============================================================================
 // HTTP
 // =============================================================================
@@ -693,17 +732,35 @@ const streamHook =
       return response.stream.pipe(
         Stream.decodeText(),
         Stream.pipeThroughChannel(Sse.decodeDataSchema(Schema.Unknown)),
-        // Skip any event type we do not model rather than failing the stream.
-        Stream.filterMap(
-          Filter.fromPredicateOption((event: { readonly data: unknown }) =>
-            decodeStreamEvent(event.data)
+        Stream.mapEffect((event) => {
+          const decoded = decodeStreamEvent(event.data)
+          if (Option.isSome(decoded)) return Effect.succeed([decoded.value])
+
+          const type =
+            Option.getOrUndefined(decodeStreamEventType(event.data))?.type ??
+            event.event
+          if (type === undefined || !TERMINAL_EVENT_TYPES.has(type)) {
+            return Effect.succeed<ReadonlyArray<StreamEvent>>([])
+          }
+
+          return decodeStreamEventEffect(event.data).pipe(
+            Effect.map((terminal) => [terminal]),
+            Effect.mapError((error) => malformedTerminalEvent(type, error))
           )
-        ),
+        }),
+        // Unknown event types are intentionally ignored; malformed recognized
+        // terminal events fail above rather than looking like a clean EOF.
+        Stream.flattenIterable,
         Stream.takeUntil(
           (event) =>
             event.type === 'response.completed' ||
             event.type === 'response.incomplete' ||
             event.type === 'response.failed'
+        ),
+        Stream.mapEffect((event) =>
+          event.type === 'response.failed'
+            ? Effect.fail(responseFailedError(event.response))
+            : Effect.succeed(event)
         ),
         Stream.map((event): ReadonlyArray<Response.StreamPartEncoded> => {
           switch (event.type) {
@@ -727,7 +784,6 @@ const streamHook =
 
             case 'response.completed':
             case 'response.incomplete':
-            case 'response.failed':
               return [
                 {
                   type: 'finish',
@@ -1031,10 +1087,5 @@ export const make = (config: OpenAiResponsesConfig) =>
 /** Layer providing `LanguageModel.LanguageModel`, requiring an `HttpClient`. */
 export const layer = (
   config: OpenAiResponsesConfig
-  // oxlint-disable-next-line sorato/no-manual-effect-channels -- public declaration boundary contract
 ): Layer.Layer<LanguageModel.LanguageModel, never, HttpClient.HttpClient> =>
   Layer.effect(LanguageModel.LanguageModel, make(config))
-
-/** Convenience: read the API key from an environment variable as `Option`. */
-export const apiKeyFromEnv = (name = 'OPENAI_API_KEY'): Option.Option<string> =>
-  Option.fromNullishOr(process.env[name]?.trim() || undefined)

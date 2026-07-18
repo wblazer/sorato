@@ -1,4 +1,5 @@
-import { getJson, setJson } from '$lib/storage.js'
+import { Schema } from 'effect'
+import { getJsonWithSchema, setJsonWithSchema } from '$lib/storage.js'
 
 const sidebarWidthKey = 'app-sidebar-width'
 const defaultSidebarWidth = 288
@@ -14,7 +15,11 @@ function clampSidebarWidth(width: number) {
 }
 
 function initialSidebarWidth() {
-  const stored = getJson<number>(sidebarWidthKey, defaultSidebarWidth)
+  const stored = getJsonWithSchema(
+    sidebarWidthKey,
+    Schema.Number,
+    defaultSidebarWidth
+  )
   return Number.isFinite(stored)
     ? clampSidebarWidth(stored)
     : defaultSidebarWidth
@@ -30,7 +35,7 @@ function createAppLayoutStore() {
     setSidebarWidth(width: number) {
       const clamped = clampSidebarWidth(width)
       sidebarWidth = clamped
-      setJson(sidebarWidthKey, clamped)
+      setJsonWithSchema(sidebarWidthKey, Schema.Number, clamped)
     },
     clampSidebarWidth,
     minSidebarWidth,

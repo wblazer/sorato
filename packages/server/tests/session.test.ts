@@ -327,6 +327,27 @@ describe('SessionStorage', () => {
       }).pipe(Effect.provide(testLayer()))
     )
 
+    it.effect('does not read ancestry from another session', () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionStorage
+        const source = yield* storage.create(TEST_DIR, 'source')
+        const target = yield* storage.create(TEST_DIR, 'target')
+        const [sourceNodeId] = yield* append(storage, source.id, [
+          userMsg('private source message'),
+        ])
+        const foreignNodeId = expectDefined(
+          sourceNodeId,
+          'expected source node id'
+        )
+
+        const prompt = yield* storage.conversation(target.id, foreignNodeId)
+        const messages = yield* storage.messages(target.id, foreignNodeId)
+
+        expect(prompt.content).toEqual([])
+        expect(messages).toEqual([])
+      }).pipe(Effect.provide(testLayer()))
+    )
+
     it.effect('handles tool calls and results', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
@@ -363,6 +384,50 @@ describe('SessionStorage', () => {
   })
 
   describe('compactRange', () => {
+    it.effect('rejects a selected path from another session', () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionStorage
+        const source = yield* storage.create(TEST_DIR, 'source')
+        const target = yield* storage.create(TEST_DIR, 'target')
+        const [startNodeId, endNodeId] = yield* append(storage, source.id, [
+          userMsg('source question'),
+          assistantMsg('source answer'),
+        ])
+        const foreignStartNodeId = expectDefined(
+          startNodeId,
+          'expected source start node id'
+        )
+        const foreignEndNodeId = expectDefined(
+          endNodeId,
+          'expected source end node id'
+        )
+        const compactRunId = crypto.randomUUID()
+        yield* storage.createRun({
+          id: compactRunId,
+          sessionId: target.id,
+          providerId: 'test',
+          modelId: 'test-model',
+          billingMode: 'api-key',
+          baseNodeId: foreignEndNodeId,
+        })
+
+        const error = yield* storage
+          .compactRange({
+            sessionId: target.id,
+            runId: compactRunId,
+            baseHeadNodeId: foreignEndNodeId,
+            startNodeId: foreignStartNodeId,
+            endNodeId: foreignEndNodeId,
+            summaryContent: 'must not be created',
+          })
+          .pipe(Effect.flip)
+
+        expect(error._tag).toBe('StorageError')
+        expect(error.operation).toBe('compactRange')
+        expect(yield* storage.messages(target.id)).toEqual([])
+      }).pipe(Effect.provide(testLayer()))
+    )
+
     it.effect('rejects ranges that include system messages', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage

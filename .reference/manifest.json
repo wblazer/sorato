@@ -3,8 +3,8 @@
   "repos": [
     {
       "name": "effect-v4",
-      "url": "https://github.com/effect-TS/effect-smol.git",
-      "ref": "effect@4.0.0-beta.74"
+      "url": "https://github.com/Effect-TS/effect.git",
+      "ref": "effect@4.0.0-beta.99"
     },
     {
       "name": "opencode",

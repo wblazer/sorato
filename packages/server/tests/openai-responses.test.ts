@@ -10,7 +10,7 @@
  *     `instructions`, encrypted reasoning round-tripping) is produced.
  */
 import { Effect, Layer, Schema, Stream } from 'effect'
-import { LanguageModel, Tool, Toolkit } from 'effect/unstable/ai'
+import { AiError, LanguageModel, Tool, Toolkit } from 'effect/unstable/ai'
 import { HttpClient, HttpClientResponse } from 'effect/unstable/http'
 import { describe, expect, it } from '@effect/vitest'
 import { layer as openAiLayer } from '../src/providers/openai-responses.ts'
@@ -69,7 +69,7 @@ const CANNED_SSE = [
   ``,
 ].join('\n')
 
-const stubHttpClient = (capturedBody: { value: unknown }) =>
+const stubHttpClient = (capturedBody: { value: unknown }, sse: string) =>
   HttpClient.make((request) =>
     Effect.sync(() => {
       if (request.body._tag === 'Uint8Array') {
@@ -79,7 +79,7 @@ const stubHttpClient = (capturedBody: { value: unknown }) =>
       }
       return HttpClientResponse.fromWeb(
         request,
-        new globalThis.Response(CANNED_SSE, {
+        new globalThis.Response(sse, {
           status: 200,
           headers: { 'content-type': 'text/event-stream' },
         })
@@ -93,6 +93,7 @@ interface RunOptions {
   readonly model?: string
   readonly prompt?: Parameters<typeof LanguageModel.streamText>[0]['prompt']
   readonly config?: Partial<Parameters<typeof openAiLayer>[0]>
+  readonly sse?: string
 }
 
 const run = (opts: RunOptions = {}) =>
@@ -111,7 +112,10 @@ const run = (opts: RunOptions = {}) =>
             ...opts.config,
           }).pipe(
             Layer.provide(
-              Layer.succeed(HttpClient.HttpClient, stubHttpClient(captured))
+              Layer.succeed(
+                HttpClient.HttpClient,
+                stubHttpClient(captured, opts.sse ?? CANNED_SSE)
+              )
             )
           ),
           ToolkitLayer
@@ -172,6 +176,43 @@ describe('OpenAiResponses LanguageModel seam', () => {
       expect(reasoningEnd?.metadata).toMatchObject({
         openai: { itemId: 'rs_1', encryptedContent: 'ENC2' },
       })
+    })
+  )
+
+  it.effect('fails response.failed with the provider error payload', () =>
+    Effect.gen(function* () {
+      const error = yield* run({
+        sse: [
+          `event: response.failed`,
+          `data: {"type":"response.failed","response":{"id":"resp_failed","error":{"code":"server_error","message":"Upstream model unavailable"}}}`,
+          ``,
+          ``,
+        ].join('\n'),
+      }).pipe(Effect.flip)
+
+      expect(AiError.isAiError(error)).toBe(true)
+      expect(error.message).toContain(
+        'server_error: Upstream model unavailable'
+      )
+    })
+  )
+
+  it.effect('fails a malformed recognized terminal event', () =>
+    Effect.gen(function* () {
+      const error = yield* run({
+        sse: [
+          `event: response.completed`,
+          `data: {"response":{"model":"gpt-fictional"}}`,
+          ``,
+          ``,
+        ].join('\n'),
+      }).pipe(Effect.flip)
+
+      expect(AiError.isAiError(error)).toBe(true)
+      expect(error.reason._tag).toBe('InvalidOutputError')
+      expect(error.message).toContain(
+        'Malformed response.completed terminal event'
+      )
     })
   )
 

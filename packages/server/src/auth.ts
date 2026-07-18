@@ -29,19 +29,18 @@ const authStatus = Effect.fn('Auth.status')(function* () {
   const providers = yield* Effect.all(
     MODEL_PROVIDERS.map((provider) =>
       hasProviderAuth(provider.id, provider.env).pipe(
-        Effect.map(
-          (authenticated) =>
-            new AuthProviderStatus({
-              id: provider.id,
-              name: provider.name,
-              authenticated,
-            })
+        Effect.map((authenticated) =>
+          AuthProviderStatus.make({
+            id: provider.id,
+            name: provider.name,
+            authenticated,
+          })
         )
       )
     )
   )
 
-  return new AuthStatusResponse({
+  return AuthStatusResponse.make({
     providers,
     hasAuthenticatedProvider: providers.some(
       (provider) => provider.authenticated
@@ -63,7 +62,7 @@ export const AuthLive = HttpApiBuilder.group(Api, 'auth', (handlers) =>
     )
     .handle('set', ({ params, payload }) =>
       setApiKey(params.provider, payload.key.trim()).pipe(
-        Effect.map(() => new AuthSetResponse({ ok: true })),
+        Effect.map(() => AuthSetResponse.make({ ok: true })),
         Effect.mapError(
           credentialsUnavailable(
             'Save provider credentials',
@@ -85,7 +84,7 @@ export const AuthLive = HttpApiBuilder.group(Api, 'auth', (handlers) =>
             })
           ),
           startOpenAiOauth().pipe(
-            Effect.map((result) => new AuthOauthAuthorizeResponse(result)),
+            Effect.map((result) => AuthOauthAuthorizeResponse.make(result)),
             Effect.mapError(
               credentialsUnavailable(
                 'Start ChatGPT sign-in',

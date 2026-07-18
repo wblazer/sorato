@@ -19,6 +19,7 @@ import { AuthLive } from './auth.ts'
 import { DirectoriesLive } from './directories.ts'
 import { LoggingLive, resolveLogFile, resolveLogLevel } from './logging.ts'
 import { ModelsLive } from './models.ts'
+import { ModelLayerResolverLive } from './model-catalog.ts'
 import { ProjectsLive } from './projects.ts'
 import { RuntimeConfigLive } from './runtime-config.ts'
 import { SessionsLive } from './sessions.ts'
@@ -39,7 +40,7 @@ import { HandshakeResponse } from '@sorato/api'
 const HandshakeLive = HttpApiBuilder.group(Api, 'handshake', (handlers) =>
   handlers.handle('check', () =>
     Effect.succeed(
-      new HandshakeResponse({
+      HandshakeResponse.make({
         version: '0.0.1',
         status: 'ok',
         tools: [...AllToolInfos],
@@ -82,10 +83,10 @@ const ProviderAuthLive = SqliteProviderAuthStore({
 // ── Serve ───────────────────────────────────────────────────────────
 
 const serverHost = Config.string('SORATO_SERVER_HOST').pipe(
-  Config.orElse(() => Config.succeed('127.0.0.1'))
+  Config.withDefault('127.0.0.1')
 )
 const serverPort = Config.int('SORATO_SERVER_PORT').pipe(
-  Config.orElse(() => Config.succeed(3100))
+  Config.withDefault(3100)
 )
 
 const HttpLive = HttpRouter.toHttpEffect(ApiLive).pipe(
@@ -96,6 +97,7 @@ const HttpLive = HttpRouter.toHttpEffect(ApiLive).pipe(
   ),
   Layer.unwrap,
   HttpServer.withLogAddress,
+  Layer.provide(ModelLayerResolverLive),
   Layer.provide(RuntimeConfigLive),
   Layer.provide(EventBusLive),
   Layer.provide(StorageLive),

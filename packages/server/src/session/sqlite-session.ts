@@ -25,7 +25,6 @@ import {
 
 const SessionIdInput = Schema.Struct({ id: Schema.String })
 const RunIdInput = Schema.Struct({ id: Schema.String })
-const NodeIdInput = Schema.Struct({ id: Schema.String })
 const NodeBelongsToSessionInput = Schema.Struct({
   node_id: Schema.String,
   session_id: Schema.String,
@@ -482,7 +481,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
         execute: (row) => sql`
           UPDATE runs
           SET status = ${row.status}, completed_at = ${row.completed_at}
-          WHERE id = ${row.id}
+          WHERE id = ${row.id} AND status = 'running'
         `,
       })
 
@@ -546,11 +545,12 @@ export const SqliteSession = (options: { readonly path: string }) =>
       })
 
       const listNodeChainRows = SqlSchema.findAll({
-        Request: NodeIdInput,
+        Request: NodeBelongsToSessionInput,
         Result: MessageNodeRow,
-        execute: ({ id }) => sql`
+        execute: (row) => sql`
           WITH RECURSIVE chain AS (
-            SELECT * FROM nodes WHERE id = ${id}
+            SELECT * FROM nodes
+            WHERE id = ${row.node_id} AND session_id = ${row.session_id}
             UNION ALL
             SELECT n.* FROM nodes n JOIN chain c ON n.id = c.parent_node_id
           )
@@ -748,7 +748,10 @@ export const SqliteSession = (options: { readonly path: string }) =>
         const rows =
           headNodeId === null
             ? []
-            : yield* listNodeChainRows({ id: headNodeId }).pipe(
+            : yield* listNodeChainRows({
+                node_id: headNodeId,
+                session_id: sessionId,
+              }).pipe(
                 Effect.mapError(
                   sqlFailure(
                     'conversation',
@@ -783,7 +786,10 @@ export const SqliteSession = (options: { readonly path: string }) =>
         const rows =
           headNodeId === null
             ? []
-            : yield* listNodeChainRows({ id: headNodeId }).pipe(
+            : yield* listNodeChainRows({
+                node_id: headNodeId,
+                session_id: sessionId,
+              }).pipe(
                 Effect.mapError(
                   sqlFailure(
                     'messages',
@@ -854,7 +860,8 @@ export const SqliteSession = (options: { readonly path: string }) =>
       )(function* (input) {
         yield* get(input.sessionId)
         const rows = yield* listNodeChainRows({
-          id: input.baseHeadNodeId,
+          node_id: input.baseHeadNodeId,
+          session_id: input.sessionId,
         }).pipe(
           Effect.mapError(
             sqlFailure(

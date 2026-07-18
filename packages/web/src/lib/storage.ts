@@ -70,21 +70,6 @@ function createLocalStorage(): Storage {
 /** Global storage instance. Swap this for electron-store later. */
 export const storage = createLocalStorage()
 
-/** Helper for JSON values. */
-export function getJson<T>(key: string, defaultValue: T): T {
-  const raw = storage.get(key)
-  if (!raw) return defaultValue
-  try {
-    return JSON.parse(raw) as T
-  } catch {
-    return defaultValue
-  }
-}
-
-export function setJson<T>(key: string, value: T): void {
-  storage.set(key, JSON.stringify(value))
-}
-
 /** Decode a persisted JSON value with an Effect Schema. */
 export function getJsonWithSchema<T>(
   key: string,

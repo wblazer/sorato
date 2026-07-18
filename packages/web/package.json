@@ -15,12 +15,12 @@
     "format": "oxfmt . --write"
   },
   "dependencies": {
-    "@effect/platform-browser": "4.0.0-beta.74",
+    "@effect/platform-browser": "4.0.0-beta.99",
     "@pierre/diffs": "^1.2.4",
     "@sorato/api": "workspace:*",
     "@sorato/core": "workspace:*",
     "@tanstack/hotkeys": "^0.8.0",
-    "effect": "4.0.0-beta.74",
+    "effect": "4.0.0-beta.99",
     "markdown-it": "^14.3.0",
     "markdown-it-task-lists": "^2.1.1"
   },

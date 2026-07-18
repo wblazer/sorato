@@ -61,7 +61,7 @@ export class StorageError extends Schema.TaggedErrorClass<StorageError>()(
   {
     operation: Schema.String,
     message: Schema.String,
-    error: Schema.optional(Schema.Defect),
+    error: Schema.optional(Schema.Defect()),
   }
 ) {}
 

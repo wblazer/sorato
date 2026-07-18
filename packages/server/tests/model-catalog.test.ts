@@ -1,13 +1,39 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { Effect, Layer, Match } from 'effect'
+import {
+  Config,
+  ConfigProvider,
+  Effect,
+  Layer,
+  Match,
+  Option,
+  Redacted,
+} from 'effect'
 import { describe, expect, it } from '@effect/vitest'
 import { MODEL_PROVIDERS } from '../src/models.generated.ts'
 import { ensureModel, listModels } from '../src/model-catalog.ts'
 import { PROVIDER_ADAPTERS } from '../src/provider-adapters.ts'
-import { ProviderAuthStore } from '../src/provider-auth.ts'
+import { AuthError, ProviderAuthStore } from '../src/provider-auth.ts'
 import { RuntimeConfigLive } from '../src/runtime-config.ts'
+
+const configuredApiKey = (envKeys: ReadonlyArray<string>) =>
+  Effect.gen(function* () {
+    for (const key of envKeys) {
+      const configured = yield* Config.redacted(key).pipe(Config.option)
+      if (Option.isNone(configured)) continue
+      const value = Redacted.value(configured.value).trim()
+      if (value.length > 0) return value
+    }
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new AuthError({
+          message: `Failed to read test provider configuration: ${cause.message}`,
+          cause,
+        })
+    )
+  )
 
 const ProviderAuthTest = Layer.succeed(
   ProviderAuthStore,
@@ -15,16 +41,16 @@ const ProviderAuthTest = Layer.succeed(
     getAuth: () => Effect.succeed(undefined),
     setApiKey: () => Effect.void,
     setOauth: () => Effect.void,
-    providerApiKey: (_provider, envKeys) =>
-      Effect.succeed(
-        envKeys.map((key) => process.env[key]?.trim()).find(Boolean)
-      ),
+    providerApiKey: (_provider, envKeys) => configuredApiKey(envKeys),
     hasProviderAuth: (_provider, envKeys) =>
-      Effect.succeed(envKeys.some((key) => !!process.env[key]?.trim())),
+      configuredApiKey(envKeys).pipe(Effect.map((key) => key !== undefined)),
   })
 )
 
 const testLayer = Layer.merge(RuntimeConfigLive, ProviderAuthTest)
+
+const credentialConfig = (values: Readonly<Record<string, string>>) =>
+  ConfigProvider.layer(ConfigProvider.fromUnknown(values))
 
 const expectDefined = <T>(value: T | null | undefined, message: string): T => {
   if (value === null || value === undefined) throw new Error(message)
@@ -73,8 +99,6 @@ describe('ModelCatalog', () => {
         const xdg = join(root, 'xdg')
         const dir = join(root, 'project')
         const prevXdg = process.env.XDG_CONFIG_HOME
-        const prevAnthropic = process.env.ANTHROPIC_API_KEY
-        const prevOpenAi = process.env.OPENAI_API_KEY
 
         yield* Effect.tryPromise(() =>
           mkdir(join(xdg, 'sorato'), { recursive: true })
@@ -88,10 +112,16 @@ describe('ModelCatalog', () => {
         )
 
         process.env.XDG_CONFIG_HOME = xdg
-        process.env.ANTHROPIC_API_KEY = 'test-anthropic'
-        process.env.OPENAI_API_KEY = 'test-openai'
 
-        const models = yield* listModels(dir).pipe(Effect.provide(testLayer))
+        const models = yield* listModels(dir).pipe(
+          Effect.provide(testLayer),
+          Effect.provide(
+            credentialConfig({
+              ANTHROPIC_API_KEY: 'test-anthropic',
+              OPENAI_API_KEY: 'test-openai',
+            })
+          )
+        )
 
         expect(models.models.length).toBe(
           supportedCount(anthropic) + supportedCount(openai)
@@ -106,8 +136,6 @@ describe('ModelCatalog', () => {
         expect(models.defaultModel).toBe(`openai/${openai.models[0]?.id}`)
 
         restoreEnv('XDG_CONFIG_HOME', prevXdg)
-        restoreEnv('ANTHROPIC_API_KEY', prevAnthropic)
-        restoreEnv('OPENAI_API_KEY', prevOpenAi)
         yield* Effect.tryPromise(() =>
           rm(root, { recursive: true, force: true })
         )
@@ -121,16 +149,15 @@ describe('ModelCatalog', () => {
       )
       const dir = join(root, 'project')
       const prevXdg = process.env.XDG_CONFIG_HOME
-      const prevAnthropic = process.env.ANTHROPIC_API_KEY
-      const prevOpenAi = process.env.OPENAI_API_KEY
 
       yield* Effect.tryPromise(() => mkdir(dir, { recursive: true }))
 
       process.env.XDG_CONFIG_HOME = join(root, 'xdg')
-      delete process.env.ANTHROPIC_API_KEY
-      process.env.OPENAI_API_KEY = 'test-openai'
 
-      const models = yield* listModels(dir).pipe(Effect.provide(testLayer))
+      const models = yield* listModels(dir).pipe(
+        Effect.provide(testLayer),
+        Effect.provide(credentialConfig({ OPENAI_API_KEY: 'test-openai' }))
+      )
 
       expect(models.models.length).toBe(supportedCount(openai))
       expect(models.models.every((item) => item.id.startsWith('openai/'))).toBe(
@@ -138,8 +165,6 @@ describe('ModelCatalog', () => {
       )
 
       restoreEnv('XDG_CONFIG_HOME', prevXdg)
-      restoreEnv('ANTHROPIC_API_KEY', prevAnthropic)
-      restoreEnv('OPENAI_API_KEY', prevOpenAi)
       yield* Effect.tryPromise(() => rm(root, { recursive: true, force: true }))
     })
   )
@@ -151,15 +176,15 @@ describe('ModelCatalog', () => {
       )
       const dir = join(root, 'project')
       const prevXdg = process.env.XDG_CONFIG_HOME
-      const prevOpenAi = process.env.OPENAI_API_KEY
 
       yield* Effect.tryPromise(() => mkdir(dir, { recursive: true }))
 
       process.env.XDG_CONFIG_HOME = join(root, 'xdg')
-      delete process.env.ANTHROPIC_API_KEY
-      process.env.OPENAI_API_KEY = 'test-openai'
 
-      const models = yield* listModels(dir).pipe(Effect.provide(testLayer))
+      const models = yield* listModels(dir).pipe(
+        Effect.provide(testLayer),
+        Effect.provide(credentialConfig({ OPENAI_API_KEY: 'test-openai' }))
+      )
 
       expect(
         models.models.every((item) => {
@@ -178,7 +203,6 @@ describe('ModelCatalog', () => {
       ).toBe(true)
       expect(models.models.length).toBe(supportedCount(openai))
       restoreEnv('XDG_CONFIG_HOME', prevXdg)
-      restoreEnv('OPENAI_API_KEY', prevOpenAi)
       yield* Effect.tryPromise(() => rm(root, { recursive: true, force: true }))
     })
   )
@@ -190,16 +214,18 @@ describe('ModelCatalog', () => {
       )
       const dir = join(root, 'project')
       const prevXdg = process.env.XDG_CONFIG_HOME
-      const prevAnthropic = process.env.ANTHROPIC_API_KEY
-      const prevOpenAi = process.env.OPENAI_API_KEY
 
       yield* Effect.tryPromise(() => mkdir(dir, { recursive: true }))
 
       process.env.XDG_CONFIG_HOME = join(root, 'xdg')
-      delete process.env.ANTHROPIC_API_KEY
-      process.env.OPENAI_API_KEY = 'test-openai'
 
-      const models = yield* listModels(dir).pipe(Effect.provide(testLayer))
+      const configuredLayer = credentialConfig({
+        OPENAI_API_KEY: 'test-openai',
+      })
+      const models = yield* listModels(dir).pipe(
+        Effect.provide(testLayer),
+        Effect.provide(configuredLayer)
+      )
       const reasoning = expectDefined(
         models.models.find((item) =>
           item.capabilities.thinkingLevels.includes('low')
@@ -212,15 +238,15 @@ describe('ModelCatalog', () => {
       )
 
       yield* ensureModel(dir, reasoning.id, { thinkingLevel: 'low' }).pipe(
-        Effect.provide(testLayer)
+        Effect.provide(testLayer),
+        Effect.provide(configuredLayer)
       )
       yield* ensureModel(dir, fast.id, { mode: 'fast' }).pipe(
-        Effect.provide(testLayer)
+        Effect.provide(testLayer),
+        Effect.provide(configuredLayer)
       )
 
       restoreEnv('XDG_CONFIG_HOME', prevXdg)
-      restoreEnv('ANTHROPIC_API_KEY', prevAnthropic)
-      restoreEnv('OPENAI_API_KEY', prevOpenAi)
       yield* Effect.tryPromise(() => rm(root, { recursive: true, force: true }))
     })
   )

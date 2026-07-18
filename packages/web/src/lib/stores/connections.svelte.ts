@@ -11,17 +11,19 @@
  * The active connection drives all API calls. Switching connections
  * triggers a session refresh from the new server.
  */
-import { getJson, setJson } from '$lib/storage.js'
-import { Data, Effect } from 'effect'
+import { getJsonWithSchema, setJsonWithSchema } from '$lib/storage.js'
+import { Data, Effect, Schema } from 'effect'
 
-export interface Connection {
-  id: string
-  url: string
-  name?: string
-  source?: 'remote' | 'integrated'
-  createdAt: number
-  lastUsedAt: number
-}
+export const Connection = Schema.Struct({
+  id: Schema.String,
+  url: Schema.String,
+  name: Schema.optionalKey(Schema.String),
+  source: Schema.optionalKey(Schema.Literals(['remote', 'integrated'])),
+  createdAt: Schema.Number,
+  lastUsedAt: Schema.Number,
+})
+
+export interface Connection extends Schema.Schema.Type<typeof Connection> {}
 
 type NewConnection = Omit<Connection, 'id' | 'createdAt' | 'lastUsedAt'>
 
@@ -35,6 +37,8 @@ export class ConnectionAlreadyExists extends Data.TaggedError(
 const STORAGE_KEY = 'connections'
 const ACTIVE_KEY = 'activeConnectionId'
 const INTEGRATED_CONNECTION_SCOPE = 'local-server'
+const ConnectionsSchema = Schema.Array(Connection)
+const ActiveConnectionIdSchema = Schema.NullOr(Schema.String)
 
 export function connectionScopeId(
   connection: Pick<Connection, 'id' | 'source'> | null | undefined
@@ -97,8 +101,8 @@ function getInitialState(): {
   readonly activeConnectionId: string | null
 } {
   return normalizeInitialState(
-    getJson<Connection[]>(STORAGE_KEY, []),
-    getJson<string | null>(ACTIVE_KEY, null)
+    getJsonWithSchema(STORAGE_KEY, ConnectionsSchema, []),
+    getJsonWithSchema(ACTIVE_KEY, ActiveConnectionIdSchema, null)
   )
 }
 
@@ -117,8 +121,8 @@ function createConnectionsStore() {
   // ── Persistence ────────────────────────────────────────────────────
 
   function persist() {
-    setJson(STORAGE_KEY, connections)
-    setJson(ACTIVE_KEY, activeConnectionId)
+    setJsonWithSchema(STORAGE_KEY, ConnectionsSchema, connections)
+    setJsonWithSchema(ACTIVE_KEY, ActiveConnectionIdSchema, activeConnectionId)
   }
 
   // ── Public API ──────────────────────────────────────────────────────

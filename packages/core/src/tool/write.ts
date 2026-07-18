@@ -37,7 +37,7 @@ export const Write = Tool.make('Write', {
   success: Schema.String,
   failure: SandboxError,
   failureMode: 'return',
-  dependencies: [CurrentFiles],
+  dependencies: [CurrentFiles, ToolOutputRegistry],
 })
 
 // ---------------------------------------------------------------------------

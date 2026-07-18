@@ -1,7 +1,7 @@
 import { readdir } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
-import { Effect } from 'effect'
+import { Duration, Effect, Exit, ScopedCache } from 'effect'
 import { FileFinder } from '@ff-labs/fff-node'
 import {
   Api,
@@ -16,13 +16,13 @@ import { SessionStorage } from './session/session.ts'
 
 const mapProjectError = ProjectOperationFailed.fromProject
 const mapStorageError = StorageUnavailable.fromStorage
-const fileFinders = new Map<string, ReturnType<typeof createFileFinder>>()
+const FILE_FINDER_CACHE_CAPACITY = 16
 const EXACT_PATH_SCORE_BOOST = 100
 const EXTRA_PATH_SEGMENT_SCORE_PENALTY = 8
 const SEARCH_PAGE_SIZE = 200
 
 const toProjectResponse = (project: Project) =>
-  new ProjectResponse({
+  ProjectResponse.make({
     id: project.id,
     name: project.name,
     path: project.path,
@@ -32,34 +32,39 @@ const toProjectResponse = (project: Project) =>
     lastOpenedAt: project.lastOpenedAt,
   })
 
-const createFileFinder = (project: Project) => {
-  const created = FileFinder.create({
-    basePath: project.path,
-    aiMode: true,
-    enableHomeDirScanning: true,
-    enableFsRootScanning: true,
-  })
-  if (!created.ok) {
-    return new ProjectOperationFailed({
-      code: 'project.file_search_unavailable',
-      operation: 'search project files',
-      message: created.error,
-      retryable: false,
-    })
-  }
-
-  return created.value
-}
-
-const fileFinderFor = (project: Project) => {
-  const existing = fileFinders.get(project.path)
-  if (existing) return existing
-
-  const finder = createFileFinder(project)
-  if (finder instanceof ProjectOperationFailed) return finder
-  fileFinders.set(project.path, finder)
-  return finder
-}
+const createFileFinder = (projectPath: string) =>
+  Effect.acquireRelease(
+    Effect.try({
+      try: () =>
+        FileFinder.create({
+          basePath: projectPath,
+          aiMode: true,
+          enableHomeDirScanning: true,
+          enableFsRootScanning: true,
+        }),
+      catch: (error) =>
+        new ProjectOperationFailed({
+          code: 'project.file_search_failed',
+          operation: 'search project files',
+          message: error instanceof Error ? error.message : String(error),
+          retryable: true,
+        }),
+    }).pipe(
+      Effect.flatMap((created) =>
+        created.ok
+          ? Effect.succeed(created.value)
+          : Effect.fail(
+              new ProjectOperationFailed({
+                code: 'project.file_search_unavailable',
+                operation: 'search project files',
+                message: created.error,
+                retryable: false,
+              })
+            )
+      )
+    ),
+    (finder) => Effect.sync(() => finder.destroy())
+  )
 
 const isWithinProject = (projectPath: string, path: string) => {
   const child = relative(projectPath, path)
@@ -110,7 +115,7 @@ const searchDirectoryChildren = async (
         '\\',
         '/'
       )
-      return new ProjectFileSearchResult({
+      return ProjectFileSearchResult.make({
         path: entry.isDirectory() ? `${path}/` : path,
         name: entry.name,
         type: entry.isDirectory() ? 'directory' : 'file',
@@ -122,94 +127,110 @@ const searchDirectoryChildren = async (
         a.name.localeCompare(b.name)
     )
 
-  return new ProjectFileSearchResponse({
+  return ProjectFileSearchResponse.make({
     entries: visibleEntries.slice(0, Math.max(1, Math.min(50, limit))),
     totalMatched: visibleEntries.length,
   })
 }
 
-const searchProjectFiles = (project: Project, query: string, limit: number) =>
-  Effect.tryPromise({
-    try: async () => {
-      if (query.endsWith('/')) {
-        const directoryResults = await searchDirectoryChildren(
-          project,
-          query,
-          limit
-        )
-        if (directoryResults) return directoryResults
-      }
-
-      const finder = fileFinderFor(project)
-      if (finder instanceof ProjectOperationFailed) return finder
-
-      await finder.waitForScan(2_000)
-      const result = finder.mixedSearch(query, {
-        pageSize: SEARCH_PAGE_SIZE,
+const searchProjectFiles = (
+  fileFinders: ScopedCache.ScopedCache<
+    string,
+    FileFinder,
+    ProjectOperationFailed
+  >,
+  project: Project,
+  query: string,
+  limit: number
+) =>
+  Effect.gen(function* () {
+    if (query.endsWith('/')) {
+      const directoryResults = yield* Effect.tryPromise({
+        try: () => searchDirectoryChildren(project, query, limit),
+        catch: (error) =>
+          new ProjectOperationFailed({
+            code: 'project.file_search_failed',
+            operation: 'search project files',
+            message: error instanceof Error ? error.message : String(error),
+            retryable: true,
+          }),
       })
+      if (directoryResults) return directoryResults
+    }
 
-      if (!result.ok) {
-        return new ProjectOperationFailed({
+    const finder = yield* ScopedCache.get(fileFinders, project.path)
+    const result = yield* Effect.tryPromise({
+      try: async () => {
+        await finder.waitForScan(2_000)
+        return finder.mixedSearch(query, {
+          pageSize: SEARCH_PAGE_SIZE,
+        })
+      },
+      catch: (error) =>
+        new ProjectOperationFailed({
+          code: 'project.file_search_failed',
+          operation: 'search project files',
+          message: error instanceof Error ? error.message : String(error),
+          retryable: true,
+        }),
+    })
+
+    if (!result.ok) {
+      return yield* Effect.fail(
+        new ProjectOperationFailed({
           code: 'project.file_search_failed',
           operation: 'search project files',
           message: result.error,
           retryable: true,
         })
-      }
+      )
+    }
 
-      const entries = result.value.items
-        .map((item, index) => {
-          const score = result.value.scores[index]?.total
-          const isExactPathMatch =
-            normalizeSearchPath(item.item.relativePath) ===
-            normalizeSearchPath(query)
-          const extraPathSegments = Math.max(
-            0,
-            pathSegmentCount(item.item.relativePath) - pathSegmentCount(query)
-          )
-          return {
-            result: new ProjectFileSearchResult({
-              path: item.item.relativePath,
-              name:
-                item.type === 'directory'
-                  ? item.item.dirName.replace(/\/$/, '')
-                  : item.item.fileName,
-              type: item.type,
-              ...(score === undefined ? {} : { score }),
-            }),
-            boostedScore:
-              (score ?? 0) +
-              (isExactPathMatch ? EXACT_PATH_SCORE_BOOST : 0) -
-              extraPathSegments * EXTRA_PATH_SEGMENT_SCORE_PENALTY,
-          }
-        })
-        .sort((a, b) => b.boostedScore - a.boostedScore)
-        .map((item) => item.result)
-
-      return new ProjectFileSearchResponse({
-        entries: entries.slice(0, Math.max(1, Math.min(50, limit))),
-        totalMatched: result.value.totalMatched,
+    const entries = result.value.items
+      .map((item, index) => {
+        const score = result.value.scores[index]?.total
+        const isExactPathMatch =
+          normalizeSearchPath(item.item.relativePath) ===
+          normalizeSearchPath(query)
+        const extraPathSegments = Math.max(
+          0,
+          pathSegmentCount(item.item.relativePath) - pathSegmentCount(query)
+        )
+        return {
+          result: ProjectFileSearchResult.make({
+            path: item.item.relativePath,
+            name:
+              item.type === 'directory'
+                ? item.item.dirName.replace(/\/$/, '')
+                : item.item.fileName,
+            type: item.type,
+            ...(score === undefined ? {} : { score }),
+          }),
+          boostedScore:
+            (score ?? 0) +
+            (isExactPathMatch ? EXACT_PATH_SCORE_BOOST : 0) -
+            extraPathSegments * EXTRA_PATH_SEGMENT_SCORE_PENALTY,
+        }
       })
-    },
-    catch: (error) =>
-      new ProjectOperationFailed({
-        code: 'project.file_search_failed',
-        operation: 'search project files',
-        message: error instanceof Error ? error.message : String(error),
-        retryable: true,
-      }),
-  }).pipe(
-    Effect.flatMap((result) =>
-      result instanceof ProjectOperationFailed
-        ? Effect.fail(result)
-        : Effect.succeed(result)
-    )
-  )
+      .sort((a, b) => b.boostedScore - a.boostedScore)
+      .map((item) => item.result)
+
+    return ProjectFileSearchResponse.make({
+      entries: entries.slice(0, Math.max(1, Math.min(50, limit))),
+      totalMatched: result.value.totalMatched,
+    })
+  })
 
 export const ProjectsLive = HttpApiBuilder.group(Api, 'projects', (handlers) =>
   Effect.gen(function* () {
     const projects = yield* ProjectStorage
     const sessions = yield* SessionStorage
+    const fileFinders = yield* ScopedCache.makeWith({
+      capacity: FILE_FINDER_CACHE_CAPACITY,
+      lookup: createFileFinder,
+      timeToLive: (exit) =>
+        Exit.isSuccess(exit) ? Duration.infinity : Duration.zero,
+    })
 
     return handlers
       .handle('list', () =>
@@ -235,7 +256,7 @@ export const ProjectsLive = HttpApiBuilder.group(Api, 'projects', (handlers) =>
         projects.get(params.id).pipe(
           Effect.mapError(mapProjectError),
           Effect.flatMap((project) =>
-            searchProjectFiles(project, query.query, query.limit)
+            searchProjectFiles(fileFinders, project, query.query, query.limit)
           )
         )
       )

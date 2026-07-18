@@ -4,10 +4,11 @@ import {
   ToolResultDisplaySchema,
 } from '@sorato/core/presentation'
 
-export class StreamCursor extends Schema.Class<StreamCursor>('StreamCursor')({
+export const StreamCursor = Schema.Struct({
   runId: Schema.String,
   eventId: Schema.Number,
-}) {}
+}).annotate({ identifier: 'StreamCursor' })
+export interface StreamCursor extends Schema.Schema.Type<typeof StreamCursor> {}
 
 export const ServerEvent = Schema.Union([
   Schema.TaggedStruct('SessionUpdated', { sessionId: Schema.String }),

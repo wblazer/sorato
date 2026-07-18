@@ -1,5 +1,5 @@
 import { Context, Deferred, Effect, Layer, Ref, Stream } from 'effect'
-import { LanguageModel, Response } from 'effect/unstable/ai'
+import { AiError, LanguageModel, Response } from 'effect/unstable/ai'
 import { ModelLayerResolver } from '../../src/model-catalog.ts'
 
 export interface ScriptedModelCheckpointStep {
@@ -12,10 +12,16 @@ export interface ScriptedModelPartsStep {
   readonly parts: ReadonlyArray<Response.StreamPartEncoded>
 }
 
+export interface ScriptedModelFailureStep {
+  readonly type: 'failure'
+  readonly error: AiError.AiError
+}
+
 export type ScriptedModelStep =
   | Response.StreamPartEncoded
   | ScriptedModelCheckpointStep
   | ScriptedModelPartsStep
+  | ScriptedModelFailureStep
 
 export interface ScriptedModelCheckpoint {
   readonly name: string
@@ -78,7 +84,10 @@ const partsForStep = (
   callIndex: number,
   gates: Map<string, Gate>,
   checkpointsRef: Ref.Ref<ReadonlyArray<ScriptedModelCheckpoint>>
-): Effect.Effect<ReadonlyArray<Response.StreamPartEncoded>> => {
+): Effect.Effect<
+  ReadonlyArray<Response.StreamPartEncoded>,
+  AiError.AiError
+> => {
   switch (step.type) {
     case 'checkpoint':
       return getGate(gates, step.name).pipe(
@@ -94,6 +103,8 @@ const partsForStep = (
       )
     case 'parts':
       return Effect.succeed(step.parts)
+    case 'failure':
+      return Effect.fail(step.error)
     default:
       return Effect.succeed([step])
   }
@@ -109,7 +120,7 @@ const streamForSteps = (
     Stream.mapEffect((step) =>
       partsForStep(step, callIndex, gates, checkpointsRef)
     ),
-    Stream.flattenIterable<Response.StreamPartEncoded, never, never>
+    Stream.flattenIterable<Response.StreamPartEncoded, AiError.AiError, never>
   )
 
 export const scriptedModelLayer = (
@@ -234,6 +245,14 @@ export const Scripted = {
   checkpoint: (name: string): ScriptedModelCheckpointStep => ({
     type: 'checkpoint',
     name,
+  }),
+  fail: (description: string): ScriptedModelFailureStep => ({
+    type: 'failure',
+    error: AiError.make({
+      module: 'ScriptedModel',
+      method: 'streamText',
+      reason: new AiError.UnknownError({ description }),
+    }),
   }),
   finish: (reason?: Response.FinishReason): Response.StreamPartEncoded =>
     Response.makePart('finish', {

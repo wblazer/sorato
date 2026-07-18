@@ -79,7 +79,7 @@ const toSessionResponse = (s: {
     Match.orElse(() => 'idle' as const)
   )
 
-  return new SessionResponse({
+  return SessionResponse.make({
     id: s.id,
     projectId: s.projectId,
     title: s.title,
@@ -93,7 +93,7 @@ const toSessionResponse = (s: {
 }
 
 const toMessageNodeResponse = (m: MessageNode) =>
-  new MessageNodeResponse({
+  MessageNodeResponse.make({
     id: m.id,
     sessionId: m.sessionId,
     parentId: m.parentId,
@@ -105,13 +105,13 @@ const toMessageNodeResponse = (m: MessageNode) =>
     run:
       m.run === null
         ? null
-        : new RunSummaryResponse({
+        : RunSummaryResponse.make({
             id: m.run.id,
             status: m.run.status,
             providerId: m.run.providerId,
             modelId: m.run.modelId,
             billingMode: m.run.billingMode,
-            usage: new RunUsageResponse({
+            usage: RunUsageResponse.make({
               inputTokens: m.run.inputTokens,
               outputTokens: m.run.outputTokens,
               reasoningTokens: m.run.reasoningTokens,
@@ -490,8 +490,6 @@ function createRunWorker(sessionId: string, queueId: string) {
 
       if (shouldStopRun(request.runId)) {
         yield* Effect.logInfo('Session run worker observed stopped active run')
-      } else {
-        yield* completeRun(storage, request.runId, 'completed')
       }
     }
   }).pipe(
@@ -513,13 +511,12 @@ function startRunWorker(
       Effect.logInfo('Session run worker forked', { sessionId, queueId })
     ),
     Effect.tap((fiber) => registerRunWorker(queueId, fiber)),
-    Effect.map(
-      () =>
-        new RunResponse({
-          status: 'started' as const,
-          runId,
-          baseNodeId,
-        })
+    Effect.map(() =>
+      RunResponse.make({
+        status: 'started' as const,
+        runId,
+        baseNodeId,
+      })
     ),
     Effect.onError((cause) =>
       Effect.gen(function* () {
@@ -543,7 +540,7 @@ const selectRunResponse = (
 ) =>
   ({
     queued: Effect.succeed(
-      new RunResponse({ status: 'queued' as const, runId, baseNodeId })
+      RunResponse.make({ status: 'queued' as const, runId, baseNodeId })
     ),
     started: startRunWorker(sessionId, runId, queueId, baseNodeId),
   })[status]
@@ -724,7 +721,7 @@ const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
 function stopWithoutActiveFiber(storage: SessionStorageApi, sessionId: string) {
   const isSessionRunning = Number(isRunning(sessionId))
   const notRunningResponse = Effect.succeed(
-    new StopResponse({ status: 'not_running' })
+    StopResponse.make({ status: 'not_running' })
   )
   const runningResponse = Effect.gen(function* () {
     const queuedInputs = yield* drainQueuedInputsNow(sessionId)
@@ -738,7 +735,7 @@ function stopWithoutActiveFiber(storage: SessionStorageApi, sessionId: string) {
       Effect.void
 
     yield* appendQueuedInputs
-    return new StopResponse({ status: 'stopped', focusNodeId: undefined })
+    return StopResponse.make({ status: 'stopped', focusNodeId: undefined })
   })
 
   return (
@@ -774,7 +771,7 @@ const stopWithActiveFibers = Effect.fn('Sessions.stopWithActiveFibers')(
       discard: true,
     })
 
-    return new StopResponse({ status: 'stopped', focusNodeId: undefined })
+    return StopResponse.make({ status: 'stopped', focusNodeId: undefined })
   }
 )
 
@@ -802,10 +799,10 @@ export const stopRun = Effect.fn('Sessions.stopRun')(function* (
 ) {
   yield* Effect.logInfo('Run stop request received', { runId })
   if (!isRunRegistered(runId))
-    return new StopResponse({ status: 'not_running' })
+    return StopResponse.make({ status: 'not_running' })
 
   const result = yield* stopRunAndChildren(storage, runId)
-  return new StopResponse({
+  return StopResponse.make({
     status: result.stopped ? 'stopped' : 'not_running',
     focusNodeId: result.focusNodeId,
   })
@@ -997,13 +994,12 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
               }
             )
           ),
-          Effect.map(
-            (response) =>
-              new CompactRunResponse({
-                status: response.status,
-                runId: response.runId,
-                baseNodeId: response.baseNodeId,
-              })
+          Effect.map((response) =>
+            CompactRunResponse.make({
+              status: response.status,
+              runId: response.runId,
+              baseNodeId: response.baseNodeId,
+            })
           )
         )
       )

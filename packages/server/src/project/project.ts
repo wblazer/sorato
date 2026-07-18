@@ -9,7 +9,7 @@ export class ProjectError extends Schema.TaggedErrorClass<ProjectError>()(
   {
     operation: Schema.String,
     message: Schema.String,
-    error: Schema.optional(Schema.Defect),
+    error: Schema.optional(Schema.Defect()),
   }
 ) {}
 

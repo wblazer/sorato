@@ -32,7 +32,7 @@ import { HttpClient, HttpClientRequest } from 'effect/unstable/http'
 import {
   ensureOk,
   retryProviderRequest,
-  type ProviderRetryInfo,
+  type ProviderRetryHandler,
   toProviderAiError,
 } from './provider-errors.ts'
 
@@ -97,7 +97,7 @@ export interface AnthropicConfig {
   readonly cache?: AnthropicCache | undefined
   /** Override max_tokens; defaults to capabilities.maxOutputTokens. */
   readonly maxTokens?: number | undefined
-  readonly onRetry?: ((info: ProviderRetryInfo) => void) | undefined
+  readonly onRetry?: ProviderRetryHandler | undefined
 }
 
 const DEFAULT_API_URL = 'https://api.anthropic.com'
@@ -760,6 +760,7 @@ const streamHook =
       const blocks = new Map<number, BlockState>()
       let pendingFinish: Response.FinishReason = 'unknown'
       let pendingUsage: typeof Usage.Type = {}
+      let messageStopped = false
 
       return response.stream.pipe(
         Stream.decodeText(),
@@ -875,22 +876,39 @@ const streamHook =
               return [{ type: 'error', error: event.error }]
 
             case 'ping':
+              return []
+
             case 'message_stop':
+              messageStopped = true
               return []
           }
         }),
         Stream.flattenIterable,
-        // Emit the finish part once the stream completes.
+        // A transport EOF is only a successful completion after Anthropic's
+        // explicit message_stop sentinel has been observed.
         (self) =>
           Stream.concat(
             self,
-            Stream.sync(
-              (): Response.StreamPartEncoded => ({
-                type: 'finish',
-                reason: pendingFinish,
-                usage: usageEncoded(pendingUsage),
-                response: undefined,
-              })
+            Stream.fromEffect(
+              Effect.suspend(() =>
+                messageStopped
+                  ? Effect.succeed<Response.StreamPartEncoded>({
+                      type: 'finish',
+                      reason: pendingFinish,
+                      usage: usageEncoded(pendingUsage),
+                      response: undefined,
+                    })
+                  : Effect.fail(
+                      AiError.make({
+                        module: 'AnthropicMessages',
+                        method: 'streamText',
+                        reason: new AiError.InternalProviderError({
+                          description:
+                            'Anthropic stream ended before message_stop',
+                        }),
+                      })
+                    )
+              )
             )
           )
       )
@@ -967,12 +985,5 @@ export const make = (config: AnthropicConfig) =>
 /** Layer providing `LanguageModel.LanguageModel`, requiring an `HttpClient`. */
 export const layer = (
   config: AnthropicConfig
-  // oxlint-disable-next-line sorato/no-manual-effect-channels -- public declaration boundary contract
 ): Layer.Layer<LanguageModel.LanguageModel, never, HttpClient.HttpClient> =>
   Layer.effect(LanguageModel.LanguageModel, make(config))
-
-/** Convenience: read the API key from an environment variable as `Option`. */
-export const apiKeyFromEnv = (
-  name = 'ANTHROPIC_API_KEY'
-): Option.Option<string> =>
-  Option.fromNullishOr(process.env[name]?.trim() || undefined)

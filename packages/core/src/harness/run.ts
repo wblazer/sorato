@@ -42,6 +42,7 @@ import { Cause, Effect, Exit, Ref, Stream } from 'effect'
 import { Chat, Prompt } from 'effect/unstable/ai'
 import {
   ToolOutputRegistry,
+  ToolOutputRegistryLive,
   stringifyToolResult,
   toolCallHeader,
 } from '../tool/tool-output.ts'
@@ -587,6 +588,7 @@ export const run = <
       )
     )
   }).pipe(
+    Effect.provide(ToolOutputRegistryLive, { local: true }),
     Effect.annotateLogs({ package: 'core', subsystem: 'harness' }),
     Effect.withLogSpan('harness.run')
   )
