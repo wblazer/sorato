@@ -6,14 +6,13 @@
     "packages/*"
   ],
   "scripts": {
-    "prepare": "effect-language-service patch",
     "test": "bun run --filter '*' test",
     "typecheck": "bun --filter '*' typecheck && bun run --filter @sorato/web check",
     "format": "oxfmt . --write && prettier --write \"packages/web/**/*.svelte\"",
     "format:check": "oxfmt . --check && prettier --check \"packages/web/**/*.svelte\"",
     "lint": "oxlint .",
     "lint:fix": "oxlint . --fix",
-    "effect:diagnostics": "effect-language-service diagnostics --project tsconfig.json --format text --severity warning,error --strict",
+    "effect:diagnostics": "bun run typecheck",
     "effect-solutions": "bun node_modules/effect-solutions/dist/cli.js",
     "reference:sync": "bun run scripts/sync-reference.ts",
     "web": "bun run --filter @sorato/web dev",
@@ -23,15 +22,13 @@
     "desktop:build": "bun run --filter @sorato/web build && bun run --filter @sorato/desktop build"
   },
   "devDependencies": {
-    "@effect/language-service": "^0.86.2",
     "@oxlint/plugins": "^1.67.0",
     "@types/bun": "^1.3.14",
-    "@typescript/native-preview": "7.0.0-dev.20260527.2",
     "effect-solutions": "^0.5.3",
     "oxfmt": "^0.52.0",
     "oxlint": "^1.67.0",
     "prettier": "^3.8.5",
     "prettier-plugin-svelte": "^4.1.1",
-    "typescript": "^6"
+    "typescript": "^7.0.2"
   }
 }

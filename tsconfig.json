@@ -21,10 +21,7 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "exactOptionalPropertyTypes": true,
-    "noUnusedLocals": true,
-
-    // Effect Language Service
-    "plugins": [{ "name": "@effect/language-service" }]
+    "noUnusedLocals": true
   },
   "include": [
     "packages/*/*.ts",

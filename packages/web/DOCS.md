@@ -9,6 +9,12 @@ SvelteKit SPA for the local Sorato server.
 - Route files should stay thin.
 - Multiple server connections are first-class; keep connection concerns centralized.
 
+## TypeScript Tooling
+
+The web workspace keeps TypeScript 6 for `svelte-check`, which currently requires
+the classic TypeScript JavaScript API. The repository compiler and Helix LSP use
+TypeScript 7 through the root workspace installation.
+
 ## Data Fetching
 
 - Use the shared `@sorato/api` `HttpApi` contract through `src/lib/api-client.ts`.

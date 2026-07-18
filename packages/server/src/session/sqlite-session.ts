@@ -582,16 +582,18 @@ export const SqliteSession = (options: { readonly path: string }) =>
         `,
       })
 
-      const get = Effect.fn('SessionStorage.get')(function* (id: SessionId) {
-        const row = yield* getSessionRow({ id }).pipe(
-          Effect.mapError(sqlFailure('get', `Failed to get session: ${id}`))
-        )
-        return yield* Option.match(row, {
-          onNone: () =>
-            Effect.fail(notFound('get', `Session not found: ${id}`)),
-          onSome: (session) => Effect.succeed(toSession(session)),
-        })
-      })
+      const get: SessionStorageApi['get'] = Effect.fn('SessionStorage.get')(
+        function* (id: SessionId) {
+          const row = yield* getSessionRow({ id }).pipe(
+            Effect.mapError(sqlFailure('get', `Failed to get session: ${id}`))
+          )
+          return yield* Option.match(row, {
+            onNone: () =>
+              Effect.fail(notFound('get', `Session not found: ${id}`)),
+            onSome: (session) => Effect.succeed(toSession(session)),
+          })
+        }
+      )
 
       const create = Effect.fn('SessionStorage.create')(function* (
         projectId: string,
@@ -946,7 +948,9 @@ export const SqliteSession = (options: { readonly path: string }) =>
               ),
               Effect.andThen(
                 cloneRows.length > 0
-                  ? sql`INSERT INTO nodes ${sql.insert(cloneRows)}`
+                  ? Effect.asVoid(
+                      sql`INSERT INTO nodes ${sql.insert(cloneRows)}`
+                    )
                   : Effect.void
               ),
               Effect.andThen(
