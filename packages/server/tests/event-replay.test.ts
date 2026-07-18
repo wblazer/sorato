@@ -3,6 +3,7 @@ import {
   appendReplayEvent,
   endEventReplay,
   getReplayBufferSince,
+  getContentThroughEventId,
   getReplayResetReason,
   getReplaySnapshot,
   resetEventReplay,
@@ -21,6 +22,7 @@ describe('EventReplay', () => {
       runId: 'run-1',
       delta: 'hello',
     })
+    expect(getContentThroughEventId('run-1')).toBe(1)
     appendReplayEvent('session-1', 'run-1', {
       _tag: 'ToolCall',
       sessionId: 'session-1',
@@ -29,6 +31,7 @@ describe('EventReplay', () => {
       name: 'read',
       params: {},
     })
+    expect(getContentThroughEventId('run-1')).toBe(2)
 
     expect(getReplaySnapshot('run-1')).toEqual({
       sessionId: 'session-1',
@@ -91,6 +94,7 @@ describe('EventReplay', () => {
     ])
 
     endEventReplay('session-1', 'run-1')
+    expect(getContentThroughEventId('run-1')).toBeUndefined()
     expect(getReplayBufferSince('run-1', undefined)).toEqual([])
     expect(getReplayResetReason('run-1', { runId: 'run-1', eventId: 2 })).toBe(
       'run_completed'

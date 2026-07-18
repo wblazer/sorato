@@ -18,6 +18,7 @@ import {
   Ref,
   Stream,
 } from 'effect'
+import type { ActiveRunSummary } from '@sorato/api'
 import {
   AiError,
   Chat,
@@ -39,6 +40,7 @@ import {
   SessionStorage,
   type MessageNode,
   type SessionId,
+  type SessionStorageApi,
   type StoredMessageEncoded,
 } from './session/session.ts'
 import {
@@ -50,10 +52,11 @@ import {
   SYSTEM_PROMPT,
   loadAgentsMd,
 } from './agent-config.ts'
-import { createBusHook, EventBus } from './event-bus.ts'
+import { createBusHook, EventBus, type EventBusApi } from './event-bus.ts'
 import {
   appendReplayEvent,
   endEventReplay,
+  getContentThroughEventId,
   startEventReplay,
 } from './event-replay.ts'
 import { ModelLayerResolver, resolveModel } from './model-catalog.ts'
@@ -75,6 +78,7 @@ import {
   withRunEnvironment,
 } from './run-environment.ts'
 import type { BillingMode } from './session/session.ts'
+import { toNodeBatchCommitted } from './message-node-response.ts'
 
 interface RunSandboxServices {
   readonly shell: Shell
@@ -107,6 +111,18 @@ const userInputMessage = (
     ],
   }
 }
+
+const publishActiveRunUpsert = Effect.fn('RunAgent.publishActiveRunUpsert')(
+  function* (
+    storage: SessionStorageApi,
+    bus: EventBusApi,
+    activeRun: ActiveRunSummary
+  ) {
+    return yield* Effect.uninterruptible(
+      storage.appendActiveRunUpsert(activeRun).pipe(Effect.tap(bus.publish))
+    )
+  }
+)
 
 type RunFailureMessage = {
   readonly title: string
@@ -628,23 +644,39 @@ const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
     Stream.mkString,
     Effect.provide(modelServices)
   )
+  const contentThroughEventId = getContentThroughEventId(request.runId)
 
-  const result = yield* storage.compactRange({
-    sessionId,
-    runId: request.runId,
-    baseHeadNodeId: compactRange.baseHeadNodeId,
-    startNodeId: compactRange.startNodeId,
-    endNodeId: compactRange.endNodeId,
-    summaryContent: summary.trim(),
-  })
-  updateActiveRunBase(request.runId, result.headNodeId)
-  yield* bus.publish({
-    _tag: 'RunBaseUpdated',
-    sessionId,
-    runId: request.runId,
-    baseNodeId: result.headNodeId,
-  })
-  yield* bus.publish({ _tag: 'MessagesAppended', sessionId })
+  yield* Effect.uninterruptible(
+    Effect.gen(function* () {
+      const result = yield* storage.compactRange({
+        sessionId,
+        runId: request.runId,
+        baseHeadNodeId: compactRange.baseHeadNodeId,
+        startNodeId: compactRange.startNodeId,
+        endNodeId: compactRange.endNodeId,
+        summaryContent: summary.trim(),
+        ...(contentThroughEventId === undefined
+          ? {}
+          : { contentThroughEventId }),
+      })
+      updateActiveRunBase(request.runId, result.batch.headNodeId)
+      yield* bus.publish(toNodeBatchCommitted(result.batch))
+      yield* publishActiveRunUpsert(storage, bus, {
+        sessionId,
+        runId: request.runId,
+        baseNodeId: result.batch.headNodeId,
+        kind: 'summary',
+        visibility: 'background',
+        title: summaryTitle,
+      })
+      yield* bus.publish({
+        _tag: 'RunBaseUpdated',
+        sessionId,
+        runId: request.runId,
+        baseNodeId: result.batch.headNodeId,
+      })
+    })
+  )
   return true
 })
 
@@ -665,17 +697,37 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       endEventReplay(sessionId, runId, runFailed ? 'failed' : 'completed')
     })
     const storage = yield* SessionStorage
-    yield* storage.completeRun({ id: runId, status }).pipe(
+    const bus = yield* EventBus
+    if (status === 'interrupted' && request.inputs.length > 0) {
+      yield* Effect.gen(function* () {
+        const nodes = yield* storage.messages(sessionId)
+        if (nodes.some((node) => node.runId === runId)) return
+        const batch = yield* storage.commitNodeBatch({
+          sessionId,
+          runId,
+          messages: request.inputs.map(userInputMessage),
+          baseNodeId: request.baseNodeId,
+        })
+        if (batch !== null) yield* bus.publish(toNodeBatchCommitted(batch))
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning('Failed to persist interrupted run input', {
+            runId,
+            error: error.message,
+          })
+        )
+      )
+    }
+    const runEnd = yield* storage.completeRun({ id: runId, status }).pipe(
       Effect.catch((error) =>
         Effect.logWarning('Failed to mark agent run terminal', {
           runId,
           status,
           error: error.message,
-        })
+        }).pipe(Effect.as(null))
       )
     )
-    const bus = yield* EventBus
-    yield* bus.publish({ _tag: 'RunEnd', sessionId, runId })
+    if (runEnd !== null) yield* bus.publish(runEnd)
   })
 
   return Effect.gen(function* () {
@@ -694,6 +746,26 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     const modelResolver = yield* ModelLayerResolver
 
     const session = yield* storage.get(sessionId)
+    yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        yield* storage.createRun({
+          id: runId,
+          sessionId,
+          baseNodeId: request.baseNodeId ?? null,
+        })
+        yield* publishActiveRunUpsert(storage, bus, {
+          sessionId,
+          runId,
+          baseNodeId: request.baseNodeId,
+          kind: request.compactRange === undefined ? 'agent' : 'summary',
+          visibility:
+            request.compactRange === undefined ? 'primary' : 'background',
+          ...(request.compactRange === undefined
+            ? {}
+            : { title: 'Generating summary' }),
+        })
+      })
+    )
     const projectPath = yield* projects.resolvePath(session.projectId)
     const runtimeConfig = yield* RuntimeConfigService
     const projectConfig = yield* runtimeConfig.get(projectPath)
@@ -713,15 +785,6 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     const auth = yield* getAuth(resolvedModel.providerId)
     const billingMode: BillingMode =
       auth?.type === 'oauth' ? 'subscription' : 'api-key'
-
-    yield* storage.createRun({
-      id: runId,
-      sessionId,
-      providerId: resolvedModel.providerId,
-      modelId: resolvedModel.modelId,
-      billingMode,
-      baseNodeId: request.baseNodeId ?? null,
-    })
 
     const modelServices = yield* modelResolver
       .resolve(dataDir, {
@@ -770,10 +833,6 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     const shouldSetTitle = Effect.succeed(
       isFirstMessage && session.title === null
     )
-    const publishSessionUpdated = bus.publish({
-      _tag: 'SessionUpdated',
-      sessionId,
-    })
     const maybeSetTitle = generateSessionTitle(
       projectPath,
       inputTexts(request.inputs).join('\n')
@@ -783,7 +842,9 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
           onNone: () => Effect.void,
           onSome: (title) => {
             const setTitle = storage.setTitle(sessionId, title)
-            return setTitle.pipe(Effect.andThen(publishSessionUpdated))
+            return Effect.uninterruptible(
+              setTitle.pipe(Effect.flatMap(bus.publish))
+            )
           },
         })
       ),
@@ -862,11 +923,34 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
             return preamble
           }),
           Effect.flatMap((preamble) =>
-            storage
-              .append(sessionId, runId, preamble, request.baseNodeId)
-              .pipe(
-                Effect.map((preambleNodeIds) => ({ preamble, preambleNodeIds }))
-              )
+            Effect.uninterruptible(
+              Effect.gen(function* () {
+                const batch = yield* storage.commitNodeBatch({
+                  sessionId,
+                  runId,
+                  messages: preamble,
+                  baseNodeId: request.baseNodeId,
+                })
+                if (batch !== null)
+                  yield* bus.publish(toNodeBatchCommitted(batch))
+                yield* Effect.sync(() =>
+                  startEventReplay(
+                    sessionId,
+                    runId,
+                    request.baseNodeId,
+                    'agent'
+                  )
+                )
+                yield* bus.publish({
+                  _tag: 'RunStart',
+                  sessionId,
+                  runId,
+                  baseNodeId: request.baseNodeId,
+                  kind: 'agent',
+                })
+                return { preamble, batch }
+              })
+            )
           ),
           Effect.tap(({ preamble }) =>
             Effect.logInfo('Agent run appended user input', {
@@ -878,32 +962,12 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
           Effect.tap(() =>
             runLifecycleCheckpoint('afterAgentPreambleAppended', runId)
           ),
-          Effect.tap(() => {
-            const startReplay = Effect.sync(() => {
-              startEventReplay(sessionId, runId, request.baseNodeId, 'agent')
-            })
-            const publishRunStart = bus.publish({
-              _tag: 'RunStart',
-              sessionId,
-              runId,
-              baseNodeId: request.baseNodeId,
-              kind: 'agent',
-            })
-
-            return bus
-              .publish({ _tag: 'MessagesAppended', sessionId })
-              .pipe(
-                Effect.andThen(startReplay),
-                Effect.andThen(publishRunStart)
-              )
-          }),
           Effect.tap(() => Effect.forkDetach(maybeSetTitle)),
           Effect.tap(() =>
             Effect.logInfo('Agent run published lifecycle start', { runId })
           ),
-          Effect.flatMap(({ preambleNodeIds }) => {
-            const appendBaseNodeId =
-              preambleNodeIds.at(-1) ?? request.baseNodeId
+          Effect.flatMap(({ batch }) => {
+            const appendBaseNodeId = batch?.headNodeId ?? request.baseNodeId
             return storage.conversation(sessionId, appendBaseNodeId).pipe(
               Effect.map((conversation) => ({
                 appendBaseNodeId,
@@ -1003,7 +1067,6 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                     )
 
                     return yield* Effect.gen(function* () {
-                      let summaryStarted = false
                       let summaryFailed = false
                       let summaryCompleted = false
                       const finalizeSummaryRun = Effect.gen(function* () {
@@ -1022,7 +1085,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                         yield* Effect.sync(() =>
                           clearActiveRunParent(summaryRunId)
                         )
-                        yield* storage
+                        const runEnd = yield* storage
                           .completeRun({
                             id: summaryRunId,
                             status: summaryStatus,
@@ -1036,16 +1099,10 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                                   status: summaryStatus,
                                   error: error.message,
                                 }
-                              )
+                              ).pipe(Effect.as(null))
                             )
                           )
-                        if (summaryStarted) {
-                          yield* bus.publish({
-                            _tag: 'RunEnd',
-                            sessionId,
-                            runId: summaryRunId,
-                          })
-                        }
+                        if (runEnd !== null) yield* bus.publish(runEnd)
                       })
 
                       const compactedPath = path.slice(
@@ -1074,6 +1131,16 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                           )
                         )
                         const summaryTitle = 'Generating summary'
+                        yield* publishActiveRunUpsert(storage, bus, {
+                          sessionId,
+                          runId: summaryRunId,
+                          baseNodeId: baseHeadNodeId,
+                          kind: 'summary',
+                          visibility: 'background',
+                          title: summaryTitle,
+                          parentRunId: runId,
+                          toolCallId: compactToolCallId,
+                        })
                         yield* Effect.sync(() =>
                           startEventReplay(
                             sessionId,
@@ -1099,8 +1166,6 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                           parentRunId: runId,
                           toolCallId: compactToolCallId,
                         })
-                        summaryStarted = true
-
                         const summary = yield* chat
                           .streamText({ prompt: [] })
                           .pipe(
@@ -1128,27 +1193,44 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                             Stream.mkString,
                             Effect.provide(modelServices)
                           )
-                        const result = yield* storage.compactRange({
-                          sessionId,
-                          runId: summaryRunId,
-                          baseHeadNodeId,
-                          startNodeId,
-                          endNodeId,
-                          summaryContent: summary.trim(),
-                        })
-                        yield* Ref.set(appendBaseRef, result.headNodeId)
-                        updateActiveRunBase(runId, result.headNodeId)
-                        yield* bus.publish({
-                          _tag: 'RunBaseUpdated',
-                          sessionId,
-                          runId,
-                          baseNodeId: result.headNodeId,
-                        })
-                        yield* bus.publish({
-                          _tag: 'MessagesAppended',
-                          sessionId,
-                          runId: summaryRunId,
-                        })
+                        const contentThroughEventId =
+                          getContentThroughEventId(summaryRunId)
+                        yield* Effect.uninterruptible(
+                          Effect.gen(function* () {
+                            const result = yield* storage.compactRange({
+                              sessionId,
+                              runId: summaryRunId,
+                              baseHeadNodeId,
+                              startNodeId,
+                              endNodeId,
+                              summaryContent: summary.trim(),
+                              ...(contentThroughEventId === undefined
+                                ? {}
+                                : { contentThroughEventId }),
+                            })
+                            yield* Ref.set(
+                              appendBaseRef,
+                              result.batch.headNodeId
+                            )
+                            updateActiveRunBase(runId, result.batch.headNodeId)
+                            yield* bus.publish(
+                              toNodeBatchCommitted(result.batch)
+                            )
+                            yield* publishActiveRunUpsert(storage, bus, {
+                              sessionId,
+                              runId,
+                              baseNodeId: result.batch.headNodeId,
+                              kind: 'agent',
+                              visibility: 'primary',
+                            })
+                            yield* bus.publish({
+                              _tag: 'RunBaseUpdated',
+                              sessionId,
+                              runId,
+                              baseNodeId: result.batch.headNodeId,
+                            })
+                          })
+                        )
                         summaryCompleted = true
                         return compactionSuccessMessage
                       }).pipe(

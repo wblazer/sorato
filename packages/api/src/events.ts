@@ -3,6 +3,7 @@ import {
   MessageHeaderDisplaySchema,
   ToolResultDisplaySchema,
 } from '@sorato/core/presentation'
+import { ActiveRunSummary, MessageNodeResponse } from './api.ts'
 
 export const StreamCursor = Schema.Struct({
   runId: Schema.String,
@@ -11,10 +12,24 @@ export const StreamCursor = Schema.Struct({
 export interface StreamCursor extends Schema.Schema.Type<typeof StreamCursor> {}
 
 export const ServerEvent = Schema.Union([
-  Schema.TaggedStruct('SessionUpdated', { sessionId: Schema.String }),
-  Schema.TaggedStruct('MessagesAppended', {
+  Schema.TaggedStruct('SessionTitleUpdated', {
+    sequence: Schema.Number,
     sessionId: Schema.String,
-    runId: Schema.optional(Schema.String),
+    title: Schema.String,
+    updatedAt: Schema.Number,
+  }),
+  Schema.TaggedStruct('NodeBatchCommitted', {
+    sequence: Schema.Number,
+    sessionId: Schema.String,
+    runId: Schema.String,
+    nodes: Schema.Array(MessageNodeResponse),
+    headNodeId: Schema.String,
+    sessionUpdatedAt: Schema.Number,
+    contentThroughEventId: Schema.optional(Schema.Number),
+  }),
+  Schema.TaggedStruct('ActiveRunUpserted', {
+    sequence: Schema.Number,
+    ...ActiveRunSummary.fields,
   }),
   Schema.TaggedStruct('TextDelta', {
     sessionId: Schema.String,
@@ -64,6 +79,7 @@ export const ServerEvent = Schema.Union([
     baseNodeId: Schema.NullOr(Schema.String),
   }),
   Schema.TaggedStruct('RunEnd', {
+    sequence: Schema.Number,
     sessionId: Schema.String,
     runId: Schema.String,
   }),
@@ -98,6 +114,16 @@ export const ServerEvent = Schema.Union([
 ])
 
 export type ServerEvent = typeof ServerEvent.Type
+export type DurableServerEvent = Extract<
+  ServerEvent,
+  {
+    readonly _tag:
+      | 'NodeBatchCommitted'
+      | 'ActiveRunUpserted'
+      | 'RunEnd'
+      | 'SessionTitleUpdated'
+  }
+>
 export type ContentEvent = Extract<
   ServerEvent,
   {
@@ -111,5 +137,16 @@ export function isContentEvent(event: ServerEvent): event is ContentEvent {
     event._tag === 'ReasoningDelta' ||
     event._tag === 'ToolCall' ||
     event._tag === 'ToolResult'
+  )
+}
+
+export function isDurableServerEvent(
+  event: ServerEvent
+): event is DurableServerEvent {
+  return (
+    event._tag === 'NodeBatchCommitted' ||
+    event._tag === 'ActiveRunUpserted' ||
+    event._tag === 'RunEnd' ||
+    event._tag === 'SessionTitleUpdated'
   )
 }

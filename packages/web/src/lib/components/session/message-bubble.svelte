@@ -253,7 +253,7 @@
         {/if}
 
         <div
-          class="mt-1 flex min-h-6 max-w-[min(42rem,85%)] items-center justify-end gap-1 text-xs text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/user-message:opacity-100 focus-within:opacity-100"
+          class="mt-1 flex min-h-6 max-w-[min(42rem,85%)] items-center justify-end gap-1 text-xs text-muted-foreground opacity-0 group-hover/user-message:opacity-100 focus-within:opacity-100"
         >
           {#if userTimestamp}
             <span class="mr-1 cursor-default select-none tabular-nums"

@@ -31,6 +31,20 @@ export interface ProjectErrorLike {
 
 // ── Schemas ─────────────────────────────────────────────────────────
 
+export const ActiveRunSummary = Schema.Struct({
+  sessionId: Schema.String,
+  runId: Schema.String,
+  baseNodeId: Schema.NullOr(Schema.String),
+  kind: Schema.Literals(['agent', 'summary']),
+  visibility: Schema.Literals(['primary', 'background']),
+  title: Schema.optional(Schema.String),
+  parentRunId: Schema.optional(Schema.String),
+  toolCallId: Schema.optional(Schema.String),
+}).annotate({ identifier: 'ActiveRunSummary' })
+export interface ActiveRunSummary extends Schema.Schema.Type<
+  typeof ActiveRunSummary
+> {}
+
 export const SessionResponse = Schema.Struct({
   id: Schema.String,
   projectId: Schema.String,
@@ -41,20 +55,7 @@ export const SessionResponse = Schema.Struct({
   lastUserMessageAt: Schema.NullOr(Schema.Number),
   createdAt: Schema.Number,
   updatedAt: Schema.Number,
-  activeRuns: Schema.optional(
-    Schema.Array(
-      Schema.Struct({
-        sessionId: Schema.String,
-        runId: Schema.String,
-        baseNodeId: Schema.NullOr(Schema.String),
-        kind: Schema.Literals(['agent', 'summary']),
-        visibility: Schema.Literals(['primary', 'background']),
-        title: Schema.optional(Schema.String),
-        parentRunId: Schema.optional(Schema.String),
-        toolCallId: Schema.optional(Schema.String),
-      })
-    )
-  ),
+  activeRuns: Schema.optional(Schema.Array(ActiveRunSummary)),
 }).annotate({ identifier: 'SessionResponse' })
 export interface SessionResponse extends Schema.Schema.Type<
   typeof SessionResponse
@@ -126,6 +127,14 @@ export const MessageNodeResponse = Schema.Struct({
 }).annotate({ identifier: 'MessageNodeResponse' })
 export interface MessageNodeResponse extends Schema.Schema.Type<
   typeof MessageNodeResponse
+> {}
+
+export const ConversationSnapshot = Schema.Struct({
+  sequence: Schema.Number,
+  nodes: Schema.Array(MessageNodeResponse),
+}).annotate({ identifier: 'ConversationSnapshot' })
+export interface ConversationSnapshot extends Schema.Schema.Type<
+  typeof ConversationSnapshot
 > {}
 
 export const RunResponse = Schema.Struct({
@@ -287,6 +296,7 @@ export interface AuthStatusResponse extends Schema.Schema.Type<
 export const EventsQuery = Schema.Struct({
   runId: Schema.optional(Schema.String),
   since: Schema.optional(Schema.String),
+  sinceSequence: Schema.optional(Schema.Number),
 }).annotate({ identifier: 'EventsQuery' })
 export interface EventsQuery extends Schema.Schema.Type<typeof EventsQuery> {}
 
@@ -453,7 +463,7 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
   .add(
     HttpApiEndpoint.get('messages', '/:id/messages', {
       params: { id: SessionId },
-      success: Schema.Array(MessageNodeResponse),
+      success: ConversationSnapshot,
       error: StorageUnavailable.pipe(HttpApiSchema.status(503)),
     })
   )

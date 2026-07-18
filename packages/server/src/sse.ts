@@ -5,11 +5,12 @@
  *   - no params: global lifecycle stream
  *   - `runId`: stream/replay content and lifecycle for one active run
  *   - `since`: replay content events after the `runId:eventId` cursor
+ *   - `sinceSequence`: replay durable sync events after a global sequence
  */
 import { HttpServerResponse } from 'effect/unstable/http'
 import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import { Effect, Match, PubSub, Stream } from 'effect'
-import { Api } from '@sorato/api'
+import { Api, isDurableServerEvent, type DurableServerEvent } from '@sorato/api'
 import {
   isContentEvent,
   EventBus,
@@ -23,6 +24,7 @@ import {
   getReplaySnapshot,
   type StreamCursor,
 } from './event-replay.ts'
+import { SessionStorage, type SessionStorageApi } from './session/session.ts'
 
 function formatCursor(cursor: StreamCursor): string {
   return `${cursor.runId}:${cursor.eventId}`
@@ -53,14 +55,18 @@ const formatContentEvent = (event: ContentEvent) =>
 const formatLifecycleEvent = (event: Exclude<ServerEvent, ContentEvent>) =>
   `event: ${event._tag}\ndata: ${JSON.stringify(event)}\n\n`
 
+const formatDurableEvent = (event: DurableServerEvent) =>
+  `id: ${event.sequence}\nevent: ${event._tag}\ndata: ${JSON.stringify(event)}\n\n`
+
 const formatEvent = Match.type<ServerEvent>().pipe(
   Match.tagsExhaustive({
-    MessagesAppended: formatLifecycleEvent,
-    RunEnd: formatLifecycleEvent,
+    NodeBatchCommitted: formatDurableEvent,
+    ActiveRunUpserted: formatDurableEvent,
+    RunEnd: formatDurableEvent,
     RunFailed: formatLifecycleEvent,
     RunRetrying: formatLifecycleEvent,
     RunStart: formatLifecycleEvent,
-    SessionUpdated: formatLifecycleEvent,
+    SessionTitleUpdated: formatDurableEvent,
     RunBaseUpdated: formatLifecycleEvent,
     ReplayReset: formatLifecycleEvent,
     ReasoningDelta: formatContentEvent,
@@ -83,14 +89,52 @@ const isRunStreamEvent = (event: ServerEvent): boolean =>
   event._tag === 'ReplayReset' ||
   isContentEvent(event)
 
-const liveGlobalStream = (bus: EventBusApi) =>
-  Stream.concat(
-    Stream.make(connectedEvent()),
-    bus.stream.pipe(
-      Stream.filter((event) => !isContentEvent(event)),
-      Stream.map(formatEvent)
-    )
-  )
+const liveGlobalStream = (
+  bus: EventBusApi,
+  storage: SessionStorageApi,
+  sinceSequence: number
+) =>
+  Stream.unwrap(
+    Effect.gen(function* () {
+      const subscription = yield* bus.subscribe
+      const replay = yield* storage.durableEventsAfter(sinceSequence)
+      let lastSequence = sinceSequence
+
+      const formatGlobalEvent = (event: ServerEvent): ReadonlyArray<string> => {
+        if (isContentEvent(event)) return []
+        if (event._tag === 'RunStart' || event._tag === 'RunBaseUpdated') {
+          return []
+        }
+        if (!isDurableServerEvent(event)) return [formatEvent(event)]
+        if (event.sequence <= lastSequence) return []
+        lastSequence = event.sequence
+        return [formatEvent(event)]
+      }
+
+      const formatLiveGlobalEvent = (event: ServerEvent) => {
+        if (
+          !isDurableServerEvent(event) ||
+          event.sequence <= lastSequence + 1
+        ) {
+          return Effect.succeed(formatGlobalEvent(event))
+        }
+
+        return storage
+          .durableEventsAfter(lastSequence)
+          .pipe(Effect.map((events) => events.flatMap(formatGlobalEvent)))
+      }
+
+      const prefix = [connectedEvent(), ...replay.flatMap(formatGlobalEvent)]
+
+      return Stream.concat(
+        Stream.fromIterable(prefix),
+        Stream.fromEffectRepeat(PubSub.take(subscription)).pipe(
+          Stream.mapEffect(formatLiveGlobalEvent),
+          Stream.flatMap(Stream.fromIterable)
+        )
+      )
+    })
+  ).pipe(Stream.scoped)
 
 const liveRunStream = (
   bus: EventBusApi,
@@ -117,15 +161,16 @@ const liveRunStream = (
 
       const formatRunEvent = Match.type<ServerEvent>().pipe(
         Match.tagsExhaustive({
-          MessagesAppended: (event) => [formatEvent(event)],
-          RunEnd: (event) => [formatEvent(event)],
+          NodeBatchCommitted: () => [],
+          ActiveRunUpserted: () => [],
+          RunEnd: (event) => [formatLifecycleEvent(event)],
           RunFailed: (event) => [formatEvent(event)],
           RunRetrying: (event) => [formatEvent(event)],
           RunStart: (event) =>
             replayStartSent && event.runId === runId
               ? []
               : [formatEvent(event)],
-          SessionUpdated: (event) => [formatEvent(event)],
+          SessionTitleUpdated: () => [],
           RunBaseUpdated: (event) => [formatEvent(event)],
           ReplayReset: (event) => [formatEvent(event)],
           ReasoningDelta: formatRunContentEvent,
@@ -193,35 +238,51 @@ const heartbeatStream = Stream.tick('5 seconds').pipe(
 
 const makeSseStream = (
   bus: EventBusApi,
+  storage: SessionStorageApi,
   runId: string | undefined,
-  cursor: StreamCursor | undefined
+  cursor: StreamCursor | undefined,
+  sinceSequence: number
 ) =>
-  (runId ? liveRunStream(bus, runId, cursor) : liveGlobalStream(bus)).pipe(
-    Stream.merge(heartbeatStream),
-    Stream.encodeText
-  )
+  (runId
+    ? liveRunStream(bus, runId, cursor)
+    : liveGlobalStream(bus, storage, sinceSequence)
+  ).pipe(Stream.merge(heartbeatStream), Stream.encodeText)
 
 export const EventsLive = HttpApiBuilder.group(Api, 'events', (handlers) =>
   handlers.handleRaw('stream', (context) => {
     const url = new URL(context.request.url, 'http://localhost')
     const runId = url.searchParams.get('runId') ?? undefined
     const cursor = parseCursor(url.searchParams.get('since'))
+    const rawSinceSequence = Number(
+      url.searchParams.get('sinceSequence') ??
+        (runId === undefined
+          ? (context.request.headers['last-event-id'] ?? 0)
+          : 0)
+    )
+    const sinceSequence = Number.isFinite(rawSinceSequence)
+      ? Math.max(0, Math.floor(rawSinceSequence))
+      : 0
 
     return Effect.gen(function* () {
       const bus = yield* EventBus
+      const storage = yield* SessionStorage
       yield* Effect.logInfo('SSE connection requested', {
         runId,
         hasCursor: cursor !== undefined,
+        sinceSequence,
       })
 
-      return HttpServerResponse.stream(makeSseStream(bus, runId, cursor), {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-          'Access-Control-Allow-Origin': '*',
-        },
-      })
+      return HttpServerResponse.stream(
+        makeSseStream(bus, storage, runId, cursor, sinceSequence),
+        {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+          },
+        }
+      )
     }).pipe(Effect.annotateLogs({ package: 'server', subsystem: 'sse' }))
   })
 )

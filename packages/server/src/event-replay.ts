@@ -132,6 +132,14 @@ export function getReplaySnapshot(runId: string): {
   }
 }
 
+export function getContentThroughEventId(runId: string): number | undefined {
+  const state = buffers.get(runId)
+  if (!state || state.status !== 'active' || state.nextEventId <= 1) {
+    return undefined
+  }
+  return state.nextEventId - 1
+}
+
 export function getActiveBackgroundReplayRuns(
   sessionId: string
 ): ReadonlyArray<{

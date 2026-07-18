@@ -11,6 +11,8 @@ import {
 import { StoredMessage, type StoredMessageEncoded } from '@sorato/core/message'
 import { EventBus } from './event-bus.ts'
 import { pricedUsage, type CostInfo } from './run-cost.ts'
+import { getContentThroughEventId } from './event-replay.ts'
+import { toNodeBatchCommitted } from './message-node-response.ts'
 
 const nullUsage = {
   inputTokens: null,
@@ -111,7 +113,8 @@ export const createPersistenceHook = Effect.fn(
   let nextModelCallIndex = 0
   const persistResult = Effect.fn('RunPersistence.persistResult')(function* (
     result: HarnessResult,
-    interrupted: boolean
+    interrupted: boolean,
+    contentThroughEventId: number | undefined
   ) {
     const storage = yield* SessionStorage
     const encoded = yield* Effect.try({
@@ -154,53 +157,55 @@ export const createPersistenceHook = Effect.fn(
       interrupted,
     })
 
-    const currentAppendBaseNodeId = yield* Ref.get(appendBaseNodeId)
-    const nodeIds = yield* storage.append(
-      sessionId,
-      runId,
-      newMessages,
-      currentAppendBaseNodeId
-    )
-    yield* Ref.set(appendBaseNodeId, nodeIds.at(-1) ?? currentAppendBaseNodeId)
-    nextMessageIndex += encodedNewMessages.length
-
-    const assistantNodeIds = newMessages.flatMap((message, index) => {
-      const nodeId = nodeIds[index]
-      return message.role === 'assistant' && nodeId !== undefined
-        ? [nodeId]
-        : []
-    })
-    yield* Effect.forEach(
-      assistantNodeIds,
-      (assistantNodeId, index) => {
-        const modelCallUsage = modelCallUsages[index]
-        const usage = modelCallUsage?.usage ?? nullUsage
-        const timing =
-          modelCallUsage ??
-          (interrupted && index === assistantNodeIds.length - 1
-            ? result.incompleteModelCall
-            : undefined)
-        return storage.createModelCall({
-          sessionId,
-          runId,
-          assistantNodeId,
+    const assistantCount = newMessages.filter(
+      (message) => message.role === 'assistant'
+    ).length
+    let assistantIndex = 0
+    const modelCalls = newMessages.flatMap((message, messageIndex) => {
+      if (message.role !== 'assistant') return []
+      const index = assistantIndex++
+      const modelCallUsage = modelCallUsages[index]
+      const usage = modelCallUsage?.usage ?? nullUsage
+      const timing =
+        modelCallUsage ??
+        (interrupted && index === assistantCount - 1
+          ? result.incompleteModelCall
+          : undefined)
+      return [
+        {
+          messageIndex,
           providerId: pricing.providerId,
           modelId: pricing.modelId,
           billingMode: pricing.billingMode,
           startedAt: timing?.startedAt ?? null,
           finishedAt: timing?.finishedAt ?? Date.now(),
           ...usage,
-        })
-      },
-      { discard: true }
-    )
-    nextModelCallIndex += Math.min(
-      assistantNodeIds.length,
-      modelCallUsages.length
-    )
+        },
+      ]
+    })
 
-    yield* bus.publish({ _tag: 'MessagesAppended', sessionId, runId })
-    yield* bus.publish({ _tag: 'SessionUpdated', sessionId })
+    const currentAppendBaseNodeId = yield* Ref.get(appendBaseNodeId)
+    yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        const batch = yield* storage.commitNodeBatch({
+          sessionId,
+          runId,
+          messages: newMessages,
+          baseNodeId: currentAppendBaseNodeId,
+          modelCalls,
+          ...(contentThroughEventId === undefined
+            ? {}
+            : { contentThroughEventId }),
+        })
+        if (batch === null) return
+        yield* Ref.set(appendBaseNodeId, batch.headNodeId)
+        yield* Effect.sync(() => {
+          nextMessageIndex += encodedNewMessages.length
+          nextModelCallIndex += Math.min(assistantIndex, modelCallUsages.length)
+        })
+        yield* bus.publish(toNodeBatchCommitted(batch))
+      })
+    )
   })
 
   return {
@@ -208,12 +213,20 @@ export const createPersistenceHook = Effect.fn(
     handle: (event: HarnessEvent) =>
       Effect.gen(function* () {
         if (event._tag === 'ModelCallComplete') {
-          yield* persistResult(event.result, false)
+          yield* persistResult(
+            event.result,
+            false,
+            getContentThroughEventId(runId)
+          )
           return
         }
 
         if (event._tag === 'RunResult') {
-          yield* persistResult(event.result, event.interrupted)
+          yield* persistResult(
+            event.result,
+            event.interrupted,
+            getContentThroughEventId(runId)
+          )
         }
       }).pipe(
         Effect.annotateLogs({

@@ -88,4 +88,28 @@ describe('serverEvents', () => {
     await Effect.runPromise(Fiber.interrupt(fiber))
     expect(secondSource.closed).toBe(true)
   })
+
+  it('resumes global streams from the latest durable sequence', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource)
+    let sequence = 4
+
+    const fiber = Effect.runFork(
+      serverEvents('http://localhost:3000', {
+        getSinceSequence: () => sequence,
+      }).pipe(Stream.runDrain)
+    )
+    const firstSource = await FakeEventSource.next()
+    expect(firstSource.url).toBe('http://localhost:3000/events?sinceSequence=4')
+
+    sequence = 9
+    const nextSource = FakeEventSource.next()
+    firstSource.failConnection()
+
+    const secondSource = await nextSource
+    expect(secondSource.url).toBe(
+      'http://localhost:3000/events?sinceSequence=9'
+    )
+
+    await Effect.runPromise(Fiber.interrupt(fiber))
+  })
 })

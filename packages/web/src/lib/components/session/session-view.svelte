@@ -38,8 +38,8 @@
   import { SessionSelectedHeadController } from './session-selected-head.svelte.js'
   import * as Item from '$lib/components/ui/item/index.js'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
-  import { refreshMessagesAfterStop } from './stop-refresh-policy.js'
   import { activeRunForHead } from './composer-run-control.js'
+  import { assistantToolGroupKey, runSegmentKey } from './message-row-key.js'
   let {
     tabId,
     sessionId,
@@ -106,6 +106,11 @@
       followedRun?.visibility !== 'background' &&
       (isFollowingActiveRun || followedStreamingParts.length > 0),
   )
+  const standaloneStreamingRowKey = $derived(
+    selectedHeadValue?.type === 'run'
+      ? `message:${runSegmentKey(selectedHeadValue.runId, 0)}`
+      : 'streaming',
+  )
   const draftStorageKey = $derived(
     composerDraftStorageKey(connectionsStore.activeConnectionScopeId, tabId),
   )
@@ -168,6 +173,7 @@
   const messageBlocks = $derived.by((): ReadonlyArray<MessageRenderBlock> => {
     const blocks: MessageRenderBlock[] = []
     const messages = visibleMessages
+    const runSegmentIndexes = new Map<string, number>()
 
     for (let index = 0; index < messages.length; index++) {
       const message = messages[index]
@@ -187,8 +193,15 @@
           cursor++
         }
 
+        const segmentIndex =
+          message.runId === null
+            ? 0
+            : (runSegmentIndexes.get(message.runId) ?? 0)
+        if (message.runId !== null) {
+          runSegmentIndexes.set(message.runId, segmentIndex + 1)
+        }
         blocks.push({
-          key: group.map((groupMessage) => groupMessage.id).join(':'),
+          key: assistantToolGroupKey(message, segmentIndex),
           message,
           items: transcriptItemsForMessages(group),
           modelCall:
@@ -267,7 +280,12 @@
         block,
       })),
       ...(showStreamingIndicator && !isStreamingMerged
-        ? [{ type: 'streaming' as const, key: 'streaming' }]
+        ? [
+            {
+              type: 'streaming' as const,
+              key: standaloneStreamingRowKey,
+            },
+          ]
         : []),
       ...queuedMessages.map((message) => ({
         type: 'queued' as const,
@@ -362,14 +380,8 @@
     const runId = followedRun?.runId
     if (!runId) return
     const response = await runConnectionPromise(sessionStore.stopAgent(runId))
-    const focusNodeId = await runConnectionPromise(
-      refreshMessagesAfterStop(
-        {
-          run: messagesStore.loadMessages(tabId, sessionId, { force: true }),
-        },
-        typeof response === 'object' ? response.focusNodeId : undefined,
-      ),
-    )
+    const focusNodeId =
+      typeof response === 'object' ? response.focusNodeId : undefined
     if (focusNodeId !== undefined) {
       selectedHead.setSelectedHead({
         type: 'node',

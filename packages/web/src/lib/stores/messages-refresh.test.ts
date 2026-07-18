@@ -2,6 +2,7 @@ import { Deferred, Effect, Layer } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 import { MessageToolPreloader, MessagesApi } from '$lib/connection-services.js'
 import type { MessageNode } from '$lib/types.js'
+import type { ConversationSnapshot } from '@sorato/api'
 import { messagesStore } from './messages.svelte.js'
 
 interface ControlledMessagesApi {
@@ -9,12 +10,12 @@ interface ControlledMessagesApi {
   readonly waitForRequestCount: (count: number) => Effect.Effect<void>
   readonly resolve: (
     index: number,
-    messages: ReadonlyArray<MessageNode>
+    snapshot: ConversationSnapshot
   ) => Effect.Effect<boolean>
 }
 
 const makeControlledMessagesApi = (): ControlledMessagesApi => {
-  const requests: Array<Deferred.Deferred<ReadonlyArray<MessageNode>>> = []
+  const requests: Array<Deferred.Deferred<ConversationSnapshot>> = []
   const requestWaiters: Array<{
     readonly count: number
     readonly deferred: Deferred.Deferred<void>
@@ -37,7 +38,7 @@ const makeControlledMessagesApi = (): ControlledMessagesApi => {
     MessagesApi,
     MessagesApi.of({
       list: () =>
-        Deferred.make<ReadonlyArray<MessageNode>>().pipe(
+        Deferred.make<ConversationSnapshot>().pipe(
           Effect.tap((response) =>
             Effect.sync(() => {
               requests.push(response)
@@ -67,11 +68,11 @@ const makeControlledMessagesApi = (): ControlledMessagesApi => {
   return {
     layer: Layer.merge(messagesLayer, preloaderLayer),
     waitForRequestCount,
-    resolve: (index, messages) => {
+    resolve: (index, snapshot) => {
       const request = requests[index]
       return request === undefined
         ? Effect.die(new Error(`Missing controlled request ${index}`))
-        : Deferred.succeed(request, messages)
+        : Deferred.succeed(request, snapshot)
     },
   } satisfies ControlledMessagesApi
 }
@@ -121,7 +122,9 @@ describe('messagesStore refresh ordering', () => {
     )
     await Effect.runPromise(controlled.waitForRequestCount(2))
 
-    await Effect.runPromise(controlled.resolve(0, [activePrompt]))
+    await Effect.runPromise(
+      controlled.resolve(0, { sequence: 1, nodes: [activePrompt] })
+    )
     await intermediateRefresh
     expect(
       messagesStore
@@ -129,7 +132,12 @@ describe('messagesStore refresh ordering', () => {
         .map((message) => message.encoded.content)
     ).toEqual(['Active prompt'])
 
-    await Effect.runPromise(controlled.resolve(1, [activePrompt, queuedPrompt]))
+    await Effect.runPromise(
+      controlled.resolve(1, {
+        sequence: 2,
+        nodes: [activePrompt, queuedPrompt],
+      })
+    )
     await newestRefresh
     expect(
       messagesStore
@@ -138,7 +146,7 @@ describe('messagesStore refresh ordering', () => {
     ).toEqual(['Active prompt', 'Queued prompt'])
   })
 
-  it('keeps a queued message when an earlier RunEnd refresh completes last', async () => {
+  it('keeps newer nodes when an older forced snapshot completes last', async () => {
     const tabId = 'queued-message-tab'
     const sessionId = 'queued-message-session'
     const activePrompt = userMessage('active', sessionId, 'Active prompt')
@@ -159,9 +167,16 @@ describe('messagesStore refresh ordering', () => {
     )
     await Effect.runPromise(controlled.waitForRequestCount(2))
 
-    await Effect.runPromise(controlled.resolve(1, [activePrompt, queuedPrompt]))
+    await Effect.runPromise(
+      controlled.resolve(1, {
+        sequence: 2,
+        nodes: [activePrompt, queuedPrompt],
+      })
+    )
     await queuedMessageRefresh
-    await Effect.runPromise(controlled.resolve(0, [activePrompt]))
+    await Effect.runPromise(
+      controlled.resolve(0, { sequence: 1, nodes: [activePrompt] })
+    )
     await runEndRefresh
 
     expect(
@@ -169,5 +184,72 @@ describe('messagesStore refresh ordering', () => {
         .messagesForTab(tabId)
         .map((message) => message.encoded.content)
     ).toEqual(['Active prompt', 'Queued prompt'])
+  })
+
+  it('keeps a retained transcript visible during forced recovery', async () => {
+    const tabId = 'retained-tab'
+    const sessionId = 'retained-session'
+    const retained = userMessage('retained', sessionId, 'Retained prompt')
+    const controlled = makeControlledMessagesApi()
+    messagesStore.prepareSession(tabId, sessionId)
+
+    const initial = Effect.runPromise(
+      messagesStore
+        .loadMessages(tabId, sessionId, { force: true })
+        .pipe(Effect.provide(controlled.layer))
+    )
+    await Effect.runPromise(controlled.waitForRequestCount(1))
+    await Effect.runPromise(
+      controlled.resolve(0, { sequence: 1, nodes: [retained] })
+    )
+    await initial
+
+    const recovery = Effect.runPromise(
+      messagesStore
+        .loadMessages(tabId, sessionId, { force: true })
+        .pipe(Effect.provide(controlled.layer))
+    )
+    await Effect.runPromise(controlled.waitForRequestCount(2))
+
+    expect(messagesStore.loadingForTab(tabId)).toBe(false)
+    expect(messagesStore.messagesForTab(tabId)).toEqual([retained])
+
+    await Effect.runPromise(
+      controlled.resolve(1, { sequence: 1, nodes: [retained] })
+    )
+    await recovery
+  })
+
+  it('does not add an optimistic node after its committed event won the race', async () => {
+    const tabId = 'response-race-tab'
+    const sessionId = 'response-race-session'
+    const committed = {
+      ...userMessage('committed', sessionId, 'Already committed'),
+      runId: 'run-1',
+    }
+    const controlled = makeControlledMessagesApi()
+    messagesStore.prepareSession(tabId, sessionId)
+
+    const load = Effect.runPromise(
+      messagesStore
+        .loadMessages(tabId, sessionId, { force: true })
+        .pipe(Effect.provide(controlled.layer))
+    )
+    await Effect.runPromise(controlled.waitForRequestCount(1))
+    await Effect.runPromise(
+      controlled.resolve(0, { sequence: 1, nodes: [committed] })
+    )
+    await load
+
+    messagesStore.addOptimisticUserMessage(
+      tabId,
+      sessionId,
+      'Already committed',
+      [],
+      null,
+      'run-1'
+    )
+
+    expect(messagesStore.messagesForTab(tabId)).toEqual([committed])
   })
 })

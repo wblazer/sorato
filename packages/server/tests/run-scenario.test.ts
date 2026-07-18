@@ -18,14 +18,42 @@ describe('RunScenario', () => {
       const run = yield* scenario.startRun({ input: 'Say hello' })
       yield* scenario.waitForEvent(
         (event) =>
-          event._tag === 'MessagesAppended' && event.runId === run.runId
+          event._tag === 'NodeBatchCommitted' && event.runId === run.runId
       )
       if (run.fiber) yield* Fiber.join(run.fiber)
 
       const events = yield* scenario.eventsForRun(run.runId)
       expect(events.map((event) => event._tag)).toContain('RunStart')
       expect(events.map((event) => event._tag)).toContain('TextDelta')
-      expect(events.map((event) => event._tag)).toContain('MessagesAppended')
+      expect(events.map((event) => event._tag)).toContain('NodeBatchCommitted')
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          _tag: 'ActiveRunUpserted',
+          sessionId: run.sessionId,
+          runId: run.runId,
+          baseNodeId: null,
+          kind: 'agent',
+          visibility: 'primary',
+        })
+      )
+
+      const persistedBatch = events.find(
+        (event) =>
+          event._tag === 'NodeBatchCommitted' &&
+          event.nodes.some((node) => node.encoded.role === 'assistant')
+      )
+      expect(persistedBatch?._tag).toBe('NodeBatchCommitted')
+      if (persistedBatch?._tag === 'NodeBatchCommitted') {
+        const assistant = persistedBatch.nodes.find(
+          (node) => node.encoded.role === 'assistant'
+        )
+        expect(assistant?.encoded.content).toBe(
+          'Hello from the scripted model.'
+        )
+        expect(assistant?.modelCall?.providerId).toBe('openai')
+        expect(assistant?.modelCall?.modelId).toBe('gpt-5.4-mini')
+        expect(persistedBatch.contentThroughEventId).toBe(1)
+      }
 
       const latest = yield* scenario.latestNodeForRun(run.runId)
       expect(latest?.encoded.role).toBe('assistant')
@@ -193,6 +221,20 @@ describe('RunScenario', () => {
         const latest = yield* scenario.latestNodeForRun(run.runId)
         expect(latest?.encoded.role).toBe('user')
         expect(latest?.encoded.content).toBe('Stop before model output')
+        const durable = events.filter(
+          (event) =>
+            event._tag === 'NodeBatchCommitted' || event._tag === 'RunEnd'
+        )
+        expect(durable.map((event) => event._tag)).toEqual([
+          'NodeBatchCommitted',
+          'RunEnd',
+        ])
+        expect(durable[0]?.sequence).toBeLessThan(
+          durable[1]?.sequence ?? Number.MAX_SAFE_INTEGER
+        )
+        expect(events.filter((event) => event._tag === 'RunEnd')).toHaveLength(
+          1
+        )
       }).pipe(Effect.scoped)
   )
 
@@ -216,7 +258,7 @@ describe('RunScenario', () => {
 
         const stopFiber = yield* Effect.forkDetach(scenario.stopRun(runId))
         yield* scenario.waitForEvent(
-          (event) => event._tag === 'MessagesAppended'
+          (event) => event._tag === 'NodeBatchCommitted'
         )
         yield* scenario.checkpoints.release(
           'afterQueueShiftBeforeActiveRegister',
@@ -228,6 +270,20 @@ describe('RunScenario', () => {
         const events = yield* scenario.eventsForRun(runId)
         expect(events.map((event) => event._tag)).toContain('RunEnd')
         expect(events.map((event) => event._tag)).not.toContain('TextDelta')
+        const durable = events.filter(
+          (event) =>
+            event._tag === 'NodeBatchCommitted' || event._tag === 'RunEnd'
+        )
+        expect(durable.map((event) => event._tag)).toEqual([
+          'NodeBatchCommitted',
+          'RunEnd',
+        ])
+        expect(durable[0]?.sequence).toBeLessThan(
+          durable[1]?.sequence ?? Number.MAX_SAFE_INTEGER
+        )
+        expect(events.filter((event) => event._tag === 'RunEnd')).toHaveLength(
+          1
+        )
         const messages = yield* scenario.messagesForRun(runId)
         expect(messages.map((message) => message.encoded.role)).toEqual([
           'user',
@@ -430,6 +486,80 @@ describe('RunScenario', () => {
     }).pipe(Effect.scoped)
   )
 
+  it.effect('persists the compaction summary content watermark', () =>
+    Effect.gen(function* () {
+      const scenario = yield* makeRunScenario({
+        model: [
+          [
+            Scripted.toolCall('compact-call', 'CompactConversation', {
+              start: {
+                type: 'message',
+                role: 'user',
+                match: 'Compact this parent',
+                include: true,
+              },
+              end: {
+                type: 'message',
+                role: 'user',
+                match: 'Compact this parent',
+                include: true,
+              },
+            }),
+            Scripted.finish('tool-calls'),
+          ],
+          [Scripted.text('durable summary', 'summary'), Scripted.finish()],
+          [Scripted.text('parent complete', 'final'), Scripted.finish()],
+        ],
+      })
+      const run = yield* scenario.startRun({ input: 'Compact this parent' })
+      if (run.fiber) yield* Fiber.join(run.fiber)
+
+      const events = yield* scenario.events
+      const parentUpserts = events.flatMap((event) =>
+        event._tag === 'ActiveRunUpserted' && event.runId === run.runId
+          ? [event]
+          : []
+      )
+      expect(parentUpserts).toHaveLength(2)
+      expect(parentUpserts[0]?.baseNodeId).toBeNull()
+      expect(parentUpserts[1]?.baseNodeId).not.toBeNull()
+      const summaryStart = events.find(
+        (event) =>
+          event._tag === 'RunStart' &&
+          event.parentRunId === run.runId &&
+          event.visibility === 'background'
+      )
+      expect(summaryStart?._tag).toBe('RunStart')
+      if (summaryStart?._tag !== 'RunStart') return
+
+      const summaryEvents = yield* scenario.eventsForRun(summaryStart.runId)
+      expect(summaryEvents).toContainEqual(
+        expect.objectContaining({
+          _tag: 'ActiveRunUpserted',
+          sessionId: run.sessionId,
+          runId: summaryStart.runId,
+          baseNodeId: expect.any(String),
+          kind: 'summary',
+          visibility: 'background',
+          title: 'Generating summary',
+          parentRunId: run.runId,
+          toolCallId: 'compact-call',
+        })
+      )
+      const contentEventIds = summaryEvents.flatMap((event) =>
+        event._tag === 'TextDelta' ? [event.eventId] : []
+      )
+      const batch = summaryEvents.find(
+        (event) => event._tag === 'NodeBatchCommitted'
+      )
+
+      expect(batch?._tag).toBe('NodeBatchCommitted')
+      if (batch?._tag === 'NodeBatchCommitted') {
+        expect(batch.contentThroughEventId).toBe(Math.max(...contentEventIds))
+      }
+    }).pipe(Effect.scoped)
+  )
+
   it.effect(
     'can pause the production worker after queue shift before active registration',
     () =>
@@ -454,6 +584,15 @@ describe('RunScenario', () => {
         )
         yield* scenario.waitForRunEnd(runId)
 
+        const events = yield* scenario.eventsForRun(runId)
+        expect(events).toContainEqual(
+          expect.objectContaining({
+            _tag: 'ActiveRunUpserted',
+            runId,
+            kind: 'agent',
+            visibility: 'primary',
+          })
+        )
         const latest = yield* scenario.latestNodeForRun(runId)
         expect(latest?.encoded.role).toBe('assistant')
         expect(latest?.encoded.content).toBe('worker started')

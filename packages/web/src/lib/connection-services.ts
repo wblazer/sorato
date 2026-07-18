@@ -3,6 +3,7 @@ import type {
   AuthSetResponse,
   AuthStatusResponse,
   CompactRunResponse,
+  ConversationSnapshot,
   DirectoryListResponse,
   HandshakeResponse,
   ModelsResponse,
@@ -79,7 +80,7 @@ export class SessionsApi extends Context.Service<
 export interface MessagesApiShape {
   readonly list: (
     sessionId: string
-  ) => Effect.Effect<ReadonlyArray<MessageNode>, UiApiError>
+  ) => Effect.Effect<ConversationSnapshot, UiApiError>
 }
 
 export class MessagesApi extends Context.Service<

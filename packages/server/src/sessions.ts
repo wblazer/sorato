@@ -17,9 +17,7 @@ import {
 import {
   Api,
   CompactRunResponse,
-  MessageNodeResponse,
-  RunSummaryResponse,
-  RunUsageResponse,
+  ConversationSnapshot,
   ProjectOperationFailed,
   RunResponse,
   SessionResponse,
@@ -58,6 +56,10 @@ import {
 import { EventBus } from './event-bus.ts'
 import { getActiveBackgroundReplayRuns } from './event-replay.ts'
 import { runLifecycleCheckpoint } from './run-lifecycle-checkpoints.ts'
+import {
+  toMessageNodeResponse,
+  toNodeBatchCommitted,
+} from './message-node-response.ts'
 
 const toSessionResponse = (s: {
   readonly id: string
@@ -91,44 +93,6 @@ const toSessionResponse = (s: {
     activeRuns,
   })
 }
-
-const toMessageNodeResponse = (m: MessageNode) =>
-  MessageNodeResponse.make({
-    id: m.id,
-    sessionId: m.sessionId,
-    parentId: m.parentId,
-    kind: m.kind,
-    messageId: m.messageId,
-    summaryId: m.summaryId,
-    sourceNodeId: m.sourceNodeId,
-    runId: m.runId,
-    run:
-      m.run === null
-        ? null
-        : RunSummaryResponse.make({
-            id: m.run.id,
-            status: m.run.status,
-            providerId: m.run.providerId,
-            modelId: m.run.modelId,
-            billingMode: m.run.billingMode,
-            usage: RunUsageResponse.make({
-              inputTokens: m.run.inputTokens,
-              outputTokens: m.run.outputTokens,
-              reasoningTokens: m.run.reasoningTokens,
-              cacheReadTokens: m.run.cacheReadTokens,
-              cacheWriteTokens: m.run.cacheWriteTokens,
-              totalTokens: m.run.totalTokens,
-              contextWindowTokens: m.run.contextWindowTokens,
-              actualCostMicrosUsd: m.run.actualCostMicrosUsd,
-              listPriceMicrosUsd: m.run.listPriceMicrosUsd,
-            }),
-            createdAt: m.run.createdAt,
-            completedAt: m.run.completedAt,
-          }),
-    modelCall: m.modelCall,
-    encoded: m.encoded,
-    createdAt: m.createdAt,
-  })
 
 const modelOptions = (options?: {
   readonly thinkingLevel?: ThinkingLevel | undefined
@@ -195,16 +159,6 @@ const drainQueuedInputsNow = Effect.fn('Sessions.drainQueuedInputs')(
     Effect.suspend(() => Effect.succeed(drainQueuedInputs(sessionId)))
 )
 
-const publishMessagesAppended = Effect.fn('Sessions.publishMessagesAppended')(
-  (sessionId: string) =>
-    Effect.suspend(() => doPublishMessagesAppended(sessionId))
-)
-
-const publishRunEnd = Effect.fn('Sessions.publishRunEnd')(
-  (sessionId: string, runId: string) =>
-    Effect.suspend(() => doPublishRunEnd(sessionId, runId))
-)
-
 const doRegisterActiveRun = (
   queueId: string,
   runId: string,
@@ -259,28 +213,24 @@ const completeRun = Effect.fn('Sessions.completeRun')(function* (
   runId: string,
   status: 'completed' | 'interrupted' | 'failed'
 ) {
-  yield* storage.completeRun({ id: runId, status }).pipe(
-    Effect.catch((error) =>
-      Effect.logWarning('Failed to mark run terminal', {
-        runId,
-        status,
-        error: error.message,
-      })
-    )
+  yield* Effect.uninterruptible(
+    Effect.gen(function* () {
+      const runEnd = yield* storage.completeRun({ id: runId, status }).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning('Failed to mark run terminal', {
+            runId,
+            status,
+            error: error.message,
+          }).pipe(Effect.as(null))
+        )
+      )
+      if (runEnd !== null) {
+        const bus = yield* EventBus
+        yield* bus.publish(runEnd)
+      }
+    })
   )
 })
-
-const doPublishMessagesAppended = (sessionId: string) => {
-  return Effect.flatMap(EventBus, (bus) =>
-    bus.publish({ _tag: 'MessagesAppended', sessionId })
-  )
-}
-
-const doPublishRunEnd = (sessionId: string, runId: string) => {
-  return Effect.flatMap(EventBus, (bus) =>
-    bus.publish({ _tag: 'RunEnd', sessionId, runId })
-  )
-}
 
 function isDescendantOrSame(
   messages: ReadonlyArray<MessageNode>,
@@ -442,8 +392,6 @@ function createRunWorker(sessionId: string, queueId: string) {
         )
         if (stoppedInput !== undefined) {
           yield* appendStoppedQueuedInputs(storage, sessionId, [stoppedInput])
-          yield* publishMessagesAppended(sessionId)
-          yield* publishRunEnd(sessionId, input.runId)
         }
         break
       }
@@ -559,62 +507,51 @@ const appendStoppedQueuedInputs = (
       const request = yield* resolveRunBase(storage, sessionId, queuedRequest)
       const runId = request.runId
       const [providerId = 'unknown', ...rest] = request.model.split('/')
-      yield* storage.createRun({
-        id: runId,
-        sessionId,
-        providerId,
-        modelId: rest.join('/') || request.model,
-        billingMode: 'api-key',
-        baseNodeId: request.baseNodeId,
-      })
-      const nodeIds = yield* storage.append(
-        sessionId,
-        runId,
-        request.inputs.map((input) => ({
-          role: 'user' as const,
-          content:
-            input.attachments.length === 0
-              ? input.text
-              : [
-                  ...(input.text.trim().length > 0
-                    ? [Prompt.makePart('text', { text: input.text })]
-                    : []),
-                  ...input.attachments.map((attachment) =>
-                    Prompt.makePart('file', {
-                      mediaType: attachment.mediaType,
-                      fileName: attachment.fileName,
-                      data: attachment.data,
-                    })
-                  ),
-                ],
-        })),
-        request.baseNodeId
+      const headNodeId = yield* Effect.uninterruptible(
+        Effect.gen(function* () {
+          yield* storage.createRun({
+            id: runId,
+            sessionId,
+            providerId,
+            modelId: rest.join('/') || request.model,
+            billingMode: 'api-key',
+            baseNodeId: request.baseNodeId,
+          })
+          const batch = yield* storage.commitNodeBatch({
+            sessionId,
+            runId,
+            messages: request.inputs.map((input) => ({
+              role: 'user' as const,
+              content:
+                input.attachments.length === 0
+                  ? input.text
+                  : [
+                      ...(input.text.trim().length > 0
+                        ? [Prompt.makePart('text', { text: input.text })]
+                        : []),
+                      ...input.attachments.map((attachment) =>
+                        Prompt.makePart('file', {
+                          mediaType: attachment.mediaType,
+                          fileName: attachment.fileName,
+                          data: attachment.data,
+                        })
+                      ),
+                    ],
+            })),
+            baseNodeId: request.baseNodeId,
+          })
+          if (batch !== null) {
+            const bus = yield* EventBus
+            yield* bus.publish(toNodeBatchCommitted(batch))
+          }
+          yield* completeRun(storage, runId, 'interrupted')
+          return batch?.headNodeId
+        })
       )
-      lastNodeId = nodeIds.at(-1) ?? lastNodeId
-      yield* completeRun(storage, runId, 'interrupted')
+      lastNodeId = headNodeId ?? lastNodeId
     }
 
     return lastNodeId
-  })
-
-const appendActiveRunInputsIfMissing = (
-  storage: SessionStorageApi,
-  sessionId: string,
-  request: RunRequest
-) =>
-  Effect.gen(function* () {
-    if (request.inputs.length === 0) return false
-
-    const runAlreadyHasNodes = yield* storage.messages(sessionId).pipe(
-      Effect.map((messages) =>
-        messages.some((message) => message.runId === request.runId)
-      ),
-      Effect.catchTag('StorageError', () => Effect.succeed(false))
-    )
-    if (runAlreadyHasNodes) return false
-
-    yield* appendStoppedQueuedInputs(storage, sessionId, [request])
-    return true
   })
 
 const appendStoppedRunRequests = Effect.fn('Sessions.appendStoppedRunRequests')(
@@ -628,7 +565,6 @@ const appendStoppedRunRequests = Effect.fn('Sessions.appendStoppedRunRequests')(
       sessionId,
       requests
     )
-    if (requests.length > 0) yield* publishMessagesAppended(sessionId)
     return lastNodeId
   }
 )
@@ -677,7 +613,6 @@ const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
           stoppedRequests
         )) ?? focusNodeId
       if (startingRequest !== undefined) yield* awaitWorkerStop(snapshot)
-      yield* publishRunEnd(snapshot.sessionId, runId)
       stopped = true
       handled = true
     }
@@ -685,16 +620,15 @@ const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
     if (snapshot.activeFiber !== null) {
       const queuedFollowers = drainQueuedRunsAfterRun(runId)
       yield* Fiber.interrupt(snapshot.activeFiber).pipe(Effect.exit)
-      const appendedInputs =
-        snapshot.activeRunRequest === null
-          ? false
-          : yield* appendActiveRunInputsIfMissing(
-              storage,
-              snapshot.sessionId,
-              snapshot.activeRunRequest
-            )
-      if (appendedInputs) yield* publishMessagesAppended(snapshot.sessionId)
       yield* awaitWorkerStop(snapshot)
+      if (
+        snapshot.activeRunRequest !== null &&
+        (yield* storage.findRun(runId)) === null
+      ) {
+        yield* appendStoppedQueuedInputs(storage, snapshot.sessionId, [
+          snapshot.activeRunRequest,
+        ])
+      }
       if (queuedFollowers.length > 0) {
         focusNodeId =
           (yield* appendStoppedRunRequests(
@@ -702,11 +636,6 @@ const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
             snapshot.sessionId,
             queuedFollowers
           )) ?? focusNodeId
-        yield* Effect.forEach(
-          queuedFollowers,
-          (request) => publishRunEnd(snapshot.sessionId, request.runId),
-          { discard: true }
-        )
       }
       stopped = true
       handled = true
@@ -729,7 +658,7 @@ function stopWithoutActiveFiber(storage: SessionStorageApi, sessionId: string) {
       storage,
       sessionId,
       queuedInputs
-    ).pipe(Effect.tap(() => publishMessagesAppended(sessionId)))
+    )
     const appendQueuedInputs =
       [Effect.void, appendedQueuedInputs][Number(queuedInputs.length > 0)] ??
       Effect.void
@@ -748,8 +677,7 @@ const stopWithActiveFibers = Effect.fn('Sessions.stopWithActiveFibers')(
   function* (
     storage: SessionStorageApi,
     sessionId: string,
-    fibers: ReadonlyArray<Fiber.Fiber<void, never>>,
-    runIds: ReadonlyArray<string>
+    fibers: ReadonlyArray<Fiber.Fiber<void, never>>
   ) {
     const queuedInputs = yield* drainQueuedInputsNow(sessionId)
 
@@ -766,10 +694,6 @@ const stopWithActiveFibers = Effect.fn('Sessions.stopWithActiveFibers')(
     )
 
     yield* appendStoppedQueuedInputs(storage, sessionId, queuedInputs)
-    if (queuedInputs.length > 0) yield* publishMessagesAppended(sessionId)
-    yield* Effect.forEach(runIds, (runId) => publishRunEnd(sessionId, runId), {
-      discard: true,
-    })
 
     return StopResponse.make({ status: 'stopped', focusNodeId: undefined })
   }
@@ -782,12 +706,9 @@ export const stopSession = Effect.fn('Sessions.stopSession')(function* (
   yield* Effect.logInfo('Session stop request received', { sessionId })
   yield* requestSessionStop(sessionId)
   const fibers = getFibers(sessionId)
-  const activeRunIds = getActiveRuns(sessionId).map((run) => run.runId)
   const stopEffect = Match.value(fibers.length).pipe(
     Match.when(0, () => stopWithoutActiveFiber(storage, sessionId)),
-    Match.orElse(() =>
-      stopWithActiveFibers(storage, sessionId, fibers, activeRunIds)
-    )
+    Match.orElse(() => stopWithActiveFibers(storage, sessionId, fibers))
   )
 
   return yield* stopEffect
@@ -904,8 +825,13 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
         )
       )
       .handle('messages', ({ params }) =>
-        storage.messages(params.id).pipe(
-          Effect.map((nodes) => nodes.map(toMessageNodeResponse)),
+        storage.conversationSnapshot(params.id).pipe(
+          Effect.map((snapshot) =>
+            ConversationSnapshot.make({
+              sequence: snapshot.sequence,
+              nodes: snapshot.nodes.map(toMessageNodeResponse),
+            })
+          ),
           Effect.mapError(mapStorageError)
         )
       )

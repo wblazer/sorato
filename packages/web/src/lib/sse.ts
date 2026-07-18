@@ -13,8 +13,9 @@ const decodeServerEvent = Schema.decodeUnknownOption(ServerEventJson)
 
 /** Known event tags that the server emits. */
 const EVENT_TAGS = [
-  'SessionUpdated',
-  'MessagesAppended',
+  'ActiveRunUpserted',
+  'SessionTitleUpdated',
+  'NodeBatchCommitted',
   'TextDelta',
   'ReasoningDelta',
   'ToolCall',
@@ -55,6 +56,8 @@ export interface ServerEventStreamOptions {
   readonly runId?: string
   /** Cursor getter used when opening/reconnecting a run stream. */
   readonly getSince?: () => StreamCursor | null
+  /** Durable cursor getter used when opening/reconnecting the global stream. */
+  readonly getSinceSequence?: () => number
 }
 
 function formatCursor(cursor: StreamCursor): string {
@@ -67,6 +70,9 @@ function buildUrl(apiBase: string, options: ServerEventStreamOptions) {
     url.searchParams.set('runId', options.runId)
     const cursor = options.getSince?.()
     if (cursor) url.searchParams.set('since', formatCursor(cursor))
+  } else {
+    const sequence = options.getSinceSequence?.() ?? 0
+    if (sequence > 0) url.searchParams.set('sinceSequence', String(sequence))
   }
   return url
 }

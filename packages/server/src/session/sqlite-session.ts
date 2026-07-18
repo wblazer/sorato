@@ -4,6 +4,7 @@ import { Prompt } from 'effect/unstable/ai'
 import { SqlClient } from 'effect/unstable/sql/SqlClient'
 import * as SqlSchema from 'effect/unstable/sql/SqlSchema'
 import {
+  DurableSyncEventTableRow,
   MessageNodeRow,
   RunTableRow,
   SessionWithLastUserMessageRow,
@@ -22,6 +23,12 @@ import {
   type SessionStorageApi,
   type StoredMessageEncoded,
 } from './session.ts'
+import {
+  ActiveRunSummary,
+  MessageNodeResponse,
+  type DurableServerEvent,
+} from '@sorato/api'
+import { toMessageNodeResponse } from '../message-node-response.ts'
 
 const SessionIdInput = Schema.Struct({ id: Schema.String })
 const RunIdInput = Schema.Struct({ id: Schema.String })
@@ -79,6 +86,44 @@ const CreateModelCallRowInput = Schema.Struct({
 })
 
 const NodeIdentityRow = Schema.Struct({ id: Schema.String })
+const CompletedRunRow = Schema.Struct({ session_id: Schema.String })
+const SequenceRow = Schema.Struct({ sequence: Schema.Number })
+const NodeIdsInput = Schema.Struct({ node_ids: Schema.Array(Schema.String) })
+const SequenceInput = Schema.Struct({ sequence: Schema.Number })
+const InsertDurableSyncEventInput = Schema.Struct({
+  event_type: Schema.Literals([
+    'node_batch_committed',
+    'active_run_upserted',
+    'run_end',
+    'session_title_updated',
+  ]),
+  session_id: Schema.String,
+  run_id: Schema.NullOr(Schema.String),
+  payload: Schema.String,
+  created_at: Schema.Number,
+})
+const DurableSyncPayload = Schema.Union([
+  Schema.TaggedStruct('NodeBatchCommitted', {
+    sessionId: Schema.String,
+    runId: Schema.String,
+    nodes: Schema.Array(MessageNodeResponse),
+    headNodeId: Schema.String,
+    sessionUpdatedAt: Schema.Number,
+    contentThroughEventId: Schema.optional(Schema.Number),
+  }),
+  Schema.TaggedStruct('ActiveRunUpserted', {
+    ...ActiveRunSummary.fields,
+  }),
+  Schema.TaggedStruct('RunEnd', {
+    sessionId: Schema.String,
+    runId: Schema.String,
+  }),
+  Schema.TaggedStruct('SessionTitleUpdated', {
+    sessionId: Schema.String,
+    title: Schema.String,
+    updatedAt: Schema.Number,
+  }),
+])
 
 type SessionRow = SessionWithLastUserMessageRow
 type NodeRow = MessageNodeRow
@@ -472,7 +517,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
           sql`SELECT id, session_id, base_node_id, status, completed_at, created_at FROM runs WHERE id = ${id}`,
       })
 
-      const completeRunRow = SqlSchema.void({
+      const completeRunRow = SqlSchema.findOneOption({
         Request: Schema.Struct({
           id: RunIdInput.fields.id,
           status: Schema.Literals(['completed', 'interrupted', 'failed']),
@@ -482,7 +527,9 @@ export const SqliteSession = (options: { readonly path: string }) =>
           UPDATE runs
           SET status = ${row.status}, completed_at = ${row.completed_at}
           WHERE id = ${row.id} AND status = 'running'
+          RETURNING session_id
         `,
+        Result: CompletedRunRow,
       })
 
       const insertModelCallRow = SqlSchema.void({
@@ -530,6 +577,27 @@ export const SqliteSession = (options: { readonly path: string }) =>
         `,
       })
 
+      const insertDurableSyncEventRow = SqlSchema.findOne({
+        Request: InsertDurableSyncEventInput,
+        Result: SequenceRow,
+        execute: (row) => sql`
+          INSERT INTO durable_sync_events (
+            event_type,
+            session_id,
+            run_id,
+            payload,
+            created_at
+          ) VALUES (
+            ${row.event_type},
+            ${row.session_id},
+            ${row.run_id},
+            ${row.payload},
+            ${row.created_at}
+          )
+          RETURNING sequence
+        `,
+      })
+
       const updateSessionTitleRow = SqlSchema.void({
         Request: SetSessionTitleInput,
         execute: (row) =>
@@ -562,7 +630,40 @@ export const SqliteSession = (options: { readonly path: string }) =>
         Request: SessionIdInput,
         Result: MessageNodeRow,
         execute: ({ id }) =>
-          sql`${nodeSelection(sql)} WHERE n.session_id = ${id} ORDER BY n.created_at ASC`,
+          sql`${nodeSelection(sql)} WHERE n.session_id = ${id} ORDER BY n.created_at ASC, n.rowid ASC`,
+      })
+
+      const listNodeRowsByIds = SqlSchema.findAll({
+        Request: NodeIdsInput,
+        Result: MessageNodeRow,
+        execute: ({ node_ids }) =>
+          sql`${nodeSelection(sql)} WHERE ${sql.in('n.id', node_ids)}`,
+      })
+
+      const getMaxMutationSequence = SqlSchema.findOne({
+        Request: Schema.Void,
+        Result: SequenceRow,
+        execute: () => sql`
+          SELECT COALESCE(MAX(sequence), 0) AS sequence
+          FROM durable_sync_events
+        `,
+      })
+
+      const listDurableSyncEventRows = SqlSchema.findAll({
+        Request: SequenceInput,
+        Result: DurableSyncEventTableRow,
+        execute: ({ sequence }) => sql`
+          SELECT
+            sequence,
+            event_type,
+            session_id,
+            run_id,
+            payload,
+            created_at
+          FROM durable_sync_events
+          WHERE sequence > ${sequence}
+          ORDER BY sequence ASC
+        `,
       })
 
       const findNodeInSessionRow = SqlSchema.findOneOption({
@@ -655,66 +756,139 @@ export const SqliteSession = (options: { readonly path: string }) =>
         })
       })
 
+      const findRun: SessionStorageApi['findRun'] = Effect.fn(
+        'SessionStorage.findRun'
+      )(function* (id) {
+        const row = yield* getRunRow({ id }).pipe(
+          Effect.mapError(sqlFailure('findRun', `Failed to find run: ${id}`))
+        )
+        return Option.match(row, {
+          onNone: () => null,
+          onSome: toRun,
+        })
+      })
+
       const completeRun: SessionStorageApi['completeRun'] = Effect.fn(
         'SessionStorage.completeRun'
       )(function* (input) {
-        yield* getRun(input.id)
-        yield* completeRunRow({
-          id: input.id,
-          status: input.status,
-          completed_at: new Date(input.completedAt ?? Date.now()).toISOString(),
-        }).pipe(
-          Effect.mapError(
-            sqlFailure('completeRun', `Failed to complete run: ${input.id}`)
+        return yield* sql
+          .withTransaction(
+            Effect.gen(function* () {
+              const completedAt = input.completedAt ?? Date.now()
+              const completed = yield* completeRunRow({
+                id: input.id,
+                status: input.status,
+                completed_at: new Date(completedAt).toISOString(),
+              })
+              if (Option.isNone(completed)) {
+                yield* getRun(input.id)
+                return null
+              }
+              const payload = {
+                _tag: 'RunEnd' as const,
+                sessionId: completed.value.session_id,
+                runId: input.id,
+              }
+              const { sequence } = yield* insertDurableSyncEventRow({
+                event_type: 'run_end',
+                session_id: completed.value.session_id,
+                run_id: input.id,
+                payload: JSON.stringify(payload),
+                created_at: completedAt,
+              })
+              return { ...payload, sequence }
+            })
           )
-        )
-      })
-
-      const createModelCall: SessionStorageApi['createModelCall'] = Effect.fn(
-        'SessionStorage.createModelCall'
-      )(function* (input) {
-        yield* insertModelCallRow({
-          id: input.id ?? crypto.randomUUID(),
-          session_id: input.sessionId,
-          run_id: input.runId,
-          assistant_node_id: input.assistantNodeId,
-          provider_id: input.providerId,
-          model_id: input.modelId,
-          billing_mode: input.billingMode,
-          input_tokens: input.inputTokens,
-          output_tokens: input.outputTokens,
-          reasoning_tokens: input.reasoningTokens,
-          cache_read_tokens: input.cacheReadTokens,
-          cache_write_tokens: input.cacheWriteTokens,
-          total_tokens: input.totalTokens,
-          context_window_tokens: input.contextWindowTokens,
-          actual_cost_micros_usd: input.actualCostMicrosUsd,
-          list_price_micros_usd: input.listPriceMicrosUsd,
-          started_at:
-            input.startedAt === undefined || input.startedAt === null
-              ? null
-              : new Date(input.startedAt).toISOString(),
-          finished_at: new Date(input.finishedAt ?? Date.now()).toISOString(),
-        }).pipe(
-          Effect.mapError(
-            sqlFailure(
-              'createModelCall',
-              `Failed to create model call for node: ${input.assistantNodeId}`
+          .pipe(
+            Effect.mapError(
+              sqlFailure('completeRun', `Failed to complete run: ${input.id}`)
             )
           )
-        )
       })
 
       const setTitle: SessionStorageApi['setTitle'] = Effect.fn(
         'SessionStorage.setTitle'
       )(function* (id, title) {
-        yield* get(id)
-        yield* updateSessionTitleRow({ id, title, updated_at: nowIso() }).pipe(
-          Effect.mapError(
-            sqlFailure('setTitle', `Failed to set session title: ${id}`)
+        const updatedAt = nowIso()
+        return yield* sql
+          .withTransaction(
+            Effect.gen(function* () {
+              yield* get(id)
+              yield* updateSessionTitleRow({
+                id,
+                title,
+                updated_at: updatedAt,
+              })
+              const payload = {
+                _tag: 'SessionTitleUpdated' as const,
+                sessionId: id,
+                title,
+                updatedAt: Date.parse(updatedAt),
+              }
+              const { sequence } = yield* insertDurableSyncEventRow({
+                event_type: 'session_title_updated',
+                session_id: id,
+                run_id: null,
+                payload: JSON.stringify(payload),
+                created_at: payload.updatedAt,
+              })
+              return { ...payload, sequence }
+            })
           )
-        )
+          .pipe(
+            Effect.mapError(
+              sqlFailure('setTitle', `Failed to set session title: ${id}`)
+            )
+          )
       })
+
+      const appendActiveRunUpsert: SessionStorageApi['appendActiveRunUpsert'] =
+        Effect.fn('SessionStorage.appendActiveRunUpsert')(function* (input) {
+          const activeRun = yield* Schema.decodeUnknownEffect(ActiveRunSummary)(
+            input
+          ).pipe(
+            Effect.mapError(
+              sqlFailure('appendActiveRunUpsert', 'Invalid active run summary')
+            )
+          )
+          const run = yield* getRun(activeRun.runId)
+          if (run.sessionId !== activeRun.sessionId) {
+            return yield* Effect.fail(
+              new StorageError({
+                operation: 'appendActiveRunUpsert',
+                message: `Run ${activeRun.runId} does not belong to session ${activeRun.sessionId}`,
+              })
+            )
+          }
+          if (run.status !== 'running') {
+            return yield* Effect.fail(
+              new StorageError({
+                operation: 'appendActiveRunUpsert',
+                message: `Run ${activeRun.runId} is not active`,
+              })
+            )
+          }
+          const createdAt = Date.now()
+          const payload = {
+            _tag: 'ActiveRunUpserted' as const,
+            ...activeRun,
+          }
+          const { sequence } = yield* insertDurableSyncEventRow({
+            event_type: 'active_run_upserted',
+            session_id: activeRun.sessionId,
+            run_id: activeRun.runId,
+            payload: JSON.stringify(payload),
+            created_at: createdAt,
+          }).pipe(
+            Effect.mapError(
+              sqlFailure(
+                'appendActiveRunUpsert',
+                `Failed to persist active run: ${activeRun.runId}`
+              )
+            )
+          )
+          return { ...payload, sequence }
+        })
 
       const del = Effect.fn('SessionStorage.delete')(function* (id: SessionId) {
         yield* sql`DELETE FROM sessions WHERE id = ${id}`.pipe(
@@ -800,12 +974,100 @@ export const SqliteSession = (options: { readonly path: string }) =>
         return [...rows].reverse().map(toMessageNode)
       })
 
-      const append: SessionStorageApi['append'] = Effect.fn(
-        'SessionStorage.append'
-      )(function* (sessionId, runId, messagesToAppend, baseNodeId) {
-        if (messagesToAppend.length === 0) return []
+      const loadNodesByIds = Effect.fn('SessionStorage.loadNodesByIds')(
+        function* (nodeIds: ReadonlyArray<string>, operation: string) {
+          if (nodeIds.length === 0) return []
+          const rows = yield* listNodeRowsByIds({ node_ids: nodeIds }).pipe(
+            Effect.mapError(
+              sqlFailure(operation, 'Failed to load committed message nodes')
+            )
+          )
+          const rowsById = new Map<string, NodeRow>(
+            rows.map((row) => [row.id, row])
+          )
+          return yield* Effect.forEach(nodeIds, (nodeId) => {
+            const row = rowsById.get(nodeId)
+            return row === undefined
+              ? Effect.fail(
+                  notFound(operation, `Committed node not found: ${nodeId}`)
+                )
+              : Effect.succeed(toMessageNode(row))
+          })
+        }
+      )
+
+      const conversationSnapshot: SessionStorageApi['conversationSnapshot'] =
+        Effect.fn('SessionStorage.conversationSnapshot')(function* (sessionId) {
+          return yield* sql
+            .withTransaction(
+              Effect.gen(function* () {
+                yield* get(sessionId)
+                const rows = yield* listAllNodeRows({ id: sessionId })
+                const { sequence } = yield* getMaxMutationSequence()
+                return { sequence, nodes: rows.map(toMessageNode) }
+              })
+            )
+            .pipe(
+              Effect.mapError(
+                sqlFailure(
+                  'conversationSnapshot',
+                  `Failed to load conversation snapshot: ${sessionId}`
+                )
+              )
+            )
+        })
+
+      const durableEventsAfter: SessionStorageApi['durableEventsAfter'] =
+        Effect.fn('SessionStorage.durableEventsAfter')(function* (sequence) {
+          return yield* sql
+            .withTransaction(
+              Effect.gen(function* () {
+                const events = yield* listDurableSyncEventRows({
+                  sequence,
+                })
+                return yield* Effect.forEach(events, (event) =>
+                  Effect.try({
+                    try: (): DurableServerEvent => {
+                      const payload = Schema.decodeUnknownSync(
+                        DurableSyncPayload
+                      )(JSON.parse(event.payload))
+                      return { ...payload, sequence: event.sequence }
+                    },
+                    catch: (error) =>
+                      new StorageError({
+                        operation: 'durableEventsAfter',
+                        message: `Failed to decode durable event ${event.sequence}`,
+                        error,
+                      }),
+                  })
+                )
+              })
+            )
+            .pipe(
+              Effect.mapError(
+                sqlFailure(
+                  'durableEventsAfter',
+                  `Failed to replay durable events after ${sequence}`
+                )
+              )
+            )
+        })
+
+      const commitNodeBatch: SessionStorageApi['commitNodeBatch'] = Effect.fn(
+        'SessionStorage.commitNodeBatch'
+      )(function* (input) {
+        if (input.messages.length === 0) return null
+        const { sessionId, runId, baseNodeId } = input
         yield* get(sessionId)
-        yield* getRun(runId)
+        const run = yield* getRun(runId)
+        if (run.sessionId !== sessionId) {
+          return yield* Effect.fail(
+            new StorageError({
+              operation: 'commitNodeBatch',
+              message: `Run ${runId} does not belong to session ${sessionId}`,
+            })
+          )
+        }
         const parentNodeId = baseNodeId
         if (parentNodeId !== null) {
           const found = yield* findNodeInSessionRow({
@@ -814,7 +1076,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
           }).pipe(
             Effect.mapError(
               sqlFailure(
-                'append',
+                'commitNodeBatch',
                 `Failed to verify base node: ${parentNodeId}`
               )
             )
@@ -822,7 +1084,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
           if (Option.isNone(found))
             return yield* Effect.fail(
               notFound(
-                'append',
+                'commitNodeBatch',
                 `Base node ${parentNodeId} not found in session ${sessionId}`
               )
             )
@@ -832,33 +1094,120 @@ export const SqliteSession = (options: { readonly path: string }) =>
           sessionId,
           runId,
           parentNodeId,
-          messagesToAppend,
+          input.messages,
           now
         )
-        yield* sql
-          .withTransaction(
-            sql`INSERT INTO messages ${sql.insert(rows.messages)}`.pipe(
-              Effect.andThen(sql`INSERT INTO nodes ${sql.insert(rows.nodes)}`),
-              Effect.andThen(
-                sql`UPDATE sessions SET updated_at = ${now} WHERE id = ${sessionId}`
+        const modelCallRows = yield* Effect.forEach(
+          input.modelCalls ?? [],
+          (modelCall) => {
+            const node = rows.nodes[modelCall.messageIndex]
+            const message = input.messages[modelCall.messageIndex]
+            if (node === undefined || message?.role !== 'assistant') {
+              return Effect.fail(
+                new StorageError({
+                  operation: 'commitNodeBatch',
+                  message: `Model call index ${modelCall.messageIndex} does not identify an assistant message`,
+                })
               )
-            )
+            }
+            return Effect.succeed({
+              id: modelCall.id ?? crypto.randomUUID(),
+              session_id: sessionId,
+              run_id: runId,
+              assistant_node_id: node.id,
+              provider_id: modelCall.providerId,
+              model_id: modelCall.modelId,
+              billing_mode: modelCall.billingMode,
+              input_tokens: modelCall.inputTokens,
+              output_tokens: modelCall.outputTokens,
+              reasoning_tokens: modelCall.reasoningTokens,
+              cache_read_tokens: modelCall.cacheReadTokens,
+              cache_write_tokens: modelCall.cacheWriteTokens,
+              total_tokens: modelCall.totalTokens,
+              context_window_tokens: modelCall.contextWindowTokens,
+              actual_cost_micros_usd: modelCall.actualCostMicrosUsd,
+              list_price_micros_usd: modelCall.listPriceMicrosUsd,
+              started_at:
+                modelCall.startedAt === undefined ||
+                modelCall.startedAt === null
+                  ? null
+                  : new Date(modelCall.startedAt).toISOString(),
+              finished_at: new Date(
+                modelCall.finishedAt ?? Date.now()
+              ).toISOString(),
+            })
+          }
+        )
+        const headNodeId = rows.nodes.at(-1)?.id
+        if (headNodeId === undefined) return null
+        const committed = yield* sql
+          .withTransaction(
+            Effect.gen(function* () {
+              yield* sql`INSERT INTO messages ${sql.insert(rows.messages)}`
+              yield* sql`INSERT INTO nodes ${sql.insert(rows.nodes)}`
+              yield* Effect.forEach(modelCallRows, insertModelCallRow, {
+                discard: true,
+              })
+              yield* sql`UPDATE sessions SET updated_at = ${now} WHERE id = ${sessionId}`
+              const nodes = yield* loadNodesByIds(
+                rows.nodes.map((row) => row.id),
+                'commitNodeBatch'
+              )
+              const payload = {
+                _tag: 'NodeBatchCommitted' as const,
+                sessionId,
+                runId,
+                nodes: nodes.map(toMessageNodeResponse),
+                headNodeId,
+                sessionUpdatedAt: Date.parse(now),
+                ...(input.contentThroughEventId === undefined
+                  ? {}
+                  : { contentThroughEventId: input.contentThroughEventId }),
+              }
+              const { sequence } = yield* insertDurableSyncEventRow({
+                event_type: 'node_batch_committed',
+                session_id: sessionId,
+                run_id: runId,
+                payload: JSON.stringify(payload),
+                created_at: Date.parse(now),
+              })
+              return { sequence, nodes }
+            })
           )
           .pipe(
             Effect.mapError(
               sqlFailure(
-                'append',
+                'commitNodeBatch',
                 `Failed to append messages to session: ${sessionId}`
               )
             )
           )
-        return rows.nodes.map((row) => row.id)
+        return {
+          sequence: committed.sequence,
+          sessionId,
+          runId,
+          nodes: committed.nodes,
+          headNodeId,
+          sessionUpdatedAt: Date.parse(now),
+          ...(input.contentThroughEventId === undefined
+            ? {}
+            : { contentThroughEventId: input.contentThroughEventId }),
+        }
       })
 
       const compactRange: SessionStorageApi['compactRange'] = Effect.fn(
         'SessionStorage.compactRange'
       )(function* (input) {
         yield* get(input.sessionId)
+        const run = yield* getRun(input.runId)
+        if (run.sessionId !== input.sessionId) {
+          return yield* Effect.fail(
+            new StorageError({
+              operation: 'compactRange',
+              message: `Run ${input.runId} does not belong to session ${input.sessionId}`,
+            })
+          )
+        }
         const rows = yield* listNodeChainRows({
           node_id: input.baseHeadNodeId,
           session_id: input.sessionId,
@@ -929,9 +1278,11 @@ export const SqliteSession = (options: { readonly path: string }) =>
           created_at: now,
         }
 
-        yield* sql
+        const committedNodeRows = [summaryNode, ...cloneRows]
+        const committed = yield* sql
           .withTransaction(
-            sql`
+            Effect.gen(function* () {
+              yield* sql`
               INSERT INTO summaries (
                 id,
                 session_id,
@@ -949,21 +1300,36 @@ export const SqliteSession = (options: { readonly path: string }) =>
                 ${input.runId},
                 ${now}
               )
-            `.pipe(
-              Effect.andThen(
-                sql`INSERT INTO nodes ${sql.insert([summaryNode])}`
-              ),
-              Effect.andThen(
-                cloneRows.length > 0
-                  ? Effect.asVoid(
-                      sql`INSERT INTO nodes ${sql.insert(cloneRows)}`
-                    )
-                  : Effect.void
-              ),
-              Effect.andThen(
-                sql`UPDATE sessions SET updated_at = ${now} WHERE id = ${input.sessionId}`
+              `
+              yield* sql`INSERT INTO nodes ${sql.insert([summaryNode])}`
+              if (cloneRows.length > 0) {
+                yield* sql`INSERT INTO nodes ${sql.insert(cloneRows)}`
+              }
+              yield* sql`UPDATE sessions SET updated_at = ${now} WHERE id = ${input.sessionId}`
+              const nodes = yield* loadNodesByIds(
+                committedNodeRows.map((row) => row.id),
+                'compactRange'
               )
-            )
+              const payload = {
+                _tag: 'NodeBatchCommitted' as const,
+                sessionId: input.sessionId,
+                runId: input.runId,
+                nodes: nodes.map(toMessageNodeResponse),
+                headNodeId: nextParentNodeId,
+                sessionUpdatedAt: Date.parse(now),
+                ...(input.contentThroughEventId === undefined
+                  ? {}
+                  : { contentThroughEventId: input.contentThroughEventId }),
+              }
+              const { sequence } = yield* insertDurableSyncEventRow({
+                event_type: 'node_batch_committed',
+                session_id: input.sessionId,
+                run_id: input.runId,
+                payload: JSON.stringify(payload),
+                created_at: Date.parse(now),
+              })
+              return { sequence, nodes }
+            })
           )
           .pipe(
             Effect.mapError(
@@ -974,7 +1340,20 @@ export const SqliteSession = (options: { readonly path: string }) =>
             )
           )
 
-        return { summaryNodeId, headNodeId: nextParentNodeId }
+        return {
+          summaryNodeId,
+          batch: {
+            sequence: committed.sequence,
+            sessionId: input.sessionId,
+            runId: input.runId,
+            nodes: committed.nodes,
+            headNodeId: nextParentNodeId,
+            sessionUpdatedAt: Date.parse(now),
+            ...(input.contentThroughEventId === undefined
+              ? {}
+              : { contentThroughEventId: input.contentThroughEventId }),
+          },
+        }
       })
 
       const leaves: SessionStorageApi['leaves'] = Effect.fn(
@@ -995,14 +1374,17 @@ export const SqliteSession = (options: { readonly path: string }) =>
         list,
         createRun,
         getRun,
+        findRun,
         completeRun,
-        createModelCall,
         setTitle,
+        appendActiveRunUpsert,
         delete: del,
         archiveByProject,
         conversation,
         messages,
-        append,
+        conversationSnapshot,
+        durableEventsAfter,
+        commitNodeBatch,
         compactRange,
         leaves,
       } satisfies SessionStorageApi

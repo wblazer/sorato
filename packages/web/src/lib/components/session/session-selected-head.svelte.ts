@@ -4,6 +4,13 @@ import { messagesStore } from '$lib/stores/messages.svelte.js'
 import { sessionStore } from '$lib/stores/sessions.svelte.js'
 import type { MessageNode } from '$lib/types.js'
 import {
+  completedRunHead,
+  isDescendantOrSame,
+  reconcileSelectedHead,
+  renderHeadWhileNodePending,
+  shouldResolveRunHead,
+} from './selected-head-reconciliation.js'
+import {
   readSelectedHead,
   selectedHeadChangedEvent,
   selectedHeadStorageKey as makeSelectedHeadStorageKey,
@@ -15,6 +22,7 @@ import {
 export class SessionSelectedHeadController {
   selectedHead: SelectedHead = $state(null)
   private initializedSelectedHeadKey: string | null = $state(null)
+  private pendingNodeFallbackHead: SelectedHead = $state(null)
 
   get selectedHeadStorageKey() {
     return makeSelectedHeadStorageKey(
@@ -24,15 +32,21 @@ export class SessionSelectedHeadController {
     )
   }
 
-  readonly renderHead = $derived.by(() =>
-    resolveRenderHead(
-      messagesStore.messagesForTab(this.tabId()),
+  readonly renderHead = $derived.by(() => {
+    const messages = messagesStore.messagesForTab(this.tabId())
+    const ids = new Set(messages.map((message) => message.id))
+    const renderHead = renderHeadWhileNodePending(
       this.selectedHead,
-      (runId) => sessionStore.isRunActive(runId),
-      (runId) =>
-        messagesStore.finalRunRefreshCompletedForTab(this.tabId(), runId)
+      ids,
+      this.pendingNodeFallbackHead
     )
-  )
+    return resolveRenderHead(
+      messages,
+      renderHead,
+      (runId) => sessionStore.isRunActive(runId),
+      (runId) => messagesStore.durableRunFocusForTab(this.tabId(), runId)
+    )
+  })
 
   readonly selectedBaseNodeId = $derived.by(() =>
     this.renderHead?.type === 'node'
@@ -83,53 +97,63 @@ export class SessionSelectedHeadController {
 
       if (this.initializedSelectedHeadKey !== key) {
         const stored = readSelectedHead(key)
-        const next =
-          stored.exists && isStoredHeadValid(stored.value, ids)
-            ? stored.value
-            : null
+        const next = stored.exists
+          ? reconcileSelectedHead(stored.value, ids, false)
+          : null
 
         this.selectedHead = next
+        this.pendingNodeFallbackHead = null
         this.initializedSelectedHeadKey = key
         if (!stored.exists) writeSelectedHead(key, next)
         return
       }
 
+      const reconciledHead = reconcileSelectedHead(this.selectedHead, ids, true)
+      if (reconciledHead !== this.selectedHead) {
+        this.setSelectedHead(reconciledHead)
+      }
       if (
-        this.selectedHead?.type === 'node' &&
-        !ids.has(this.selectedHead.nodeId)
+        this.selectedHead?.type !== 'node' ||
+        ids.has(this.selectedHead.nodeId)
       ) {
-        this.setSelectedHead(null)
+        this.pendingNodeFallbackHead = null
       }
 
+      const selectedRun =
+        this.selectedHead?.type === 'run' ? this.selectedHead : null
+      if (selectedRun === null) return
+      const durableFocusNodeId = messagesStore.durableRunFocusForTab(
+        this.tabId(),
+        selectedRun.runId
+      )
       if (
-        this.selectedHead?.type === 'run' &&
-        !sessionStore.isRunActive(this.selectedHead.runId) &&
-        messagesStore.finalRunRefreshCompletedForTab(
-          this.tabId(),
-          this.selectedHead.runId
-        )
-      ) {
-        const finalNode = finalPersistedRunNode(
+        !shouldResolveRunHead(
           messages,
-          this.selectedHead.runId,
-          this.selectedHead.baseNodeId
+          selectedRun.runId,
+          sessionStore.isRunActive(selectedRun.runId),
+          durableFocusNodeId !== undefined
         )
-        if (finalNode) {
-          this.setSelectedHead({ type: 'node', nodeId: finalNode.id })
-        } else if (this.selectedHead.baseNodeId !== null) {
-          this.setSelectedHead({
-            type: 'node',
-            nodeId: this.selectedHead.baseNodeId,
-          })
-        } else {
-          this.setSelectedHead(null)
-        }
-      }
+      )
+        return
+
+      this.setSelectedHead(
+        completedRunHead(
+          messages,
+          selectedRun.runId,
+          selectedRun.baseNodeId,
+          durableFocusNodeId
+        )
+      )
     })
 
     $effect(() => {
       const runStart = sessionStore.latestRunStart
       if (runStart === null || runStart.sessionId !== this.sessionId()) return
+      if (
+        runStart.visibility === 'background' &&
+        runStart.parentRunId !== undefined
+      )
+        return
 
       untrack(() => {
         if (
@@ -175,22 +199,14 @@ export class SessionSelectedHeadController {
   }
 
   setSelectedHead(head: SelectedHead) {
+    const ids = new Set(
+      messagesStore.messagesForTab(this.tabId()).map((message) => message.id)
+    )
+    this.pendingNodeFallbackHead =
+      head?.type === 'node' && !ids.has(head.nodeId) ? this.renderHead : null
     this.selectedHead = head
     writeSelectedHead(this.selectedHeadStorageKey, head)
   }
-}
-
-function isStoredHeadValid(head: SelectedHead, ids: ReadonlySet<string>) {
-  return (
-    head === null ||
-    (head.type === 'node' && ids.has(head.nodeId)) ||
-    (head.type === 'run' &&
-      (head.baseNodeId === null || ids.has(head.baseNodeId)))
-  )
-}
-
-function isOptimisticNode(message: MessageNode) {
-  return message.id.startsWith('optimistic-')
 }
 
 function selectedMessagePath(
@@ -219,20 +235,27 @@ function resolveRenderHead(
   messages: ReadonlyArray<MessageNode>,
   head: SelectedHead,
   isRunActive: (runId: string) => boolean,
-  finalRunRefreshCompleted: (runId: string) => boolean
+  durableRunFocus: (runId: string) => string | null | undefined
 ): SelectedHead {
+  const durableFocusNodeId =
+    head?.type === 'run' ? durableRunFocus(head.runId) : undefined
   if (
     head?.type !== 'run' ||
-    isRunActive(head.runId) ||
-    !finalRunRefreshCompleted(head.runId)
+    !shouldResolveRunHead(
+      messages,
+      head.runId,
+      isRunActive(head.runId),
+      durableFocusNodeId !== undefined
+    )
   )
     return head
 
-  const finalNode = finalPersistedRunNode(messages, head.runId, head.baseNodeId)
-  if (finalNode) return { type: 'node', nodeId: finalNode.id }
-  return head.baseNodeId === null
-    ? null
-    : { type: 'node', nodeId: head.baseNodeId }
+  return completedRunHead(
+    messages,
+    head.runId,
+    head.baseNodeId,
+    durableFocusNodeId
+  )
 }
 
 function selectedMessages(
@@ -252,41 +275,4 @@ function selectedMessages(
   )
 
   return [...path, ...runMessages]
-}
-
-function isDescendantOrSame(
-  messages: ReadonlyArray<MessageNode>,
-  nodeId: string,
-  ancestorId: string | null
-) {
-  if (ancestorId === null) return true
-
-  const byId = new Map(messages.map((message) => [message.id, message]))
-  const seen = new Set<string>()
-  let cursor: string | null = nodeId
-
-  while (cursor !== null && !seen.has(cursor)) {
-    if (cursor === ancestorId) return true
-    seen.add(cursor)
-    cursor = byId.get(cursor)?.parentId ?? null
-  }
-
-  return false
-}
-
-function finalPersistedRunNode(
-  messages: ReadonlyArray<MessageNode>,
-  runId: string,
-  baseNodeId: string | null
-): MessageNode | null {
-  return (
-    messages
-      .toReversed()
-      .find(
-        (message) =>
-          message.runId === runId &&
-          !isOptimisticNode(message) &&
-          isDescendantOrSame(messages, message.id, baseNodeId)
-      ) ?? null
-  )
 }

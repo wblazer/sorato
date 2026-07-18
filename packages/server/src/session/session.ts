@@ -21,6 +21,7 @@ import { Context, Schema } from 'effect'
 import type { Effect } from 'effect/Effect'
 import type { Prompt } from 'effect/unstable/ai'
 import { StoredMessage, type StoredMessageEncoded } from '@sorato/core/message'
+import type { ActiveRunSummary, DurableServerEvent } from '@sorato/api'
 
 export { StoredMessage }
 export type { StoredMessageEncoded }
@@ -136,11 +137,9 @@ export interface ModelCall extends RunUsage {
   readonly finishedAt: number
 }
 
-export interface CreateModelCallInput extends RunUsage {
+export interface CommitModelCallInput extends RunUsage {
+  readonly messageIndex: number
   readonly id?: string
-  readonly sessionId: SessionId
-  readonly runId: RunId | null
-  readonly assistantNodeId: NodeId
   readonly providerId: string
   readonly modelId: string
   readonly billingMode: BillingMode
@@ -175,16 +174,41 @@ export interface MessageNode {
  */
 export interface CompactRangeInput {
   readonly sessionId: SessionId
-  readonly runId: RunId | null
+  readonly runId: RunId
   readonly baseHeadNodeId: NodeId
   readonly startNodeId: NodeId
   readonly endNodeId: NodeId
   readonly summaryContent: string
+  readonly contentThroughEventId?: number
 }
 
 export interface CompactRangeResult {
   readonly summaryNodeId: NodeId
+  readonly batch: CommittedNodeBatch
+}
+
+export interface CommitNodeBatchInput {
+  readonly sessionId: SessionId
+  readonly runId: RunId
+  readonly messages: ReadonlyArray<StoredMessageEncoded>
+  readonly baseNodeId: NodeId | null
+  readonly modelCalls?: ReadonlyArray<CommitModelCallInput>
+  readonly contentThroughEventId?: number
+}
+
+export interface CommittedNodeBatch {
+  readonly sequence: number
+  readonly sessionId: SessionId
+  readonly runId: RunId
+  readonly nodes: ReadonlyArray<MessageNode>
   readonly headNodeId: NodeId
+  readonly sessionUpdatedAt: number
+  readonly contentThroughEventId?: number
+}
+
+export interface ConversationSnapshot {
+  readonly sequence: number
+  readonly nodes: ReadonlyArray<MessageNode>
 }
 
 export interface SessionStorageApi {
@@ -206,19 +230,33 @@ export interface SessionStorageApi {
   /** Get a persisted run. */
   readonly getRun: (id: RunId) => Effect<Run, StorageError>
 
-  /** Mark a run as terminal. */
-  readonly completeRun: (input: CompleteRunInput) => Effect<void, StorageError>
+  /** Find a persisted run without treating absence as a storage failure. */
+  readonly findRun: (id: RunId) => Effect<Run | null, StorageError>
 
-  /** Persist per-model-call usage/cost on the original assistant node. */
-  readonly createModelCall: (
-    input: CreateModelCallInput
-  ) => Effect<void, StorageError>
+  /** Mark a run as terminal. */
+  readonly completeRun: (
+    input: CompleteRunInput
+  ) => Effect<
+    Extract<DurableServerEvent, { readonly _tag: 'RunEnd' }> | null,
+    StorageError
+  >
 
   /** Set or clear the session title. */
   readonly setTitle: (
     id: SessionId,
-    title: string | null
-  ) => Effect<void, StorageError>
+    title: string
+  ) => Effect<
+    Extract<DurableServerEvent, { readonly _tag: 'SessionTitleUpdated' }>,
+    StorageError
+  >
+
+  /** Append the durable materialization of an active run. */
+  readonly appendActiveRunUpsert: (
+    input: ActiveRunSummary
+  ) => Effect<
+    Extract<DurableServerEvent, { readonly _tag: 'ActiveRunUpserted' }>,
+    StorageError
+  >
 
   /** Delete a session and all its messages. */
   readonly delete: (id: SessionId) => Effect<void, StorageError>
@@ -249,6 +287,16 @@ export interface SessionStorageApi {
     headNodeId?: NodeId | null
   ) => Effect<ReadonlyArray<MessageNode>, StorageError>
 
+  /** Read all nodes and the current global mutation cursor consistently. */
+  readonly conversationSnapshot: (
+    sessionId: SessionId
+  ) => Effect<ConversationSnapshot, StorageError>
+
+  /** Replay immutable sync events after a global durable cursor. */
+  readonly durableEventsAfter: (
+    sequence: number
+  ) => Effect<ReadonlyArray<DurableServerEvent>, StorageError>
+
   /**
    * Append messages after the current head and advance it.
    *
@@ -256,12 +304,9 @@ export interface SessionStorageApi {
    * parent is the current head (or null if the session is empty). The last
    * message becomes the new head.
    */
-  readonly append: (
-    sessionId: SessionId,
-    runId: RunId,
-    messages: ReadonlyArray<StoredMessageEncoded>,
-    baseNodeId: NodeId | null
-  ) => Effect<ReadonlyArray<NodeId>, StorageError>
+  readonly commitNodeBatch: (
+    input: CommitNodeBatchInput
+  ) => Effect<CommittedNodeBatch | null, StorageError>
 
   /**
    * Create a compacted alternate branch by replacing a contiguous range on

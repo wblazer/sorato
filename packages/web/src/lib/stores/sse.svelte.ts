@@ -18,11 +18,13 @@ import { ServerEventSource } from '$lib/connection-services.js'
 import { runConnectionFork } from '$lib/connection-runtime.js'
 import type { SseError } from '$lib/sse.js'
 import type { ServerEvent } from '$lib/types.js'
+import { acceptDurableEvent } from '$lib/durable-events.js'
 
 type EventHandler = (event: ServerEvent) => void
 
 function createSseStore() {
   let fiber: Fiber.Fiber<void, SseError> | null = null
+  let lastSequence = 0
   const listeners = new Set<EventHandler>()
 
   /**
@@ -34,9 +36,12 @@ function createSseStore() {
     fiber = runConnectionFork(
       Effect.gen(function* () {
         const events = yield* ServerEventSource
-        yield* events.stream().pipe(
+        yield* events.stream({ getSinceSequence: () => lastSequence }).pipe(
           Stream.runForEach((event) =>
             Effect.sync(() => {
+              const acceptance = acceptDurableEvent(lastSequence, event)
+              if (!acceptance.accepted) return
+              lastSequence = acceptance.lastSequence
               for (const listener of listeners) {
                 listener(event)
               }
@@ -60,6 +65,7 @@ function createSseStore() {
   function disconnect() {
     if (fiber) Effect.runFork(Fiber.interrupt(fiber))
     fiber = null
+    lastSequence = 0
   }
 
   return {

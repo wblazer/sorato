@@ -142,7 +142,7 @@
   {#if visibleItems.length > 0 || hasMeta || isRunning}
     <div
       class="assistant-meta flex min-h-5 items-center gap-1.5 text-xs/5 text-muted-foreground"
-      class:assistant-meta-visible={isRunning}
+      class:assistant-meta-visible={isRunning && !hasMeta}
     >
       {#if hasMeta}
         {#each metaItems as item, index}
@@ -177,7 +177,6 @@
 
   .assistant-meta {
     opacity: 0;
-    transition: opacity 120ms ease;
   }
 
   .assistant-transcript-item + .assistant-meta {

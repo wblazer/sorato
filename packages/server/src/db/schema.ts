@@ -194,6 +194,23 @@ export interface MessageNodeRow extends Schema.Schema.Type<
   typeof MessageNodeRow
 > {}
 
+export const DurableSyncEventTableRow = Schema.Struct({
+  sequence: Schema.Number,
+  event_type: Schema.Literals([
+    'node_batch_committed',
+    'active_run_upserted',
+    'run_end',
+    'session_title_updated',
+  ]),
+  session_id: Schema.String,
+  run_id: Schema.NullOr(Schema.String),
+  payload: Schema.String,
+  created_at: Schema.Number,
+})
+export interface DurableSyncEventTableRow extends Schema.Schema.Type<
+  typeof DurableSyncEventTableRow
+> {}
+
 export const ProviderAuthTableRow = Schema.Struct({
   provider: Schema.String,
   type: ProviderAuthKind,

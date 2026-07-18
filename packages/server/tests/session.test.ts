@@ -73,14 +73,14 @@ const append = (
       billingMode: 'api-key',
       baseNodeId: resolvedBaseNodeId,
     })
-    const nodeIds = yield* storage.append(
+    const batch = yield* storage.commitNodeBatch({
       sessionId,
       runId,
       messages,
-      resolvedBaseNodeId
-    )
+      baseNodeId: resolvedBaseNodeId,
+    })
 
-    return nodeIds
+    return batch?.nodes.map((node) => node.id) ?? []
   })
 
 const conversation = (storage: SessionStorageApi, sessionId: string) =>
@@ -375,15 +375,242 @@ describe('SessionStorage', () => {
       Effect.gen(function* () {
         const storage = yield* SessionStorage
         const session = yield* storage.create(TEST_DIR, 'noop')
+        const before = yield* storage.conversationSnapshot(session.id)
         yield* append(storage, session.id, [])
 
         const fetched = yield* storage.get(session.id)
+        const after = yield* storage.conversationSnapshot(session.id)
         expect(fetched.updatedAt).toBeGreaterThanOrEqual(session.updatedAt)
+        expect(after.sequence).toBe(before.sequence)
+      }).pipe(Effect.provide(testLayer()))
+    )
+
+    it.effect('reads nodes and the global durable sequence as a snapshot', () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionStorage
+        const session = yield* storage.create(TEST_DIR, 'snapshot')
+        const initial = yield* storage.conversationSnapshot(session.id)
+        expect(initial).toEqual({ sequence: 0, nodes: [] })
+
+        const nodeIds = yield* append(storage, session.id, [
+          userMsg('snapshot input'),
+          assistantMsg('snapshot output'),
+        ])
+        const snapshot = yield* storage.conversationSnapshot(session.id)
+        const persistedSession = yield* storage.get(session.id)
+        const replay = yield* storage.durableEventsAfter(0)
+
+        expect(snapshot.sequence).toBe(1)
+        expect(snapshot.nodes.map((node) => node.id)).toEqual(nodeIds)
+        expect(snapshot.nodes.map((node) => node.encoded.content)).toEqual([
+          'snapshot input',
+          'snapshot output',
+        ])
+        expect(replay[0]).toMatchObject({
+          _tag: 'NodeBatchCommitted',
+          sessionUpdatedAt: persistedSession.updatedAt,
+        })
+      }).pipe(Effect.provide(testLayer()))
+    )
+
+    it.effect('replays committed batches in global sequence order', () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionStorage
+        const firstSession = yield* storage.create(TEST_DIR, 'first replay')
+        const secondSession = yield* storage.create(TEST_DIR, 'second replay')
+
+        yield* append(storage, firstSession.id, [userMsg('first')])
+        yield* append(storage, secondSession.id, [userMsg('second')])
+
+        const all = yield* storage.durableEventsAfter(0)
+        const afterFirst = yield* storage.durableEventsAfter(
+          expectDefined(all[0], 'expected first mutation').sequence
+        )
+
+        expect(all.map((batch) => batch.sequence)).toEqual([1, 2])
+        expect(all.map((batch) => batch.sessionId)).toEqual([
+          firstSession.id,
+          secondSession.id,
+        ])
+        expect(afterFirst.map((batch) => batch.sequence)).toEqual([2])
+        const second = afterFirst[0]
+        expect(second?._tag).toBe('NodeBatchCommitted')
+        if (second?._tag === 'NodeBatchCommitted') {
+          expect(second.nodes[0]?.encoded.content).toBe('second')
+        }
+      }).pipe(Effect.provide(testLayer()))
+    )
+
+    it.effect('durably replays one idempotent run end', () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionStorage
+        const session = yield* storage.create(TEST_DIR, 'durable run end')
+        const runId = crypto.randomUUID()
+        yield* storage.createRun({
+          id: runId,
+          sessionId: session.id,
+          baseNodeId: null,
+        })
+
+        const first = yield* storage.completeRun({
+          id: runId,
+          status: 'completed',
+        })
+        const duplicate = yield* storage.completeRun({
+          id: runId,
+          status: 'completed',
+        })
+        const replay = yield* storage.durableEventsAfter(0)
+
+        expect(first).toMatchObject({
+          _tag: 'RunEnd',
+          sequence: 1,
+          sessionId: session.id,
+          runId,
+        })
+        expect(duplicate).toBeNull()
+        expect(replay).toEqual([first])
+      }).pipe(Effect.provide(testLayer()))
+    )
+
+    it.effect('replays active run creation and base updates', () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionStorage
+        const session = yield* storage.create(TEST_DIR, 'active replay')
+        const runId = crypto.randomUUID()
+        yield* storage.createRun({
+          id: runId,
+          sessionId: session.id,
+          baseNodeId: null,
+        })
+
+        const started = yield* storage.appendActiveRunUpsert({
+          sessionId: session.id,
+          runId,
+          baseNodeId: null,
+          kind: 'summary',
+          visibility: 'background',
+          title: 'Generating summary',
+          parentRunId: 'parent-run',
+          toolCallId: 'compact-call',
+        })
+        const baseUpdated = yield* storage.appendActiveRunUpsert({
+          sessionId: session.id,
+          runId,
+          baseNodeId: 'new-base',
+          kind: 'summary',
+          visibility: 'background',
+          title: 'Generating summary',
+          parentRunId: 'parent-run',
+          toolCallId: 'compact-call',
+        })
+        const ended = yield* storage.completeRun({
+          id: runId,
+          status: 'completed',
+        })
+        const replay = yield* storage.durableEventsAfter(0)
+
+        expect(started).toMatchObject({
+          _tag: 'ActiveRunUpserted',
+          sequence: 1,
+          baseNodeId: null,
+        })
+        expect(baseUpdated).toMatchObject({
+          _tag: 'ActiveRunUpserted',
+          sequence: 2,
+          baseNodeId: 'new-base',
+        })
+        expect(replay).toEqual([started, baseUpdated, ended])
+        expect(replay.map((event) => event._tag)).toEqual([
+          'ActiveRunUpserted',
+          'ActiveRunUpserted',
+          'RunEnd',
+        ])
+      }).pipe(Effect.provide(testLayer()))
+    )
+
+    it.effect('persists title and durable title event atomically', () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionStorage
+        const session = yield* storage.create(TEST_DIR)
+
+        const event = yield* storage.setTitle(session.id, 'Durable title')
+        const persisted = yield* storage.get(session.id)
+        const replay = yield* storage.durableEventsAfter(0)
+
+        expect(persisted.title).toBe('Durable title')
+        expect(event).toMatchObject({
+          _tag: 'SessionTitleUpdated',
+          sequence: 1,
+          sessionId: session.id,
+          title: 'Durable title',
+          updatedAt: persisted.updatedAt,
+        })
+        expect(replay).toEqual([event])
+      }).pipe(Effect.provide(testLayer()))
+    )
+
+    it.effect('rejects a run owned by another session', () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionStorage
+        const owner = yield* storage.create(TEST_DIR, 'owner')
+        const target = yield* storage.create(TEST_DIR, 'target')
+        const runId = crypto.randomUUID()
+        yield* storage.createRun({
+          id: runId,
+          sessionId: owner.id,
+          baseNodeId: null,
+        })
+
+        const error = yield* storage
+          .commitNodeBatch({
+            sessionId: target.id,
+            runId,
+            messages: [userMsg('wrong owner')],
+            baseNodeId: null,
+          })
+          .pipe(Effect.flip)
+
+        expect(error.operation).toBe('commitNodeBatch')
+        expect(error.message).toContain('does not belong')
+        expect(yield* storage.messages(target.id)).toEqual([])
       }).pipe(Effect.provide(testLayer()))
     )
   })
 
   describe('compactRange', () => {
+    it.effect('rejects a run owned by another session', () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionStorage
+        const owner = yield* storage.create(TEST_DIR, 'compact owner')
+        const target = yield* storage.create(TEST_DIR, 'compact target')
+        const [targetNodeId] = yield* append(storage, target.id, [
+          userMsg('target message'),
+        ])
+        const nodeId = expectDefined(targetNodeId, 'expected target node')
+        const runId = crypto.randomUUID()
+        yield* storage.createRun({
+          id: runId,
+          sessionId: owner.id,
+          baseNodeId: null,
+        })
+
+        const error = yield* storage
+          .compactRange({
+            sessionId: target.id,
+            runId,
+            baseHeadNodeId: nodeId,
+            startNodeId: nodeId,
+            endNodeId: nodeId,
+            summaryContent: 'wrong owner',
+          })
+          .pipe(Effect.flip)
+
+        expect(error.operation).toBe('compactRange')
+        expect(error.message).toContain('does not belong')
+      }).pipe(Effect.provide(testLayer()))
+    )
+
     it.effect('rejects a selected path from another session', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
@@ -441,11 +668,17 @@ describe('SessionStorage', () => {
           userNodeId,
           'expected user node id'
         )
+        const compactRunId = crypto.randomUUID()
+        yield* storage.createRun({
+          id: compactRunId,
+          sessionId: session.id,
+          baseNodeId: resolvedUserNodeId,
+        })
 
         const result = yield* storage
           .compactRange({
             sessionId: session.id,
-            runId: crypto.randomUUID(),
+            runId: compactRunId,
             baseHeadNodeId: resolvedUserNodeId,
             startNodeId: expectDefined(systemNodeId, 'expected system node id'),
             endNodeId: resolvedUserNodeId,
@@ -496,9 +729,20 @@ describe('SessionStorage', () => {
           ),
           endNodeId: resolvedNextUserNodeId,
           summaryContent: 'summary',
+          contentThroughEventId: 7,
         })
 
         expect(result.summaryNodeId).toBeTruthy()
+        expect(result.batch.contentThroughEventId).toBe(7)
+        expect(
+          yield* storage.durableEventsAfter(result.batch.sequence - 1)
+        ).toMatchObject([
+          {
+            _tag: 'NodeBatchCommitted',
+            sequence: result.batch.sequence,
+            contentThroughEventId: 7,
+          },
+        ])
         const summaryMessages = yield* storage.messages(
           session.id,
           result.summaryNodeId
@@ -707,7 +951,7 @@ describe('SessionStorage', () => {
           s1MsgId
         ).pipe(Effect.flip)
         expect(error._tag).toBe('StorageError')
-        expect(error.operation).toBe('append')
+        expect(error.operation).toBe('commitNodeBatch')
       }).pipe(Effect.provide(testLayer()))
     )
 
@@ -760,6 +1004,21 @@ describe('SessionStorage', () => {
         // Session is gone
         const err = yield* storage.get(session.id).pipe(Effect.flip)
         expect(err._tag).toBe('StorageError')
+        const survivor = yield* storage.create(TEST_DIR, 'survivor')
+        yield* append(storage, survivor.id, [userMsg('still live')])
+        const replay = yield* storage.durableEventsAfter(0)
+        expect(replay.map((event) => event.sequence)).toEqual([1, 2])
+        expect(replay[0]?._tag).toBe('NodeBatchCommitted')
+        if (replay[0]?._tag === 'NodeBatchCommitted') {
+          expect(replay[0].nodes.map((node) => node.encoded.content)).toEqual([
+            'Hello',
+            'Hi',
+            'Bye',
+          ])
+        }
+        expect(
+          (yield* storage.durableEventsAfter(1)).map((event) => event.sequence)
+        ).toEqual([2])
       }).pipe(Effect.provide(testLayer()))
     )
   })

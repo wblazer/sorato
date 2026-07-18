@@ -27,7 +27,7 @@
   // Show this component when the followed run is active OR when there's still
   // streaming content waiting to be replaced by persisted messages.
   // This prevents the flash on RunEnd: the content stays visible until
-  // refreshMessages lands and clears streamingParts.
+  // a durable node batch acknowledges the corresponding content events.
   const visible = $derived(isRunning || parts.length > 0)
 
   const renderParts = $derived.by(() =>

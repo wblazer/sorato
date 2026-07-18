@@ -7,7 +7,7 @@ import type { Sandbox } from '@sorato/core'
 import type { ServerEvent, StopResponse, StorageUnavailable } from '@sorato/api'
 import { makeSqlitePersistenceLive } from '../../src/db/sqlite.ts'
 import { AllToolsLayer } from '../../src/agent-config.ts'
-import { EventBus, type EventBusApi } from '../../src/event-bus.ts'
+import { EventBus } from '../../src/event-bus.ts'
 import { ModelLayerResolver } from '../../src/model-catalog.ts'
 import { ProjectStorage, type Project } from '../../src/project/project.ts'
 import { ProviderAuthStore } from '../../src/provider-auth.ts'
@@ -103,7 +103,7 @@ export interface RunScenarioApi {
   ) => Effect.Effect<ServerEvent>
   readonly waitForRunStart: (runId: string) => Effect.Effect<ServerEvent>
   readonly waitForRunEnd: (runId: string) => Effect.Effect<ServerEvent>
-  readonly waitForMessagesAppended: (
+  readonly waitForNodeBatchCommitted: (
     runId: string
   ) => Effect.Effect<ServerEvent>
   readonly events: Effect.Effect<ReadonlyArray<ServerEvent>>
@@ -277,11 +277,7 @@ const makeEnqueueRun =
     })
 
 const makeInterruptFiber =
-  (
-    session: Session,
-    bus: EventBusApi,
-    fibers: Map<string, Fiber.Fiber<void, never>>
-  ) =>
+  (session: Session, fibers: Map<string, Fiber.Fiber<void, never>>) =>
   (runId: string) =>
     Effect.gen(function* () {
       const fiber = fibers.get(runId)
@@ -290,7 +286,6 @@ const makeInterruptFiber =
       yield* Fiber.interrupt(fiber).pipe(Effect.exit)
       clearActiveFiber(runId)
       releaseRunQueue(runId)
-      yield* bus.publish({ _tag: 'RunEnd', sessionId: session.id, runId })
     })
 
 const waitForRunEvent =
@@ -323,7 +318,6 @@ const buildScenarioApi = (
   Effect.gen(function* () {
     const storage = yield* SessionStorage
     const recorder = yield* EventRecorder
-    const bus = yield* EventBus
     const model = yield* ScriptedModelController
     const session = yield* storage.create(TEST_PROJECT_ID, 'scenario')
     const fibers = new Map<string, Fiber.Fiber<void, never>>()
@@ -340,11 +334,14 @@ const buildScenarioApi = (
         ),
       stopRun: (runId: string) =>
         stopRun(storage, runId).pipe(Effect.provideContext(layerContext)),
-      interruptFiber: makeInterruptFiber(session, bus, fibers),
+      interruptFiber: makeInterruptFiber(session, fibers),
       waitForEvent: recorder.waitFor,
       waitForRunStart: waitForRunEvent(recorder, 'RunStart'),
       waitForRunEnd: waitForRunEvent(recorder, 'RunEnd'),
-      waitForMessagesAppended: waitForRunEvent(recorder, 'MessagesAppended'),
+      waitForNodeBatchCommitted: waitForRunEvent(
+        recorder,
+        'NodeBatchCommitted'
+      ),
       events: recorder.events,
       eventsForRun: recorder.eventsForRun,
       messages: (headNodeId?: string | null) =>

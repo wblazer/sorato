@@ -9,6 +9,13 @@ import type {
   SessionRunStatus,
 } from '$lib/types.js'
 import { Effect } from 'effect'
+import { patchSessionFromNodeBatch } from '$lib/session-events.js'
+import {
+  activeRunFromUpserted,
+  removeActiveRun,
+  sessionHasRunWork,
+  upsertActiveRun,
+} from '$lib/active-run-events.js'
 import { sseStore } from './sse.svelte.js'
 import { messagesStore } from './messages.svelte.js'
 import { projectStore } from './projects.svelte.js'
@@ -50,12 +57,9 @@ function createSessionStore() {
   let pendingRunStarts = $state(new Map<string, number>())
   let sessionStatuses = $state(new Map<string, SessionRunStatus>())
   let activeRuns = $state(new Map<string, ActiveRunSummary>())
-  let latestRunStart = $state<{
-    sessionId: string
-    runId: string
-    baseNodeId: string | null
-    sequence: number
-  } | null>(null)
+  let latestRunStart = $state<
+    (ActiveRunSummary & { readonly sequence: number }) | null
+  >(null)
   let runStartSequence = 0
 
   onSessionRefreshRequest((sessionId) => {
@@ -74,8 +78,6 @@ function createSessionStore() {
 
     for (const session of nextSessions) {
       for (const run of session.activeRuns ?? []) {
-        if (run.visibility === 'background' && run.parentRunId !== undefined)
-          continue
         next.set(run.runId, run)
       }
     }
@@ -87,75 +89,28 @@ function createSessionStore() {
   }
 
   sseStore.onEvent((event) => {
-    if (event._tag === 'RunStart') {
-      if (event.visibility === 'background' && event.parentRunId !== undefined)
-        return
-
-      const pendingStarts = pendingRunStarts.get(event.sessionId) ?? 0
-      if (pendingStarts > 0) {
-        const next = new Map(pendingRunStarts)
-        if (pendingStarts === 1) {
-          next.delete(event.sessionId)
-        } else {
-          next.set(event.sessionId, pendingStarts - 1)
-        }
-        pendingRunStarts = next
-      }
-
-      const drafts = queuedMessages.get(event.sessionId) ?? []
-      if (drafts.length > 0) {
-        const remaining = drafts.filter((draft) => draft.runId !== event.runId)
-        const next = new Map(queuedMessages)
-        if (remaining.length === 0) {
-          next.delete(event.sessionId)
-        } else {
-          next.set(event.sessionId, remaining)
-        }
-        queuedMessages = next
-      }
-
-      const nextActiveRuns = new Map(activeRuns)
-      nextActiveRuns.set(event.runId, {
-        sessionId: event.sessionId,
-        runId: event.runId,
-        baseNodeId: event.baseNodeId,
-        kind: event.kind ?? 'agent',
-        visibility: event.visibility ?? 'primary',
-      })
-      activeRuns = nextActiveRuns
+    if (event._tag === 'ActiveRunUpserted') {
+      const run = activeRunFromUpserted(event)
+      const next = upsertActiveRun(
+        { activeRuns, pendingRunStarts, queuedMessages },
+        run
+      )
+      activeRuns = next.activeRuns
+      pendingRunStarts = next.pendingRunStarts
+      queuedMessages = next.queuedMessages
       latestRunStart = {
-        sessionId: event.sessionId,
-        runId: event.runId,
-        baseNodeId: event.baseNodeId,
+        ...run,
         sequence: ++runStartSequence,
       }
 
       sessions = sessions.map((s) =>
-        s.id === event.sessionId ? { ...s, status: 'running' as const } : s
+        s.id === run.sessionId ? { ...s, status: 'running' as const } : s
       )
 
-      if (sessionStatuses.has(event.sessionId)) {
-        const next = new Map(sessionStatuses)
-        next.delete(event.sessionId)
-        sessionStatuses = next
-      }
-    } else if (event._tag === 'RunBaseUpdated') {
-      const existing = activeRuns.get(event.runId)
-      if (existing) {
-        const nextActiveRuns = new Map(activeRuns)
-        nextActiveRuns.set(event.runId, {
-          ...existing,
-          baseNodeId: event.baseNodeId,
-        })
-        activeRuns = nextActiveRuns
-      }
-
-      if (latestRunStart?.runId === event.runId) {
-        latestRunStart = {
-          ...latestRunStart,
-          baseNodeId: event.baseNodeId,
-          sequence: ++runStartSequence,
-        }
+      if (sessionStatuses.has(run.sessionId)) {
+        const nextStatuses = new Map(sessionStatuses)
+        nextStatuses.delete(run.sessionId)
+        sessionStatuses = nextStatuses
       }
     } else if (event._tag === 'RunRetrying') {
       const next = new Map(sessionStatuses)
@@ -178,6 +133,10 @@ function createSessionStore() {
         retryable: event.retryable ?? false,
       })
       sessionStatuses = next
+    } else if (event._tag === 'NodeBatchCommitted') {
+      sessions = sessions.map((session) =>
+        patchSessionFromNodeBatch(session, event)
+      )
     } else if (event._tag === 'RunEnd') {
       const existingStatus = sessionStatuses.get(event.sessionId)
       if (existingStatus?._tag === 'retrying') {
@@ -186,18 +145,44 @@ function createSessionStore() {
         sessionStatuses = next
       }
 
-      const nextActiveRuns = new Map(activeRuns)
-      nextActiveRuns.delete(event.runId)
+      const nextActiveRuns = removeActiveRun(activeRuns, event.runId)
       activeRuns = nextActiveRuns
+
+      const remainsRunning = sessionHasRunWork(
+        {
+          activeRuns: nextActiveRuns,
+          pendingRunStarts,
+          queuedMessages,
+        },
+        event.sessionId
+      )
+      const status: Session['status'] = remainsRunning ? 'running' : 'idle'
+      sessions = sessions.map((session) =>
+        session.id === event.sessionId
+          ? {
+              ...session,
+              status,
+            }
+          : session
+      )
 
       if (stoppingRuns.has(event.runId)) {
         const next = new Set(stoppingRuns)
         next.delete(event.runId)
         stoppingRuns = next
       }
-      void runConnectionPromise(refreshSession(event.sessionId))
-    } else if (event._tag === 'SessionUpdated') {
-      void runConnectionPromise(refreshSession(event.sessionId))
+      if (latestRunStart?.runId === event.runId) latestRunStart = null
+    } else if (event._tag === 'SessionTitleUpdated') {
+      sessions = sessions.map((session) =>
+        session.id === event.sessionId
+          ? {
+              ...session,
+              title: event.title,
+              updatedAt: event.updatedAt,
+            }
+          : session
+      )
+      tabStore.updateSessionTitle(event.sessionId, event.title)
     }
   })
 
