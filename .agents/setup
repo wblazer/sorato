@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+nix_profile="$HOME/.nix-profile"
 
 as_root() {
   if [[ $EUID -eq 0 ]]; then
@@ -11,57 +12,44 @@ as_root() {
   fi
 }
 
-echo "[setup] Ensuring Bun is available"
-if ! command -v bun >/dev/null 2>&1; then
+echo "[setup] Ensuring Nix is available"
+if ! command -v nix >/dev/null 2>&1 && [[ ! -x "$nix_profile/bin/nix" ]]; then
   command -v curl >/dev/null 2>&1 || {
     as_root apt-get update
-    as_root apt-get install -y curl unzip
+    as_root apt-get install -y curl xz-utils
   }
-  curl -fsSL https://bun.sh/install | bash
-  export BUN_INSTALL="$HOME/.bun"
-  export PATH="$BUN_INSTALL/bin:$PATH"
+  curl -fsSL https://nixos.org/nix/install | sh -s -- --no-daemon --yes
 fi
 
-echo "[setup] Ensuring Node.js supports Vite"
-if ! command -v node >/dev/null 2>&1 || ! node -e '
-  const [major, minor] = process.versions.node.split(".").map(Number)
-  process.exit((major === 20 && minor >= 19) || major >= 22 ? 0 : 1)
-'; then
-  command -v curl >/dev/null 2>&1 || {
-    as_root apt-get update
-    as_root apt-get install -y curl
-  }
-  curl -fsSL https://deb.nodesource.com/setup_22.x | as_root bash -
-  as_root apt-get install -y nodejs
-  mkdir -p "$HOME/.local/bin"
-  ln -sfn /usr/bin/node "$HOME/.local/bin/node"
-  export PATH="/usr/bin:$PATH"
-  hash -r
-
-  node_profile_marker="# Sorato Node.js environment"
-  if ! grep -Fqx "$node_profile_marker" "$HOME/.bash_profile" 2>/dev/null; then
-    cat >> "$HOME/.bash_profile" <<'EOF'
-
-# Sorato Node.js environment
-export PATH="/usr/bin:$PATH"
-EOF
+for profile_script in \
+  "$nix_profile/etc/profile.d/nix.sh" \
+  "/nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh"; do
+  if [[ -f "$profile_script" ]]; then
+    # shellcheck disable=SC1090
+    source "$profile_script"
+    break
   fi
+done
+
+nix_bin="$(command -v nix 2>/dev/null || true)"
+if [[ -z "$nix_bin" ]]; then
+  echo "[setup] Nix installation did not expose a nix executable" >&2
+  exit 1
 fi
 
-profile_marker="# Sorato Bun environment"
+profile_marker="# Sorato Nix development shell"
 if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile" 2>/dev/null; then
-  cat >> "$HOME/.bash_profile" <<'EOF'
+  cat >> "$HOME/.bash_profile" <<EOF
 
-# Sorato Bun environment
-if [[ -d "$HOME/.bun/bin" ]]; then
-  export BUN_INSTALL="$HOME/.bun"
-  export PATH="$BUN_INSTALL/bin:$PATH"
+# Sorato Nix development shell
+if [[ -z "\${IN_NIX_SHELL:-}" && "\${PWD}" == "$repo_root" ]]; then
+  eval "\$("$nix_bin" --extra-experimental-features 'nix-command flakes' print-dev-env "$repo_root")"
 fi
 EOF
 fi
 
 echo "[setup] Installing workspace dependencies"
-cd "$repo_root"
-bun install --frozen-lockfile
+"$nix_bin" --extra-experimental-features 'nix-command flakes' \
+  develop "$repo_root" --command bun install --frozen-lockfile
 
 echo "[setup] Complete"

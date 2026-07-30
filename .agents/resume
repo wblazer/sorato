@@ -2,12 +2,13 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+nix_bin="$(command -v nix 2>/dev/null || true)"
 
-command -v bun >/dev/null
-node -e '
-  const [major, minor] = process.versions.node.split(".").map(Number)
-  process.exit((major === 20 && minor >= 19) || major >= 22 ? 0 : 1)
-'
+if [[ -z "$nix_bin" && -x "$HOME/.nix-profile/bin/nix" ]]; then
+  nix_bin="$HOME/.nix-profile/bin/nix"
+fi
+
+test -n "$nix_bin"
 test -x "$repo_root/packages/web/node_modules/.bin/vite"
 
-echo "[resume] Bun and workspace dependencies are ready"
+echo "[resume] Nix and workspace dependencies are ready"

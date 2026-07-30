@@ -40,6 +40,7 @@
           biome
           bun
           electron
+          nodejs_22
           typescript
           typescript-language-server
           svelte-language-server
