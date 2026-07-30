@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+as_root() {
+  if [[ $EUID -eq 0 ]]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+echo "[setup] Ensuring Bun is available"
+if ! command -v bun >/dev/null 2>&1; then
+  command -v curl >/dev/null 2>&1 || {
+    as_root apt-get update
+    as_root apt-get install -y curl unzip
+  }
+  curl -fsSL https://bun.sh/install | bash
+  export BUN_INSTALL="$HOME/.bun"
+  export PATH="$BUN_INSTALL/bin:$PATH"
+fi
+
+echo "[setup] Ensuring Node.js supports Vite"
+if ! command -v node >/dev/null 2>&1 || ! node -e '
+  const [major, minor] = process.versions.node.split(".").map(Number)
+  process.exit((major === 20 && minor >= 19) || major >= 22 ? 0 : 1)
+'; then
+  command -v curl >/dev/null 2>&1 || {
+    as_root apt-get update
+    as_root apt-get install -y curl
+  }
+  curl -fsSL https://deb.nodesource.com/setup_22.x | as_root bash -
+  as_root apt-get install -y nodejs
+  mkdir -p "$HOME/.local/bin"
+  ln -sfn /usr/bin/node "$HOME/.local/bin/node"
+  export PATH="/usr/bin:$PATH"
+  hash -r
+
+  node_profile_marker="# Sorato Node.js environment"
+  if ! grep -Fqx "$node_profile_marker" "$HOME/.bash_profile" 2>/dev/null; then
+    cat >> "$HOME/.bash_profile" <<'EOF'
+
+# Sorato Node.js environment
+export PATH="/usr/bin:$PATH"
+EOF
+  fi
+fi
+
+profile_marker="# Sorato Bun environment"
+if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile" 2>/dev/null; then
+  cat >> "$HOME/.bash_profile" <<'EOF'
+
+# Sorato Bun environment
+if [[ -d "$HOME/.bun/bin" ]]; then
+  export BUN_INSTALL="$HOME/.bun"
+  export PATH="$BUN_INSTALL/bin:$PATH"
+fi
+EOF
+fi
+
+echo "[setup] Installing workspace dependencies"
+cd "$repo_root"
+bun install --frozen-lockfile
+
+echo "[setup] Complete"
