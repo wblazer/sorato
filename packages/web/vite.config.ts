@@ -5,7 +5,7 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [tailwindcss(), sveltekit()],
   server: {
-    allowedHosts: ['.onamp.dev'],
+    allowedHosts: ['.onamp.dev', '.e2b.app'],
   },
   build: {
     rolldownOptions: {
