@@ -7,7 +7,10 @@ import { Option } from 'effect'
 import type { Document, Html, HtmlBuilder } from 'foldkit/html'
 import {
   ChangedDraft,
+  ChangedSessionSearch,
   ChangedServerUrl,
+  ClosedTab,
+  ClosedOverlay,
   ClearedError,
   ClickedCompact,
   ClickedConnect,
@@ -16,6 +19,7 @@ import {
   ClickedSend,
   ClickedStop,
   ClickedToggleTreePanel,
+  OpenedOverlay,
   SelectedBaseNode,
   SelectedCompactEnd,
   SelectedCompactStart,
@@ -24,6 +28,7 @@ import {
   SelectedProject,
   SelectedSession,
   SelectedSidePanel,
+  SelectedTab,
 } from './main.ts'
 import type { Message, Model } from './main.ts'
 
@@ -58,6 +63,46 @@ const button = (
     h
   )
 
+const icon = (h: HtmlBuilder<Message>, path: string, className = ''): Html =>
+  h.svg(
+    [
+      h.Class(`ph-icon ${className}`),
+      h.ViewBox('0 0 24 24'),
+      h.Fill('none'),
+      h.Stroke('currentColor'),
+      h.StrokeWidth('1.75'),
+      h.StrokeLinecap('round'),
+      h.StrokeLinejoin('round'),
+      h.AriaHidden(true),
+    ],
+    [h.path([h.D(path)], [])]
+  )
+
+const iconButton = (
+  h: HtmlBuilder<Message>,
+  graphic: Html,
+  message: Message,
+  ariaLabel: string,
+  className = '',
+  disabled = false
+) =>
+  Button.view(
+    {
+      onClick: message,
+      isDisabled: disabled,
+      toView: ({ button: attributes }) =>
+        h.button(
+          [
+            ...attributes,
+            h.Class(`ui-button icon-button ${className}`),
+            h.AriaLabel(ariaLabel),
+          ],
+          [graphic]
+        ),
+    },
+    h
+  )
+
 const plainContent = (node: MessageNodeResponse): string => {
   const content = node.encoded.content
   if (typeof content === 'string') return content
@@ -79,6 +124,33 @@ const preview = (node: MessageNodeResponse) => {
   return content.length > 0 ? content : '(empty)'
 }
 
+const sessionTitle = (session: Model['sessions'][number]): string =>
+  session.title ?? `New Session - ${session.id}`
+
+const selectedNodePath = (model: Model): ReadonlyArray<MessageNodeResponse> => {
+  if (model.selectedBaseNodeId === null) return []
+  const byId = new Map(model.nodes.map((node) => [node.id, node]))
+  const path: Array<MessageNodeResponse> = []
+  const seen = new Set<string>()
+  let cursor: string | null = model.selectedBaseNodeId
+  while (cursor !== null && !seen.has(cursor)) {
+    seen.add(cursor)
+    const node = byId.get(cursor)
+    if (node === undefined) return []
+    path.push(node)
+    cursor = node.parentId
+  }
+  return path.reverse()
+}
+
+const systemLabel = (node: MessageNodeResponse): string => {
+  if (node.kind === 'summary') return 'Summary'
+  const body = plainContent(node)
+  return body.includes('Project-specific instructions')
+    ? 'AGENTS.md'
+    : 'System Prompt'
+}
+
 const formatRelativeTime = (timestamp: number) => {
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000))
   if (seconds < 60) return 'just now'
@@ -91,10 +163,6 @@ const formatRelativeTime = (timestamp: number) => {
 }
 
 const sidebar = (model: Model, h: HtmlBuilder<Message>): Html => {
-  const sessions = [...model.sessions]
-    .filter((session) => session.archivedAt === null)
-    .sort((left, right) => right.updatedAt - left.updatedAt)
-
   return h.aside(
     [h.Class('app-sidebar')],
     [
@@ -104,90 +172,103 @@ const sidebar = (model: Model, h: HtmlBuilder<Message>): Html => {
           h.div(
             [h.Class('new-tab-row')],
             [
-              button(h, '+  New Tab', ClickedNewTab(), {
-                className: 'new-tab-button',
-              }),
+              Button.view(
+                {
+                  onClick: ClickedNewTab(),
+                  toView: ({ button: a }) =>
+                    h.button(
+                      [...a, h.Class('ui-button new-tab-button')],
+                      [icon(h, 'M12 5v14M5 12h14'), h.span([], ['New Tab'])]
+                    ),
+                },
+                h
+              ),
             ]
           ),
           h.nav(
             [h.Class('tab-list'), h.AriaLabel('Open sessions')],
-            [
-              model.selectedSessionId === null
-                ? h.div(
-                    [h.Class('tab-row selected')],
-                    [
-                      button(h, '    New Session', ClickedNewTab(), {
-                        className: 'tab-button',
-                      }),
-                    ]
-                  )
-                : null,
-              ...sessions.map((session) =>
-                h.div(
-                  [
-                    h.Key(session.id),
-                    h.Class(
-                      `tab-row ${session.id === model.selectedSessionId ? 'selected' : ''}`
-                    ),
-                  ],
-                  [
-                    button(
-                      h,
-                      `${session.status === 'running' ? '●' : '  '} ${session.title ?? 'New Session'}`,
-                      SelectedSession({ id: session.id }),
-                      { className: 'tab-button' }
-                    ),
-                  ]
-                )
-              ),
-            ]
+            model.tabs.map((tab) => {
+              const session = model.sessions.find(
+                (candidate) => candidate.id === tab.sessionId
+              )
+              const title =
+                session === undefined ? 'New Tab' : sessionTitle(session)
+              return h.div(
+                [
+                  h.Key(tab.id),
+                  h.Class(
+                    `tab-row ${tab.id === model.activeTabId ? 'selected' : ''}`
+                  ),
+                ],
+                [
+                  Button.view(
+                    {
+                      onClick: SelectedTab({ id: tab.id }),
+                      toView: ({ button: attributes }) =>
+                        h.button(
+                          [...attributes, h.Class('ui-button tab-button')],
+                          [
+                            h.span(
+                              [
+                                h.Class(
+                                  `tab-status ${session?.status === 'running' ? 'running' : ''}`
+                                ),
+                              ],
+                              []
+                            ),
+                            h.span([h.Class('tab-title')], [title]),
+                          ]
+                        ),
+                    },
+                    h
+                  ),
+                  iconButton(
+                    h,
+                    icon(h, 'M6 6l12 12M18 6 6 18'),
+                    ClosedTab({ id: tab.id }),
+                    `Close ${title}`,
+                    'tab-close'
+                  ),
+                ]
+              )
+            })
           ),
         ]
       ),
       h.div(
         [h.Class('sidebar-footer')],
         [
-          h.div(
-            [h.Class('connection-control')],
-            [
-              Input.view(
-                {
-                  id: 'server-url',
-                  value: model.serverUrlInput,
-                  onInput: (value) => ChangedServerUrl({ value }),
-                  toView: ({ input, label }) =>
-                    h.div(
-                      [h.Class('connection-field')],
-                      [
-                        h.label([...label, h.Class('sr-only')], ['Server URL']),
-                        h.span(
-                          [
-                            h.Class(`connection-dot ${model.status}`),
-                            h.Role('status'),
-                            h.AriaLabel(`Connection status: ${model.status}`),
-                          ],
-                          ['●']
-                        ),
-                        h.input([
-                          ...input,
-                          h.Class('connection-input'),
-                          h.AriaLabel('Server URL'),
-                        ]),
-                      ]
-                    ),
-                },
-                h
-              ),
-              button(h, '↻', ClickedConnect(), {
-                disabled: model.status === 'loading',
-                className: 'icon-button',
-                ariaLabel: 'Reconnect',
-              }),
-            ]
+          button(
+            h,
+            `${model.serverUrlInput}`,
+            OpenedOverlay({ overlay: 'settings' }),
+            {
+              className: `connection-button ${model.status}`,
+              ariaLabel: `Connection: ${model.serverUrlInput}`,
+            }
           ),
-          button(h, '⚙  Settings', ClearedError(), {
-            className: 'settings-button',
-          }),
+          Button.view(
+            {
+              onClick: OpenedOverlay({ overlay: 'settings' }),
+              toView: ({ button: a }) =>
+                h.button(
+                  [...a, h.Class('ui-button settings-button')],
+                  [
+                    icon(
+                      h,
+                      'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm0-5v2m0 13v2m8.5-8.5h-2m-13 0h-2m14.5-6L16.6 7.4M7.4 16.6 6 18m12 0-1.4-1.4M7.4 7.4 6 6'
+                    ),
+                    h.span([], ['Settings']),
+                  ]
+                ),
+            },
+            h
+          ),
+          model.devScenarios === null
+            ? null
+            : button(h, 'Scenario Lab', OpenedOverlay({ overlay: 'lab' }), {
+                className: 'dev-lab-button',
+              }),
         ]
       ),
     ]
@@ -201,6 +282,13 @@ const transcriptNode = (
 ): Html => {
   const role = node.encoded.role
   const body = plainContent(node)
+  if (role === 'system' || node.kind === 'summary') {
+    return h.details(
+      [h.Key(node.id), h.Class('system-message')],
+      [h.summary([], [systemLabel(node)]), h.pre([], [body])]
+    )
+  }
+
   if (role === 'user') {
     return h.article(
       [h.Key(node.id), h.Class('message-row user-message')],
@@ -225,16 +313,6 @@ const transcriptNode = (
             }),
           ]
         ),
-      ]
-    )
-  }
-
-  if (role === 'system' || node.kind === 'summary') {
-    return h.details(
-      [h.Key(node.id), h.Class('system-message')],
-      [
-        h.summary([], [node.kind === 'summary' ? 'Summary' : 'System']),
-        h.pre([], [body]),
       ]
     )
   }
@@ -302,7 +380,9 @@ const transcript = (model: Model, h: HtmlBuilder<Message>): Html =>
           h.AriaLive('polite'),
         ],
         [
-          ...model.nodes.map((node) => transcriptNode(node, model, h)),
+          ...selectedNodePath(model).map((node) =>
+            transcriptNode(node, model, h)
+          ),
           ...activityRows(model, h),
           model.nodes.length === 0 && model.activity.length === 0
             ? h.p([h.Class('empty-transcript')], ['No messages yet.'])
@@ -361,6 +441,24 @@ const composer = (model: Model, h: HtmlBuilder<Message>): Html => {
   return h.section(
     [h.Class('composer-wrap'), h.AriaLabel('Message composer')],
     [
+      model.compactingRunId === null
+        ? null
+        : h.details(
+            [h.Class('summary-activity'), h.Open(true)],
+            [
+              h.summary(
+                [],
+                [
+                  icon(h, 'M12 3a9 9 0 1 1-9 9'),
+                  h.strong([], ['Generating summary']),
+                ]
+              ),
+              h.pre(
+                [],
+                [model.compactionActivity.map((item) => item.body).join('\n')]
+              ),
+            ]
+          ),
       model.error === null
         ? null
         : h.div(
@@ -412,24 +510,34 @@ const composer = (model: Model, h: HtmlBuilder<Message>): Html => {
           h.div(
             [h.Class('composer-tools')],
             [
-              button(h, '+', ClearedError(), {
-                disabled,
-                className: 'icon-button attach-button',
-                ariaLabel: 'Attach image',
-              }),
               modelSelect(model, h),
+              model.models.find((item) => item.id === model.selectedModelId)
+                ?.capabilities.reasoning
+                ? button(
+                    h,
+                    `Think: ${model.models.find((item) => item.id === model.selectedModelId)?.capabilities.thinkingLevels[0] ?? 'on'}`,
+                    SelectedModel({ id: model.selectedModelId }),
+                    { className: 'thinking-button' }
+                  )
+                : null,
             ]
           ),
           model.activeRunId === null
-            ? button(h, '↑', ClickedSend(), {
-                disabled: disabled || model.draft.trim() === '',
-                className: 'submit-button',
-                ariaLabel: 'Send message',
-              })
-            : button(h, '■', ClickedStop(), {
-                className: 'submit-button stop-button',
-                ariaLabel: 'Stop run',
-              }),
+            ? iconButton(
+                h,
+                icon(h, 'M12 19V5m-6 6 6-6 6 6'),
+                ClickedSend(),
+                'Send message',
+                'submit-button',
+                disabled || model.draft.trim() === ''
+              )
+            : iconButton(
+                h,
+                icon(h, 'M8 8h8v8H8z'),
+                ClickedStop(),
+                'Stop run',
+                'submit-button stop-button'
+              ),
         ]
       ),
     ]
@@ -453,46 +561,75 @@ const newSessionStage = (model: Model, h: HtmlBuilder<Message>): Html => {
                 [h.Class('resume-sessions')],
                 [
                   h.h2([], ['Resume a session']),
-                  button(h, '⌕  Search sessions', ClearedError(), {
-                    className: 'outline-button',
-                  }),
-                  h.h3([], ['Recent Sessions']),
-                  ...recent.map((session) => {
-                    const project = model.projects.find(
-                      (candidate) => candidate.id === session.projectId
-                    )
-                    const timestamp =
-                      session.lastUserMessageAt ?? session.updatedAt
-                    return Button.view(
-                      {
-                        onClick: SelectedSession({ id: session.id }),
-                        toView: ({ button: attributes }) =>
-                          h.button(
-                            [...attributes, h.Class('recent-session')],
-                            [
-                              h.span(
-                                [h.Class('recent-session-copy')],
-                                [
-                                  h.span(
-                                    [h.Class('recent-session-title')],
-                                    [session.title ?? 'New Session']
+                  h.div(
+                    [h.Class('resume-body')],
+                    [
+                      Button.view(
+                        {
+                          onClick: OpenedOverlay({ overlay: 'search' }),
+                          toView: ({ button: a }) =>
+                            h.button(
+                              [
+                                ...a,
+                                h.Class(
+                                  'ui-button outline-button search-button'
+                                ),
+                              ],
+                              [
+                                icon(
+                                  h,
+                                  'M21 21l-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0'
+                                ),
+                                h.span([], ['Search sessions']),
+                              ]
+                            ),
+                        },
+                        h
+                      ),
+                      h.div(
+                        [h.Class('recent-sessions')],
+                        [
+                          h.h3([], ['Recent Sessions']),
+                          ...recent.map((session) => {
+                            const project = model.projects.find(
+                              (candidate) => candidate.id === session.projectId
+                            )
+                            const timestamp =
+                              session.lastUserMessageAt ?? session.updatedAt
+                            return Button.view(
+                              {
+                                onClick: SelectedSession({ id: session.id }),
+                                toView: ({ button: attributes }) =>
+                                  h.button(
+                                    [...attributes, h.Class('recent-session')],
+                                    [
+                                      h.span(
+                                        [h.Class('recent-session-copy')],
+                                        [
+                                          h.span(
+                                            [h.Class('recent-session-title')],
+                                            [sessionTitle(session)]
+                                          ),
+                                          h.span(
+                                            [h.Class('recent-session-project')],
+                                            [project?.name ?? 'Unknown project']
+                                          ),
+                                        ]
+                                      ),
+                                      h.span(
+                                        [h.Class('recent-session-time')],
+                                        [formatRelativeTime(timestamp)]
+                                      ),
+                                    ]
                                   ),
-                                  h.span(
-                                    [h.Class('recent-session-project')],
-                                    [project?.name ?? 'Unknown project']
-                                  ),
-                                ]
-                              ),
-                              h.span(
-                                [h.Class('recent-session-time')],
-                                [formatRelativeTime(timestamp)]
-                              ),
-                            ]
-                          ),
-                      },
-                      h
-                    )
-                  }),
+                              },
+                              h
+                            )
+                          }),
+                        ]
+                      ),
+                    ]
+                  ),
                 ]
               ),
           recent.length === 0
@@ -505,38 +642,52 @@ const newSessionStage = (model: Model, h: HtmlBuilder<Message>): Html => {
             [h.Class('start-session')],
             [
               h.h2([], ['Start session in']),
-              Select.view(
-                {
-                  id: 'project',
-                  value: model.selectedProjectId ?? '',
-                  onChange: (id) => SelectedProject({ id }),
-                  toView: ({ select, label }) =>
-                    h.div(
-                      [h.Class('project-control')],
-                      [
-                        h.label([...label, h.Class('sr-only')], ['Project']),
-                        h.select(
-                          [...select, h.Class('project-select')],
-                          [
-                            h.option([h.Value('')], ['Select project']),
-                            ...model.projects.map((project) =>
-                              h.option(
-                                [
-                                  h.Value(project.id),
-                                  h.Selected(
-                                    project.id === model.selectedProjectId
-                                  ),
-                                ],
-                                [`▰  ${project.name} — ${project.path}`]
-                              )
-                            ),
-                          ]
-                        ),
-                      ]
-                    ),
-                },
-                h
-              ),
+              (() => {
+                const selected = model.projects.find(
+                  (p) => p.id === model.selectedProjectId
+                )
+                const next =
+                  model.projects[
+                    (Math.max(
+                      0,
+                      model.projects.findIndex(
+                        (p) => p.id === model.selectedProjectId
+                      )
+                    ) +
+                      1) %
+                      Math.max(1, model.projects.length)
+                  ]
+                return Button.view(
+                  {
+                    onClick: SelectedProject({ id: next?.id ?? '' }),
+                    isDisabled: model.projects.length === 0,
+                    toView: ({ button: a }) =>
+                      h.button(
+                        [
+                          ...a,
+                          h.Class('project-select'),
+                          h.Role('combobox'),
+                          h.AriaLabel('Project'),
+                        ],
+                        [
+                          icon(h, 'M3 7.5h7l2 2h9v9H3z'),
+                          h.span(
+                            [h.Class('project-copy')],
+                            [
+                              h.strong(
+                                [],
+                                [selected?.name ?? 'Select project']
+                              ),
+                              selected ? h.small([], [selected.path]) : null,
+                            ]
+                          ),
+                          icon(h, 'm8 10 4 4 4-4'),
+                        ]
+                      ),
+                  },
+                  h
+                )
+              })(),
             ]
           ),
         ]
@@ -546,37 +697,38 @@ const newSessionStage = (model: Model, h: HtmlBuilder<Message>): Html => {
 }
 
 const treePanel = (model: Model, h: HtmlBuilder<Message>): Html => {
-  const compactable = model.nodes.filter(
-    (node) => node.encoded.role !== 'system'
-  )
-  const activeScenario = model.devScenarios?.scenarios.find(
-    (scenario) => scenario.id === model.devScenarios?.activeScenario
-  )
-  const canCompact =
-    model.selectedSessionId !== null &&
-    model.selectedModelId !== '' &&
-    model.selectedBaseNodeId !== null &&
-    model.compactStartNodeId !== null &&
-    model.compactEndNodeId !== null &&
-    model.compactingRunId === null
-
   return h.aside(
     [h.Class('tree-panel')],
     [
       h.div(
         [h.Class('tree-header')],
         [
-          button(h, '⌘  Tree', SelectedSidePanel({ panel: 'tree' }), {
-            className: `panel-tab ${model.sidePanel === 'tree' ? 'selected' : ''}`,
-            ariaLabel: 'Conversation tree',
+          Button.view(
+            {
+              onClick: SelectedSidePanel({ panel: 'tree' }),
+              toView: ({ button: a }) =>
+                h.button(
+                  [
+                    ...a,
+                    h.Class(
+                      `ui-button panel-tab ${model.sidePanel === 'tree' ? 'selected' : ''}`
+                    ),
+                    h.AriaLabel('Conversation tree'),
+                  ],
+                  [
+                    icon(
+                      h,
+                      'M6 3v12a3 3 0 0 0 3 3h9M6 8h8a3 3 0 0 1 3 3v10M3 3h6M14 21h6'
+                    ),
+                    h.span([], ['Tree']),
+                  ]
+                ),
+            },
+            h
+          ),
+          button(h, 'Diff', SelectedSidePanel({ panel: 'diff' }), {
+            className: `panel-tab ${model.sidePanel === 'diff' ? 'selected' : ''}`,
           }),
-          model.devScenarios === null
-            ? null
-            : button(h, '◈  Lab', SelectedSidePanel({ panel: 'lab' }), {
-                className: `panel-tab ${model.sidePanel === 'lab' ? 'selected' : ''}`,
-                ariaLabel: 'Scenario Lab',
-              }),
-          h.span([h.Class('panel-tab disabled')], ['Diff']),
         ]
       ),
       model.sidePanel === 'tree'
@@ -584,7 +736,27 @@ const treePanel = (model: Model, h: HtmlBuilder<Message>): Html => {
             [h.Class('tree-scroll')],
             [
               model.nodes.length === 0
-                ? h.p([h.Class('tree-empty')], ['No messages yet.'])
+                ? h.div(
+                    [h.Class('tree-empty')],
+                    [
+                      h.strong(
+                        [],
+                        [
+                          model.selectedSessionId === null
+                            ? 'No session selected'
+                            : 'No messages yet',
+                        ]
+                      ),
+                      h.p(
+                        [],
+                        [
+                          model.selectedSessionId === null
+                            ? 'Choose an existing session or send a message to start one.'
+                            : 'Send a message to begin this conversation.',
+                        ]
+                      ),
+                    ]
+                  )
                 : h.div(
                     [h.Class('tree-list')],
                     model.nodes.map((node, index) =>
@@ -601,135 +773,21 @@ const treePanel = (model: Model, h: HtmlBuilder<Message>): Html => {
             ]
           )
         : h.div(
-            [h.Class('lab-panel')],
+            [h.Class('tree-scroll')],
             [
               h.div(
-                [h.Class('lab-title')],
-                [h.h2([], ['Scenario Lab']), h.span([], ['DEV'])]
-              ),
-              h.p([], ['Deterministic full-stack agent exercises.']),
-              model.devScenarios === null
-                ? null
-                : Select.view(
-                    {
-                      id: 'dev-scenario',
-                      value: model.devScenarios.activeScenario ?? '',
-                      isDisabled: model.scenarioBusy,
-                      onChange: (id) =>
-                        SelectedDevScenario({
-                          id:
-                            model.devScenarios?.scenarios.find(
-                              (scenario) => scenario.id === id
-                            )?.id ?? null,
-                        }),
-                      toView: ({ select, label }) =>
-                        h.div(
-                          [h.Class('lab-field')],
-                          [
-                            h.label(label, ['Mock scenario']),
-                            h.select(
-                              [...select],
-                              [
-                                h.option([h.Value('')], ['Disabled']),
-                                ...(model.devScenarios?.scenarios ?? []).map(
-                                  (scenario) =>
-                                    h.option(
-                                      [
-                                        h.Value(scenario.id),
-                                        h.Selected(
-                                          scenario.id ===
-                                            model.devScenarios?.activeScenario
-                                        ),
-                                      ],
-                                      [scenario.label]
-                                    )
-                                ),
-                              ]
-                            ),
-                          ]
-                        ),
-                    },
-                    h
-                  ),
-              activeScenario === undefined
-                ? null
-                : h.div(
-                    [h.Class('scenario-card')],
+                [h.Class('tree-empty')],
+                [
+                  h.strong([], ['No file changes']),
+                  h.p(
+                    [],
                     [
-                      h.strong([], [activeScenario.label]),
-                      h.p([], [activeScenario.description]),
-                      h.div(
-                        [h.Class('tag-list')],
-                        activeScenario.tags.map((tag) =>
-                          h.span([h.Key(tag)], [tag])
-                        )
-                      ),
-                      button(h, 'Run selected scenario', ClickedRunScenario(), {
-                        disabled:
-                          model.selectedSessionId === null ||
-                          model.activeRunId !== null,
-                        className: 'accent-button',
-                      }),
+                      model.selectedSessionId === null
+                        ? 'Choose an existing session or send a message to start one.'
+                        : 'File changes from tool calls will appear here.',
                     ]
                   ),
-              h.div(
-                [h.Class('lab-divider')],
-                [
-                  h.strong([], ['Summarization']),
-                  h.span([], ['Select a range']),
                 ]
-              ),
-              Select.view(
-                {
-                  id: 'compact-start',
-                  value: model.compactStartNodeId ?? '',
-                  isDisabled: compactable.length === 0,
-                  onChange: (id) => SelectedCompactStart({ id }),
-                  toView: ({ select, label }) =>
-                    h.div(
-                      [h.Class('lab-field')],
-                      [
-                        h.label(label, ['Summary start']),
-                        h.select(
-                          [...select],
-                          compactable.map((node) =>
-                            h.option([h.Value(node.id)], [preview(node)])
-                          )
-                        ),
-                      ]
-                    ),
-                },
-                h
-              ),
-              Select.view(
-                {
-                  id: 'compact-end',
-                  value: model.compactEndNodeId ?? '',
-                  isDisabled: compactable.length === 0,
-                  onChange: (id) => SelectedCompactEnd({ id }),
-                  toView: ({ select, label }) =>
-                    h.div(
-                      [h.Class('lab-field')],
-                      [
-                        h.label(label, ['Summary end']),
-                        h.select(
-                          [...select],
-                          compactable.map((node) =>
-                            h.option([h.Value(node.id)], [preview(node)])
-                          )
-                        ),
-                      ]
-                    ),
-                },
-                h
-              ),
-              button(
-                h,
-                model.compactingRunId === null
-                  ? 'Summarize selected range'
-                  : 'Summarizing…',
-                ClickedCompact(),
-                { disabled: !canCompact, className: 'outline-button' }
               ),
             ]
           ),
@@ -758,17 +816,18 @@ const sessionShell = (model: Model, h: HtmlBuilder<Message>): Html => {
                 [h.Class('session-heading')],
                 [
                   h.h1([], [session?.title ?? 'New Session']),
-                  project === undefined
+                  project === undefined || session === undefined
                     ? null
                     : h.span([h.Class('project-badge')], [project.name]),
                 ]
               ),
-              button(h, '▤', ClickedToggleTreePanel(), {
-                className: 'tree-toggle',
-                ariaLabel: model.treePanelOpen
-                  ? 'Close side panel'
-                  : 'Open side panel',
-              }),
+              iconButton(
+                h,
+                icon(h, 'M4 5h16v14H4zm11 0v14'),
+                ClickedToggleTreePanel(),
+                model.treePanelOpen ? 'Close side panel' : 'Open side panel',
+                'tree-toggle'
+              ),
             ]
           ),
           model.selectedSessionId === null
@@ -783,6 +842,243 @@ const sessionShell = (model: Model, h: HtmlBuilder<Message>): Html => {
   )
 }
 
+const overlay = (model: Model, h: HtmlBuilder<Message>): Html | null => {
+  if (model.overlay === null) return null
+  const close = iconButton(
+    h,
+    icon(h, 'M6 6l12 12M18 6 6 18'),
+    ClosedOverlay(),
+    'Close dialog',
+    'modal-close'
+  )
+  const filtered = model.sessions.filter((session) =>
+    sessionTitle(session)
+      .toLowerCase()
+      .includes(model.sessionSearch.toLowerCase())
+  )
+  const title =
+    model.overlay === 'search'
+      ? 'Search sessions'
+      : model.overlay === 'settings'
+        ? 'Connection settings'
+        : 'Scenario Lab'
+  const compactableNodes = selectedNodePath(model).filter(
+    (node) => node.encoded.role !== 'system'
+  )
+  return h.div(
+    [h.Class('modal-backdrop'), h.Role('presentation')],
+    [
+      h.section(
+        [
+          h.Class('modal-card'),
+          h.Role('dialog'),
+          h.AriaModal(true),
+          h.AriaLabel(title),
+        ],
+        [
+          h.header(
+            [],
+            [
+              h.div(
+                [],
+                [
+                  h.h2([], [title]),
+                  model.overlay === 'lab'
+                    ? h.span([h.Class('dev-pill')], ['DEV'])
+                    : null,
+                ]
+              ),
+              close,
+            ]
+          ),
+          model.overlay === 'search'
+            ? h.div(
+                [h.Class('modal-body search-modal')],
+                [
+                  Input.view(
+                    {
+                      id: 'session-search',
+                      value: model.sessionSearch,
+                      onInput: (value) => ChangedSessionSearch({ value }),
+                      toView: ({ input, label }) =>
+                        h.div(
+                          [],
+                          [
+                            h.label(
+                              [...label, h.Class('sr-only')],
+                              ['Search sessions']
+                            ),
+                            h.input([
+                              ...input,
+                              h.Class('modal-input'),
+                              h.Placeholder('Search by title…'),
+                              h.AriaLabel('Search sessions'),
+                            ]),
+                          ]
+                        ),
+                    },
+                    h
+                  ),
+                  h.div(
+                    [h.Class('search-results')],
+                    filtered.length === 0
+                      ? [h.p([], ['No sessions found.'])]
+                      : filtered.map((session) =>
+                          button(
+                            h,
+                            sessionTitle(session),
+                            SelectedSession({ id: session.id }),
+                            { className: 'search-result' }
+                          )
+                        )
+                  ),
+                ]
+              )
+            : model.overlay === 'settings'
+              ? h.div(
+                  [h.Class('modal-body')],
+                  [
+                    h.p(
+                      [h.Class('modal-description')],
+                      ['Connect Sorato to a local coordinator.']
+                    ),
+                    Input.view(
+                      {
+                        id: 'settings-url',
+                        value: model.serverUrlInput,
+                        onInput: (value) => ChangedServerUrl({ value }),
+                        toView: ({ input, label }) =>
+                          h.div(
+                            [h.Class('settings-field')],
+                            [
+                              h.label(label, ['Server URL']),
+                              h.input([
+                                ...input,
+                                h.Class('modal-input'),
+                                h.AriaLabel('Server URL'),
+                              ]),
+                            ]
+                          ),
+                      },
+                      h
+                    ),
+                    button(
+                      h,
+                      model.status === 'loading' ? 'Connecting…' : 'Reconnect',
+                      ClickedConnect(),
+                      {
+                        disabled: model.status === 'loading',
+                        className: 'accent-button modal-action',
+                      }
+                    ),
+                  ]
+                )
+              : h.div(
+                  [h.Class('modal-body lab-overlay')],
+                  [
+                    h.p(
+                      [h.Class('modal-description')],
+                      [
+                        'Deterministic full-stack agent exercises and summarization tools.',
+                      ]
+                    ),
+                    Select.view(
+                      {
+                        id: 'overlay-scenario',
+                        value: model.devScenarios?.activeScenario ?? '',
+                        isDisabled:
+                          model.scenarioBusy ||
+                          model.startingSessionId !== null ||
+                          model.activeRunId !== null ||
+                          model.compactingRunId !== null,
+                        onChange: (id) =>
+                          SelectedDevScenario({
+                            id:
+                              model.devScenarios?.scenarios.find(
+                                (s) => s.id === id
+                              )?.id ?? null,
+                          }),
+                        toView: ({ select, label }) =>
+                          h.div(
+                            [h.Class('lab-field')],
+                            [
+                              h.label(label, ['Scenario']),
+                              h.select(
+                                [...select],
+                                [
+                                  h.option([h.Value('')], ['Disabled']),
+                                  ...(model.devScenarios?.scenarios ?? []).map(
+                                    (s) => h.option([h.Value(s.id)], [s.label])
+                                  ),
+                                ]
+                              ),
+                            ]
+                          ),
+                      },
+                      h
+                    ),
+                    model.activeRunId === null
+                      ? button(
+                          h,
+                          'Run selected scenario',
+                          ClickedRunScenario(),
+                          {
+                            className: 'accent-button',
+                            disabled:
+                              model.devScenarios?.activeScenario == null,
+                          }
+                        )
+                      : button(h, 'Stop scenario', ClickedStop(), {
+                          className: 'accent-button',
+                        }),
+                    h.h3([], ['Summarization']),
+                    h.div(
+                      [h.Class('summary-range')],
+                      (['start', 'end'] as const).map((edge) =>
+                        Select.view(
+                          {
+                            id: `overlay-${edge}`,
+                            value:
+                              edge === 'start'
+                                ? (model.compactStartNodeId ?? '')
+                                : (model.compactEndNodeId ?? ''),
+                            onChange: (id) =>
+                              edge === 'start'
+                                ? SelectedCompactStart({ id })
+                                : SelectedCompactEnd({ id }),
+                            toView: ({ select, label }) =>
+                              h.div(
+                                [h.Class('lab-field')],
+                                [
+                                  h.label(label, [
+                                    edge === 'start'
+                                      ? 'Start node'
+                                      : 'End node',
+                                  ]),
+                                  h.select(
+                                    [...select],
+                                    compactableNodes.map((n) =>
+                                      h.option([h.Value(n.id)], [preview(n)])
+                                    )
+                                  ),
+                                ]
+                              ),
+                          },
+                          h
+                        )
+                      )
+                    ),
+                    button(h, 'Summarize selected range', ClickedCompact(), {
+                      className: 'outline-button',
+                    }),
+                  ]
+                ),
+        ]
+      ),
+    ]
+  )
+}
+
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
   title:
     model.selectedSessionId === null
@@ -790,6 +1086,6 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
       : 'Session · Sorato',
   body: h.div(
     [h.Class('app-shell')],
-    [sidebar(model, h), sessionShell(model, h)]
+    [sidebar(model, h), sessionShell(model, h), overlay(model, h)]
   ),
 })

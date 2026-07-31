@@ -132,6 +132,10 @@ export function getReplaySnapshot(runId: string): {
   }
 }
 
+export function getReplaySessionId(runId: string): string | undefined {
+  return buffers.get(runId)?.sessionId
+}
+
 export function getContentThroughEventId(runId: string): number | undefined {
   const state = buffers.get(runId)
   if (!state || state.status !== 'active' || state.nextEventId <= 1) {

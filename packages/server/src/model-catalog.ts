@@ -215,7 +215,7 @@ const listModelsEffect = Effect.fn('ModelCatalog.list')(function* (
           reasoning: true,
           temperature: false,
           toolCall: true,
-          thinkingLevels: [],
+          thinkingLevels: ['off'],
           modes: [],
           limits: { context: 32_000, output: 4_096 },
         },

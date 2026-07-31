@@ -49,6 +49,12 @@ const StreamActivity = Schema.Struct({
   failed: Schema.Boolean,
 })
 
+const AppTab = Schema.Struct({
+  id: Schema.String,
+  sessionId: Schema.NullOr(Schema.String),
+  projectId: Schema.NullOr(Schema.String),
+})
+
 export const Model = Schema.Struct({
   baseUrl: Schema.String,
   serverUrlInput: Schema.String,
@@ -58,6 +64,7 @@ export const Model = Schema.Struct({
   models: Schema.Array(ModelOption),
   nodes: Schema.Array(MessageNodeResponse),
   activity: Schema.Array(StreamActivity),
+  compactionActivity: Schema.Array(StreamActivity),
   selectedProjectId: Schema.NullOr(Schema.String),
   selectedSessionId: Schema.NullOr(Schema.String),
   selectedModelId: Schema.String,
@@ -71,8 +78,13 @@ export const Model = Schema.Struct({
   scenarioBusy: Schema.Boolean,
   compactStartNodeId: Schema.NullOr(Schema.String),
   compactEndNodeId: Schema.NullOr(Schema.String),
-  sidePanel: Schema.Literals(['tree', 'lab']),
+  sidePanel: Schema.Literals(['tree', 'diff']),
   treePanelOpen: Schema.Boolean,
+  tabs: Schema.Array(AppTab),
+  activeTabId: Schema.String,
+  nextTabId: Schema.Number,
+  overlay: Schema.NullOr(Schema.Literals(['search', 'settings', 'lab'])),
+  sessionSearch: Schema.String,
   sequence: Schema.Number,
   error: Schema.NullOr(Schema.String),
 })
@@ -86,6 +98,8 @@ export const ChangedProjectFilter = m('ChangedProjectFilter', {
 export const SelectedProject = m('SelectedProject', { id: Schema.String })
 export const ClickedCreateSession = m('ClickedCreateSession')
 export const ClickedNewTab = m('ClickedNewTab')
+export const SelectedTab = m('SelectedTab', { id: Schema.String })
+export const ClosedTab = m('ClosedTab', { id: Schema.String })
 export const SelectedSession = m('SelectedSession', { id: Schema.String })
 export const SelectedModel = m('SelectedModel', { id: Schema.String })
 export const SelectedBaseNode = m('SelectedBaseNode', { id: Schema.String })
@@ -104,9 +118,16 @@ export const SelectedCompactEnd = m('SelectedCompactEnd', {
 })
 export const ClickedCompact = m('ClickedCompact')
 export const SelectedSidePanel = m('SelectedSidePanel', {
-  panel: Schema.Literals(['tree', 'lab']),
+  panel: Schema.Literals(['tree', 'diff']),
 })
 export const ClickedToggleTreePanel = m('ClickedToggleTreePanel')
+export const OpenedOverlay = m('OpenedOverlay', {
+  overlay: Schema.Literals(['search', 'settings', 'lab']),
+})
+export const ClosedOverlay = m('ClosedOverlay')
+export const ChangedSessionSearch = m('ChangedSessionSearch', {
+  value: Schema.String,
+})
 export const ClearedError = m('ClearedError')
 
 export const Message = Schema.Union([
@@ -116,6 +137,8 @@ export const Message = Schema.Union([
   SelectedProject,
   ClickedCreateSession,
   ClickedNewTab,
+  SelectedTab,
+  ClosedTab,
   SelectedSession,
   SelectedModel,
   SelectedBaseNode,
@@ -129,6 +152,9 @@ export const Message = Schema.Union([
   ClickedCompact,
   SelectedSidePanel,
   ClickedToggleTreePanel,
+  OpenedOverlay,
+  ClosedOverlay,
+  ChangedSessionSearch,
   ClearedError,
   LoadedWorkspace,
   LoadedModels,
@@ -154,6 +180,7 @@ export const initialModel: Model = Model.make({
   models: [],
   nodes: [],
   activity: [],
+  compactionActivity: [],
   selectedProjectId: null,
   selectedSessionId: null,
   selectedModelId: '',
@@ -169,6 +196,11 @@ export const initialModel: Model = Model.make({
   compactEndNodeId: null,
   sidePanel: 'tree',
   treePanelOpen: true,
+  tabs: [{ id: 'tab-0', sessionId: null, projectId: null }],
+  activeTabId: 'tab-0',
+  nextTabId: 1,
+  overlay: null,
+  sessionSearch: '',
   sequence: 0,
   error: null,
 })
@@ -183,6 +215,103 @@ export const init: Runtime.ApplicationInit<Model, Message> = () => [
 
 type UpdateResult = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 const noCommand = (model: Model): UpdateResult => [model, []]
+
+const selectedNodePath = (
+  nodes: ReadonlyArray<MessageNodeResponse>,
+  headId: string | null
+): ReadonlyArray<MessageNodeResponse> => {
+  if (headId === null) return []
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  const path: Array<MessageNodeResponse> = []
+  const seen = new Set<string>()
+  let cursor: string | null = headId
+  while (cursor !== null && !seen.has(cursor)) {
+    seen.add(cursor)
+    const node = byId.get(cursor)
+    if (node === undefined) return []
+    path.push(node)
+    cursor = node.parentId
+  }
+  return path.reverse()
+}
+
+const selectBaseNode = (model: Model, id: string): Model => {
+  const compactable = selectedNodePath(model.nodes, id).filter(
+    (node) => node.encoded.role !== 'system'
+  )
+  return {
+    ...model,
+    selectedBaseNodeId: id,
+    compactStartNodeId: compactable[0]?.id ?? null,
+    compactEndNodeId: compactable.at(-1)?.id ?? null,
+  }
+}
+
+const selectTab = (model: Model, id: string): UpdateResult => {
+  const tab = model.tabs.find((candidate) => candidate.id === id)
+  if (tab === undefined) return noCommand(model)
+  if (tab.sessionId === null) {
+    const projectId = tab.projectId ?? model.selectedProjectId
+    const projectChanged = projectId !== model.selectedProjectId
+    return [
+      {
+        ...model,
+        activeTabId: id,
+        selectedProjectId: projectId,
+        selectedSessionId: null,
+        selectedBaseNodeId: null,
+        models: projectChanged ? [] : model.models,
+        selectedModelId: projectChanged ? '' : model.selectedModelId,
+        nodes: [],
+        activity: [],
+        activeRunId: null,
+        compactingRunId: null,
+        startingSessionId: null,
+        compactStartNodeId: null,
+        compactEndNodeId: null,
+        sequence: 0,
+      },
+      projectChanged && projectId !== null
+        ? [LoadModels({ baseUrl: model.baseUrl, projectId })]
+        : [],
+    ]
+  }
+  const session = model.sessions.find(
+    (candidate) => candidate.id === tab.sessionId
+  )
+  if (session === undefined) return noCommand(model)
+  const projectChanged = session.projectId !== model.selectedProjectId
+  const activeRunId =
+    session.activeRuns?.find((run) => run.visibility === 'primary')?.runId ??
+    null
+  return [
+    {
+      ...model,
+      activeTabId: id,
+      selectedProjectId: session.projectId,
+      selectedSessionId: session.id,
+      models: projectChanged ? [] : model.models,
+      selectedModelId: projectChanged ? '' : model.selectedModelId,
+      nodes: [],
+      activity: [],
+      selectedBaseNodeId: null,
+      activeRunId,
+      startingSessionId: null,
+      sequence: 0,
+    },
+    [
+      LoadTranscript({ baseUrl: model.baseUrl, sessionId: session.id }),
+      ...(projectChanged
+        ? [
+            LoadModels({
+              baseUrl: model.baseUrl,
+              projectId: session.projectId,
+            }),
+          ]
+        : []),
+    ],
+  ]
+}
 
 export const update = (model: Model, message: Message): UpdateResult =>
   M.value(message).pipe(
@@ -203,6 +332,7 @@ export const update = (model: Model, message: Message): UpdateResult =>
             models: [],
             nodes: [],
             activity: [],
+            compactionActivity: [],
             selectedProjectId: null,
             selectedSessionId: null,
             selectedModelId: '',
@@ -214,6 +344,15 @@ export const update = (model: Model, message: Message): UpdateResult =>
             scenarioBusy: false,
             compactStartNodeId: null,
             compactEndNodeId: null,
+            tabs: [
+              {
+                id: `tab-${model.nextTabId}`,
+                sessionId: null,
+                projectId: null,
+              },
+            ],
+            activeTabId: `tab-${model.nextTabId}`,
+            nextTabId: model.nextTabId + 1,
             sequence: 0,
             error: null,
           },
@@ -225,12 +364,16 @@ export const update = (model: Model, message: Message): UpdateResult =>
       SelectedProject: ({ id }) => [
         {
           ...model,
+          tabs: model.tabs.map((tab) =>
+            tab.id === model.activeTabId ? { ...tab, projectId: id } : tab
+          ),
           selectedProjectId: id,
           selectedSessionId: null,
           models: [],
           selectedModelId: '',
           nodes: [],
           activity: [],
+          sequence: 0,
         },
         [LoadModels({ baseUrl: model.baseUrl, projectId: id })],
       ],
@@ -246,55 +389,69 @@ export const update = (model: Model, message: Message): UpdateResult =>
                 }),
               ],
             ],
-      ClickedNewTab: () =>
-        noCommand({
-          ...model,
-          selectedSessionId: null,
-          selectedBaseNodeId: null,
-          nodes: [],
-          activity: [],
-          activeRunId: null,
-          compactingRunId: null,
-          startingSessionId: null,
-          compactStartNodeId: null,
-          compactEndNodeId: null,
-        }),
+      ClickedNewTab: () => {
+        const tab = {
+          id: `tab-${model.nextTabId}`,
+          sessionId: null,
+          projectId: model.selectedProjectId,
+        }
+        return selectTab(
+          {
+            ...model,
+            tabs: [tab, ...model.tabs],
+            nextTabId: model.nextTabId + 1,
+          },
+          tab.id
+        )
+      },
+      SelectedTab: ({ id }) => selectTab(model, id),
+      ClosedTab: ({ id }) => {
+        const index = model.tabs.findIndex((tab) => tab.id === id)
+        if (index < 0) return noCommand(model)
+        const remaining = model.tabs.filter((tab) => tab.id !== id)
+        if (remaining.length === 0) {
+          const replacement = {
+            id: `tab-${model.nextTabId}`,
+            sessionId: null,
+            projectId: model.selectedProjectId,
+          }
+          return selectTab(
+            {
+              ...model,
+              tabs: [replacement],
+              nextTabId: model.nextTabId + 1,
+            },
+            replacement.id
+          )
+        }
+        if (id !== model.activeTabId)
+          return noCommand({ ...model, tabs: remaining })
+        const next = remaining[Math.min(index, remaining.length - 1)]
+        return next === undefined
+          ? noCommand(model)
+          : selectTab({ ...model, tabs: remaining }, next.id)
+      },
       SelectedSession: ({ id }) => {
         const session = model.sessions.find((candidate) => candidate.id === id)
         if (session === undefined) return noCommand(model)
-        const projectChanged = session.projectId !== model.selectedProjectId
-        const activeRunId =
-          session.activeRuns?.find((run) => run.visibility === 'primary')
-            ?.runId ?? null
-        return [
-          {
-            ...model,
-            selectedProjectId: session.projectId,
-            selectedSessionId: id,
-            models: projectChanged ? [] : model.models,
-            selectedModelId: projectChanged ? '' : model.selectedModelId,
-            nodes: [],
-            activity: [],
-            selectedBaseNodeId: null,
-            activeRunId,
-            startingSessionId: null,
-          },
-          [
-            LoadTranscript({ baseUrl: model.baseUrl, sessionId: id }),
-            ...(projectChanged
-              ? [
-                  LoadModels({
-                    baseUrl: model.baseUrl,
-                    projectId: session.projectId,
-                  }),
-                ]
-              : []),
-          ],
-        ]
+        const existing = model.tabs.find((tab) => tab.sessionId === id)
+        if (existing !== undefined)
+          return selectTab(
+            { ...model, overlay: null, sessionSearch: '' },
+            existing.id
+          )
+        const tabs = model.tabs.map((tab) =>
+          tab.id === model.activeTabId
+            ? { ...tab, sessionId: id, projectId: session.projectId }
+            : tab
+        )
+        return selectTab(
+          { ...model, tabs, overlay: null, sessionSearch: '' },
+          model.activeTabId
+        )
       },
       SelectedModel: ({ id }) => noCommand({ ...model, selectedModelId: id }),
-      SelectedBaseNode: ({ id }) =>
-        noCommand({ ...model, selectedBaseNodeId: id }),
+      SelectedBaseNode: ({ id }) => noCommand(selectBaseNode(model, id)),
       ChangedDraft: ({ value }) => noCommand({ ...model, draft: value }),
       ClickedSend: () => {
         const projectId = model.selectedProjectId
@@ -351,37 +508,67 @@ export const update = (model: Model, message: Message): UpdateResult =>
               model,
               [StopRun({ baseUrl: model.baseUrl, runId: model.activeRunId })],
             ],
-      SelectedDevScenario: ({ id }) => [
-        { ...model, scenarioBusy: true },
-        [
-          id === null
-            ? DeactivateDevScenario({ baseUrl: model.baseUrl })
-            : ActivateDevScenario({ baseUrl: model.baseUrl, scenario: id }),
-        ],
-      ],
-      ClickedRunScenario: () =>
-        model.selectedSessionId === null ||
-        model.devScenarios === null ||
-        model.devScenarios.activeScenario === null ||
+      SelectedDevScenario: ({ id }) =>
+        model.scenarioBusy ||
+        model.startingSessionId !== null ||
         model.activeRunId !== null ||
-        model.startingSessionId !== null
+        model.compactingRunId !== null
           ? noCommand(model)
           : [
-              {
-                ...model,
-                error: null,
-                startingSessionId: model.selectedSessionId,
-              },
+              { ...model, scenarioBusy: true },
               [
-                StartRun({
-                  baseUrl: model.baseUrl,
-                  sessionId: model.selectedSessionId,
-                  input: `Exercise the ${model.devScenarios.activeScenario} development scenario.`,
-                  model: 'mock/streaming-demo',
-                  baseNodeId: model.selectedBaseNodeId,
-                }),
+                id === null
+                  ? DeactivateDevScenario({ baseUrl: model.baseUrl })
+                  : ActivateDevScenario({
+                      baseUrl: model.baseUrl,
+                      scenario: id,
+                    }),
               ],
             ],
+      ClickedRunScenario: () => {
+        const projectId = model.selectedProjectId
+        const sessionId = model.selectedSessionId
+        if (
+          (sessionId === null && projectId === null) ||
+          model.devScenarios === null ||
+          model.devScenarios.activeScenario === null ||
+          model.activeRunId !== null ||
+          model.compactingRunId !== null ||
+          model.startingSessionId !== null
+        )
+          return noCommand(model)
+        const input = `Exercise the ${model.devScenarios.activeScenario} development scenario.`
+        if (sessionId === null) {
+          if (projectId === null) return noCommand(model)
+          return [
+            { ...model, error: null, startingSessionId: 'new' },
+            [
+              CreateSessionAndStartRun({
+                baseUrl: model.baseUrl,
+                projectId,
+                input,
+                model: 'mock/streaming-demo',
+              }),
+            ],
+          ]
+        }
+        return [
+          {
+            ...model,
+            error: null,
+            startingSessionId: sessionId,
+          },
+          [
+            StartRun({
+              baseUrl: model.baseUrl,
+              sessionId,
+              input,
+              model: 'mock/streaming-demo',
+              baseNodeId: model.selectedBaseNodeId,
+            }),
+          ],
+        ]
+      },
       SelectedCompactStart: ({ id }) =>
         noCommand({ ...model, compactStartNodeId: id }),
       SelectedCompactEnd: ({ id }) =>
@@ -390,6 +577,10 @@ export const update = (model: Model, message: Message): UpdateResult =>
         noCommand({ ...model, sidePanel: panel }),
       ClickedToggleTreePanel: () =>
         noCommand({ ...model, treePanelOpen: !model.treePanelOpen }),
+      OpenedOverlay: ({ overlay }) => noCommand({ ...model, overlay }),
+      ClosedOverlay: () => noCommand({ ...model, overlay: null }),
+      ChangedSessionSearch: ({ value }) =>
+        noCommand({ ...model, sessionSearch: value }),
       ClickedCompact: () =>
         model.selectedSessionId === null ||
         model.selectedModelId === '' ||
@@ -412,40 +603,69 @@ export const update = (model: Model, message: Message): UpdateResult =>
               ],
             ],
       ClearedError: () => noCommand({ ...model, error: null }),
-      LoadedWorkspace: ({ baseUrl, projects, sessions }) =>
-        baseUrl !== model.baseUrl
-          ? noCommand(model)
-          : noCommand({
-              ...model,
-              projects,
-              sessions,
-              status: 'ready',
-              error: null,
-            }),
-      LoadedModels: ({ projectId, models, defaultModel }) =>
-        projectId !== model.selectedProjectId
+      LoadedWorkspace: ({ baseUrl, projects, sessions }) => {
+        if (baseUrl !== model.baseUrl) return noCommand(model)
+        const projectId = model.selectedProjectId ?? projects[0]?.id ?? null
+        return [
+          {
+            ...model,
+            projects,
+            sessions,
+            tabs: model.tabs.map((tab) =>
+              tab.id === model.activeTabId && tab.projectId === null
+                ? { ...tab, projectId }
+                : tab
+            ),
+            selectedProjectId: projectId,
+            status: 'ready',
+            error: null,
+          },
+          model.selectedProjectId === null && projectId !== null
+            ? [LoadModels({ baseUrl: model.baseUrl, projectId })]
+            : [],
+        ]
+      },
+      LoadedModels: ({ baseUrl, projectId, models, defaultModel }) =>
+        baseUrl !== model.baseUrl || projectId !== model.selectedProjectId
           ? noCommand(model)
           : noCommand({
               ...model,
               models,
-              selectedModelId: defaultModel ?? models[0]?.id ?? '',
+              selectedModelId:
+                (model.devScenarios?.activeScenario === null
+                  ? undefined
+                  : models.find((item) => item.id === 'mock/streaming-demo')
+                      ?.id) ??
+                defaultModel ??
+                models[0]?.id ??
+                '',
             }),
-      LoadedTranscript: ({ sessionId, snapshot }) =>
-        sessionId !== model.selectedSessionId
+      LoadedTranscript: ({ baseUrl, sessionId, snapshot }) =>
+        baseUrl !== model.baseUrl || sessionId !== model.selectedSessionId
           ? noCommand(model)
-          : (() => {
-              const compactable = snapshot.nodes.filter(
-                (node) => node.encoded.role !== 'system'
-              )
-              return noCommand({
-                ...model,
-                nodes: snapshot.nodes,
-                sequence: snapshot.sequence,
-                selectedBaseNodeId: snapshot.nodes.at(-1)?.id ?? null,
-                compactStartNodeId: compactable[0]?.id ?? null,
-                compactEndNodeId: compactable.at(-1)?.id ?? null,
-              })
-            })(),
+          : snapshot.sequence < model.sequence
+            ? noCommand(model)
+            : (() => {
+                const selectedBaseNodeId =
+                  model.selectedBaseNodeId !== null &&
+                  snapshot.nodes.some(
+                    (node) => node.id === model.selectedBaseNodeId
+                  )
+                    ? model.selectedBaseNodeId
+                    : (snapshot.nodes.at(-1)?.id ?? null)
+                const compactable = selectedNodePath(
+                  snapshot.nodes,
+                  selectedBaseNodeId
+                ).filter((node) => node.encoded.role !== 'system')
+                return noCommand({
+                  ...model,
+                  nodes: snapshot.nodes,
+                  sequence: snapshot.sequence,
+                  selectedBaseNodeId,
+                  compactStartNodeId: compactable[0]?.id ?? null,
+                  compactEndNodeId: compactable.at(-1)?.id ?? null,
+                })
+              })(),
       CreatedSession: ({ baseUrl, session }) =>
         baseUrl !== model.baseUrl
           ? noCommand(model)
@@ -453,6 +673,15 @@ export const update = (model: Model, message: Message): UpdateResult =>
               {
                 ...model,
                 sessions: [session, ...model.sessions],
+                tabs: model.tabs.map((tab) =>
+                  tab.id === model.activeTabId
+                    ? {
+                        ...tab,
+                        sessionId: session.id,
+                        projectId: session.projectId,
+                      }
+                    : tab
+                ),
                 selectedSessionId: session.id,
                 nodes: [],
                 selectedBaseNodeId: null,
@@ -502,13 +731,26 @@ export const update = (model: Model, message: Message): UpdateResult =>
       StartedCompaction: ({ baseUrl, sessionId, run }) =>
         baseUrl !== model.baseUrl || sessionId !== model.selectedSessionId
           ? noCommand(model)
-          : noCommand({ ...model, compactingRunId: run.runId }),
+          : noCommand({
+              ...model,
+              compactingRunId: run.runId,
+              compactionActivity: [],
+            }),
       StartedNewSession: ({ baseUrl, session, run }) =>
         baseUrl !== model.baseUrl || model.startingSessionId !== 'new'
           ? noCommand(model)
           : noCommand({
               ...model,
               sessions: [session, ...model.sessions],
+              tabs: model.tabs.map((tab) =>
+                tab.id === model.activeTabId
+                  ? {
+                      ...tab,
+                      sessionId: session.id,
+                      projectId: session.projectId,
+                    }
+                  : tab
+              ),
               selectedSessionId: session.id,
               selectedProjectId: session.projectId,
               selectedBaseNodeId: run.baseNodeId,
@@ -541,21 +783,36 @@ const applyServerEvent = (
     case 'ReasoningDelta':
     case 'ToolCall':
     case 'ToolResult':
-      return noCommand({
-        ...model,
-        activity: applyContentEvent(model.activity, event),
-      })
+      if (event.runId === model.compactingRunId)
+        return noCommand({
+          ...model,
+          compactionActivity: applyContentEvent(
+            model.compactionActivity,
+            event
+          ),
+        })
+      return event.runId === model.activeRunId
+        ? noCommand({
+            ...model,
+            activity: applyContentEvent(model.activity, event),
+          })
+        : noCommand(model)
     case 'NodeBatchCommitted': {
-      const ids = new Set(event.nodes.map((node) => node.id))
-      return noCommand({
-        ...model,
-        nodes: [
-          ...model.nodes.filter((node) => !ids.has(node.id)),
-          ...event.nodes,
+      if (event.sequence <= model.sequence || model.selectedSessionId === null)
+        return noCommand(model)
+      return [
+        {
+          ...model,
+          selectedBaseNodeId: event.headNodeId,
+          sequence: event.sequence,
+        },
+        [
+          LoadTranscript({
+            baseUrl: model.baseUrl,
+            sessionId: model.selectedSessionId,
+          }),
         ],
-        selectedBaseNodeId: event.headNodeId,
-        sequence: Math.max(model.sequence, event.sequence),
-      })
+      ]
     }
     case 'RunStart':
       if (event.visibility === 'background') return noCommand(model)
@@ -567,25 +824,48 @@ const applyServerEvent = (
       })
     case 'RunEnd':
       if (event.runId === model.compactingRunId) {
+        return model.selectedSessionId === null
+          ? noCommand(model)
+          : [
+              {
+                ...model,
+                compactingRunId: null,
+                compactionActivity: [],
+              },
+              [
+                LoadTranscript({
+                  baseUrl: model.baseUrl,
+                  sessionId: model.selectedSessionId,
+                }),
+              ],
+            ]
+      }
+      if (event.runId !== model.activeRunId) {
+        return noCommand(model)
+      }
+      return model.selectedSessionId === null
+        ? noCommand(model)
+        : [
+            {
+              ...model,
+              activeRunId: null,
+              activity: [],
+            },
+            [
+              LoadTranscript({
+                baseUrl: model.baseUrl,
+                sessionId: model.selectedSessionId,
+              }),
+            ],
+          ]
+    case 'RunFailed':
+      if (event.runId === model.compactingRunId)
         return noCommand({
           ...model,
           compactingRunId: null,
-          sequence: Math.max(model.sequence, event.sequence),
+          compactionActivity: [],
+          error: event.message,
         })
-      }
-      if (event.runId !== model.activeRunId) {
-        return noCommand({
-          ...model,
-          sequence: Math.max(model.sequence, event.sequence),
-        })
-      }
-      return noCommand({
-        ...model,
-        activeRunId: null,
-        activity: [],
-        sequence: Math.max(model.sequence, event.sequence),
-      })
-    case 'RunFailed':
       return event.runId !== model.activeRunId
         ? noCommand(model)
         : noCommand({

@@ -198,6 +198,19 @@ const branchingParts = [
   finish(),
 ] satisfies ReadonlyArray<Response.StreamPartEncoded>
 
+export const MOCK_SUMMARY =
+  'The selected conversation range was compacted by the deterministic Sorato mock summarizer. It preserves the prior goals, decisions, relevant tool results, and unresolved work for continuation.'
+
+const summaryParts = [
+  Response.makePart('text-start', { id: 'summary' }),
+  Response.makePart('text-delta', {
+    id: 'summary',
+    delta: MOCK_SUMMARY,
+  }),
+  Response.makePart('text-end', { id: 'summary' }),
+  finish(),
+] satisfies ReadonlyArray<Response.StreamPartEncoded>
+
 const interruptibleParts = [
   Response.makePart('text-start', { id: 'interruptible' }),
   ...Array.from({ length: 100 }, (_, index) =>
@@ -210,7 +223,10 @@ const interruptibleParts = [
   finish(),
 ] satisfies ReadonlyArray<Response.StreamPartEncoded>
 
-export const mockLanguageModelLayer = (scenario: MockAgentScenario) =>
+export const mockLanguageModelLayer = (
+  scenario: MockAgentScenario,
+  runKind: 'agent' | 'summary' = 'agent'
+) =>
   Layer.effect(
     LanguageModel.LanguageModel,
     Effect.gen(function* () {
@@ -220,6 +236,7 @@ export const mockLanguageModelLayer = (scenario: MockAgentScenario) =>
         streamText: () =>
           Ref.getAndUpdate(calls, (value) => value + 1).pipe(
             Effect.map((call): ReadonlyArray<Response.StreamPartEncoded> => {
+              if (runKind === 'summary') return summaryParts
               if (scenario === 'tool-use') {
                 return call === 0 ? toolCallParts : toolAnswerParts
               }

@@ -85,12 +85,24 @@ const rawServerEvents = (apiBase: string, options: ServerEventStreamOptions) =>
       eventSource.addEventListener('connected', () => {
         // The server sends this as a transport-level readiness signal only.
       })
+      eventSource.addEventListener('terminal', () => {
+        Queue.endUnsafe(queue)
+        eventSource.close()
+      })
 
       for (const tag of EVENT_TAGS) {
         eventSource.addEventListener(tag, (event: MessageEvent) => {
           const decoded = decodeServerEvent(event.data)
           if (decoded._tag === 'Some') {
             Queue.offerUnsafe(queue, decoded.value)
+            if (
+              options.runId !== undefined &&
+              (decoded.value._tag === 'RunEnd' ||
+                decoded.value._tag === 'ReplayReset')
+            ) {
+              Queue.endUnsafe(queue)
+              eventSource.close()
+            }
             return
           }
 

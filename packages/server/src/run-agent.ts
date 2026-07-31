@@ -829,7 +829,12 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     }
     const modelServices = yield* (
       mockModel && Option.isSome(mockScenario)
-        ? Effect.succeed(mockLanguageModelLayer(mockScenario.value))
+        ? Effect.succeed(
+            mockLanguageModelLayer(
+              mockScenario.value,
+              request.compactRange === undefined ? 'agent' : 'summary'
+            )
+          )
         : modelResolver.resolve(dataDir, modelSelection)
     ).pipe(
       Effect.flatMap((layer) =>

@@ -1,4 +1,6 @@
+import { Effect, Stream } from 'effect'
 import { describe, expect, it } from '@effect/vitest'
+import { EventBus, EventBusLive } from '../src/event-bus.ts'
 import {
   appendReplayEvent,
   endEventReplay,
@@ -9,7 +11,7 @@ import {
   resetEventReplay,
   startEventReplay,
 } from '../src/event-replay.ts'
-import { resolveRunCursor } from '../src/sse.ts'
+import { liveRunStream, resolveRunCursor } from '../src/sse.ts'
 
 describe('EventReplay', () => {
   it('resumes run streams from the native EventSource Last-Event-ID header', () => {
@@ -121,6 +123,43 @@ describe('EventReplay', () => {
       'replay_unavailable'
     )
   })
+
+  it.effect('closes an unavailable filtered SSE replay after a restart', () =>
+    Effect.gen(function* () {
+      resetEventReplay()
+      const bus = yield* EventBus
+      const chunks = yield* liveRunStream(bus, 'forgotten-run', {
+        runId: 'forgotten-run',
+        eventId: 3,
+      }).pipe(Stream.runCollect)
+
+      expect(chunks.join('')).toContain('event: terminal')
+    }).pipe(Effect.provide(EventBusLive))
+  )
+
+  it.effect('closes a filtered SSE replay for a completed run', () =>
+    Effect.gen(function* () {
+      resetEventReplay()
+      startEventReplay('session-1', 'run-1')
+      appendReplayEvent('session-1', 'run-1', {
+        _tag: 'TextDelta',
+        sessionId: 'session-1',
+        runId: 'run-1',
+        delta: 'done',
+      })
+      endEventReplay('session-1', 'run-1')
+
+      const bus = yield* EventBus
+      const chunks = yield* liveRunStream(bus, 'run-1', {
+        runId: 'run-1',
+        eventId: 1,
+      }).pipe(Stream.runCollect)
+      const body = chunks.join('')
+
+      expect(body).toContain('event: ReplayReset')
+      expect(body).toContain('"reason":"run_completed"')
+    }).pipe(Effect.provide(EventBusLive))
+  )
 
   it('treats cursors from older runs as a full replay of the requested active run', () => {
     resetEventReplay()

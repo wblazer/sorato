@@ -9,9 +9,11 @@ import {
 } from '../src/model-catalog.ts'
 import {
   MOCK_MODEL_ID,
+  MOCK_SUMMARY,
   MockAgentConfig,
   MockAgentConfigLive,
   MockAgentDisabled,
+  mockLanguageModelLayer,
 } from '../src/mock-agent.ts'
 import { ProviderAuthStore } from '../src/provider-auth.ts'
 import { RuntimeConfigService } from '../src/runtime-config.ts'
@@ -132,4 +134,27 @@ describe('MockAgent', () => {
       )
     )
   )
+
+  for (const scenario of ['tool-use', 'branching'] as const) {
+    it.effect(
+      `uses dedicated deterministic summary output for the ${scenario} scenario`,
+      () =>
+        Effect.gen(function* () {
+          const partsFiber = yield* Effect.gen(function* () {
+            const model = yield* LanguageModel.LanguageModel
+            return yield* model.streamText({ prompt: [] }).pipe(
+              Stream.filter((part) => part.type === 'text-delta'),
+              Stream.map((part) => part.delta),
+              Stream.mkString
+            )
+          }).pipe(
+            Effect.provide(mockLanguageModelLayer(scenario, 'summary')),
+            Effect.forkChild
+          )
+
+          yield* TestClock.adjust('1 second')
+          expect(yield* Fiber.join(partsFiber)).toBe(MOCK_SUMMARY)
+        })
+    )
+  }
 })

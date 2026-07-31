@@ -8,7 +8,8 @@
     "dev": "bun --bun vite",
     "build": "bun --bun vite build",
     "typecheck": "bun ../../node_modules/typescript/bin/tsc --noEmit",
-    "test": "bun --bun vitest run"
+    "test": "bun --bun vitest run",
+    "test:e2e": "playwright test visual.spec.ts --workers=1"
   },
   "dependencies": {
     "@effect/platform-browser": "4.0.0-beta.102",
@@ -22,6 +23,7 @@
     "@foldkit/vite-plugin": "0.11.3",
     "@fontsource-variable/nunito-sans": "^5.2.7",
     "@fontsource/jetbrains-mono": "^5.2.8",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^25.9.1",
     "happy-dom": "^20.10.6",
     "typescript": "^6",

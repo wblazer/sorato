@@ -27,11 +27,13 @@ export const FailedRequest = m('FailedRequest', {
   error: Schema.String,
 })
 export const LoadedModels = m('LoadedModels', {
+  baseUrl: Schema.String,
   projectId: Schema.String,
   models: Schema.Array(ModelOption),
   defaultModel: Schema.optional(Schema.String),
 })
 export const LoadedTranscript = m('LoadedTranscript', {
+  baseUrl: Schema.String,
   sessionId: Schema.String,
   snapshot: ConversationSnapshot,
 })
@@ -143,7 +145,7 @@ export const LoadModels = Command.define('LoadModels', {
     Effect.gen(function* () {
       const api = yield* client(baseUrl)
       const response = yield* api.models.list({ query: { projectId } })
-      return LoadedModels({ projectId, ...response })
+      return LoadedModels({ baseUrl, projectId, ...response })
     }).pipe(failed(baseUrl, 'load models')),
 })
 
@@ -156,7 +158,7 @@ export const LoadTranscript = Command.define('LoadTranscript', {
       const snapshot = yield* api.sessions.messages({
         params: { id: sessionId },
       })
-      return LoadedTranscript({ sessionId, snapshot })
+      return LoadedTranscript({ baseUrl, sessionId, snapshot })
     }).pipe(failed(baseUrl, 'load transcript')),
 })
 

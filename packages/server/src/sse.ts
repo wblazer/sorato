@@ -21,6 +21,7 @@ import {
 import {
   getReplayBufferSince,
   getReplayResetReason,
+  getReplaySessionId,
   getReplaySnapshot,
   type StreamCursor,
 } from './event-replay.ts'
@@ -54,6 +55,8 @@ export const resolveRunCursor = (
 
 const connectedEvent = () =>
   `event: connected\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`
+
+const terminalEvent = () => 'event: terminal\ndata: {}\n\n'
 
 const formatContentEvent = (event: ContentEvent) =>
   `id: ${formatCursor({ runId: event.runId, eventId: event.eventId })}\nevent: ${event._tag}\ndata: ${JSON.stringify(event)}\n\n`
@@ -142,7 +145,7 @@ const liveGlobalStream = (
     })
   ).pipe(Stream.scoped)
 
-const liveRunStream = (
+export const liveRunStream = (
   bus: EventBusApi,
   runId: string,
   cursor: StreamCursor | undefined
@@ -187,6 +190,7 @@ const liveRunStream = (
       )
 
       const replaySnapshot = getReplaySnapshot(runId)
+      const replaySessionId = getReplaySessionId(runId)
       const replayStartEvent = [
         undefined,
         replaySnapshot && {
@@ -207,16 +211,19 @@ const liveRunStream = (
 
       resetReason &&
         cursor &&
-        replaySnapshot &&
+        replaySessionId &&
         prefix.push(
           formatEvent({
             _tag: 'ReplayReset',
-            sessionId: replaySnapshot.sessionId,
+            sessionId: replaySessionId,
             runId: cursor.runId,
             reason: resetReason,
             refetch: true,
           })
         )
+      if (resetReason && !replaySessionId) {
+        prefix.push(terminalEvent())
+      }
       if (!resetReason && replayStartEvent) {
         replayStartSent = true
         prefix.push(formatEvent(replayStartEvent))
@@ -226,12 +233,17 @@ const liveRunStream = (
         prefix.push(...formatRunEvent(event))
       }
 
+      if (resetReason !== null) {
+        return Stream.fromIterable(prefix)
+      }
+
       return Stream.concat(
         Stream.fromIterable(prefix),
         Stream.fromEffectRepeat(PubSub.take(subscription)).pipe(
           Stream.filter(
             (event) => isRunEvent(runId)(event) && isRunStreamEvent(event)
           ),
+          Stream.takeUntil((event) => event._tag === 'RunEnd'),
           Stream.flatMap((event) => Stream.fromIterable(formatRunEvent(event)))
         )
       )
@@ -252,7 +264,10 @@ const makeSseStream = (
   (runId
     ? liveRunStream(bus, runId, cursor)
     : liveGlobalStream(bus, storage, sinceSequence)
-  ).pipe(Stream.merge(heartbeatStream), Stream.encodeText)
+  ).pipe(
+    Stream.merge(heartbeatStream, { haltStrategy: 'left' }),
+    Stream.encodeText
+  )
 
 export const EventsLive = HttpApiBuilder.group(Api, 'events', (handlers) =>
   handlers.handleRaw('stream', (context) => {

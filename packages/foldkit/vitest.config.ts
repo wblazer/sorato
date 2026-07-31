@@ -3,5 +3,9 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [foldkit()],
-  test: { environment: 'happy-dom', setupFiles: ['./vitest-setup.ts'] },
+  test: {
+    environment: 'happy-dom',
+    setupFiles: ['./vitest-setup.ts'],
+    exclude: ['visual.spec.ts', '**/node_modules/**'],
+  },
 })

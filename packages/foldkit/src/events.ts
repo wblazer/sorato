@@ -39,6 +39,10 @@ export const eventStream = (
       if (runId !== undefined) url.searchParams.set('runId', runId)
       const source = new EventSource(url)
       let lastContentEventId = 0
+      source.addEventListener('terminal', () => {
+        Queue.endUnsafe(queue)
+        source.close()
+      })
       for (const tag of eventTags) {
         source.addEventListener(
           tag,
@@ -50,6 +54,13 @@ export const eventStream = (
               return
             if ('eventId' in event) lastContentEventId = event.eventId
             Queue.offerUnsafe(queue, ReceivedServerEvent({ event }))
+            if (
+              runId !== undefined &&
+              (event._tag === 'RunEnd' || event._tag === 'ReplayReset')
+            ) {
+              Queue.endUnsafe(queue)
+              source.close()
+            }
           }
         )
       }
@@ -79,6 +90,17 @@ export const subscriptions = Subscription.make<Model, Message>()((entry) => ({
       modelToDependencies: (model) => ({
         baseUrl: model.baseUrl,
         runId: model.activeRunId,
+      }),
+      dependenciesToStream: ({ baseUrl, runId }) =>
+        runId === null ? Stream.empty : eventStream(baseUrl, runId),
+    }
+  ),
+  compactionEvents: entry(
+    { baseUrl: Schema.String, runId: Schema.NullOr(Schema.String) },
+    {
+      modelToDependencies: (model) => ({
+        baseUrl: model.baseUrl,
+        runId: model.compactingRunId,
       }),
       dependenciesToStream: ({ baseUrl, runId }) =>
         runId === null ? Stream.empty : eventStream(baseUrl, runId),
