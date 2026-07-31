@@ -11,6 +11,7 @@ import { describe, it } from 'vitest'
 import {
   ActivateDevScenario,
   CompactRange,
+  CreateSessionAndStartRun,
   DevScenariosUnavailable,
   FailedRequest,
   LoadDevScenarios,
@@ -23,6 +24,7 @@ import {
   LoadedWorkspace,
   StartRun,
   StartedCompaction,
+  StartedNewSession,
   StartedRun,
 } from './api.ts'
 import { ReceivedServerEvent } from './events.ts'
@@ -112,13 +114,15 @@ describe('Sorato scene', () => {
     Scene.scene(
       app,
       Scene.given(initialModel),
-      Scene.expect(Scene.role('status')).toHaveText('loading'),
+      Scene.expect(
+        Scene.role('status', { name: 'Connection status: loading' })
+      ).toExist(),
       Scene.Command.expectNone()
     )
     Scene.scene(
       app,
       Scene.given({ ...initialModel, status: 'ready' }),
-      Scene.click(Scene.role('button', { name: 'Connect' })),
+      Scene.click(Scene.role('button', { name: 'Reconnect' })),
       Scene.Command.resolve(
         LoadWorkspace,
         LoadedWorkspace({
@@ -131,7 +135,7 @@ describe('Sorato scene', () => {
         LoadDevScenarios,
         DevScenariosUnavailable({ baseUrl: initialModel.baseUrl })
       ),
-      Scene.expect(Scene.text('Sorato')).toExist()
+      Scene.expect(Scene.text('New Session')).toExist()
     )
   })
 
@@ -139,7 +143,7 @@ describe('Sorato scene', () => {
     Scene.scene(
       app,
       Scene.given(ready()),
-      Scene.click(Scene.role('button', { name: 'Sorato' })),
+      Scene.change(Scene.label('Project'), 'p1'),
       Scene.Command.expectHas(LoadModels),
       Scene.Command.resolve(
         LoadModels,
@@ -149,7 +153,7 @@ describe('Sorato scene', () => {
           defaultModel: 'provider/model',
         })
       ),
-      Scene.click(Scene.role('button', { name: 'Foldkit rewrite' })),
+      Scene.click(Scene.role('button', { name: /Foldkit rewrite/ })),
       Scene.Command.expectHas(LoadTranscript),
       Scene.Command.resolve(
         LoadTranscript,
@@ -158,7 +162,33 @@ describe('Sorato scene', () => {
           snapshot: { sequence: 1, nodes: [] },
         })
       ),
-      Scene.expect(Scene.text('No messages yet. Start a run below.')).toExist()
+      Scene.expect(Scene.text('No messages yet.')).toExist()
+    )
+  })
+
+  it('loads the owning project and its models when opening a session directly', () => {
+    Scene.scene(
+      app,
+      Scene.given(ready()),
+      Scene.click(Scene.role('button', { name: /Foldkit rewrite/ })),
+      Scene.Command.expectHas(LoadTranscript),
+      Scene.Command.expectHas(LoadModels),
+      Scene.Command.resolve(
+        LoadModels,
+        LoadedModels({
+          projectId: 'p1',
+          models: [modelOption],
+          defaultModel: 'provider/model',
+        })
+      ),
+      Scene.Command.resolve(
+        LoadTranscript,
+        LoadedTranscript({
+          sessionId: 's1',
+          snapshot: { sequence: 1, nodes: [] },
+        })
+      ),
+      Scene.expect(Scene.label('Prompt')).not.toBeDisabled()
     )
   })
 
@@ -173,7 +203,7 @@ describe('Sorato scene', () => {
         })
       ),
       Scene.type(Scene.label('Prompt'), 'Implement it'),
-      Scene.click(Scene.role('button', { name: 'Send' })),
+      Scene.click(Scene.role('button', { name: 'Send message' })),
       Scene.Command.expectHas(StartRun),
       Scene.expect(Scene.label('Prompt')).toBeDisabled(),
       Scene.Command.resolve(
@@ -185,6 +215,62 @@ describe('Sorato scene', () => {
         })
       ),
       Scene.expect(Scene.role('button', { name: 'Stop run' })).toExist()
+    )
+  })
+
+  it('creates a session and starts its first run from a new tab', () => {
+    Scene.scene(
+      app,
+      Scene.given(
+        ready({
+          selectedProjectId: 'p1',
+          selectedModelId: 'provider/model',
+          models: [modelOption],
+        })
+      ),
+      Scene.type(Scene.label('Prompt'), 'Start from scratch'),
+      Scene.click(Scene.role('button', { name: 'Send message' })),
+      Scene.Command.expectHas(CreateSessionAndStartRun),
+      Scene.expect(Scene.label('Prompt')).toBeDisabled(),
+      Scene.Command.resolve(
+        CreateSessionAndStartRun,
+        StartedNewSession({
+          baseUrl: initialModel.baseUrl,
+          session,
+          run: { status: 'started', runId: 'r-new', baseNodeId: null },
+        })
+      ),
+      Scene.expect(Scene.role('button', { name: 'Stop run' })).toExist(),
+      Scene.expect(Scene.text('Foldkit rewrite')).toExist()
+    )
+  })
+
+  it('sends on Enter and toggles the conversation side panel', () => {
+    Scene.scene(
+      app,
+      Scene.given(
+        ready({
+          selectedProjectId: 'p1',
+          selectedSessionId: 's1',
+          selectedModelId: 'provider/model',
+        })
+      ),
+      Scene.type(Scene.label('Prompt'), 'Send with keyboard'),
+      Scene.keydown(Scene.label('Prompt'), 'Enter', {}),
+      Scene.Command.expectHas(StartRun),
+      Scene.Command.resolve(
+        StartRun,
+        StartedRun({
+          baseUrl: initialModel.baseUrl,
+          sessionId: 's1',
+          run: { status: 'started', runId: 'r1', baseNodeId: null },
+        })
+      ),
+      Scene.click(Scene.role('button', { name: 'Close side panel' })),
+      Scene.expect(
+        Scene.role('button', { name: 'Conversation tree' })
+      ).not.toExist(),
+      Scene.expect(Scene.role('button', { name: 'Open side panel' })).toExist()
     )
   })
 
@@ -282,7 +368,7 @@ describe('Sorato scene', () => {
       app,
       Scene.given(ready()),
       Scene.expect(Scene.label('Prompt')).toBeDisabled(),
-      Scene.click(Scene.role('button', { name: 'Connect' })),
+      Scene.click(Scene.role('button', { name: 'Reconnect' })),
       Scene.Command.expectHas(LoadWorkspace),
       Scene.Command.resolve(
         LoadWorkspace,
@@ -348,6 +434,7 @@ describe('Sorato scene', () => {
           devScenarios,
         })
       ),
+      Scene.click(Scene.role('button', { name: 'Scenario Lab' })),
       Scene.change(Scene.label('Mock scenario'), 'interruptible'),
       Scene.Command.expectHas(ActivateDevScenario),
       Scene.Command.resolve(
@@ -383,7 +470,7 @@ describe('Sorato scene', () => {
     Scene.scene(
       app,
       Scene.given(ready({ devScenarios })),
-      Scene.click(Scene.role('button', { name: 'Connect' })),
+      Scene.click(Scene.role('button', { name: 'Reconnect' })),
       Scene.Command.expectHas(LoadDevScenarios),
       Scene.Command.resolve(
         LoadDevScenarios,
@@ -416,6 +503,7 @@ describe('Sorato scene', () => {
           devScenarios,
         })
       ),
+      Scene.click(Scene.role('button', { name: 'Scenario Lab' })),
       Scene.click(Scene.role('button', { name: 'Summarize selected range' })),
       Scene.Command.expectHas(CompactRange),
       Scene.Command.resolve(

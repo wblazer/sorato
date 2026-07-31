@@ -44,6 +44,11 @@ export const StartedRun = m('StartedRun', {
   sessionId: Schema.String,
   run: RunResponse,
 })
+export const StartedNewSession = m('StartedNewSession', {
+  baseUrl: Schema.String,
+  session: SessionResponse,
+  run: RunResponse,
+})
 export const StoppedRun = m('StoppedRun', {
   baseUrl: Schema.String,
   runId: Schema.String,
@@ -165,6 +170,29 @@ export const CreateSession = Command.define('CreateSession', {
       return CreatedSession({ baseUrl, session })
     }).pipe(failed(baseUrl, 'create session')),
 })
+
+export const CreateSessionAndStartRun = Command.define(
+  'CreateSessionAndStartRun',
+  {
+    args: {
+      baseUrl: Schema.String,
+      projectId: Schema.String,
+      input: Schema.String,
+      model: Schema.String,
+    },
+    messages: [StartedNewSession, FailedRequest],
+    execute: ({ baseUrl, projectId, input, model }) =>
+      Effect.gen(function* () {
+        const api = yield* client(baseUrl)
+        const session = yield* api.sessions.create({ payload: { projectId } })
+        const run = yield* api.sessions.run({
+          params: { id: session.id },
+          payload: { input, model, baseNodeId: null },
+        })
+        return StartedNewSession({ baseUrl, session, run })
+      }).pipe(failed(baseUrl, 'create session and start run')),
+  }
+)
 
 export const StartRun = Command.define('StartRun', {
   args: {

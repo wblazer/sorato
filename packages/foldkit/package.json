@@ -20,6 +20,8 @@
   },
   "devDependencies": {
     "@foldkit/vite-plugin": "0.11.3",
+    "@fontsource-variable/nunito-sans": "^5.2.7",
+    "@fontsource/jetbrains-mono": "^5.2.8",
     "@types/node": "^25.9.1",
     "happy-dom": "^20.10.6",
     "typescript": "^6",

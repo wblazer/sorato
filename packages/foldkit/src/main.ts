@@ -14,6 +14,7 @@ import {
   ActivateDevScenario,
   CompactRange,
   CreateSession,
+  CreateSessionAndStartRun,
   CreatedSession,
   DeactivateDevScenario,
   DevScenariosUnavailable,
@@ -28,6 +29,7 @@ import {
   LoadedWorkspace,
   StartRun,
   StartedCompaction,
+  StartedNewSession,
   StartedRun,
   StopRun,
   StoppedRun,
@@ -69,6 +71,8 @@ export const Model = Schema.Struct({
   scenarioBusy: Schema.Boolean,
   compactStartNodeId: Schema.NullOr(Schema.String),
   compactEndNodeId: Schema.NullOr(Schema.String),
+  sidePanel: Schema.Literals(['tree', 'lab']),
+  treePanelOpen: Schema.Boolean,
   sequence: Schema.Number,
   error: Schema.NullOr(Schema.String),
 })
@@ -81,6 +85,7 @@ export const ChangedProjectFilter = m('ChangedProjectFilter', {
 })
 export const SelectedProject = m('SelectedProject', { id: Schema.String })
 export const ClickedCreateSession = m('ClickedCreateSession')
+export const ClickedNewTab = m('ClickedNewTab')
 export const SelectedSession = m('SelectedSession', { id: Schema.String })
 export const SelectedModel = m('SelectedModel', { id: Schema.String })
 export const SelectedBaseNode = m('SelectedBaseNode', { id: Schema.String })
@@ -98,6 +103,10 @@ export const SelectedCompactEnd = m('SelectedCompactEnd', {
   id: Schema.String,
 })
 export const ClickedCompact = m('ClickedCompact')
+export const SelectedSidePanel = m('SelectedSidePanel', {
+  panel: Schema.Literals(['tree', 'lab']),
+})
+export const ClickedToggleTreePanel = m('ClickedToggleTreePanel')
 export const ClearedError = m('ClearedError')
 
 export const Message = Schema.Union([
@@ -106,6 +115,7 @@ export const Message = Schema.Union([
   ChangedProjectFilter,
   SelectedProject,
   ClickedCreateSession,
+  ClickedNewTab,
   SelectedSession,
   SelectedModel,
   SelectedBaseNode,
@@ -117,6 +127,8 @@ export const Message = Schema.Union([
   SelectedCompactStart,
   SelectedCompactEnd,
   ClickedCompact,
+  SelectedSidePanel,
+  ClickedToggleTreePanel,
   ClearedError,
   LoadedWorkspace,
   LoadedModels,
@@ -127,6 +139,7 @@ export const Message = Schema.Union([
   LoadedDevScenarios,
   DevScenariosUnavailable,
   StartedCompaction,
+  StartedNewSession,
   FailedRequest,
   ReceivedServerEvent,
 ])
@@ -154,6 +167,8 @@ export const initialModel: Model = Model.make({
   scenarioBusy: false,
   compactStartNodeId: null,
   compactEndNodeId: null,
+  sidePanel: 'tree',
+  treePanelOpen: true,
   sequence: 0,
   error: null,
 })
@@ -212,6 +227,8 @@ export const update = (model: Model, message: Message): UpdateResult =>
           ...model,
           selectedProjectId: id,
           selectedSessionId: null,
+          models: [],
+          selectedModelId: '',
           nodes: [],
           activity: [],
         },
@@ -229,52 +246,104 @@ export const update = (model: Model, message: Message): UpdateResult =>
                 }),
               ],
             ],
+      ClickedNewTab: () =>
+        noCommand({
+          ...model,
+          selectedSessionId: null,
+          selectedBaseNodeId: null,
+          nodes: [],
+          activity: [],
+          activeRunId: null,
+          compactingRunId: null,
+          startingSessionId: null,
+          compactStartNodeId: null,
+          compactEndNodeId: null,
+        }),
       SelectedSession: ({ id }) => {
         const session = model.sessions.find((candidate) => candidate.id === id)
+        if (session === undefined) return noCommand(model)
+        const projectChanged = session.projectId !== model.selectedProjectId
         const activeRunId =
-          session?.activeRuns?.find((run) => run.visibility === 'primary')
+          session.activeRuns?.find((run) => run.visibility === 'primary')
             ?.runId ?? null
         return [
           {
             ...model,
+            selectedProjectId: session.projectId,
             selectedSessionId: id,
+            models: projectChanged ? [] : model.models,
+            selectedModelId: projectChanged ? '' : model.selectedModelId,
             nodes: [],
             activity: [],
             selectedBaseNodeId: null,
             activeRunId,
             startingSessionId: null,
           },
-          [LoadTranscript({ baseUrl: model.baseUrl, sessionId: id })],
+          [
+            LoadTranscript({ baseUrl: model.baseUrl, sessionId: id }),
+            ...(projectChanged
+              ? [
+                  LoadModels({
+                    baseUrl: model.baseUrl,
+                    projectId: session.projectId,
+                  }),
+                ]
+              : []),
+          ],
         ]
       },
       SelectedModel: ({ id }) => noCommand({ ...model, selectedModelId: id }),
       SelectedBaseNode: ({ id }) =>
         noCommand({ ...model, selectedBaseNodeId: id }),
       ChangedDraft: ({ value }) => noCommand({ ...model, draft: value }),
-      ClickedSend: () =>
-        model.selectedSessionId === null ||
-        model.selectedModelId === '' ||
-        model.draft.trim() === '' ||
-        model.activeRunId !== null ||
-        model.startingSessionId !== null
-          ? noCommand(model)
-          : [
-              {
-                ...model,
-                draft: '',
-                error: null,
-                startingSessionId: model.selectedSessionId,
-              },
-              [
-                StartRun({
-                  baseUrl: model.baseUrl,
-                  sessionId: model.selectedSessionId,
-                  input: model.draft.trim(),
-                  model: model.selectedModelId,
-                  baseNodeId: model.selectedBaseNodeId,
-                }),
-              ],
+      ClickedSend: () => {
+        const projectId = model.selectedProjectId
+        const sessionId = model.selectedSessionId
+        if (
+          model.selectedModelId === '' ||
+          model.draft.trim() === '' ||
+          model.activeRunId !== null ||
+          model.startingSessionId !== null ||
+          (sessionId === null && projectId === null)
+        )
+          return noCommand(model)
+        if (sessionId === null) {
+          if (projectId === null) return noCommand(model)
+          return [
+            {
+              ...model,
+              draft: '',
+              error: null,
+              startingSessionId: 'new',
+            },
+            [
+              CreateSessionAndStartRun({
+                baseUrl: model.baseUrl,
+                projectId,
+                input: model.draft.trim(),
+                model: model.selectedModelId,
+              }),
             ],
+          ]
+        }
+        return [
+          {
+            ...model,
+            draft: '',
+            error: null,
+            startingSessionId: sessionId,
+          },
+          [
+            StartRun({
+              baseUrl: model.baseUrl,
+              sessionId,
+              input: model.draft.trim(),
+              model: model.selectedModelId,
+              baseNodeId: model.selectedBaseNodeId,
+            }),
+          ],
+        ]
+      },
       ClickedStop: () =>
         model.activeRunId === null
           ? noCommand(model)
@@ -317,6 +386,10 @@ export const update = (model: Model, message: Message): UpdateResult =>
         noCommand({ ...model, compactStartNodeId: id }),
       SelectedCompactEnd: ({ id }) =>
         noCommand({ ...model, compactEndNodeId: id }),
+      SelectedSidePanel: ({ panel }) =>
+        noCommand({ ...model, sidePanel: panel }),
+      ClickedToggleTreePanel: () =>
+        noCommand({ ...model, treePanelOpen: !model.treePanelOpen }),
       ClickedCompact: () =>
         model.selectedSessionId === null ||
         model.selectedModelId === '' ||
@@ -430,6 +503,20 @@ export const update = (model: Model, message: Message): UpdateResult =>
         baseUrl !== model.baseUrl || sessionId !== model.selectedSessionId
           ? noCommand(model)
           : noCommand({ ...model, compactingRunId: run.runId }),
+      StartedNewSession: ({ baseUrl, session, run }) =>
+        baseUrl !== model.baseUrl || model.startingSessionId !== 'new'
+          ? noCommand(model)
+          : noCommand({
+              ...model,
+              sessions: [session, ...model.sessions],
+              selectedSessionId: session.id,
+              selectedProjectId: session.projectId,
+              selectedBaseNodeId: run.baseNodeId,
+              activeRunId: run.runId,
+              startingSessionId: null,
+              nodes: [],
+              activity: [],
+            }),
       FailedRequest: ({ baseUrl, operation, error }) =>
         baseUrl !== model.baseUrl
           ? noCommand(model)
