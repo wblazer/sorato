@@ -39,6 +39,7 @@ import {
 } from '../../src/session/session.ts'
 import { SqliteSession } from '../../src/session/sqlite-session.ts'
 import { RuntimeConfigService } from '../../src/runtime-config.ts'
+import { MockAgentConfig, MockAgentDisabled } from '../../src/mock-agent.ts'
 import {
   recordedEventBusLayer,
   EventRecorder,
@@ -129,6 +130,7 @@ type RunScenarioServices =
   | EventBus
   | EventRecorder
   | ModelLayerResolver
+  | MockAgentConfig
   | ProjectStorage
   | ProviderAuthStore
   | RuntimeConfigService
@@ -365,6 +367,7 @@ export const makeRunScenario = (options: RunScenarioOptions) => {
     recordedEventBusLayer,
     mockSandboxLayer({ files: options.files }),
     AllToolsLayer,
+    MockAgentDisabled,
     scriptedModelLayer(options.model)
   )
 

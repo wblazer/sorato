@@ -15,6 +15,7 @@
     "effect:diagnostics": "bun run typecheck",
     "reference:sync": "bun run scripts/sync-reference.ts",
     "web": "bun run --filter @sorato/web dev",
+    "foldkit": "bun run --filter @sorato/foldkit dev",
     "server": "bun run --filter @sorato/server dev",
     "db:reset": "bun run --filter @sorato/server db:reset",
     "desktop": "bun run --filter @sorato/desktop dev",

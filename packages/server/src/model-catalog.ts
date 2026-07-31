@@ -12,6 +12,12 @@ import type { ProviderRetryHandler } from './providers/provider-errors.ts'
 import { type ThinkingLevel, thinkingLevelsFor } from './reasoning-options.ts'
 import { RuntimeConfigService } from './runtime-config.ts'
 import {
+  isMockModel,
+  MockAgentConfig,
+  MOCK_MODEL_ID,
+  mockLanguageModelLayer,
+} from './mock-agent.ts'
+import {
   getAuth,
   hasProviderAuth,
   ProviderAuthStore,
@@ -188,6 +194,8 @@ const listModelsEffect = Effect.fn('ModelCatalog.list')(function* (
   const runtimeConfig = yield* RuntimeConfigService
   const cfg = yield* runtimeConfig.get(dir)
 
+  const mock = yield* MockAgentConfig
+  const mockScenario = yield* mock.get()
   const items = (yield* availableEntries()).map((item) =>
     ModelOption.make({
       id: item.id,
@@ -196,6 +204,24 @@ const listModelsEffect = Effect.fn('ModelCatalog.list')(function* (
       capabilities: item.capabilities,
     })
   )
+  if (Option.isSome(mockScenario)) {
+    items.unshift(
+      ModelOption.make({
+        id: MOCK_MODEL_ID,
+        name: `Mock scenario (${mockScenario.value})`,
+        provider: 'Sorato deterministic mock',
+        capabilities: {
+          attachment: false,
+          reasoning: true,
+          temperature: false,
+          toolCall: true,
+          thinkingLevels: [],
+          modes: [],
+          limits: { context: 32_000, output: 4_096 },
+        },
+      })
+    )
+  }
 
   if (items.length === 0) {
     return yield* new ProviderNotConfigured({
@@ -272,6 +298,11 @@ const modelLayerEffect = Effect.fn('ModelCatalog.modelLayer')(function* (
   dataDir: string,
   selection: ModelSelection
 ) {
+  const mock = yield* MockAgentConfig
+  const mockScenario = yield* mock.get()
+  if (isMockModel(mockScenario, selection.id) && Option.isSome(mockScenario)) {
+    return mockLanguageModelLayer(mockScenario.value)
+  }
   const [provider, ...rest] = selection.id.split('/')
   const model = rest.join('/')
   const validated = Match.value(`${provider}:${Number(model.length > 0)}`).pipe(

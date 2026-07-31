@@ -30,6 +30,8 @@ import { makeSqlitePersistenceLive } from './db/sqlite.ts'
 import { SqliteProviderAuthStore } from './provider-auth.ts'
 import { SqliteProject } from './project/sqlite-project.ts'
 import { SqliteSession } from './session/sqlite-session.ts'
+import { MockAgentConfigLive } from './mock-agent.ts'
+import { DevScenariosLive } from './dev-scenarios.ts'
 
 import { HandshakeResponse } from '@sorato/api'
 
@@ -56,7 +58,8 @@ const ApiLive = HttpApiBuilder.layer(Api).pipe(
   Layer.provide(ModelsLive),
   Layer.provide(AuthLive),
   Layer.provide(HandshakeLive),
-  Layer.provide(EventsLive)
+  Layer.provide(EventsLive),
+  Layer.provide(DevScenariosLive)
 )
 
 const sessionsDbPath = join(dataDir, 'sessions.db')
@@ -98,6 +101,7 @@ const HttpLive = HttpRouter.toHttpEffect(ApiLive).pipe(
   Layer.unwrap,
   HttpServer.withLogAddress,
   Layer.provide(ModelLayerResolverLive),
+  Layer.provide(MockAgentConfigLive),
   Layer.provide(RuntimeConfigLive),
   Layer.provide(EventBusLive),
   Layer.provide(StorageLive),

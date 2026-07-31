@@ -417,6 +417,41 @@ export interface HandshakeResponse extends Schema.Schema.Type<
   typeof HandshakeResponse
 > {}
 
+export const DevScenarioId = Schema.Literals([
+  'streaming',
+  'tool-use',
+  'interruptible',
+  'branching',
+])
+export type DevScenarioId = typeof DevScenarioId.Type
+
+export const DevScenario = Schema.Struct({
+  id: DevScenarioId,
+  label: Schema.String,
+  description: Schema.String,
+  tags: Schema.Array(Schema.String),
+  capabilities: Schema.Array(Schema.String),
+}).annotate({ identifier: 'DevScenario' })
+export interface DevScenario extends Schema.Schema.Type<typeof DevScenario> {}
+
+export const DevScenariosStatus = Schema.Struct({
+  enabled: Schema.Literal(true),
+  activeScenario: Schema.NullOr(DevScenarioId),
+  scenarios: Schema.Array(DevScenario),
+}).annotate({ identifier: 'DevScenariosStatus' })
+export interface DevScenariosStatus extends Schema.Schema.Type<
+  typeof DevScenariosStatus
+> {}
+
+export class DevScenariosUnavailable extends Schema.TaggedErrorClass<DevScenariosUnavailable>()(
+  'DevScenariosUnavailable',
+  {
+    code: ErrorCode,
+    message: Schema.String,
+    retryable: Schema.Boolean,
+  }
+) {}
+
 // ── Sessions Group ──────────────────────────────────────────────────
 
 export class SessionsGroup extends HttpApiGroup.make('sessions')
@@ -631,6 +666,28 @@ export class EventsGroup extends HttpApiGroup.make('events').add(
   })
 ) {}
 
+export class DevScenariosGroup extends HttpApiGroup.make('devScenarios')
+  .add(
+    HttpApiEndpoint.get('status', '/', {
+      success: DevScenariosStatus,
+      error: DevScenariosUnavailable.pipe(HttpApiSchema.status(404)),
+    })
+  )
+  .add(
+    HttpApiEndpoint.put('activate', '/:scenario', {
+      params: { scenario: DevScenarioId },
+      success: DevScenariosStatus,
+      error: DevScenariosUnavailable.pipe(HttpApiSchema.status(404)),
+    })
+  )
+  .add(
+    HttpApiEndpoint.delete('deactivate', '/', {
+      success: DevScenariosStatus,
+      error: DevScenariosUnavailable.pipe(HttpApiSchema.status(404)),
+    })
+  )
+  .prefix('/dev/scenarios') {}
+
 // ── Models Group ────────────────────────────────────────────────────
 
 export class ModelsGroup extends HttpApiGroup.make('models')
@@ -688,4 +745,5 @@ export class Api extends HttpApi.make('sorato')
   .add(ModelsGroup)
   .add(AuthGroup)
   .add(HandshakeGroup)
-  .add(EventsGroup) {}
+  .add(EventsGroup)
+  .add(DevScenariosGroup) {}

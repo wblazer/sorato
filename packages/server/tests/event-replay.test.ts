@@ -9,8 +9,21 @@ import {
   resetEventReplay,
   startEventReplay,
 } from '../src/event-replay.ts'
+import { resolveRunCursor } from '../src/sse.ts'
 
 describe('EventReplay', () => {
+  it('resumes run streams from the native EventSource Last-Event-ID header', () => {
+    expect(resolveRunCursor('run-1', null, 'run-1:4')).toEqual({
+      runId: 'run-1',
+      eventId: 4,
+    })
+    expect(resolveRunCursor('run-1', 'run-1:6', 'run-1:4')).toEqual({
+      runId: 'run-1',
+      eventId: 6,
+    })
+    expect(resolveRunCursor(undefined, null, '12')).toBeUndefined()
+  })
+
   it('buffers content events for the active run', () => {
     resetEventReplay()
 

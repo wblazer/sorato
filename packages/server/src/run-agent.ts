@@ -59,7 +59,11 @@ import {
   getContentThroughEventId,
   startEventReplay,
 } from './event-replay.ts'
-import { ModelLayerResolver, resolveModel } from './model-catalog.ts'
+import {
+  ModelLayerResolver,
+  resolveModel,
+  type ModelSelection,
+} from './model-catalog.ts'
 import { dataDir } from './data-dir.ts'
 import { createPersistenceHook } from './run-persistence.ts'
 import {
@@ -72,6 +76,11 @@ import { runLifecycleCheckpoint } from './run-lifecycle-checkpoints.ts'
 import { generateSessionTitle } from './session-title.ts'
 import { getAuth } from './provider-auth.ts'
 import { RuntimeConfigService } from './runtime-config.ts'
+import {
+  isMockModel,
+  mockLanguageModelLayer,
+  MockAgentConfig,
+} from './mock-agent.ts'
 import {
   resolveRunEnvironment,
   runEnvironmentErrorToSandboxError,
@@ -776,50 +785,65 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       baseNodeId: request.baseNodeId ?? null,
     })
 
+    const mock = yield* MockAgentConfig
+    const mockScenario = yield* mock.get()
+    const mockModel = isMockModel(mockScenario, request.model)
     const resolvedModel = resolveModel(request.model)
-    if (!resolvedModel) {
+    if (!resolvedModel && !mockModel) {
       return yield* Effect.die(
         new Error(`Model is not supported by this server: ${request.model}`)
       )
     }
-    const auth = yield* getAuth(resolvedModel.providerId)
+    const auth = resolvedModel
+      ? yield* getAuth(resolvedModel.providerId)
+      : undefined
     const billingMode: BillingMode =
       auth?.type === 'oauth' ? 'subscription' : 'api-key'
+    const modelMetadata = resolvedModel
+      ? {
+          providerId: resolvedModel.providerId,
+          modelId: resolvedModel.modelId,
+          cost: resolvedModel.model.cost,
+        }
+      : { providerId: 'mock', modelId: 'streaming-demo', cost: undefined }
 
-    const modelServices = yield* modelResolver
-      .resolve(dataDir, {
-        id: request.model,
-        sessionId,
-        onRetry: (info) =>
-          Clock.currentTimeMillis.pipe(
-            Effect.flatMap((now) =>
-              bus.publish({
-                _tag: 'RunRetrying',
-                sessionId,
-                runId,
-                title: aiRunRetryingMessage(info.error),
-                message: '',
-                retryAt: now + Duration.toMillis(info.delay),
-                attempt: info.attempt,
-                maxAttempts: info.maxAttempts,
-              })
-            )
-          ),
-        ...request.modelOptions,
-      })
-      .pipe(
-        Effect.flatMap((layer) =>
-          Effect.fromNullishOr(layer).pipe(
-            Effect.mapError(
-              () =>
-                new Error(
-                  `Model is not supported by this server: ${request.model}`
-                )
-            ),
-            Effect.orDie
+    const modelSelection: ModelSelection = {
+      id: request.model,
+      sessionId,
+      onRetry: (info) =>
+        Clock.currentTimeMillis.pipe(
+          Effect.flatMap((now) =>
+            bus.publish({
+              _tag: 'RunRetrying',
+              sessionId,
+              runId,
+              title: aiRunRetryingMessage(info.error),
+              message: '',
+              retryAt: now + Duration.toMillis(info.delay),
+              attempt: info.attempt,
+              maxAttempts: info.maxAttempts,
+            })
           )
+        ),
+      ...request.modelOptions,
+    }
+    const modelServices = yield* (
+      mockModel && Option.isSome(mockScenario)
+        ? Effect.succeed(mockLanguageModelLayer(mockScenario.value))
+        : modelResolver.resolve(dataDir, modelSelection)
+    ).pipe(
+      Effect.flatMap((layer) =>
+        Effect.fromNullishOr(layer).pipe(
+          Effect.mapError(
+            () =>
+              new Error(
+                `Model is not supported by this server: ${request.model}`
+              )
+          ),
+          Effect.orDie
         )
       )
+    )
     yield* Effect.logInfo('Agent run resolved model layer', { runId })
 
     const compacted = yield* runCompactRange(sessionId, request, modelServices)
@@ -1002,10 +1026,10 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                 messageCountBeforeRun,
                 appendBaseRef,
                 {
-                  providerId: resolvedModel.providerId,
-                  modelId: resolvedModel.modelId,
+                  providerId: modelMetadata.providerId,
+                  modelId: modelMetadata.modelId,
                   billingMode,
-                  cost: resolvedModel.model.cost,
+                  cost: modelMetadata.cost,
                 }
               )
 
@@ -1055,8 +1079,8 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                     yield* storage.createRun({
                       id: summaryRunId,
                       sessionId,
-                      providerId: resolvedModel.providerId,
-                      modelId: resolvedModel.modelId,
+                      providerId: modelMetadata.providerId,
+                      modelId: modelMetadata.modelId,
                       billingMode,
                       baseNodeId: baseHeadNodeId,
                     })

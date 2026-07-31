@@ -579,6 +579,16 @@ const awaitWorkerStop = (snapshot: {
     ? Effect.void
     : Fiber.join(snapshot.workerFiber).pipe(Effect.exit, Effect.asVoid)
 
+const interruptDetachedFiber = (fiber: Fiber.Fiber<void, never>) =>
+  Effect.gen(function* () {
+    const interruptFiber = yield* Effect.forkDetach(Fiber.interrupt(fiber))
+    // Let interruption and the worker's join observer settle independently.
+    // Joining immediately can synchronously re-enter the worker that is
+    // already waiting on this run fiber.
+    yield* Effect.yieldNow
+    yield* Fiber.join(interruptFiber)
+  })
+
 const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
   storage: SessionStorageApi,
   rootRunId: string
@@ -619,7 +629,7 @@ const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
 
     if (snapshot.activeFiber !== null) {
       const queuedFollowers = drainQueuedRunsAfterRun(runId)
-      yield* Fiber.interrupt(snapshot.activeFiber).pipe(Effect.exit)
+      yield* interruptDetachedFiber(snapshot.activeFiber).pipe(Effect.exit)
       yield* awaitWorkerStop(snapshot)
       if (
         snapshot.activeRunRequest !== null &&

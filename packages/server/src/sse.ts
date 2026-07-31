@@ -46,6 +46,12 @@ function parseCursor(raw: string | null): StreamCursor | undefined {
   }
 }
 
+export const resolveRunCursor = (
+  runId: string | undefined,
+  since: string | null,
+  lastEventId: string | undefined
+) => parseCursor(since ?? (runId === undefined ? null : (lastEventId ?? null)))
+
 const connectedEvent = () =>
   `event: connected\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`
 
@@ -252,7 +258,11 @@ export const EventsLive = HttpApiBuilder.group(Api, 'events', (handlers) =>
   handlers.handleRaw('stream', (context) => {
     const url = new URL(context.request.url, 'http://localhost')
     const runId = url.searchParams.get('runId') ?? undefined
-    const cursor = parseCursor(url.searchParams.get('since'))
+    const cursor = resolveRunCursor(
+      runId,
+      url.searchParams.get('since'),
+      context.request.headers['last-event-id']
+    )
     const rawSinceSequence = Number(
       url.searchParams.get('sinceSequence') ??
         (runId === undefined

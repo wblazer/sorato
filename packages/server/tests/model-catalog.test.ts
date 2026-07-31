@@ -16,6 +16,7 @@ import { ensureModel, listModels } from '../src/model-catalog.ts'
 import { PROVIDER_ADAPTERS } from '../src/provider-adapters.ts'
 import { AuthError, ProviderAuthStore } from '../src/provider-auth.ts'
 import { RuntimeConfigLive } from '../src/runtime-config.ts'
+import { MockAgentDisabled } from '../src/mock-agent.ts'
 
 const configuredApiKey = (envKeys: ReadonlyArray<string>) =>
   Effect.gen(function* () {
@@ -47,7 +48,11 @@ const ProviderAuthTest = Layer.succeed(
   })
 )
 
-const testLayer = Layer.merge(RuntimeConfigLive, ProviderAuthTest)
+const testLayer = Layer.mergeAll(
+  RuntimeConfigLive,
+  ProviderAuthTest,
+  MockAgentDisabled
+)
 
 const credentialConfig = (values: Readonly<Record<string, string>>) =>
   ConfigProvider.layer(ConfigProvider.fromUnknown(values))
