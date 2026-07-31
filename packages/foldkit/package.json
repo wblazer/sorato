@@ -15,15 +15,19 @@
     "@effect/platform-browser": "4.0.0-beta.102",
     "@foldkit/devtools": "0.137.0",
     "@foldkit/ui": "0.137.0",
+    "@phosphor-icons/web": "2.1.2",
     "@sorato/api": "workspace:*",
     "effect": "4.0.0-beta.102",
-    "foldkit": "0.137.0"
+    "foldkit": "0.137.0",
+    "markdown-it": "^14.3.0",
+    "markdown-it-task-lists": "^2.1.1"
   },
   "devDependencies": {
     "@foldkit/vite-plugin": "0.11.3",
     "@fontsource-variable/nunito-sans": "^5.2.7",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@playwright/test": "^1.62.1",
+    "@types/markdown-it": "^14.1.2",
     "@types/node": "^25.9.1",
     "happy-dom": "^20.10.6",
     "typescript": "^6",

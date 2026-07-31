@@ -3,6 +3,7 @@ import type { ServerEvent as ServerEventType } from '@sorato/api'
 import { Effect, Queue, Schema, Scope, Stream } from 'effect'
 import { Subscription } from 'foldkit'
 import { m } from 'foldkit/message'
+import { PointerInteractionsEnded, ViewportResized } from './browser.ts'
 import type { Message, Model } from './main.ts'
 
 export const ReceivedServerEvent = m('ReceivedServerEvent', {
@@ -73,6 +74,64 @@ export const eventStream = (
   ).pipe(Stream.catchCause(() => Stream.empty))
 
 export const subscriptions = Subscription.make<Model, Message>()((entry) => ({
+  viewport: Subscription.persistent(
+    Subscription.fromEvent<UIEvent, Message>({
+      target: () => window,
+      type: 'resize',
+      toMessage: () => ViewportResized({ width: window.innerWidth }),
+    })
+  ),
+  interactionPointerUp: entry(
+    { active: Schema.Boolean },
+    {
+      modelToDependencies: (model) => ({
+        active:
+          model.resizing !== null || model.compactDragStartNodeId !== null,
+      }),
+      dependenciesToStream: ({ active }) =>
+        active
+          ? Subscription.fromEvent<PointerEvent, Message>({
+              target: () => window,
+              type: 'pointerup',
+              toMessage: () => PointerInteractionsEnded(),
+            })
+          : Stream.empty,
+    }
+  ),
+  interactionPointerCancel: entry(
+    { active: Schema.Boolean },
+    {
+      modelToDependencies: (model) => ({
+        active:
+          model.resizing !== null || model.compactDragStartNodeId !== null,
+      }),
+      dependenciesToStream: ({ active }) =>
+        active
+          ? Subscription.fromEvent<PointerEvent, Message>({
+              target: () => window,
+              type: 'pointercancel',
+              toMessage: () => PointerInteractionsEnded(),
+            })
+          : Stream.empty,
+    }
+  ),
+  interactionBlur: entry(
+    { active: Schema.Boolean },
+    {
+      modelToDependencies: (model) => ({
+        active:
+          model.resizing !== null || model.compactDragStartNodeId !== null,
+      }),
+      dependenciesToStream: ({ active }) =>
+        active
+          ? Subscription.fromEvent<FocusEvent, Message>({
+              target: () => window,
+              type: 'blur',
+              toMessage: () => PointerInteractionsEnded(),
+            })
+          : Stream.empty,
+    }
+  ),
   serverEvents: entry(
     { baseUrl: Schema.String, enabled: Schema.Boolean },
     {
@@ -114,6 +173,10 @@ export interface StreamActivity {
   readonly title: string
   readonly body: string
   readonly failed: boolean
+  readonly chunks: ReadonlyArray<{
+    readonly eventId: number
+    readonly body: string
+  }>
 }
 
 const printable = (value: unknown): string => {
@@ -135,7 +198,14 @@ export const applyContentEvent = (
       return prior
         ? activity.map((item) =>
             item.id === prior.id
-              ? { ...item, body: item.body + event.delta }
+              ? {
+                  ...item,
+                  body: item.body + event.delta,
+                  chunks: [
+                    ...item.chunks,
+                    { eventId: event.eventId, body: event.delta },
+                  ],
+                }
               : item
           )
         : [
@@ -146,6 +216,7 @@ export const applyContentEvent = (
               title: 'Assistant',
               body: event.delta,
               failed: false,
+              chunks: [{ eventId: event.eventId, body: event.delta }],
             },
           ]
     }
@@ -156,7 +227,14 @@ export const applyContentEvent = (
       return prior
         ? activity.map((item) =>
             item.id === prior.id
-              ? { ...item, body: item.body + event.delta }
+              ? {
+                  ...item,
+                  body: item.body + event.delta,
+                  chunks: [
+                    ...item.chunks,
+                    { eventId: event.eventId, body: event.delta },
+                  ],
+                }
               : item
           )
         : [
@@ -167,6 +245,7 @@ export const applyContentEvent = (
               title: 'Reasoning',
               body: event.delta,
               failed: false,
+              chunks: [{ eventId: event.eventId, body: event.delta }],
             },
           ]
     }
@@ -179,6 +258,7 @@ export const applyContentEvent = (
           title: `Tool call · ${event.name}`,
           body: printable(event.params),
           failed: false,
+          chunks: [{ eventId: event.eventId, body: printable(event.params) }],
         },
       ]
     case 'ToolResult':
@@ -190,9 +270,21 @@ export const applyContentEvent = (
           title: `Tool result · ${event.name}`,
           body: event.result,
           failed: event.isFailure,
+          chunks: [{ eventId: event.eventId, body: event.result }],
         },
       ]
     default:
       return activity
   }
 }
+
+export const acknowledgeActivityThrough = (
+  activity: ReadonlyArray<StreamActivity>,
+  eventId: number
+): ReadonlyArray<StreamActivity> =>
+  activity.flatMap((item) => {
+    const chunks = item.chunks.filter((chunk) => chunk.eventId > eventId)
+    return chunks.length === 0
+      ? []
+      : [{ ...item, chunks, body: chunks.map((chunk) => chunk.body).join('') }]
+  })

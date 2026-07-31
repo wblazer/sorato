@@ -10,6 +10,7 @@ import {
   RunResponse,
   SessionResponse,
   StopResponse,
+  ToolInfo,
 } from '@sorato/api'
 import { Cause, Effect, Schema } from 'effect'
 import { HttpApiClient } from 'effect/unstable/httpapi'
@@ -68,6 +69,11 @@ export const StartedCompaction = m('StartedCompaction', {
   sessionId: Schema.String,
   run: CompactRunResponse,
 })
+export const LoadedHandshake = m('LoadedHandshake', {
+  baseUrl: Schema.String,
+  version: Schema.String,
+  tools: Schema.Array(ToolInfo),
+})
 
 const client = (baseUrl: string) =>
   HttpApiClient.make(Api, { baseUrl }).pipe(
@@ -82,6 +88,21 @@ const failed =
         FailedRequest({ baseUrl, operation, error: Cause.pretty(cause) })
       )
     )
+
+export const LoadHandshake = Command.define('LoadHandshake', {
+  args: { baseUrl: Schema.String },
+  messages: [LoadedHandshake, FailedRequest],
+  execute: ({ baseUrl }) =>
+    Effect.gen(function* () {
+      const api = yield* client(baseUrl)
+      const response = yield* api.handshake.check()
+      return LoadedHandshake({
+        baseUrl,
+        version: response.version,
+        tools: response.tools,
+      })
+    }).pipe(failed(baseUrl, 'handshake')),
+})
 
 export const LoadWorkspace = Command.define('LoadWorkspace', {
   args: { baseUrl: Schema.String },
@@ -235,6 +256,7 @@ export const CompactRange = Command.define('CompactRange', {
     baseHeadNodeId: Schema.String,
     startNodeId: Schema.String,
     endNodeId: Schema.String,
+    instructions: Schema.String,
   },
   messages: [StartedCompaction, FailedRequest],
   execute: ({
@@ -244,12 +266,19 @@ export const CompactRange = Command.define('CompactRange', {
     baseHeadNodeId,
     startNodeId,
     endNodeId,
+    instructions,
   }) =>
     Effect.gen(function* () {
       const api = yield* client(baseUrl)
       const run = yield* api.sessions.compactRange({
         params: { id: sessionId },
-        payload: { model, baseHeadNodeId, startNodeId, endNodeId },
+        payload: {
+          model,
+          baseHeadNodeId,
+          startNodeId,
+          endNodeId,
+          ...(instructions.length === 0 ? {} : { instructions }),
+        },
       })
       return StartedCompaction({ baseUrl, sessionId, run })
     }).pipe(failed(baseUrl, 'compact range')),

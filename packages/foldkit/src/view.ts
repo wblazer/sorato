@@ -1,6 +1,12 @@
 import * as Button from '@foldkit/ui/button'
+import * as Checkbox from '@foldkit/ui/checkbox'
+import * as Combobox from '@foldkit/ui/combobox'
+import * as Dialog from '@foldkit/ui/dialog'
+import * as Disclosure from '@foldkit/ui/disclosure'
 import * as Input from '@foldkit/ui/input'
-import * as Select from '@foldkit/ui/select'
+import * as Listbox from '@foldkit/ui/listbox'
+import * as Switch from '@foldkit/ui/switch'
+import * as Tabs from '@foldkit/ui/tabs'
 import * as Textarea from '@foldkit/ui/textarea'
 import type { MessageNodeResponse } from '@sorato/api'
 import { Option } from 'effect'
@@ -10,7 +16,6 @@ import {
   ChangedSessionSearch,
   ChangedServerUrl,
   ClosedTab,
-  ClosedOverlay,
   ClearedError,
   ClickedCompact,
   ClickedConnect,
@@ -20,17 +25,43 @@ import {
   ClickedStop,
   ClickedToggleTreePanel,
   OpenedOverlay,
+  GotDialogMessage,
+  GotModelComboboxMessage,
+  GotProjectComboboxMessage,
+  GotSidePanelTabsMessage,
+  GotSettingsTabsMessage,
   SelectedBaseNode,
-  SelectedCompactEnd,
-  SelectedCompactStart,
-  SelectedDevScenario,
+  SelectedRunHead,
   SelectedModel,
-  SelectedProject,
   SelectedSession,
-  SelectedSidePanel,
   SelectedTab,
+  ToggledDisclosure,
+  ChangedSetting,
+  ClickedCopySettings,
+  ClickedResetSettings,
+  ConfirmedResetSettings,
+  GotListboxMessage,
+  StartedResize,
+  MovedResize,
+  EndedResize,
+  ToggledTreeCompactMode,
+  ToggledGroupAgentSteps,
+  AdjustedTreeCompactRange,
+  ChangedCompactInstructions,
 } from './main.ts'
 import type { Message, Model } from './main.ts'
+import { renderMarkdown } from './markdown.ts'
+import { shouldExpandToolBlock } from './client-config.ts'
+import { buildTreeModel, flattenTree, isNodeInRange } from './tree-model.ts'
+import {
+  messageParts,
+  projectTranscriptBlocks,
+  type ToolCallPart,
+  type ToolResultPart,
+  type TranscriptBlock,
+  type TranscriptItem,
+  type TranscriptPart,
+} from './transcript.ts'
 
 const button = (
   h: HtmlBuilder<Message>,
@@ -63,20 +94,53 @@ const button = (
     h
   )
 
-const icon = (h: HtmlBuilder<Message>, path: string, className = ''): Html =>
-  h.svg(
-    [
-      h.Class(`ph-icon ${className}`),
-      h.ViewBox('0 0 24 24'),
-      h.Fill('none'),
-      h.Stroke('currentColor'),
-      h.StrokeWidth('1.75'),
-      h.StrokeLinecap('round'),
-      h.StrokeLinejoin('round'),
-      h.AriaHidden(true),
-    ],
-    [h.path([h.D(path)], [])]
-  )
+const icon = (h: HtmlBuilder<Message>, name: string, className = ''): Html =>
+  h.i([h.Class(`ph ph-${name} ph-icon ${className}`), h.AriaHidden(true)], [])
+
+const ModelCombobox = Combobox.create<string>()
+const ProjectCombobox = Combobox.create<string>()
+const SidePanelTabs = Tabs.create<'tree' | 'diff'>()
+const SettingsTabs = Tabs.create<'general' | 'keybinds'>()
+type ListboxItem = { readonly value: string; readonly label: string }
+const StringListbox = Listbox.create<ListboxItem, string>()
+
+const listbox = (
+  model: Listbox.Model,
+  target: string,
+  value: string,
+  items: ReadonlyArray<{ readonly value: string; readonly label: string }>,
+  label: string,
+  h: HtmlBuilder<Message>,
+  isDisabled = false
+): Html =>
+  h.submodel({
+    slotId: `listbox-${target}`,
+    model,
+    view: StringListbox.view,
+    toParentMessage: (message) => GotListboxMessage({ target, message }),
+    viewInputs: {
+      items,
+      itemToValue: (item) => item.value,
+      maybeSelectedValue: Option.some(value),
+      ariaLabel: label,
+      buttonContent: h.span(
+        [],
+        [
+          items.find((item) => item.value === value)?.label ?? value,
+          icon(h, 'caret-down'),
+        ]
+      ),
+      buttonClassName: 'ui-button listbox-button',
+      itemsClassName: 'listbox-popover',
+      backdropClassName: 'listbox-backdrop',
+      isButtonDisabled: isDisabled,
+      itemToConfig: (item) => ({
+        content: h.span([], [item.label]),
+        className: 'listbox-option',
+      }),
+      anchor: { portal: false },
+    },
+  })
 
 const iconButton = (
   h: HtmlBuilder<Message>,
@@ -143,13 +207,33 @@ const selectedNodePath = (model: Model): ReadonlyArray<MessageNodeResponse> => {
   return path.reverse()
 }
 
-const systemLabel = (node: MessageNodeResponse): string => {
-  if (node.kind === 'summary') return 'Summary'
-  const body = plainContent(node)
-  return body.includes('Project-specific instructions')
-    ? 'AGENTS.md'
-    : 'System Prompt'
-}
+const disclosure = (
+  model: Model,
+  h: HtmlBuilder<Message>,
+  id: string,
+  label: string,
+  body: string,
+  className: string
+): Html =>
+  Disclosure.view(
+    {
+      id: `disclosure-${id}`,
+      isOpen: model.openDisclosures.includes(id),
+      onToggle: (isOpen) => ToggledDisclosure({ id, isOpen }),
+      toView: ({ button: toggle, panel, animatePanel }) =>
+        h.div(
+          [h.Key(id), h.Class(className)],
+          [
+            h.button(
+              [...toggle, h.Class('disclosure-toggle')],
+              [icon(h, 'caret-right'), h.span([], [label])]
+            ),
+            animatePanel(h.div(panel, [h.pre([], [body])])),
+          ]
+        ),
+    },
+    h
+  )
 
 const formatRelativeTime = (timestamp: number) => {
   const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000))
@@ -162,9 +246,165 @@ const formatRelativeTime = (timestamp: number) => {
   return days < 30 ? `${days}d ago` : `${Math.floor(days / 30)}mo ago`
 }
 
+const jsonText = (value: unknown): string => {
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value, null, 2) ?? ''
+  } catch {
+    return '[unprintable value]'
+  }
+}
+
+const markdown = (
+  h: HtmlBuilder<Message>,
+  text: string,
+  className: string
+): Html => h.div([h.Class(className), h.InnerHTML(renderMarkdown(text))], [])
+
+const filePart = (
+  part: Extract<TranscriptPart, { readonly type: 'file' }>,
+  h: HtmlBuilder<Message>
+): Html =>
+  part.mediaType.startsWith('image/') && typeof part.data === 'string'
+    ? h.figure(
+        [h.Class('message-image')],
+        [
+          h.img([h.Src(part.data), h.Alt(part.fileName ?? 'Image attachment')]),
+          h.figcaption([], [`${part.fileName ?? 'Image'} · ${part.mediaType}`]),
+        ]
+      )
+    : h.div(
+        [h.Class('file-attachment')],
+        [
+          icon(h, 'file'),
+          h.span([], [part.fileName ?? 'file']),
+          h.code([], [part.mediaType]),
+        ]
+      )
+
+const toolCard = (
+  model: Model,
+  h: HtmlBuilder<Message>,
+  call: ToolCallPart | undefined,
+  result: ToolResultPart | undefined
+): Html => {
+  const id = call?.id ?? result?.id ?? 'unknown-tool'
+  const header = call?.header ?? result?.header
+  const title =
+    header?.title ?? call?.name ?? `${result?.name ?? 'Tool'} Result`
+  const display = result?.bodyDisplay
+  const subtitle = header?.subtitle ?? display?.fileName
+  const stats =
+    display === undefined
+      ? null
+      : `+${display.summary.additions} −${display.summary.deletions}`
+  const body = [
+    ...(call === undefined
+      ? []
+      : [
+          h.div(
+            [h.Class('tool-body-section')],
+            [h.span([], ['Parameters']), h.pre([], [jsonText(call.params)])]
+          ),
+        ]),
+    ...(result === undefined
+      ? []
+      : [
+          h.div(
+            [h.Class('tool-body-section')],
+            [h.span([], ['Result']), h.pre([], [jsonText(result.result)])]
+          ),
+        ]),
+  ]
+  const disclosureId = `tool:${id}`
+  const defaultOpen = shouldExpandToolBlock(
+    model.clientSettings.toolBlockExpansion,
+    call?.name ?? result?.name ?? ''
+  )
+  return Disclosure.view(
+    {
+      id: `tool-${id}`,
+      isOpen:
+        model.openDisclosures.includes(disclosureId) ||
+        (defaultOpen &&
+          !model.openDisclosures.includes(`closed:${disclosureId}`)),
+      onToggle: (isOpen) =>
+        ToggledDisclosure({
+          id: isOpen ? disclosureId : `closed:${disclosureId}`,
+          isOpen: true,
+        }),
+      toView: ({ button: toggle, panel, animatePanel }) =>
+        h.section(
+          [
+            h.Key(`tool:${id}`),
+            h.Class(`tool-card ${result?.isFailure === true ? 'failed' : ''}`),
+          ],
+          [
+            h.button(
+              [...toggle, h.Class('tool-card-toggle')],
+              [
+                icon(
+                  h,
+                  result?.isFailure === true ? 'warning-circle' : 'wrench'
+                ),
+                h.span(
+                  [h.Class('tool-card-heading')],
+                  [
+                    h.strong([], [title]),
+                    subtitle === undefined ? null : h.code([], [subtitle]),
+                  ]
+                ),
+                stats === null
+                  ? null
+                  : h.span([h.Class('diff-stats')], [stats]),
+                icon(h, 'caret-right', 'tool-caret'),
+              ]
+            ),
+            animatePanel(h.div([...panel, h.Class('tool-card-body')], body)),
+          ]
+        ),
+    },
+    h
+  )
+}
+
+const partView = (
+  item: TranscriptItem,
+  model: Model,
+  h: HtmlBuilder<Message>,
+  markdownText: boolean
+): Html | null => {
+  if (item.type === 'combined-tool')
+    return toolCard(model, h, item.call, item.result)
+  if (item.type === 'interruption')
+    return h.div(
+      [h.Class('interruption-divider')],
+      [h.span([], []), h.b([], ['Interrupted']), h.span([], [])]
+    )
+  const part = item.part
+  if (
+    (part.type === 'text' || part.type === 'reasoning') &&
+    part.text.trim().length === 0
+  )
+    return null
+  if (part.type === 'text')
+    return markdownText
+      ? markdown(h, part.text, 'assistant-copy typeset')
+      : h.div([h.Class('plain-copy')], [part.text])
+  if (part.type === 'reasoning')
+    return h.div([h.Class('reasoning-copy')], [part.text])
+  if (part.type === 'file') return filePart(part, h)
+  if (part.type === 'tool-call') return toolCard(model, h, part, undefined)
+  if (part.type === 'tool-result') return toolCard(model, h, undefined, part)
+  return null
+}
+
 const sidebar = (model: Model, h: HtmlBuilder<Message>): Html => {
   return h.aside(
-    [h.Class('app-sidebar')],
+    [
+      h.Class('app-sidebar'),
+      h.Style({ '--sidebar-width': `${model.sidebarWidth}px` }),
+    ],
     [
       h.div(
         [h.Class('sidebar-scroll')],
@@ -178,7 +418,7 @@ const sidebar = (model: Model, h: HtmlBuilder<Message>): Html => {
                   toView: ({ button: a }) =>
                     h.button(
                       [...a, h.Class('ui-button new-tab-button')],
-                      [icon(h, 'M12 5v14M5 12h14'), h.span([], ['New Tab'])]
+                      [icon(h, 'plus'), h.span([], ['New Tab'])]
                     ),
                 },
                 h
@@ -224,7 +464,7 @@ const sidebar = (model: Model, h: HtmlBuilder<Message>): Html => {
                   ),
                   iconButton(
                     h,
-                    icon(h, 'M6 6l12 12M18 6 6 18'),
+                    icon(h, 'x'),
                     ClosedTab({ id: tab.id }),
                     `Close ${title}`,
                     'tab-close'
@@ -236,12 +476,31 @@ const sidebar = (model: Model, h: HtmlBuilder<Message>): Html => {
         ]
       ),
       h.div(
+        [
+          h.Class('resize-separator sidebar-resizer'),
+          h.Role('separator'),
+          h.AriaLabel('Resize sidebar'),
+          h.OnPointerDown((_type, button, screenX) =>
+            button === 0
+              ? Option.some(
+                  StartedResize({
+                    target: 'sidebar',
+                    x: screenX,
+                    viewportWidth: model.viewportWidth,
+                  })
+                )
+              : Option.none()
+          ),
+        ],
+        []
+      ),
+      h.div(
         [h.Class('sidebar-footer')],
         [
           button(
             h,
             `${model.serverUrlInput}`,
-            OpenedOverlay({ overlay: 'settings' }),
+            OpenedOverlay({ overlay: 'connection' }),
             {
               className: `connection-button ${model.status}`,
               ariaLabel: `Connection: ${model.serverUrlInput}`,
@@ -253,13 +512,7 @@ const sidebar = (model: Model, h: HtmlBuilder<Message>): Html => {
               toView: ({ button: a }) =>
                 h.button(
                   [...a, h.Class('ui-button settings-button')],
-                  [
-                    icon(
-                      h,
-                      'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm0-5v2m0 13v2m8.5-8.5h-2m-13 0h-2m14.5-6L16.6 7.4M7.4 16.6 6 18m12 0-1.4-1.4M7.4 7.4 6 6'
-                    ),
-                    h.span([], ['Settings']),
-                  ]
+                  [icon(h, 'gear'), h.span([], ['Settings'])]
                 ),
             },
             h
@@ -275,71 +528,201 @@ const sidebar = (model: Model, h: HtmlBuilder<Message>): Html => {
   )
 }
 
-const transcriptNode = (
-  node: MessageNodeResponse,
+const systemTranscript = (
+  block: TranscriptBlock,
   model: Model,
   h: HtmlBuilder<Message>
 ): Html => {
-  const role = node.encoded.role
-  const body = plainContent(node)
-  if (role === 'system' || node.kind === 'summary') {
-    return h.details(
-      [h.Key(node.id), h.Class('system-message')],
-      [h.summary([], [systemLabel(node)]), h.pre([], [body])]
-    )
-  }
-
-  if (role === 'user') {
-    return h.article(
-      [h.Key(node.id), h.Class('message-row user-message')],
-      [
-        h.div([h.Class('user-bubble')], [h.div([], [body])]),
-        h.div(
-          [h.Class('user-meta')],
+  const node = block.messages[0]
+  if (node === undefined) return h.div([], [])
+  const encoded = node.encoded
+  const display = 'display' in encoded ? encoded.display : undefined
+  const source = 'source' in encoded ? encoded.source : undefined
+  const title =
+    node.kind === 'summary'
+      ? 'Summary'
+      : (display?.title ??
+        (source === 'agents-md' ? 'AGENTS.md' : 'System Prompt'))
+  const loadedPath =
+    encoded.role === 'system' ? encoded.metadata?.loaded?.path : undefined
+  const subtitle =
+    display?.subtitle ?? (source === 'agents-md' ? loadedPath : undefined)
+  return Disclosure.view(
+    {
+      id: `system-${node.id}`,
+      isOpen:
+        model.openDisclosures.includes(node.id) ||
+        (model.clientSettings.expandSystemMessagesByDefault &&
+          !model.openDisclosures.includes(`closed:${node.id}`)),
+      onToggle: (isOpen) =>
+        ToggledDisclosure({
+          id: isOpen ? node.id : `closed:${node.id}`,
+          isOpen: true,
+        }),
+      toView: ({ button: toggle, panel, animatePanel }) =>
+        h.section(
+          [h.Key(node.id), h.Class('system-message')],
           [
-            h.span(
-              [],
+            h.button(
+              [...toggle, h.Class('system-toggle')],
               [
-                new Date(node.createdAt).toLocaleTimeString([], {
-                  hour: 'numeric',
-                  minute: '2-digit',
-                }),
+                icon(
+                  h,
+                  node.kind === 'summary' ? 'article' : 'terminal-window'
+                ),
+                h.strong([], [title]),
+                subtitle === undefined ? null : h.code([], [subtitle]),
+                icon(h, 'caret-right', 'system-caret'),
               ]
             ),
-            button(h, '↗', SelectedBaseNode({ id: node.id }), {
-              disabled: model.activeRunId !== null,
-              className: 'message-action',
-              ariaLabel: 'Branch from this message',
-            }),
+            animatePanel(
+              h.div(
+                [...panel, h.Class('system-body')],
+                block.items.map((item) => partView(item, model, h, false))
+              )
+            ),
           ]
         ),
-      ]
-    )
-  }
+    },
+    h
+  )
+}
 
-  if (role === 'tool') {
-    return h.details(
-      [h.Key(node.id), h.Class('tool-message')],
-      [h.summary([], ['Tool result']), h.pre([], [body])]
-    )
-  }
-
+const userTranscript = (
+  block: TranscriptBlock,
+  model: Model,
+  h: HtmlBuilder<Message>
+): Html => {
+  const node = block.messages[0]
+  if (node === undefined) return h.div([], [])
+  const parts = messageParts(node)
+  const images = parts.filter(
+    (part): part is Extract<TranscriptPart, { readonly type: 'file' }> =>
+      part.type === 'file' &&
+      part.mediaType.startsWith('image/') &&
+      typeof part.data === 'string'
+  )
+  const bubbleParts = parts.filter(
+    (
+      part
+    ): part is Extract<TranscriptPart, { readonly type: 'text' | 'file' }> =>
+      part.type === 'text' ||
+      (part.type === 'file' && !part.mediaType.startsWith('image/'))
+  )
   return h.article(
-    [h.Key(node.id), h.Class('message-row assistant-message')],
+    [h.Key(node.id), h.Class('message-row user-message')],
     [
-      h.div([h.Class('assistant-copy')], [body]),
+      images.length === 0
+        ? null
+        : h.div(
+            [h.Class('user-images'), h.AriaLabel('Message image attachments')],
+            images.map((part) => filePart(part, h))
+          ),
+      bubbleParts.length === 0
+        ? null
+        : h.div(
+            [h.Class('user-bubble')],
+            bubbleParts.map((part) =>
+              part.type === 'text'
+                ? h.div([h.Class('plain-copy')], [part.text])
+                : filePart(part, h)
+            )
+          ),
       h.div(
-        [h.Class('assistant-meta')],
+        [h.Class('user-meta')],
         [
-          node.modelCall === null
-            ? node.run?.status === 'interrupted'
-              ? 'interrupted'
-              : ''
-            : `${node.modelCall.providerId}/${node.modelCall.modelId}`,
+          h.span(
+            [],
+            [
+              new Date(node.createdAt).toLocaleTimeString([], {
+                hour: 'numeric',
+                minute: '2-digit',
+              }),
+            ]
+          ),
+          iconButton(
+            h,
+            icon(h, 'git-branch'),
+            SelectedBaseNode({ id: node.id }),
+            'Branch from this message',
+            'message-action',
+            model.activeRunId !== null
+          ),
         ]
       ),
     ]
   )
+}
+
+const assistantTranscript = (
+  block: TranscriptBlock,
+  model: Model,
+  h: HtmlBuilder<Message>
+): Html => {
+  const representative =
+    block.messages.find((message) => message.modelCall !== null) ??
+    block.messages[0]
+  const modelCall = representative?.modelCall
+  const run = block.messages.find((message) => message.run !== null)?.run
+  const metadata: string[] = []
+  if (modelCall !== null && modelCall !== undefined) {
+    metadata.push(`${modelCall.providerId}/${modelCall.modelId}`)
+    if (modelCall.startedAt !== null)
+      metadata.push(
+        `${Math.max(0, Math.floor((modelCall.finishedAt - modelCall.startedAt) / 1000))}s`
+      )
+    if (modelCall.actualCostMicrosUsd !== null)
+      metadata.push(
+        `$${(modelCall.actualCostMicrosUsd / 1_000_000).toFixed(4)}`
+      )
+  }
+  if (run?.status === 'interrupted') metadata.push('interrupted')
+  const visible = block.items
+    .map((item) => ({ item, view: partView(item, model, h, true) }))
+    .filter(({ view }) => view !== null)
+  return h.article(
+    [h.Key(block.key), h.Class('message-row assistant-message')],
+    [
+      ...visible.map(({ item, view }) =>
+        h.div(
+          [
+            h.Class('assistant-transcript-item'),
+            h.DataAttribute(
+              'transcript-kind',
+              item.type === 'combined-tool'
+                ? 'tool'
+                : item.type === 'message'
+                  ? item.part.type
+                  : item.type
+            ),
+          ],
+          [view]
+        )
+      ),
+      metadata.length === 0
+        ? null
+        : h.div([h.Class('assistant-meta')], [metadata.join(' · ')]),
+    ]
+  )
+}
+
+const transcriptBlock = (
+  block: TranscriptBlock,
+  model: Model,
+  h: HtmlBuilder<Message>
+): Html => {
+  const node = block.messages[0]
+  if (node === undefined) return h.div([], [])
+  const role = node.encoded.role
+  if (
+    role === 'system' ||
+    (node.kind === 'summary' &&
+      model.clientSettings.transcriptDisplayMode === 'pretty')
+  ) {
+    return systemTranscript(block, model, h)
+  }
+  if (role === 'user') return userTranscript(block, model, h)
+  return assistantTranscript(block, model, h)
 }
 
 const activityRows = (
@@ -348,12 +731,13 @@ const activityRows = (
 ): ReadonlyArray<Html> =>
   model.activity.map((item) =>
     item.kind === 'tool-call' || item.kind === 'tool-result'
-      ? h.details(
-          [
-            h.Key(item.id),
-            h.Class(`tool-message ${item.failed ? 'failed' : ''}`),
-          ],
-          [h.summary([], [item.title]), h.pre([], [item.body])]
+      ? disclosure(
+          model,
+          h,
+          item.id,
+          item.title,
+          item.body,
+          `tool-message ${item.failed ? 'failed' : ''}`
         )
       : h.article(
           [
@@ -380,10 +764,13 @@ const transcript = (model: Model, h: HtmlBuilder<Message>): Html =>
           h.AriaLive('polite'),
         ],
         [
-          ...selectedNodePath(model).map((node) =>
-            transcriptNode(node, model, h)
-          ),
-          ...activityRows(model, h),
+          ...projectTranscriptBlocks(selectedNodePath(model), {
+            pretty: model.clientSettings.transcriptDisplayMode === 'pretty',
+          }).map((block) => transcriptBlock(block, model, h)),
+          ...(model.activeRunId !== null &&
+          model.selectedRunId === model.activeRunId
+            ? activityRows(model, h)
+            : []),
           model.nodes.length === 0 && model.activity.length === 0
             ? h.p([h.Class('empty-transcript')], ['No messages yet.'])
             : null,
@@ -393,37 +780,62 @@ const transcript = (model: Model, h: HtmlBuilder<Message>): Html =>
   )
 
 const modelSelect = (model: Model, h: HtmlBuilder<Message>): Html =>
-  Select.view(
-    {
-      id: 'model',
-      value: model.selectedModelId,
-      isDisabled: model.selectedProjectId === null,
-      onChange: (id) => SelectedModel({ id }),
-      toView: ({ select, label }) =>
-        h.div(
-          [h.Class('model-control')],
+  h.submodel({
+    slotId: 'model-combobox',
+    model: model.modelCombobox,
+    view: ModelCombobox.view,
+    toParentMessage: (message) => GotModelComboboxMessage({ message }),
+    viewInputs: {
+      items: model.models
+        .filter((item) =>
+          `${item.id} ${item.name} ${item.provider}`
+            .toLowerCase()
+            .includes(model.modelCombobox.inputValue.toLowerCase())
+        )
+        .map((item) => item.id),
+      maybeSelectedValue:
+        model.selectedModelId === ''
+          ? Option.none()
+          : Option.some(model.selectedModelId),
+      restingInputValue:
+        model.models.find((item) => item.id === model.selectedModelId)?.name ??
+        '',
+      itemToValue: (item) => item,
+      itemToDisplayText: (id) =>
+        model.models.find((item) => item.id === id)?.name ?? id,
+      itemToConfig: (id) => ({
+        content: h.div(
+          [],
           [
-            h.label([...label, h.Class('sr-only')], ['Model']),
-            h.select(
-              [...select, h.Class('model-select')],
-              [
-                h.option([h.Value('')], ['Select model']),
-                ...model.models.map((item) =>
-                  h.option(
-                    [
-                      h.Value(item.id),
-                      h.Selected(item.id === model.selectedModelId),
-                    ],
-                    [item.name]
-                  )
-                ),
-              ]
+            h.strong(
+              [],
+              [model.models.find((item) => item.id === id)?.name ?? id]
+            ),
+            h.small(
+              [],
+              [model.models.find((item) => item.id === id)?.provider ?? '']
             ),
           ]
         ),
+      }),
+      isDisabled: model.selectedProjectId === null,
+      ariaLabel: 'Model',
+      inputPlaceholder: 'Search models…',
+      className: 'model-control combo-control',
+      inputClassName: 'combo-input',
+      itemsClassName: 'combo-items',
+      buttonClassName: 'model-select',
+      buttonContent: h.span(
+        [],
+        [
+          model.models.find((item) => item.id === model.selectedModelId)
+            ?.name ?? 'Select model',
+          icon(h, 'caret-down'),
+        ]
+      ),
+      anchor: { placement: 'top-start' },
     },
-    h
-  )
+  })
 
 const composer = (model: Model, h: HtmlBuilder<Message>): Html => {
   const disabled =
@@ -449,7 +861,7 @@ const composer = (model: Model, h: HtmlBuilder<Message>): Html => {
               h.summary(
                 [],
                 [
-                  icon(h, 'M12 3a9 9 0 1 1-9 9'),
+                  icon(h, 'arrows-clockwise'),
                   h.strong([], ['Generating summary']),
                 ]
               ),
@@ -525,7 +937,7 @@ const composer = (model: Model, h: HtmlBuilder<Message>): Html => {
           model.activeRunId === null
             ? iconButton(
                 h,
-                icon(h, 'M12 19V5m-6 6 6-6 6 6'),
+                icon(h, 'arrow-up'),
                 ClickedSend(),
                 'Send message',
                 'submit-button',
@@ -533,7 +945,7 @@ const composer = (model: Model, h: HtmlBuilder<Message>): Html => {
               )
             : iconButton(
                 h,
-                icon(h, 'M8 8h8v8H8z'),
+                icon(h, 'stop'),
                 ClickedStop(),
                 'Stop run',
                 'submit-button stop-button'
@@ -576,10 +988,7 @@ const newSessionStage = (model: Model, h: HtmlBuilder<Message>): Html => {
                                 ),
                               ],
                               [
-                                icon(
-                                  h,
-                                  'M21 21l-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0'
-                                ),
+                                icon(h, 'magnifying-glass'),
                                 h.span([], ['Search sessions']),
                               ]
                             ),
@@ -642,52 +1051,86 @@ const newSessionStage = (model: Model, h: HtmlBuilder<Message>): Html => {
             [h.Class('start-session')],
             [
               h.h2([], ['Start session in']),
-              (() => {
-                const selected = model.projects.find(
-                  (p) => p.id === model.selectedProjectId
-                )
-                const next =
-                  model.projects[
-                    (Math.max(
-                      0,
-                      model.projects.findIndex(
-                        (p) => p.id === model.selectedProjectId
-                      )
-                    ) +
-                      1) %
-                      Math.max(1, model.projects.length)
-                  ]
-                return Button.view(
-                  {
-                    onClick: SelectedProject({ id: next?.id ?? '' }),
-                    isDisabled: model.projects.length === 0,
-                    toView: ({ button: a }) =>
-                      h.button(
+              h.submodel({
+                slotId: 'project-combobox',
+                model: model.projectCombobox,
+                view: ProjectCombobox.view,
+                toParentMessage: (message) =>
+                  GotProjectComboboxMessage({ message }),
+                viewInputs: {
+                  items: model.projects
+                    .filter((project) =>
+                      `${project.name} ${project.path}`
+                        .toLowerCase()
+                        .includes(
+                          model.projectCombobox.inputValue.toLowerCase()
+                        )
+                    )
+                    .map((project) => project.id),
+                  maybeSelectedValue:
+                    model.selectedProjectId === null
+                      ? Option.none()
+                      : Option.some(model.selectedProjectId),
+                  restingInputValue:
+                    model.projects.find(
+                      (project) => project.id === model.selectedProjectId
+                    )?.name ?? '',
+                  itemToValue: (id) => id,
+                  itemToDisplayText: (id) =>
+                    model.projects.find((project) => project.id === id)?.name ??
+                    id,
+                  itemToConfig: (id) => {
+                    const project = model.projects.find(
+                      (candidate) => candidate.id === id
+                    )
+                    return {
+                      content: h.span(
+                        [h.Class('project-copy')],
                         [
-                          ...a,
-                          h.Class('project-select'),
-                          h.Role('combobox'),
-                          h.AriaLabel('Project'),
-                        ],
-                        [
-                          icon(h, 'M3 7.5h7l2 2h9v9H3z'),
-                          h.span(
-                            [h.Class('project-copy')],
-                            [
-                              h.strong(
-                                [],
-                                [selected?.name ?? 'Select project']
-                              ),
-                              selected ? h.small([], [selected.path]) : null,
-                            ]
-                          ),
-                          icon(h, 'm8 10 4 4 4-4'),
+                          h.strong([], [project?.name ?? id]),
+                          h.small([], [project?.path ?? '']),
                         ]
                       ),
+                    }
                   },
-                  h
-                )
-              })(),
+                  ariaLabel: 'Project',
+                  inputPlaceholder: 'Search projects…',
+                  className: 'project-combo combo-control',
+                  inputClassName: 'combo-input',
+                  itemsClassName: 'combo-items',
+                  buttonClassName: 'project-select',
+                  buttonContent: h.span(
+                    [h.Class('project-trigger')],
+                    [
+                      icon(h, 'folder-open'),
+                      h.span(
+                        [h.Class('project-copy')],
+                        [
+                          h.strong(
+                            [],
+                            [
+                              model.projects.find(
+                                (project) =>
+                                  project.id === model.selectedProjectId
+                              )?.name ?? 'Select project',
+                            ]
+                          ),
+                          h.small(
+                            [],
+                            [
+                              model.projects.find(
+                                (project) =>
+                                  project.id === model.selectedProjectId
+                              )?.path ?? '',
+                            ]
+                          ),
+                        ]
+                      ),
+                      icon(h, 'caret-down'),
+                    ]
+                  ),
+                },
+              }),
             ]
           ),
         ]
@@ -697,83 +1140,431 @@ const newSessionStage = (model: Model, h: HtmlBuilder<Message>): Html => {
 }
 
 const treePanel = (model: Model, h: HtmlBuilder<Message>): Html => {
+  const selectedSession = model.sessions.find(
+    (session) => session.id === model.selectedSessionId
+  )
+  const primaryRun = selectedSession?.activeRuns?.find(
+    (run) => run.visibility === 'primary'
+  )
+  const tree = buildTreeModel(model.nodes, model.groupAgentSteps)
+  const rows = flattenTree(tree, model.selectedBaseNodeId)
+  const compactRows = rows.filter(
+    (row) => row.inSelectedPath && row.item.message.encoded.role !== 'system'
+  )
+  const orderedCompactIds = compactRows.map((row) => row.item.id)
+  const compactStartOwner =
+    model.compactStartNodeId === null
+      ? null
+      : (tree.ownerByNodeId.get(model.compactStartNodeId) ?? null)
+  const compactEndOwner =
+    model.compactEndNodeId === null
+      ? null
+      : (tree.ownerByNodeId.get(model.compactEndNodeId) ?? null)
+  const treeRow = (row: (typeof rows)[number], compact: boolean): Html => {
+    const item = row.item
+    const inRange = isNodeInRange(
+      orderedCompactIds,
+      compactStartOwner,
+      compactEndOwner,
+      item.id
+    )
+    const endpoint =
+      item.id === compactStartOwner || item.id === compactEndOwner
+    const gutters = Array.from({ length: row.depth }, (_, level) =>
+      h.span(
+        [
+          h.Class('tree-gutter'),
+          h.DataAttribute(
+            'mark',
+            level === row.depth - 1 && row.connector !== null
+              ? row.connector
+              : row.continuingLevels.has(level)
+                ? 'vertical'
+                : 'blank'
+          ),
+          h.DataAttribute('active', row.inSelectedPath ? 'true' : 'false'),
+        ],
+        []
+      )
+    )
+    const target = item.compactEndNodeId
+    return h.button(
+      [
+        h.Key(item.id),
+        h.Class(
+          `tree-row tone-${item.tone} ${row.selected ? 'selected' : ''} ${row.inSelectedPath ? 'in-path' : ''} ${inRange ? 'compact-in-range' : ''} ${endpoint ? 'compact-endpoint' : ''}`
+        ),
+        h.AriaLabel(
+          `${compact ? 'Adjust compact range at' : 'Select branch'}: ${preview(item.displayMessage)}`
+        ),
+        h.DataAttribute('node-id', target),
+        h.DataAttribute('connector', row.connector ?? 'none'),
+        h.DataAttribute('selected-path', row.inSelectedPath ? 'true' : 'false'),
+        h.DataAttribute('selected-head', row.selected ? 'true' : 'false'),
+        h.DataAttribute('compact-range', inRange ? 'true' : 'false'),
+        ...(compact ? [] : [h.OnClick(SelectedBaseNode({ id: target }))]),
+        ...(compact
+          ? [
+              h.OnPointerDown((_type, button) =>
+                button === 0
+                  ? Option.some(
+                      AdjustedTreeCompactRange({
+                        startId: item.compactStartNodeId,
+                        endId: item.compactEndNodeId,
+                        phase: 'start',
+                      })
+                    )
+                  : Option.none()
+              ),
+              ...(model.compactDragStartNodeId === null
+                ? []
+                : [
+                    h.OnMouseEnter(
+                      AdjustedTreeCompactRange({
+                        startId: item.compactStartNodeId,
+                        endId: item.compactEndNodeId,
+                        phase: 'move',
+                      })
+                    ),
+                  ]),
+              h.OnPointerUp(() =>
+                Option.some(
+                  AdjustedTreeCompactRange({
+                    startId: item.compactStartNodeId,
+                    endId: item.compactEndNodeId,
+                    phase: 'end',
+                  })
+                )
+              ),
+              h.OnKeyDownPreventDefault((key) =>
+                key === 'Enter' || key === ' '
+                  ? Option.some(
+                      AdjustedTreeCompactRange({
+                        startId: item.compactStartNodeId,
+                        endId: item.compactEndNodeId,
+                        phase: 'select',
+                      })
+                    )
+                  : Option.none()
+              ),
+            ]
+          : []),
+      ],
+      [
+        h.span([h.Class('tree-gutters')], gutters),
+        h.span(
+          [
+            h.Class('tree-icon'),
+            h.DataAttribute('tone', item.tone),
+            h.DataAttribute('in-path', row.inSelectedPath ? 'true' : 'false'),
+            h.DataAttribute(
+              'parent-connector',
+              row.parentConnector ? 'true' : 'false'
+            ),
+            h.DataAttribute(
+              'child-connector',
+              row.childConnector ? 'true' : 'false'
+            ),
+            h.DataAttribute(
+              'active-parent-connector',
+              row.activeParentConnector ? 'true' : 'false'
+            ),
+            h.DataAttribute(
+              'active-child-connector',
+              row.activeChildConnector ? 'true' : 'false'
+            ),
+          ],
+          [
+            icon(
+              h,
+              item.tone === 'summary'
+                ? 'file-text'
+                : item.tone === 'user'
+                  ? 'user'
+                  : item.tone === 'tool'
+                    ? 'wrench'
+                    : item.tone === 'system'
+                      ? 'gear'
+                      : 'sparkle'
+            ),
+          ]
+        ),
+        h.span([h.Class('tree-preview')], [preview(item.displayMessage)]),
+        ...(item.toolCount > 0
+          ? [
+              h.span(
+                [h.Class('tree-group-badge')],
+                [`${item.toolCount} ${item.toolCount === 1 ? 'tool' : 'tools'}`]
+              ),
+            ]
+          : []),
+      ]
+    )
+  }
+  const runRow = (): Html | null =>
+    primaryRun === undefined
+      ? null
+      : h.button(
+          [
+            h.Class(
+              `tree-row tree-run-row ${model.selectedRunId === primaryRun.runId ? 'selected' : ''}`
+            ),
+            h.AriaLabel(
+              primaryRun.kind === 'summary'
+                ? 'Select summarizing range'
+                : 'Select streaming branch'
+            ),
+            h.OnClick(
+              SelectedRunHead({
+                runId: primaryRun.runId,
+                baseNodeId: primaryRun.baseNodeId,
+              })
+            ),
+          ],
+          [
+            h.span(
+              [
+                h.Class('tree-icon'),
+                h.DataAttribute(
+                  'tone',
+                  primaryRun.kind === 'summary' ? 'summary' : 'assistant'
+                ),
+              ],
+              [icon(h, primaryRun.kind === 'summary' ? 'file-text' : 'sparkle')]
+            ),
+            h.span(
+              [h.Class('tree-preview tree-run-preview')],
+              [
+                primaryRun.kind === 'summary'
+                  ? 'Summarizing range…'
+                  : 'Streaming branch…',
+              ]
+            ),
+          ]
+        )
   return h.aside(
-    [h.Class('tree-panel')],
     [
+      h.Class('tree-panel'),
+      h.Style({ '--tree-panel-width': `${model.treePanelWidth}px` }),
+    ],
+    [
+      h.div(
+        [
+          h.Class('resize-separator tree-resizer'),
+          h.Role('separator'),
+          h.AriaLabel('Resize conversation panel'),
+          h.OnPointerDown((_type, button, screenX) =>
+            button === 0
+              ? Option.some(
+                  StartedResize({
+                    target: 'tree',
+                    x: screenX,
+                    viewportWidth: model.viewportWidth,
+                  })
+                )
+              : Option.none()
+          ),
+        ],
+        []
+      ),
       h.div(
         [h.Class('tree-header')],
         [
-          Button.view(
-            {
-              onClick: SelectedSidePanel({ panel: 'tree' }),
-              toView: ({ button: a }) =>
-                h.button(
-                  [
-                    ...a,
-                    h.Class(
-                      `ui-button panel-tab ${model.sidePanel === 'tree' ? 'selected' : ''}`
-                    ),
-                    h.AriaLabel('Conversation tree'),
-                  ],
-                  [
-                    icon(
-                      h,
-                      'M6 3v12a3 3 0 0 0 3 3h9M6 8h8a3 3 0 0 1 3 3v10M3 3h6M14 21h6'
-                    ),
-                    h.span([], ['Tree']),
-                  ]
+          h.submodel({
+            slotId: 'side-panel-tabs',
+            model: model.sidePanelTabs,
+            view: SidePanelTabs.view,
+            toParentMessage: (message) => GotSidePanelTabsMessage({ message }),
+            viewInputs: {
+              tabs: ['tree', 'diff'],
+              selectedValue: model.sidePanel,
+              ariaLabel: 'Side panel',
+              toView: ({ tablist, tabs }) =>
+                h.div(
+                  tablist,
+                  tabs.map((tab) =>
+                    h.button(
+                      [
+                        ...tab.tab,
+                        h.Class(
+                          `ui-button panel-tab ${tab.isActive ? 'selected' : ''}`
+                        ),
+                      ],
+                      [
+                        icon(
+                          h,
+                          tab.value === 'tree' ? 'tree-structure' : 'git-diff'
+                        ),
+                        h.span([], [tab.value === 'tree' ? 'Tree' : 'Diff']),
+                      ]
+                    )
+                  )
                 ),
             },
-            h
-          ),
-          button(h, 'Diff', SelectedSidePanel({ panel: 'diff' }), {
-            className: `panel-tab ${model.sidePanel === 'diff' ? 'selected' : ''}`,
           }),
         ]
       ),
       model.sidePanel === 'tree'
         ? h.div(
-            [h.Class('tree-scroll')],
             [
-              model.nodes.length === 0
+              h.Class('tree-content'),
+              h.Id('side-panel-tabs-panel-0'),
+              h.Role('tabpanel'),
+              h.AriaLabelledBy('side-panel-tabs-tab-0'),
+              h.Tabindex(0),
+            ],
+            [
+              model.nodes.length > 0
                 ? h.div(
-                    [h.Class('tree-empty')],
+                    [h.Class('tree-controls')],
                     [
-                      h.strong(
-                        [],
-                        [
-                          model.selectedSessionId === null
-                            ? 'No session selected'
-                            : 'No messages yet',
-                        ]
-                      ),
-                      h.p(
-                        [],
-                        [
-                          model.selectedSessionId === null
-                            ? 'Choose an existing session or send a message to start one.'
-                            : 'Send a message to begin this conversation.',
-                        ]
+                      model.treeCompactMode
+                        ? h.div(
+                            [h.Class('tree-compact-heading')],
+                            [
+                              iconButton(
+                                h,
+                                icon(h, 'arrow-left'),
+                                ToggledTreeCompactMode(),
+                                'Back to tree'
+                              ),
+                              h.strong([], ['Select a range to compact']),
+                            ]
+                          )
+                        : Button.view(
+                            {
+                              onClick: ToggledTreeCompactMode(),
+                              toView: ({ button: attributes }) =>
+                                h.button(
+                                  [
+                                    ...attributes,
+                                    h.Class(
+                                      'ui-button outline-button tree-compact-toggle tree-compact-button'
+                                    ),
+                                  ],
+                                  [
+                                    icon(h, 'file-text'),
+                                    h.span([], ['Compact']),
+                                  ]
+                                ),
+                            },
+                            h
+                          ),
+                      Checkbox.view(
+                        {
+                          id: 'group-agent-steps',
+                          isChecked: model.groupAgentSteps,
+                          onToggle: (value) =>
+                            ToggledGroupAgentSteps({ value }),
+                          toView: ({ checkbox, label, hiddenInput }) =>
+                            h.div(
+                              [h.Class('tree-group-control')],
+                              [
+                                h.span(
+                                  [...checkbox, h.Class('checkbox-control')],
+                                  [icon(h, 'check')]
+                                ),
+                                h.label(label, ['Group agent steps']),
+                                h.input([...hiddenInput, h.Class('sr-only')]),
+                              ]
+                            ),
+                        },
+                        h
                       ),
                     ]
                   )
-                : h.div(
-                    [h.Class('tree-list')],
-                    model.nodes.map((node, index) =>
-                      button(
-                        h,
-                        `${node.kind === 'summary' ? '◆' : node.encoded.role === 'user' ? '●' : node.encoded.role === 'tool' ? '◇' : '■'}  ${preview(node)}`,
-                        SelectedBaseNode({ id: node.id }),
-                        {
-                          className: `tree-row tone-${node.kind === 'summary' ? 'summary' : node.encoded.role} ${node.id === model.selectedBaseNodeId ? 'selected' : ''} depth-${Math.min(index, 3)}`,
-                        }
+                : null,
+              h.div(
+                [h.Class('tree-scroll')],
+                [
+                  model.nodes.length === 0
+                    ? h.div(
+                        [h.Class('tree-empty')],
+                        [
+                          h.strong(
+                            [],
+                            [
+                              model.selectedSessionId === null
+                                ? 'No session selected'
+                                : 'No messages yet',
+                            ]
+                          ),
+                          h.p(
+                            [],
+                            [
+                              model.selectedSessionId === null
+                                ? 'Choose an existing session or send a message to start one.'
+                                : 'Send a message to begin this conversation.',
+                            ]
+                          ),
+                        ]
                       )
-                    )
-                  ),
+                    : h.div(
+                        [
+                          h.Class(
+                            `tree-list ${model.treeCompactMode ? 'compact-mode' : ''}`
+                          ),
+                        ],
+                        [
+                          ...(model.treeCompactMode ? compactRows : rows).map(
+                            (row) => treeRow(row, model.treeCompactMode)
+                          ),
+                          ...(model.treeCompactMode ? [] : [runRow()]),
+                        ]
+                      ),
+                ]
+              ),
+              model.treeCompactMode && model.nodes.length > 0
+                ? h.div(
+                    [h.Class('tree-compact-footer')],
+                    [
+                      Textarea.view(
+                        {
+                          id: 'compact-instructions',
+                          value: model.compactInstructions,
+                          rows: 3,
+                          placeholder: 'Optional summarizer instructions',
+                          onInput: (value) =>
+                            ChangedCompactInstructions({ value }),
+                          toView: ({ textarea, label }) =>
+                            h.div(
+                              [],
+                              [
+                                h.label(
+                                  [...label, h.Class('sr-only')],
+                                  ['Summarizer instructions']
+                                ),
+                                h.textarea(
+                                  [
+                                    ...textarea,
+                                    h.Class('compact-instructions'),
+                                  ],
+                                  []
+                                ),
+                              ]
+                            ),
+                        },
+                        h
+                      ),
+                      button(h, 'Generate summary', ClickedCompact(), {
+                        className: 'accent-button',
+                        disabled:
+                          model.compactStartNodeId === null ||
+                          model.compactEndNodeId === null,
+                      }),
+                    ]
+                  )
+                : null,
             ]
           )
         : h.div(
-            [h.Class('tree-scroll')],
+            [
+              h.Class('tree-scroll'),
+              h.Id('side-panel-tabs-panel-1'),
+              h.Role('tabpanel'),
+              h.AriaLabelledBy('side-panel-tabs-tab-1'),
+              h.Tabindex(0),
+            ],
             [
               h.div(
                 [h.Class('tree-empty')],
@@ -823,7 +1614,7 @@ const sessionShell = (model: Model, h: HtmlBuilder<Message>): Html => {
               ),
               iconButton(
                 h,
-                icon(h, 'M4 5h16v14H4zm11 0v14'),
+                icon(h, 'sidebar-simple'),
                 ClickedToggleTreePanel(),
                 model.treePanelOpen ? 'Close side panel' : 'Open side panel',
                 'tree-toggle'
@@ -836,7 +1627,15 @@ const sessionShell = (model: Model, h: HtmlBuilder<Message>): Html => {
           composer(model, h),
         ]
       ),
-      model.treePanelOpen ? h.div([h.Class('tree-spacer')], []) : null,
+      model.treePanelOpen
+        ? h.div(
+            [
+              h.Class('tree-spacer'),
+              h.Style({ '--tree-panel-width': `${model.treePanelWidth}px` }),
+            ],
+            []
+          )
+        : null,
       model.treePanelOpen ? treePanel(model, h) : null,
     ]
   )
@@ -844,13 +1643,6 @@ const sessionShell = (model: Model, h: HtmlBuilder<Message>): Html => {
 
 const overlay = (model: Model, h: HtmlBuilder<Message>): Html | null => {
   if (model.overlay === null) return null
-  const close = iconButton(
-    h,
-    icon(h, 'M6 6l12 12M18 6 6 18'),
-    ClosedOverlay(),
-    'Close dialog',
-    'modal-close'
-  )
   const filtered = model.sessions.filter((session) =>
     sessionTitle(session)
       .toLowerCase()
@@ -859,224 +1651,593 @@ const overlay = (model: Model, h: HtmlBuilder<Message>): Html | null => {
   const title =
     model.overlay === 'search'
       ? 'Search sessions'
-      : model.overlay === 'settings'
+      : model.overlay === 'connection'
         ? 'Connection settings'
-        : 'Scenario Lab'
+        : model.overlay === 'settings'
+          ? 'Settings'
+          : 'Scenario Lab'
+  const descriptionText =
+    model.overlay === 'search'
+      ? 'Search sessions by title or identifier.'
+      : model.overlay === 'connection'
+        ? 'Connect Sorato to a server. Reconnecting reloads the workspace and closes open sessions.'
+        : model.overlay === 'settings'
+          ? 'Configure local transcript and keyboard preferences.'
+          : 'Run deterministic full-stack agent scenarios and summarization tools.'
   const compactableNodes = selectedNodePath(model).filter(
     (node) => node.encoded.role !== 'system'
   )
-  return h.div(
-    [h.Class('modal-backdrop'), h.Role('presentation')],
-    [
-      h.section(
-        [
-          h.Class('modal-card'),
-          h.Role('dialog'),
-          h.AriaModal(true),
-          h.AriaLabel(title),
-        ],
-        [
-          h.header(
-            [],
-            [
-              h.div(
-                [],
-                [
-                  h.h2([], [title]),
-                  model.overlay === 'lab'
-                    ? h.span([h.Class('dev-pill')], ['DEV'])
-                    : null,
-                ]
-              ),
-              close,
-            ]
-          ),
-          model.overlay === 'search'
-            ? h.div(
-                [h.Class('modal-body search-modal')],
-                [
-                  Input.view(
-                    {
-                      id: 'session-search',
-                      value: model.sessionSearch,
-                      onInput: (value) => ChangedSessionSearch({ value }),
-                      toView: ({ input, label }) =>
+  return h.submodel({
+    slotId: 'app-overlay',
+    model: model.dialog,
+    view: Dialog.view,
+    toParentMessage: (message) => GotDialogMessage({ message }),
+    viewInputs: {
+      toView: ({
+        dialog,
+        backdrop,
+        panel,
+        title: titleAttributes,
+        description,
+        initialFocus,
+        closeButton,
+        isVisible,
+      }) =>
+        h.dialog(
+          [...dialog, h.Class('modal-dialog')],
+          isVisible
+            ? [
+                h.div([...backdrop, h.Class('modal-backdrop')], []),
+                h.section(
+                  [...panel, h.Class('modal-card')],
+                  [
+                    h.header(
+                      [],
+                      [
                         h.div(
                           [],
                           [
-                            h.label(
-                              [...label, h.Class('sr-only')],
-                              ['Search sessions']
-                            ),
-                            h.input([
-                              ...input,
-                              h.Class('modal-input'),
-                              h.Placeholder('Search by title…'),
-                              h.AriaLabel('Search sessions'),
-                            ]),
+                            h.h2(titleAttributes, [title]),
+                            model.overlay === 'lab'
+                              ? h.span([h.Class('dev-pill')], ['DEV'])
+                              : null,
                           ]
                         ),
-                    },
-                    h
-                  ),
-                  h.div(
-                    [h.Class('search-results')],
-                    filtered.length === 0
-                      ? [h.p([], ['No sessions found.'])]
-                      : filtered.map((session) =>
-                          button(
-                            h,
-                            sessionTitle(session),
-                            SelectedSession({ id: session.id }),
-                            { className: 'search-result' }
-                          )
-                        )
-                  ),
-                ]
-              )
-            : model.overlay === 'settings'
-              ? h.div(
-                  [h.Class('modal-body')],
-                  [
-                    h.p(
-                      [h.Class('modal-description')],
-                      ['Connect Sorato to a local coordinator.']
-                    ),
-                    Input.view(
-                      {
-                        id: 'settings-url',
-                        value: model.serverUrlInput,
-                        onInput: (value) => ChangedServerUrl({ value }),
-                        toView: ({ input, label }) =>
-                          h.div(
-                            [h.Class('settings-field')],
-                            [
-                              h.label(label, ['Server URL']),
-                              h.input([
-                                ...input,
-                                h.Class('modal-input'),
-                                h.AriaLabel('Server URL'),
-                              ]),
-                            ]
-                          ),
-                      },
-                      h
-                    ),
-                    button(
-                      h,
-                      model.status === 'loading' ? 'Connecting…' : 'Reconnect',
-                      ClickedConnect(),
-                      {
-                        disabled: model.status === 'loading',
-                        className: 'accent-button modal-action',
-                      }
-                    ),
-                  ]
-                )
-              : h.div(
-                  [h.Class('modal-body lab-overlay')],
-                  [
-                    h.p(
-                      [h.Class('modal-description')],
-                      [
-                        'Deterministic full-stack agent exercises and summarization tools.',
+                        h.button(
+                          [
+                            ...closeButton,
+                            ...initialFocus,
+                            h.Class('ui-button icon-button modal-close'),
+                            h.AriaLabel('Close dialog'),
+                          ],
+                          [icon(h, 'x')]
+                        ),
                       ]
                     ),
-                    Select.view(
-                      {
-                        id: 'overlay-scenario',
-                        value: model.devScenarios?.activeScenario ?? '',
-                        isDisabled:
-                          model.scenarioBusy ||
-                          model.startingSessionId !== null ||
-                          model.activeRunId !== null ||
-                          model.compactingRunId !== null,
-                        onChange: (id) =>
-                          SelectedDevScenario({
-                            id:
-                              model.devScenarios?.scenarios.find(
-                                (s) => s.id === id
-                              )?.id ?? null,
-                          }),
-                        toView: ({ select, label }) =>
-                          h.div(
-                            [h.Class('lab-field')],
-                            [
-                              h.label(label, ['Scenario']),
-                              h.select(
-                                [...select],
-                                [
-                                  h.option([h.Value('')], ['Disabled']),
-                                  ...(model.devScenarios?.scenarios ?? []).map(
-                                    (s) => h.option([h.Value(s.id)], [s.label])
-                                  ),
-                                ]
-                              ),
-                            ]
-                          ),
-                      },
-                      h
+                    h.p(
+                      [...description, h.Class('sr-only')],
+                      [descriptionText]
                     ),
-                    model.activeRunId === null
-                      ? button(
-                          h,
-                          'Run selected scenario',
-                          ClickedRunScenario(),
-                          {
-                            className: 'accent-button',
-                            disabled:
-                              model.devScenarios?.activeScenario == null,
-                          }
-                        )
-                      : button(h, 'Stop scenario', ClickedStop(), {
-                          className: 'accent-button',
-                        }),
-                    h.h3([], ['Summarization']),
-                    h.div(
-                      [h.Class('summary-range')],
-                      (['start', 'end'] as const).map((edge) =>
-                        Select.view(
-                          {
-                            id: `overlay-${edge}`,
-                            value:
-                              edge === 'start'
-                                ? (model.compactStartNodeId ?? '')
-                                : (model.compactEndNodeId ?? ''),
-                            onChange: (id) =>
-                              edge === 'start'
-                                ? SelectedCompactStart({ id })
-                                : SelectedCompactEnd({ id }),
-                            toView: ({ select, label }) =>
-                              h.div(
-                                [h.Class('lab-field')],
-                                [
-                                  h.label(label, [
-                                    edge === 'start'
-                                      ? 'Start node'
-                                      : 'End node',
-                                  ]),
-                                  h.select(
-                                    [...select],
-                                    compactableNodes.map((n) =>
-                                      h.option([h.Value(n.id)], [preview(n)])
+                    model.overlay === 'search'
+                      ? h.div(
+                          [h.Class('modal-body search-modal')],
+                          [
+                            Input.view(
+                              {
+                                id: 'session-search',
+                                value: model.sessionSearch,
+                                onInput: (value) =>
+                                  ChangedSessionSearch({ value }),
+                                toView: ({ input, label }) =>
+                                  h.div(
+                                    [],
+                                    [
+                                      h.label(
+                                        [...label, h.Class('sr-only')],
+                                        ['Search sessions']
+                                      ),
+                                      h.input([
+                                        ...input,
+                                        h.Class('modal-input'),
+                                        h.Placeholder('Search by title…'),
+                                        h.AriaLabel('Search sessions'),
+                                      ]),
+                                    ]
+                                  ),
+                              },
+                              h
+                            ),
+                            h.div(
+                              [h.Class('search-results')],
+                              filtered.length === 0
+                                ? [h.p([], ['No sessions found.'])]
+                                : filtered.map((session) =>
+                                    button(
+                                      h,
+                                      sessionTitle(session),
+                                      SelectedSession({ id: session.id }),
+                                      { className: 'search-result' }
                                     )
-                                  ),
-                                ]
-                              ),
-                          },
-                          h
+                                  )
+                            ),
+                          ]
                         )
-                      )
-                    ),
-                    button(h, 'Summarize selected range', ClickedCompact(), {
-                      className: 'outline-button',
-                    }),
+                      : model.overlay === 'connection'
+                        ? h.div(
+                            [h.Class('modal-body connection-settings')],
+                            [
+                              h.p(
+                                [h.Class('modal-description')],
+                                [descriptionText]
+                              ),
+                              Input.view(
+                                {
+                                  id: 'server-url',
+                                  value: model.serverUrlInput,
+                                  onInput: (value) =>
+                                    ChangedServerUrl({ value }),
+                                  toView: ({ input, label }) =>
+                                    h.div(
+                                      [h.Class('connection-field')],
+                                      [
+                                        h.label(label, ['Server URL']),
+                                        h.input([
+                                          ...input,
+                                          h.Class('modal-input'),
+                                          h.Placeholder(
+                                            'http://127.0.0.1:3100'
+                                          ),
+                                        ]),
+                                      ]
+                                    ),
+                                },
+                                h
+                              ),
+                              button(
+                                h,
+                                model.status === 'loading'
+                                  ? 'Connecting…'
+                                  : 'Reconnect',
+                                ClickedConnect(),
+                                { disabled: model.status === 'loading' }
+                              ),
+                              model.status === 'ready'
+                                ? h.p(
+                                    [h.Class('connection-status')],
+                                    [
+                                      `Connected${model.serverVersion === null ? '' : ` · ${model.serverVersion}`}`,
+                                    ]
+                                  )
+                                : model.error === null
+                                  ? null
+                                  : h.p(
+                                      [
+                                        h.Class('connection-error'),
+                                        h.Role('alert'),
+                                      ],
+                                      [model.error]
+                                    ),
+                            ]
+                          )
+                        : model.overlay === 'settings'
+                          ? h.div(
+                              [h.Class('modal-body settings-shell')],
+                              [
+                                h.submodel({
+                                  slotId: 'settings-tabs',
+                                  model: model.settingsTabs,
+                                  view: SettingsTabs.view,
+                                  toParentMessage: (message) =>
+                                    GotSettingsTabsMessage({ message }),
+                                  viewInputs: {
+                                    tabs: ['general', 'keybinds'],
+                                    selectedValue: model.settingsTab,
+                                    ariaLabel: 'Settings sections',
+                                    orientation: 'Vertical',
+                                    toView: ({ tablist, tabs }) =>
+                                      h.nav(
+                                        [...tablist, h.Class('settings-nav')],
+                                        tabs.map((tab) =>
+                                          h.button(
+                                            [
+                                              ...tab.tab,
+                                              h.Class(
+                                                `ui-button settings-tab ${tab.isActive ? 'selected' : ''}`
+                                              ),
+                                            ],
+                                            [
+                                              tab.value === 'general'
+                                                ? 'General'
+                                                : 'Keybinds',
+                                            ]
+                                          )
+                                        )
+                                      ),
+                                  },
+                                }),
+                                model.settingsTab === 'keybinds'
+                                  ? h.div(
+                                      [
+                                        h.Class('settings-content'),
+                                        h.Id('settings-tabs-panel-1'),
+                                        h.Role('tabpanel'),
+                                        h.AriaLabelledBy('settings-tabs-tab-1'),
+                                        h.Tabindex(0),
+                                      ],
+                                      [
+                                        h.h3([], ['Keybinds']),
+                                        h.p(
+                                          [h.Class('modal-description')],
+                                          [
+                                            'Keyboard shortcuts will be configurable here.',
+                                          ]
+                                        ),
+                                      ]
+                                    )
+                                  : h.div(
+                                      [
+                                        h.Class('settings-content'),
+                                        h.Id('settings-tabs-panel-0'),
+                                        h.Role('tabpanel'),
+                                        h.AriaLabelledBy('settings-tabs-tab-0'),
+                                        h.Tabindex(0),
+                                      ],
+                                      [
+                                        h.h3([], ['General']),
+                                        Switch.view(
+                                          {
+                                            id: 'expand-system',
+                                            isChecked:
+                                              model.clientSettings
+                                                .expandSystemMessagesByDefault,
+                                            onToggle: (value) =>
+                                              ChangedSetting({
+                                                setting: 'system',
+                                                value,
+                                              }),
+                                            toView: ({
+                                              button: toggle,
+                                              label,
+                                              description: desc,
+                                            }) =>
+                                              h.div(
+                                                [h.Class('setting-row')],
+                                                [
+                                                  h.div(
+                                                    [],
+                                                    [
+                                                      h.label(label, [
+                                                        'Expand system messages by default',
+                                                      ]),
+                                                      h.p(desc, [
+                                                        'Show system message contents without opening each one.',
+                                                      ]),
+                                                    ]
+                                                  ),
+                                                  h.button(
+                                                    [
+                                                      ...toggle,
+                                                      h.Class('switch'),
+                                                    ],
+                                                    [h.span([], [])]
+                                                  ),
+                                                ]
+                                              ),
+                                          },
+                                          h
+                                        ),
+                                        Switch.view(
+                                          {
+                                            id: 'expand-tools',
+                                            isChecked:
+                                              model.clientSettings
+                                                .toolBlockExpansion.default,
+                                            onToggle: (value) =>
+                                              ChangedSetting({
+                                                setting: 'tool-default',
+                                                value,
+                                              }),
+                                            toView: ({
+                                              button: toggle,
+                                              label,
+                                              description: desc,
+                                            }) =>
+                                              h.div(
+                                                [h.Class('setting-row')],
+                                                [
+                                                  h.div(
+                                                    [],
+                                                    [
+                                                      h.label(label, [
+                                                        'Expand tool blocks by default',
+                                                      ]),
+                                                      h.p(desc, [
+                                                        'Default disclosure state for tool calls.',
+                                                      ]),
+                                                    ]
+                                                  ),
+                                                  h.button(
+                                                    [
+                                                      ...toggle,
+                                                      h.Class('switch'),
+                                                    ],
+                                                    [h.span([], [])]
+                                                  ),
+                                                ]
+                                              ),
+                                          },
+                                          h
+                                        ),
+                                        h.h4([], ['Per-tool defaults']),
+                                        ...(model.handshakeLoading &&
+                                        model.serverTools.length === 0
+                                          ? [h.p([], ['Loading tools…'])]
+                                          : Object.keys(model.toolListboxes)
+                                              .sort()
+                                              .map((name) =>
+                                                h.div(
+                                                  [
+                                                    h.Key(name),
+                                                    h.Class(
+                                                      'setting-row tool-setting'
+                                                    ),
+                                                  ],
+                                                  [
+                                                    h.div(
+                                                      [],
+                                                      [
+                                                        h.strong(
+                                                          [],
+                                                          [
+                                                            model.serverTools.find(
+                                                              (tool) =>
+                                                                tool.name ===
+                                                                name
+                                                            )?.displayName ??
+                                                              name,
+                                                          ]
+                                                        ),
+                                                        h.code(
+                                                          [],
+                                                          [
+                                                            `${name}${model.serverTools.some((tool) => tool.name === name) ? '' : ' (not on current server)'}`,
+                                                          ]
+                                                        ),
+                                                      ]
+                                                    ),
+                                                    listbox(
+                                                      model.toolListboxes[
+                                                        name
+                                                      ] ??
+                                                        Listbox.init({
+                                                          id: `tool-${name}`,
+                                                        }),
+                                                      name,
+                                                      Object.hasOwn(
+                                                        model.clientSettings
+                                                          .toolBlockExpansion
+                                                          .tools,
+                                                        name
+                                                      )
+                                                        ? model.clientSettings
+                                                            .toolBlockExpansion
+                                                            .tools[name]
+                                                          ? 'expanded'
+                                                          : 'collapsed'
+                                                        : 'default',
+                                                      [
+                                                        {
+                                                          value: 'default',
+                                                          label: `Default (${model.clientSettings.toolBlockExpansion.default ? 'expanded' : 'collapsed'})`,
+                                                        },
+                                                        {
+                                                          value: 'expanded',
+                                                          label: 'Expanded',
+                                                        },
+                                                        {
+                                                          value: 'collapsed',
+                                                          label: 'Collapsed',
+                                                        },
+                                                      ],
+                                                      `${name} disclosure default`,
+                                                      h
+                                                    ),
+                                                  ]
+                                                )
+                                              )),
+                                        h.div(
+                                          [h.Class('setting-row')],
+                                          [
+                                            h.div(
+                                              [],
+                                              [
+                                                h.strong(
+                                                  [],
+                                                  ['Transcript display mode']
+                                                ),
+                                                h.p(
+                                                  [],
+                                                  [
+                                                    'Choose rich rendering or the raw transcript.',
+                                                  ]
+                                                ),
+                                              ]
+                                            ),
+                                            listbox(
+                                              model.transcriptListbox,
+                                              'transcript',
+                                              model.clientSettings
+                                                .transcriptDisplayMode,
+                                              [
+                                                {
+                                                  value: 'pretty',
+                                                  label: 'Pretty',
+                                                },
+                                                {
+                                                  value: 'raw',
+                                                  label: 'Raw',
+                                                },
+                                              ],
+                                              'Transcript display mode',
+                                              h
+                                            ),
+                                          ]
+                                        ),
+                                        Object.keys(model.clientConfigOverrides)
+                                          .length === 0
+                                          ? null
+                                          : h.section(
+                                              [h.Class('local-changes')],
+                                              [
+                                                h.h3([], ['Local changes']),
+                                                button(
+                                                  h,
+                                                  model.settingsCopied
+                                                    ? 'Copied!'
+                                                    : 'Copy Settings',
+                                                  ClickedCopySettings()
+                                                ),
+                                                model.settingsResetConfirm
+                                                  ? h.div(
+                                                      [],
+                                                      [
+                                                        h.p(
+                                                          [],
+                                                          [
+                                                            'Discard all local changes? This cannot be undone.',
+                                                          ]
+                                                        ),
+                                                        button(
+                                                          h,
+                                                          'Confirm reset',
+                                                          ConfirmedResetSettings(),
+                                                          {
+                                                            className:
+                                                              'danger-button',
+                                                          }
+                                                        ),
+                                                      ]
+                                                    )
+                                                  : button(
+                                                      h,
+                                                      'Reset to defaults',
+                                                      ClickedResetSettings(),
+                                                      {
+                                                        className:
+                                                          'outline-button',
+                                                      }
+                                                    ),
+                                              ]
+                                            ),
+                                        model.settingsSaving
+                                          ? h.p(
+                                              [h.Class('saving-status')],
+                                              ['Saving…']
+                                            )
+                                          : null,
+                                        model.settingsError === null
+                                          ? null
+                                          : h.div(
+                                              [
+                                                h.Class('settings-error'),
+                                                h.Role('alert'),
+                                              ],
+                                              [
+                                                h.strong(
+                                                  [],
+                                                  ['Settings error']
+                                                ),
+                                                h.p([], [model.settingsError]),
+                                              ]
+                                            ),
+                                      ]
+                                    ),
+                              ]
+                            )
+                          : h.div(
+                              [h.Class('modal-body lab-overlay')],
+                              [
+                                h.p(
+                                  [h.Class('modal-description')],
+                                  [
+                                    'Deterministic full-stack agent exercises and summarization tools.',
+                                  ]
+                                ),
+                                listbox(
+                                  model.scenarioListbox,
+                                  'scenario',
+                                  model.devScenarios?.activeScenario ?? '',
+                                  [
+                                    { value: '', label: 'Disabled' },
+                                    ...(
+                                      model.devScenarios?.scenarios ?? []
+                                    ).map((scenario) => ({
+                                      value: scenario.id,
+                                      label: scenario.label,
+                                    })),
+                                  ],
+                                  'Scenario',
+                                  h,
+                                  model.activeRunId !== null ||
+                                    model.startingSessionId !== null ||
+                                    model.compactingRunId !== null ||
+                                    model.scenarioBusy
+                                ),
+                                model.activeRunId === null
+                                  ? button(
+                                      h,
+                                      'Run selected scenario',
+                                      ClickedRunScenario(),
+                                      {
+                                        className: 'accent-button',
+                                        disabled:
+                                          model.devScenarios?.activeScenario ==
+                                          null,
+                                      }
+                                    )
+                                  : button(h, 'Stop scenario', ClickedStop(), {
+                                      className: 'accent-button',
+                                    }),
+                                h.h3([], ['Summarization']),
+                                h.div(
+                                  [h.Class('summary-range')],
+                                  (['start', 'end'] as const).map((edge) =>
+                                    listbox(
+                                      edge === 'start'
+                                        ? model.compactStartListbox
+                                        : model.compactEndListbox,
+                                      `compact-${edge}`,
+                                      edge === 'start'
+                                        ? (model.compactStartNodeId ?? '')
+                                        : (model.compactEndNodeId ?? ''),
+                                      compactableNodes.map((node) => ({
+                                        value: node.id,
+                                        label: preview(node),
+                                      })),
+                                      edge === 'start'
+                                        ? 'Start node'
+                                        : 'End node',
+                                      h
+                                    )
+                                  )
+                                ),
+                                button(
+                                  h,
+                                  'Summarize selected range',
+                                  ClickedCompact(),
+                                  {
+                                    className: 'outline-button',
+                                  }
+                                ),
+                              ]
+                            ),
                   ]
                 ),
-        ]
-      ),
-    ]
-  )
+              ]
+            : []
+        ),
+    },
+  })
 }
 
 export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
@@ -1085,7 +2246,39 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Document => ({
       ? 'New Session · Sorato'
       : 'Session · Sorato',
   body: h.div(
-    [h.Class('app-shell')],
-    [sidebar(model, h), sessionShell(model, h), overlay(model, h)]
+    [
+      h.Class('app-shell'),
+      ...(model.compactDragStartNodeId === null
+        ? []
+        : [
+            h.OnPointerUp(() =>
+              Option.some(
+                AdjustedTreeCompactRange({
+                  startId: model.compactStartNodeId ?? '',
+                  endId: model.compactEndNodeId ?? '',
+                  phase: 'end',
+                })
+              )
+            ),
+          ]),
+    ],
+    [
+      sidebar(model, h),
+      sessionShell(model, h),
+      overlay(model, h),
+      model.resizing === null
+        ? null
+        : h.div(
+            [
+              h.Class(`resize-capture ${model.resizing.target}`),
+              h.OnPointerMove((_sx, _sy, _type) =>
+                Option.some(MovedResize({ x: _sx }))
+              ),
+              h.OnPointerUp(() => Option.some(EndedResize())),
+              h.OnPointerLeave(() => Option.some(EndedResize())),
+            ],
+            []
+          ),
+    ]
   ),
 })
