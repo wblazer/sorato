@@ -10,6 +10,7 @@ import type {
   RunResponse,
   SessionResponse,
   StopResponse,
+  SystemPromptResponse,
 } from '@sorato/api'
 import { Context, Effect, Stream } from 'effect'
 import type { UiApiError } from '$lib/api-errors.js'
@@ -69,6 +70,10 @@ export interface SessionsApiShape {
   readonly compactRange: (
     input: CompactRangeInput
   ) => Effect.Effect<CompactRunResponse, UiApiError>
+  readonly systemPrompt: (
+    sessionId: string,
+    promptId: string
+  ) => Effect.Effect<SystemPromptResponse | null, UiApiError>
   readonly stopRun: (runId: string) => Effect.Effect<StopResponse, UiApiError>
 }
 

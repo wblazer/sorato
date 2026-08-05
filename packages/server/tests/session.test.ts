@@ -68,6 +68,7 @@ const append = (
     yield* storage.createRun({
       id: runId,
       sessionId,
+      kind: 'agent',
       providerId: 'test',
       modelId: 'test-model',
       billingMode: 'api-key',
@@ -449,6 +450,7 @@ describe('SessionStorage', () => {
         yield* storage.createRun({
           id: runId,
           sessionId: session.id,
+          kind: 'agent',
           baseNodeId: null,
         })
 
@@ -481,6 +483,7 @@ describe('SessionStorage', () => {
         yield* storage.createRun({
           id: runId,
           sessionId: session.id,
+          kind: 'summary',
           baseNodeId: null,
         })
 
@@ -559,6 +562,7 @@ describe('SessionStorage', () => {
         yield* storage.createRun({
           id: runId,
           sessionId: owner.id,
+          kind: 'agent',
           baseNodeId: null,
         })
 
@@ -578,6 +582,64 @@ describe('SessionStorage', () => {
     )
   })
 
+  describe('system prompts', () => {
+    it.effect('deduplicates prompts and keeps run references immutable', () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionStorage
+        const firstSession = yield* storage.create(TEST_DIR, 'first prompt')
+        const secondSession = yield* storage.create(TEST_DIR, 'second prompt')
+        const firstRunId = crypto.randomUUID()
+        const secondRunId = crypto.randomUUID()
+        yield* storage.createRun({
+          id: firstRunId,
+          sessionId: firstSession.id,
+          kind: 'agent',
+          baseNodeId: null,
+        })
+        yield* storage.createRun({
+          id: secondRunId,
+          sessionId: secondSession.id,
+          kind: 'agent',
+          baseNodeId: null,
+        })
+
+        const first = yield* storage.recordRunSystemPrompt(
+          firstRunId,
+          'Stable prompt'
+        )
+        const second = yield* storage.recordRunSystemPrompt(
+          secondRunId,
+          'Stable prompt'
+        )
+        const repeated = yield* storage.recordRunSystemPrompt(
+          firstRunId,
+          'Stable prompt'
+        )
+
+        expect(first.id).toBe(second.id)
+        expect(repeated).toEqual(first)
+        expect(
+          yield* storage.findSystemPrompt(firstSession.id, first.id)
+        ).toEqual(first)
+        expect(
+          yield* storage.findSystemPrompt(secondSession.id, second.id)
+        ).toEqual(second)
+        expect(
+          yield* storage.findSystemPrompt(firstSession.id, '0'.repeat(64))
+        ).toBeNull()
+
+        const reassignment = yield* storage
+          .recordRunSystemPrompt(firstRunId, 'Different prompt')
+          .pipe(Effect.flip)
+        expect(reassignment.message).toContain('different system prompt')
+
+        const persistedRun = yield* storage.getRun(firstRunId)
+        expect(persistedRun.kind).toBe('agent')
+        expect(persistedRun.systemPromptId).toBe(first.id)
+      }).pipe(Effect.provide(testLayer()))
+    )
+  })
+
   describe('compactRange', () => {
     it.effect('rejects a run owned by another session', () =>
       Effect.gen(function* () {
@@ -592,6 +654,7 @@ describe('SessionStorage', () => {
         yield* storage.createRun({
           id: runId,
           sessionId: owner.id,
+          kind: 'summary',
           baseNodeId: null,
         })
 
@@ -632,6 +695,7 @@ describe('SessionStorage', () => {
         yield* storage.createRun({
           id: compactRunId,
           sessionId: target.id,
+          kind: 'summary',
           providerId: 'test',
           modelId: 'test-model',
           billingMode: 'api-key',
@@ -672,6 +736,7 @@ describe('SessionStorage', () => {
         yield* storage.createRun({
           id: compactRunId,
           sessionId: session.id,
+          kind: 'summary',
           baseNodeId: resolvedUserNodeId,
         })
 
@@ -713,6 +778,7 @@ describe('SessionStorage', () => {
         yield* storage.createRun({
           id: compactRunId,
           sessionId: session.id,
+          kind: 'summary',
           providerId: 'test',
           modelId: 'test-model',
           billingMode: 'api-key',

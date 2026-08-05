@@ -1,5 +1,5 @@
 import { Context, Deferred, Effect, Layer, Ref, Stream } from 'effect'
-import { AiError, LanguageModel, Response } from 'effect/unstable/ai'
+import { AiError, LanguageModel, Prompt, Response } from 'effect/unstable/ai'
 import { ModelLayerResolver } from '../../src/model-catalog.ts'
 
 export interface ScriptedModelCheckpointStep {
@@ -38,6 +38,7 @@ export interface ScriptedModelControllerApi {
   readonly releaseCheckpoint: (name: string) => Effect.Effect<void>
   readonly checkpoints: Effect.Effect<ReadonlyArray<ScriptedModelCheckpoint>>
   readonly calls: Effect.Effect<number>
+  readonly prompts: Effect.Effect<ReadonlyArray<Prompt.Prompt>>
 }
 
 export class ScriptedModelController extends Context.Service<
@@ -154,13 +155,22 @@ export const scriptedModelLayer = (
       const checkpointsRef = yield* Ref.make<
         ReadonlyArray<ScriptedModelCheckpoint>
       >([])
+      const promptsRef = yield* Ref.make<ReadonlyArray<Prompt.Prompt>>([])
 
       const languageModelLayer = Layer.effect(
         LanguageModel.LanguageModel,
         LanguageModel.make({
           generateText: () => Effect.succeed([]),
-          streamText: () =>
-            streamForCall(callsRef, scripts, gates, checkpointsRef),
+          streamText: (options) =>
+            Ref.update(promptsRef, (prompts) => [
+              ...prompts,
+              options.prompt,
+            ]).pipe(
+              Effect.map(() =>
+                streamForCall(callsRef, scripts, gates, checkpointsRef)
+              ),
+              Stream.unwrap
+            ),
         })
       )
 
@@ -176,6 +186,7 @@ export const scriptedModelLayer = (
           ),
         checkpoints: Ref.get(checkpointsRef),
         calls: Ref.get(callsRef),
+        prompts: Ref.get(promptsRef),
       })
 
       return ScriptedModelEnvironment.of({ controller, languageModelLayer })

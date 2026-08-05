@@ -129,6 +129,8 @@ export interface RunUsage {
 export interface RunSummary {
   id: string
   status: 'running' | 'completed' | 'interrupted' | 'failed'
+  kind: 'agent' | 'summary'
+  systemPromptId: string | null
   providerId: string
   modelId: string
   billingMode: 'api-key' | 'subscription'

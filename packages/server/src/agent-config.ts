@@ -122,21 +122,27 @@ export const CompactConversation = Tool.make('CompactConversation', {
   dependencies: [CurrentCompaction],
 })
 
-export const loadAgentsMd = Effect.fn('loadAgentsMd')(function* (files: Files) {
-  const agents = yield* files
-    .readFile(AGENTS_MD_PATH)
-    .pipe(Effect.catch(() => Effect.succeed(undefined)))
+export const resolveAgentSystemPrompt = Effect.fn('resolveAgentSystemPrompt')(
+  function* (files: Files, instructions: ReadonlyArray<string>) {
+    const agents = yield* files
+      .readFile(AGENTS_MD_PATH)
+      .pipe(Effect.catch(() => Effect.succeed(undefined)))
 
-  if (agents === undefined || agents.trim() === '') {
-    return undefined
+    return [
+      SYSTEM_PROMPT,
+      ...(instructions.length === 0
+        ? []
+        : [
+            `Additional configured instructions:\n\n<configured_instructions>\n${instructions.join('\n\n')}\n</configured_instructions>`,
+          ]),
+      ...(agents === undefined || agents.trim() === ''
+        ? []
+        : [
+            `Project-specific instructions and guidelines:\n\n<project_instructions path="${AGENTS_MD_PATH}">\n${agents}\n</project_instructions>`,
+          ]),
+    ].join('\n\n')
   }
-
-  return `Project-specific instructions and guidelines:
-
-<project_instructions path="${AGENTS_MD_PATH}">
-${agents}
-</project_instructions>`
-})
+)
 
 export const AllToolInfos = [
   { name: 'Read', displayName: 'Read file' },

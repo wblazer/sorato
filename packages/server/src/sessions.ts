@@ -23,6 +23,7 @@ import {
   SessionResponse,
   StopResponse,
   StorageUnavailable,
+  SystemPromptResponse,
 } from '@sorato/api'
 import { ensureModel } from './model-catalog.ts'
 import type { ModelOptions, ThinkingLevel } from './model-catalog.ts'
@@ -56,6 +57,7 @@ import {
 import { EventBus } from './event-bus.ts'
 import { getActiveBackgroundReplayRuns } from './event-replay.ts'
 import { runLifecycleCheckpoint } from './run-lifecycle-checkpoints.ts'
+import { RuntimeConfigService } from './runtime-config.ts'
 import {
   toMessageNodeResponse,
   toNodeBatchCommitted,
@@ -512,6 +514,7 @@ const appendStoppedQueuedInputs = (
           yield* storage.createRun({
             id: runId,
             sessionId,
+            kind: 'agent',
             providerId,
             modelId: rest.join('/') || request.model,
             billingMode: 'api-key',
@@ -784,6 +787,7 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
   Effect.gen(function* () {
     const storage = yield* SessionStorage
     const projects = yield* ProjectStorage
+    const runtimeConfig = yield* RuntimeConfigService
 
     return handlers
       .handle('list', () =>
@@ -831,6 +835,14 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
               sequence: snapshot.sequence,
               nodes: snapshot.nodes.map(toMessageNodeResponse),
             })
+          ),
+          Effect.mapError(mapStorageError)
+        )
+      )
+      .handle('systemPrompt', ({ params }) =>
+        storage.findSystemPrompt(params.id, params.promptId).pipe(
+          Effect.map((prompt) =>
+            prompt === null ? null : SystemPromptResponse.make(prompt)
           ),
           Effect.mapError(mapStorageError)
         )
@@ -896,19 +908,26 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
                   .pipe(Effect.mapError(mapProjectError))
               ),
               Effect.flatMap((projectPath) =>
-                ensureModel(projectPath, payload.model, {
-                  thinkingLevel: 'off',
-                })
+                runtimeConfig.get(projectPath).pipe(
+                  Effect.map(
+                    (config) => config.roles.summary.model ?? payload.model
+                  ),
+                  Effect.flatMap((model) =>
+                    ensureModel(projectPath, model, {
+                      thinkingLevel: 'off',
+                    }).pipe(Effect.as(model))
+                  )
+                )
               )
             )
           ),
-          Effect.flatMap(() =>
+          Effect.flatMap((model) =>
             enqueueRunRequest(
               storage,
               params.id,
               '',
               [],
-              payload.model,
+              model,
               { thinkingLevel: 'off' },
               payload.baseHeadNodeId,
               null,

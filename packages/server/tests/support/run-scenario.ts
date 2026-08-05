@@ -167,8 +167,12 @@ const runtimeConfigLayer = Layer.succeed(RuntimeConfigService, {
   get: () =>
     Effect.succeed({
       default_model: TEST_MODEL,
-      title_model: null,
       environment_command: null,
+      instructions: [],
+      roles: {
+        summary: { model: null, instructions: [] },
+        title: { model: null, instructions: [] },
+      },
     }),
 })
 

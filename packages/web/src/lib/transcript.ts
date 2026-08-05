@@ -15,6 +15,11 @@ export type TranscriptSource =
       type: 'streaming'
       part: MessagePart
     }
+  | {
+      type: 'virtual'
+      key: string
+      part: MessagePart
+    }
 
 export type TranscriptItem =
   | {
@@ -64,6 +69,30 @@ export const streamingSources = (
   parts: ReadonlyArray<MessagePart>
 ): ReadonlyArray<TranscriptSource> =>
   parts.map((part) => ({ type: 'streaming', part }))
+
+export const latestAgentSystemPrompt = (
+  messages: ReadonlyArray<MessageNode>
+): { readonly runId: string; readonly promptId: string } | null => {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const run = messages[index]?.run
+    if (run?.kind === 'agent' && run.systemPromptId !== null) {
+      return { runId: run.id, promptId: run.systemPromptId }
+    }
+  }
+  return null
+}
+
+export const virtualSystemPromptItem = (
+  promptId: string,
+  content: string
+): TranscriptItem => {
+  const part = { type: 'text' as const, text: content }
+  return {
+    type: 'message',
+    source: { type: 'virtual', key: promptId, part },
+    part,
+  }
+}
 
 export const projectTranscript = (
   sources: ReadonlyArray<TranscriptSource>,

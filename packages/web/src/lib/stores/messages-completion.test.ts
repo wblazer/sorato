@@ -51,6 +51,7 @@ const makeRuntime = (
         create: unused,
         run: unused,
         compactRange: unused,
+        systemPrompt: unused,
         stopRun: unused,
       })
     ),

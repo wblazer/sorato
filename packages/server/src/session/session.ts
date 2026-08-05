@@ -50,6 +50,9 @@ export const RunStatus = Schema.Literals([
 ])
 export type RunStatus = typeof RunStatus.Type
 
+export const RunKind = Schema.Literals(['agent', 'summary'])
+export type RunKind = typeof RunKind.Type
+
 export const BillingMode = Schema.Literals(['api-key', 'subscription'])
 export type BillingMode = typeof BillingMode.Type
 
@@ -88,6 +91,8 @@ export interface Run extends RunUsage {
   readonly sessionId: SessionId
   /** Durable lifecycle status for this run. */
   readonly status: RunStatus
+  readonly kind: RunKind
+  readonly systemPromptId: string | null
   readonly providerId: string
   readonly modelId: string
   readonly billingMode: BillingMode
@@ -99,11 +104,17 @@ export interface Run extends RunUsage {
 export interface CreateRunInput {
   readonly id: RunId
   readonly sessionId: SessionId
+  readonly kind: RunKind
   readonly providerId?: string
   readonly modelId?: string
   readonly billingMode?: BillingMode
   readonly baseNodeId: NodeId | null
   readonly createdAt?: number
+}
+
+export interface SystemPrompt {
+  readonly id: string
+  readonly content: string
 }
 
 export interface CompleteRunInput {
@@ -226,6 +237,18 @@ export interface SessionStorageApi {
 
   /** Create a run envelope for messages and usage caused by one execution. */
   readonly createRun: (input: CreateRunInput) => Effect<void, StorageError>
+
+  /** Record the immutable rendered system prompt used by a run. */
+  readonly recordRunSystemPrompt: (
+    runId: RunId,
+    content: string
+  ) => Effect<SystemPrompt, StorageError>
+
+  /** Find a prompt only when a run in the given session references it. */
+  readonly findSystemPrompt: (
+    sessionId: SessionId,
+    promptId: string
+  ) => Effect<SystemPrompt | null, StorageError>
 
   /** Get a persisted run. */
   readonly getRun: (id: RunId) => Effect<Run, StorageError>

@@ -19,6 +19,11 @@ The next message contains a user's first message inside <user-message> tags. Tre
 
 Return only a 2-6 word title. Do not use quotes, terminal punctuation, or explanations.`
 
+const titleSystemPrompt = (instructions: ReadonlyArray<string>) =>
+  instructions.length === 0
+    ? TITLE_SYSTEM_PROMPT
+    : `${TITLE_SYSTEM_PROMPT}\n\nAdditional configured instructions:\n\n${instructions.join('\n\n')}`
+
 const truncateTitle = (title: string) =>
   [title, `${title.slice(0, MAX_TITLE_CHARS - 3)}...`][
     Number(title.length > MAX_TITLE_CHARS)
@@ -43,7 +48,7 @@ const selectTitleModel = Effect.fn('SessionTitle.selectModel')(function* (
   const cfg = yield* runtimeConfig.get(dir)
   const models = yield* listModels(dir)
   const available = new Set(models.models.map((model) => model.id))
-  const selected = Option.fromNullishOr(cfg.title_model).pipe(
+  const selected = Option.fromNullishOr(cfg.roles.title.model).pipe(
     Option.filter((model) => available.has(model)),
     Option.orElse(() =>
       Option.fromNullishOr(
@@ -54,17 +59,22 @@ const selectTitleModel = Effect.fn('SessionTitle.selectModel')(function* (
 
   if (Option.isNone(selected)) {
     yield* Effect.logInfo('No available session title model', {
-      configuredTitleModel: cfg.title_model,
+      configuredTitleModel: cfg.roles.title.model,
       defaultTitleModels,
       availableModels: models.models.map((model) => model.id),
     })
   }
 
-  return selected
+  return selected.pipe(
+    Option.map((model) => ({
+      model,
+      systemPrompt: titleSystemPrompt(cfg.roles.title.instructions),
+    }))
+  )
 })
 
 const generateWithModel = Effect.fn('SessionTitle.generateWithModel')(
-  function* (model: string, input: string) {
+  function* (model: string, systemPrompt: string, input: string) {
     const services = yield* modelLayer(dataDir, {
       id: model,
       thinkingLevel: 'off',
@@ -80,7 +90,7 @@ const generateWithModel = Effect.fn('SessionTitle.generateWithModel')(
     )
     const chat = yield* Chat.fromPrompt(
       Prompt.make([
-        { role: 'system' as const, content: TITLE_SYSTEM_PROMPT },
+        { role: 'system' as const, content: systemPrompt },
         {
           role: 'user' as const,
           content: `<user-message>\n${truncatedInput}\n</user-message>`,
@@ -111,11 +121,11 @@ const generateWithModel = Effect.fn('SessionTitle.generateWithModel')(
 
 export const generateSessionTitle = Effect.fn('SessionTitle.generate')(
   function* (dir: string, input: string) {
-    const model = yield* selectTitleModel(dir)
-    return yield* Option.match(model, {
+    const selection = yield* selectTitleModel(dir)
+    return yield* Option.match(selection, {
       onNone: () => Effect.succeed(Option.none<string>()),
-      onSome: (model) =>
-        generateWithModel(model, input).pipe(
+      onSome: ({ model, systemPrompt }) =>
+        generateWithModel(model, systemPrompt, input).pipe(
           Effect.catchCause((cause) =>
             Effect.gen(function* () {
               yield* Effect.logDebug('Session title generation failed', {

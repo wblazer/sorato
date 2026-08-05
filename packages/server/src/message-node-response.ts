@@ -22,6 +22,8 @@ export const toMessageNodeResponse = (node: MessageNode) =>
         : RunSummaryResponse.make({
             id: node.run.id,
             status: node.run.status,
+            kind: node.run.kind,
+            systemPromptId: node.run.systemPromptId,
             providerId: node.run.providerId,
             modelId: node.run.modelId,
             billingMode: node.run.billingMode,

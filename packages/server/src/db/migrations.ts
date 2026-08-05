@@ -5,12 +5,16 @@ import Migration001 from './migrations/001-initial.ts'
 import Migration002 from './migrations/002-run-status.ts'
 import Migration003 from './migrations/003-durable-sync-events.ts'
 import Migration004 from './migrations/004-ensure-durable-sync-events.ts'
+import Migration005 from './migrations/005-system-prompts.ts'
+import Migration006 from './migrations/006-reset-durable-sync-events.ts'
 
 export const migrationEntries = [
   [1, 'Initial', Migration001],
   [2, 'RunStatus', Migration002],
   [3, 'DurableSyncEvents', Migration003],
   [4, 'EnsureDurableSyncEvents', Migration004],
+  [5, 'SystemPrompts', Migration005],
+  [6, 'ResetDurableSyncEvents', Migration006],
 ] as const
 
 export const makeMigrationLoader = (throughId?: number) =>

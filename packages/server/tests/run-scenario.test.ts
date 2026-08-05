@@ -58,6 +58,27 @@ describe('RunScenario', () => {
       const latest = yield* scenario.latestNodeForRun(run.runId)
       expect(latest?.encoded.role).toBe('assistant')
       expect(latest?.encoded.content).toBe('Hello from the scripted model.')
+
+      const prompts = yield* scenario.model.prompts
+      expect(prompts).toHaveLength(1)
+      expect(prompts[0]?.content.map((message) => message.role)).toEqual([
+        'system',
+        'user',
+      ])
+      const system = prompts[0]?.content[0]
+      expect(system?.role).toBe('system')
+      if (system?.role === 'system') {
+        expect(system.content).toContain('You are a helpful coding agent.')
+        expect(system.content).toContain('Use tests.')
+      }
+
+      const persistedMessages = yield* scenario.messages()
+      expect(
+        persistedMessages.some((message) => message.encoded.role === 'system')
+      ).toBe(false)
+      const persistedRun = yield* scenario.getRun(run.runId)
+      expect(persistedRun.kind).toBe('agent')
+      expect(persistedRun.systemPromptId).toBeTruthy()
     }).pipe(Effect.scoped)
   )
 

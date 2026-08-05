@@ -3,10 +3,21 @@ import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { Context, Effect, Layer, Option, Schema } from 'effect'
 
+const RoleConfigFileSchema = Schema.Struct({
+  model: Schema.optional(Schema.String),
+  instructions: Schema.optional(Schema.String),
+})
+
 const RuntimeConfigFileSchema = Schema.Struct({
   default_model: Schema.optional(Schema.String),
-  title_model: Schema.optional(Schema.String),
   environment_command: Schema.optional(Schema.String),
+  instructions: Schema.optional(Schema.String),
+  roles: Schema.optional(
+    Schema.Struct({
+      summary: Schema.optional(RoleConfigFileSchema),
+      title: Schema.optional(RoleConfigFileSchema),
+    })
+  ),
   log_level: Schema.optional(Schema.String),
 })
 
@@ -14,8 +25,17 @@ export type RuntimeConfigFile = typeof RuntimeConfigFileSchema.Type
 
 export interface RuntimeConfig {
   readonly default_model: string | null
-  readonly title_model: string | null
   readonly environment_command: string | null
+  readonly instructions: ReadonlyArray<string>
+  readonly roles: {
+    readonly summary: RuntimeRoleConfig
+    readonly title: RuntimeRoleConfig
+  }
+}
+
+export interface RuntimeRoleConfig {
+  readonly model: string | null
+  readonly instructions: ReadonlyArray<string>
 }
 
 export interface RuntimeConfigApi {
@@ -47,10 +67,37 @@ const projectConfigFiles = (dir: string) => [
   join(dir, '.sorato', 'config.jsonc'),
 ]
 
+const configuredInstructions = (instructions: string | undefined) =>
+  instructions === undefined || instructions.trim().length === 0
+    ? []
+    : [instructions]
+
+const normalizeRole = (
+  role: typeof RoleConfigFileSchema.Type | undefined
+): RuntimeRoleConfig => ({
+  model: role?.model ?? null,
+  instructions: configuredInstructions(role?.instructions),
+})
+
 const normalizeConfig = (cfg: RuntimeConfigFile): RuntimeConfig => ({
   default_model: cfg.default_model ?? null,
-  title_model: cfg.title_model ?? null,
   environment_command: cfg.environment_command ?? null,
+  instructions: configuredInstructions(cfg.instructions),
+  roles: {
+    summary: normalizeRole(cfg.roles?.summary),
+    title: normalizeRole(cfg.roles?.title),
+  },
+})
+
+const mergeRole = (
+  base: RuntimeRoleConfig,
+  override: typeof RoleConfigFileSchema.Type | undefined
+): RuntimeRoleConfig => ({
+  model: override?.model ?? base.model,
+  instructions: [
+    ...base.instructions,
+    ...configuredInstructions(override?.instructions),
+  ],
 })
 
 const mergeConfig = (
@@ -58,8 +105,15 @@ const mergeConfig = (
   override: RuntimeConfigFile
 ): RuntimeConfig => ({
   default_model: override.default_model ?? base.default_model,
-  title_model: override.title_model ?? base.title_model,
   environment_command: override.environment_command ?? base.environment_command,
+  instructions: [
+    ...base.instructions,
+    ...configuredInstructions(override.instructions),
+  ],
+  roles: {
+    summary: mergeRole(base.roles.summary, override.roles?.summary),
+    title: mergeRole(base.roles.title, override.roles?.title),
+  },
 })
 
 const charAt = (text: string, index: number) => text[index] ?? ''
@@ -218,7 +272,25 @@ const loadFiles = Effect.fn('RuntimeConfig.loadFiles')(function* (
   let cfg: RuntimeConfigFile = {}
 
   for (const file of files) {
-    cfg = { ...cfg, ...(yield* loadFile(file)) }
+    const override: RuntimeConfigFile = yield* loadFile(file)
+    cfg = {
+      ...cfg,
+      ...override,
+      ...(cfg.roles === undefined && override.roles === undefined
+        ? {}
+        : {
+            roles: {
+              summary: {
+                ...cfg.roles?.summary,
+                ...override.roles?.summary,
+              },
+              title: {
+                ...cfg.roles?.title,
+                ...override.roles?.title,
+              },
+            },
+          }),
+    }
   }
 
   return cfg
@@ -236,7 +308,8 @@ export const RuntimeConfigLive = Layer.effect(
     const globalConfig = normalizeConfig(yield* loadGlobalRuntimeConfigFile())
     yield* Effect.logDebug('Loaded global runtime config', {
       hasDefaultModel: globalConfig.default_model !== null,
-      hasTitleModel: globalConfig.title_model !== null,
+      hasTitleModel: globalConfig.roles.title.model !== null,
+      hasSummaryModel: globalConfig.roles.summary.model !== null,
     })
 
     const loadProjectConfig = Effect.fn('RuntimeConfig.loadProject')(function* (
@@ -254,7 +327,8 @@ export const RuntimeConfigLive = Layer.effect(
       yield* Effect.logDebug('Loaded project runtime config', {
         dir,
         hasDefaultModel: config.default_model !== null,
-        hasTitleModel: config.title_model !== null,
+        hasTitleModel: config.roles.title.model !== null,
+        hasSummaryModel: config.roles.summary.model !== null,
       })
       return config
     })

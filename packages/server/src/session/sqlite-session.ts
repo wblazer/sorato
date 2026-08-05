@@ -1,4 +1,5 @@
 /** SqliteSession — node/content session storage backed by Effect SQL. */
+import { createHash } from 'node:crypto'
 import { Effect, Layer, Option, Schema } from 'effect'
 import { Prompt } from 'effect/unstable/ai'
 import { SqlClient } from 'effect/unstable/sql/SqlClient'
@@ -8,6 +9,7 @@ import {
   MessageNodeRow,
   RunTableRow,
   SessionWithLastUserMessageRow,
+  SystemPromptTableRow,
 } from '../db/schema.ts'
 import {
   SessionStorage,
@@ -49,7 +51,23 @@ const CreateRunRowInput = Schema.Struct({
   id: Schema.String,
   session_id: Schema.String,
   base_node_id: Schema.NullOr(Schema.String),
+  kind: Schema.Literals(['agent', 'summary']),
   created_at: Schema.String,
+})
+
+const SystemPromptIdInput = Schema.Struct({ id: Schema.String })
+const SessionSystemPromptInput = Schema.Struct({
+  session_id: Schema.String,
+  prompt_id: Schema.String,
+})
+const InsertSystemPromptInput = Schema.Struct({
+  id: Schema.String,
+  content: Schema.String,
+  created_at: Schema.String,
+})
+const AssignRunSystemPromptInput = Schema.Struct({
+  run_id: Schema.String,
+  prompt_id: Schema.String,
 })
 
 const SetSessionTitleInput = Schema.Struct({
@@ -190,6 +208,8 @@ const toRun = (row: RunTableRow): Run => ({
   id: row.id,
   sessionId: row.session_id,
   status: row.status,
+  kind: row.kind,
+  systemPromptId: row.system_prompt_id,
   providerId: 'unknown',
   modelId: 'unknown',
   billingMode: 'api-key',
@@ -206,6 +226,8 @@ const runFromNodeRow = (row: NodeRow): Run | null =>
         id: row.run_id,
         sessionId: row.session_id,
         status: row.run_status ?? 'completed',
+        kind: row.run_kind ?? 'agent',
+        systemPromptId: row.run_system_prompt_id,
         providerId: row.model_call_provider_id ?? 'unknown',
         modelId: row.model_call_model_id ?? 'unknown',
         billingMode: row.model_call_billing_mode ?? 'api-key',
@@ -401,6 +423,8 @@ const nodeSelection = (sql: SqlClient) => sql`
     s.created_at AS summary_created_at,
     r.created_at AS run_created_at,
     r.base_node_id AS run_base_node_id,
+    r.kind AS run_kind,
+    r.system_prompt_id AS run_system_prompt_id,
     r.status AS run_status,
     r.completed_at AS run_completed_at,
     mc.id AS model_call_id,
@@ -445,6 +469,8 @@ const chainNodeSelection = (sql: SqlClient) => sql`
     s.created_at AS summary_created_at,
     r.created_at AS run_created_at,
     r.base_node_id AS run_base_node_id,
+    r.kind AS run_kind,
+    r.system_prompt_id AS run_system_prompt_id,
     r.status AS run_status,
     r.completed_at AS run_completed_at,
     mc.id AS model_call_id,
@@ -505,8 +531,8 @@ export const SqliteSession = (options: { readonly path: string }) =>
       const insertRunRow = SqlSchema.void({
         Request: CreateRunRowInput,
         execute: (row) => sql`
-          INSERT INTO runs (id, session_id, base_node_id, status, created_at)
-          VALUES (${row.id}, ${row.session_id}, ${row.base_node_id}, 'running', ${row.created_at})
+          INSERT INTO runs (id, session_id, base_node_id, kind, status, created_at)
+          VALUES (${row.id}, ${row.session_id}, ${row.base_node_id}, ${row.kind}, 'running', ${row.created_at})
         `,
       })
 
@@ -514,7 +540,51 @@ export const SqliteSession = (options: { readonly path: string }) =>
         Request: RunIdInput,
         Result: RunTableRow,
         execute: ({ id }) =>
-          sql`SELECT id, session_id, base_node_id, status, completed_at, created_at FROM runs WHERE id = ${id}`,
+          sql`
+            SELECT id, session_id, base_node_id, kind, system_prompt_id, status, completed_at, created_at
+            FROM runs
+            WHERE id = ${id}
+          `,
+      })
+
+      const insertSystemPromptRow = SqlSchema.void({
+        Request: InsertSystemPromptInput,
+        execute: (row) => sql`
+          INSERT INTO system_prompts (id, content, created_at)
+          VALUES (${row.id}, ${row.content}, ${row.created_at})
+          ON CONFLICT(id) DO NOTHING
+        `,
+      })
+
+      const getSystemPromptRow = SqlSchema.findOneOption({
+        Request: SystemPromptIdInput,
+        Result: SystemPromptTableRow,
+        execute: ({ id }) => sql`
+          SELECT id, content, created_at FROM system_prompts WHERE id = ${id}
+        `,
+      })
+
+      const findSessionSystemPromptRow = SqlSchema.findOneOption({
+        Request: SessionSystemPromptInput,
+        Result: SystemPromptTableRow,
+        execute: (row) => sql`
+          SELECT DISTINCT p.id, p.content, p.created_at
+          FROM system_prompts p
+          JOIN runs r ON r.system_prompt_id = p.id
+          WHERE r.session_id = ${row.session_id} AND p.id = ${row.prompt_id}
+        `,
+      })
+
+      const assignRunSystemPromptRow = SqlSchema.findOneOption({
+        Request: AssignRunSystemPromptInput,
+        Result: NodeIdentityRow,
+        execute: (row) => sql`
+          UPDATE runs
+          SET system_prompt_id = ${row.prompt_id}
+          WHERE id = ${row.run_id}
+            AND (system_prompt_id IS NULL OR system_prompt_id = ${row.prompt_id})
+          RETURNING id
+        `,
       })
 
       const completeRunRow = SqlSchema.findOneOption({
@@ -736,12 +806,98 @@ export const SqliteSession = (options: { readonly path: string }) =>
           id: input.id,
           session_id: input.sessionId,
           base_node_id: input.baseNodeId ?? null,
+          kind: input.kind,
           created_at: new Date(input.createdAt ?? Date.now()).toISOString(),
         }).pipe(
           Effect.mapError(
             sqlFailure('createRun', `Failed to create run: ${input.id}`)
           )
         )
+      })
+
+      const recordRunSystemPrompt: SessionStorageApi['recordRunSystemPrompt'] =
+        Effect.fn('SessionStorage.recordRunSystemPrompt')(
+          function* (runId, content) {
+            if (content.length === 0) {
+              return yield* Effect.fail(
+                new StorageError({
+                  operation: 'recordRunSystemPrompt',
+                  message: 'System prompt cannot be empty',
+                })
+              )
+            }
+
+            const id = createHash('sha256')
+              .update(content, 'utf8')
+              .digest('hex')
+            return yield* sql
+              .withTransaction(
+                Effect.gen(function* () {
+                  yield* getRun(runId)
+                  yield* insertSystemPromptRow({
+                    id,
+                    content,
+                    created_at: nowIso(),
+                  })
+                  const stored = yield* getSystemPromptRow({ id })
+                  if (
+                    Option.isNone(stored) ||
+                    stored.value.content !== content
+                  ) {
+                    return yield* Effect.fail(
+                      new StorageError({
+                        operation: 'recordRunSystemPrompt',
+                        message: `System prompt digest collision: ${id}`,
+                      })
+                    )
+                  }
+
+                  const assigned = yield* assignRunSystemPromptRow({
+                    run_id: runId,
+                    prompt_id: id,
+                  })
+                  if (Option.isNone(assigned)) {
+                    return yield* Effect.fail(
+                      new StorageError({
+                        operation: 'recordRunSystemPrompt',
+                        message: `Run already references a different system prompt: ${runId}`,
+                      })
+                    )
+                  }
+                  return { id, content }
+                })
+              )
+              .pipe(
+                Effect.mapError((error) =>
+                  error instanceof StorageError
+                    ? error
+                    : sqlFailure(
+                        'recordRunSystemPrompt',
+                        `Failed to record system prompt for run: ${runId}`
+                      )(error)
+                )
+              )
+          }
+        )
+
+      const findSystemPrompt: SessionStorageApi['findSystemPrompt'] = Effect.fn(
+        'SessionStorage.findSystemPrompt'
+      )(function* (sessionId, promptId) {
+        const row = yield* findSessionSystemPromptRow({
+          session_id: sessionId,
+          prompt_id: promptId,
+        }).pipe(
+          Effect.mapError(
+            sqlFailure(
+              'findSystemPrompt',
+              `Failed to find system prompt: ${promptId}`
+            )
+          )
+        )
+        return Option.match(row, {
+          onNone: () => null,
+          onSome: (prompt) => ({ id: prompt.id, content: prompt.content }),
+        })
       })
 
       const getRun: SessionStorageApi['getRun'] = Effect.fn(
@@ -1373,6 +1529,8 @@ export const SqliteSession = (options: { readonly path: string }) =>
         get,
         list,
         createRun,
+        recordRunSystemPrompt,
+        findSystemPrompt,
         getRun,
         findRun,
         completeRun,

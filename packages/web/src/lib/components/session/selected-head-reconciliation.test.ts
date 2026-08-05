@@ -20,6 +20,8 @@ const node = (status: 'running' | 'completed'): MessageNode => ({
   run: {
     id: 'run-1',
     status,
+    kind: 'agent',
+    systemPromptId: null,
     providerId: 'provider',
     modelId: 'model',
     billingMode: 'api-key',

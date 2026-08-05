@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Effect } from 'effect'
   import { onDestroy } from 'svelte'
   import LoadingState from '$lib/components/loading-state.svelte'
   import { MessageScrollerController } from '$lib/components/message-scroller/message-scroller.svelte.js'
@@ -9,6 +10,7 @@
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
   import { clientSettingsStore } from '$lib/stores/client-settings.svelte.js'
+  import { SessionsApi } from '$lib/connection-services.js'
   import { searchProjectFiles } from '$lib/project-file-search.js'
   import { runConnectionPromise } from '$lib/connection-runtime.js'
   import {
@@ -23,11 +25,14 @@
   } from '$lib/types.js'
   import {
     persistedSources,
+    latestAgentSystemPrompt,
     projectTranscript,
     streamingSources,
+    virtualSystemPromptItem,
     type TranscriptItem,
   } from '$lib/transcript.js'
   import MessageBubble from './message-bubble.svelte'
+  import SystemTranscript from './system-transcript.svelte'
   import QueuedMessageBubble from './queued-message-bubble.svelte'
   import StreamingIndicator from './streaming-indicator.svelte'
   import Composer from './composer.svelte'
@@ -65,6 +70,13 @@
   let composerDraftText = $state('')
   let composerDraftKey = $state<string | null>(null)
   let viewportElement = $state<HTMLElement | null>(null)
+  let loadedSystemPrompt = $state<{ id: string; content: string } | null>(null)
+  let systemPromptError = $state<{
+    promptId: string
+    message: string
+  } | null>(null)
+  let systemPromptRequest = 0
+  const systemPromptCache = new Map<string, string>()
 
   // Running state is derived from the session store — the single source
   // of truth. The messages store only tracks streaming *content*.
@@ -80,6 +92,9 @@
     return project?.name ?? null
   })
   const visibleMessages = $derived(selectedHead.visibleMessages)
+  const effectiveSystemPrompt = $derived(
+    latestAgentSystemPrompt(visibleMessages),
+  )
   const messagesLoading = $derived(messagesStore.loadingForTab(tabId))
   const messagesLoaded = $derived(messagesStore.loadedForTab(tabId))
   const messagesError = $derived(messagesStore.errorForTab(tabId))
@@ -128,6 +143,16 @@
       pretty: clientSettingsStore.prettyTranscript,
     }),
   )
+  const systemPromptItems = $derived.by(() =>
+    loadedSystemPrompt === null
+      ? []
+      : [
+          virtualSystemPromptItem(
+            loadedSystemPrompt.id,
+            loadedSystemPrompt.content,
+          ),
+        ],
+  )
 
   type MessageRenderBlock = {
     readonly key: string
@@ -140,6 +165,18 @@
   }
 
   type SessionVirtualRow =
+    | {
+        readonly type: 'system-prompt'
+        readonly key: string
+        readonly runId: string
+        readonly items: ReadonlyArray<TranscriptItem>
+      }
+    | {
+        readonly type: 'system-prompt-error'
+        readonly key: string
+        readonly promptId: string
+        readonly message: string
+      }
     | {
         readonly type: 'message'
         readonly key: string
@@ -271,9 +308,39 @@
   const isStreamingMerged = $derived(
     messageBlocks.some((block) => block.hasStreamingContent),
   )
+  const systemPromptRows = $derived.by((): ReadonlyArray<SessionVirtualRow> => {
+    if (
+      clientSettingsStore.prettyTranscript ||
+      effectiveSystemPrompt === null
+    ) {
+      return []
+    }
+    if (loadedSystemPrompt?.id === effectiveSystemPrompt.promptId) {
+      return [
+        {
+          type: 'system-prompt',
+          key: `system-prompt:${effectiveSystemPrompt.runId}`,
+          runId: effectiveSystemPrompt.runId,
+          items: systemPromptItems,
+        },
+      ]
+    }
+    if (systemPromptError?.promptId === effectiveSystemPrompt.promptId) {
+      return [
+        {
+          type: 'system-prompt-error',
+          key: `system-prompt-error:${effectiveSystemPrompt.runId}`,
+          promptId: effectiveSystemPrompt.promptId,
+          message: systemPromptError.message,
+        },
+      ]
+    }
+    return []
+  })
 
   const transcriptRows = $derived.by(
     (): ReadonlyArray<SessionVirtualRow> => [
+      ...systemPromptRows,
       ...messageBlocks.map((block) => ({
         type: 'message' as const,
         key: `message:${block.key}`,
@@ -295,6 +362,45 @@
     ],
   )
 
+  async function loadSystemPrompt(promptId: string | null) {
+    const request = ++systemPromptRequest
+    if (promptId === null) {
+      loadedSystemPrompt = null
+      systemPromptError = null
+      return
+    }
+
+    const cached = systemPromptCache.get(promptId)
+    if (cached !== undefined) {
+      loadedSystemPrompt = { id: promptId, content: cached }
+      systemPromptError = null
+      return
+    }
+
+    loadedSystemPrompt = null
+    systemPromptError = null
+    const result = await runConnectionPromise(
+      Effect.gen(function* () {
+        const sessionsApi = yield* SessionsApi
+        return yield* sessionsApi.systemPrompt(sessionId, promptId)
+      }).pipe(
+        Effect.match({
+          onFailure: (error) => ({ _tag: 'Failure' as const, error }),
+          onSuccess: (prompt) => ({ _tag: 'Success' as const, prompt }),
+        }),
+      ),
+    )
+    if (request !== systemPromptRequest) return
+    if (result._tag === 'Failure') {
+      systemPromptError = { promptId, message: result.error.message }
+      return
+    }
+    const prompt = result.prompt
+    if (prompt === null) return
+    systemPromptCache.set(prompt.id, prompt.content)
+    loadedSystemPrompt = prompt
+  }
+
   function jumpToLatest(event: MouseEvent) {
     if (event.currentTarget instanceof HTMLElement) event.currentTarget.blur()
     scroller.jumpToEnd()
@@ -305,6 +411,13 @@
     if (!messagesLoaded && !messagesLoading) {
       void runConnectionPromise(messagesStore.loadMessages(tabId, sessionId))
     }
+  })
+
+  $effect(() => {
+    const promptId = clientSettingsStore.prettyTranscript
+      ? null
+      : (effectiveSystemPrompt?.promptId ?? null)
+    void loadSystemPrompt(promptId)
   })
 
   $effect(() => {
@@ -507,7 +620,33 @@
                 }}
                 class="min-w-0 shrink-0 [contain-intrinsic-size:auto_10rem] [content-visibility:auto]"
               >
-                {#if row.type === 'message'}
+                {#if row.type === 'system-prompt'}
+                  <SystemTranscript
+                    items={row.items}
+                    title="System Prompt"
+                    defaultOpen={clientSettingsStore.expandSystemMessagesByDefault}
+                    {accordionState}
+                    accordionKey={row.key}
+                  />
+                {:else if row.type === 'system-prompt-error'}
+                  <Item.Root variant="danger" size="sm" class="my-1">
+                    <Item.Media variant="icon">
+                      <WarningCircleIcon />
+                    </Item.Media>
+                    <Item.Content>
+                      <Item.Title>System prompt failed to load</Item.Title>
+                      <Item.Description>{row.message}</Item.Description>
+                    </Item.Content>
+                    <Item.Actions>
+                      <Button
+                        variant="outline"
+                        onclick={() => void loadSystemPrompt(row.promptId)}
+                      >
+                        Retry
+                      </Button>
+                    </Item.Actions>
+                  </Item.Root>
+                {:else if row.type === 'message'}
                   <MessageBubble
                     message={row.block.message}
                     transcriptItems={row.block.items}

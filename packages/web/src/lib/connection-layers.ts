@@ -75,6 +75,13 @@ export const SessionsApiLive = Layer.effect(
           }),
           'Failed to start summarization'
         ),
+      systemPrompt: (sessionId, promptId) =>
+        runApiEffect(
+          client.sessions.systemPrompt({
+            params: { id: sessionId, promptId },
+          }),
+          'Failed to load system prompt'
+        ),
       stopRun: (runId) =>
         runApiEffect(
           client.sessions.stopRun({ params: { id: runId } }),

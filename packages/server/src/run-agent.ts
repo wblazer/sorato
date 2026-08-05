@@ -44,13 +44,11 @@ import {
   type StoredMessageEncoded,
 } from './session/session.ts'
 import {
-  AGENTS_MD_PATH,
   AllTools,
   type CompactBoundary,
   type CompactConversationInput,
   CurrentCompaction,
-  SYSTEM_PROMPT,
-  loadAgentsMd,
+  resolveAgentSystemPrompt,
 } from './agent-config.ts'
 import { createBusHook, EventBus, type EventBusApi } from './event-bus.ts'
 import {
@@ -70,7 +68,7 @@ import {
 } from './run-registry.ts'
 import { runLifecycleCheckpoint } from './run-lifecycle-checkpoints.ts'
 import { generateSessionTitle } from './session-title.ts'
-import { getAuth } from './provider-auth.ts'
+import { ProviderAuthStore } from './provider-auth.ts'
 import { RuntimeConfigService } from './runtime-config.ts'
 import {
   resolveRunEnvironment,
@@ -273,6 +271,14 @@ Return only the summary. Do not include preambles or explanations.
 Preserve the user's goals, constraints, decisions, code/file changes, tool results that matter, unresolved tasks, and exact facts needed to continue.
 Omit redundant chatter and details that are not useful for future work.`
 
+const configuredRolePrompt = (
+  prompt: string,
+  instructions: ReadonlyArray<string>
+) =>
+  instructions.length === 0
+    ? prompt
+    : `${prompt}\n\nAdditional configured instructions:\n\n${instructions.join('\n\n')}`
+
 const compactionSuccessMessage = 'Compaction successful.'
 
 const emptyMessageText = '[empty]'
@@ -302,21 +308,13 @@ const messageText = (message: StoredMessageEncoded): string => {
     .join('\n')
 }
 
-const hasLoadedInstruction = (
-  messages: ReadonlyArray<StoredMessageEncoded>,
-  path: string
-): boolean =>
-  messages.some(
-    (message) =>
-      message.role === 'system' && message.metadata?.loaded?.path === path
-  )
-
 const summaryPrompt = (
   messages: ReadonlyArray<StoredMessageEncoded>,
-  instructions: string | undefined
+  instructions: string | undefined,
+  systemPrompt: string
 ) =>
   Prompt.make([
-    { role: 'system' as const, content: SUMMARY_SYSTEM_PROMPT },
+    { role: 'system' as const, content: systemPrompt },
     {
       role: 'user' as const,
       content: [
@@ -558,7 +556,8 @@ const compactResolvedRange = (
 const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
   sessionId: SessionId,
   request: RunRequest,
-  modelServices: Layer.Layer<LanguageModel.LanguageModel> | undefined
+  modelServices: Layer.Layer<LanguageModel.LanguageModel> | undefined,
+  systemPrompt: string
 ) {
   const compactRange = request.compactRange
   if (compactRange === undefined) return false
@@ -611,7 +610,8 @@ const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
   const chat = yield* Chat.fromPrompt(
     summaryPrompt(
       compactedPath.map((message) => message.encoded),
-      compactRange.instructions
+      compactRange.instructions,
+      systemPrompt
     )
   )
 
@@ -620,6 +620,8 @@ const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
       new Error(`Model is not supported by this server: ${request.model}`)
     )
   }
+
+  yield* storage.recordRunSystemPrompt(request.runId, systemPrompt)
 
   const summary = yield* chat.streamText({ prompt: [] }).pipe(
     Stream.filter(
@@ -744,6 +746,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     const sandbox = yield* Sandbox
     const bus = yield* EventBus
     const modelResolver = yield* ModelLayerResolver
+    const providerAuth = yield* ProviderAuthStore
 
     const session = yield* storage.get(sessionId)
     yield* Effect.uninterruptible(
@@ -751,6 +754,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
         yield* storage.createRun({
           id: runId,
           sessionId,
+          kind: request.compactRange === undefined ? 'agent' : 'summary',
           baseNodeId: request.baseNodeId ?? null,
         })
         yield* publishActiveRunUpsert(storage, bus, {
@@ -769,6 +773,10 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     const projectPath = yield* projects.resolvePath(session.projectId)
     const runtimeConfig = yield* RuntimeConfigService
     const projectConfig = yield* runtimeConfig.get(projectPath)
+    const summarySystemPrompt = configuredRolePrompt(
+      SUMMARY_SYSTEM_PROMPT,
+      projectConfig.roles.summary.instructions
+    )
     yield* Effect.logInfo('Agent run loaded session', {
       runId,
       projectId: session.projectId,
@@ -782,7 +790,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
         new Error(`Model is not supported by this server: ${request.model}`)
       )
     }
-    const auth = yield* getAuth(resolvedModel.providerId)
+    const auth = yield* providerAuth.getAuth(resolvedModel.providerId)
     const billingMode: BillingMode =
       auth?.type === 'oauth' ? 'subscription' : 'api-key'
 
@@ -822,8 +830,16 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       )
     yield* Effect.logInfo('Agent run resolved model layer', { runId })
 
-    const compacted = yield* runCompactRange(sessionId, request, modelServices)
-    if (compacted) return
+    const compacted = yield* runCompactRange(
+      sessionId,
+      request,
+      modelServices,
+      summarySystemPrompt
+    )
+    if (compacted) {
+      completedHarness = true
+      return
+    }
 
     const existingConversation = yield* storage.conversation(
       sessionId,
@@ -885,44 +901,15 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
         )
       ),
       Effect.flatMap(({ shell, files }: RunSandboxServices) =>
-        storage.messages(sessionId, request.baseNodeId).pipe(
-          Effect.flatMap((storedHistory) => {
-            const shouldLoadAgentsMd = !hasLoadedInstruction(
-              storedHistory.map((message) => message.encoded),
-              AGENTS_MD_PATH
-            )
-            return shouldLoadAgentsMd
-              ? loadAgentsMd(files)
-              : Effect.succeed(undefined)
-          }),
-          Effect.map((agentsMd) => {
-            const preamble: Array<StoredMessageEncoded> = [
-              ...(isFirstMessage
-                ? [
-                    {
-                      role: 'system' as const,
-                      content: SYSTEM_PROMPT,
-                      source: 'system-prompt' as const,
-                      display: { title: 'System Prompt' },
-                    },
-                  ]
-                : []),
-              ...(agentsMd === undefined
-                ? []
-                : [
-                    {
-                      role: 'system' as const,
-                      content: agentsMd,
-                      source: 'agents-md' as const,
-                      display: { title: 'AGENTS.md' },
-                      metadata: { loaded: { path: AGENTS_MD_PATH } },
-                    },
-                  ]),
-              ...request.inputs.map(userInputMessage),
-            ]
-            return preamble
-          }),
-          Effect.flatMap((preamble) =>
+        resolveAgentSystemPrompt(files, projectConfig.instructions).pipe(
+          Effect.tap((systemPrompt) =>
+            storage.recordRunSystemPrompt(runId, systemPrompt)
+          ),
+          Effect.map((systemPrompt) => ({
+            systemPrompt,
+            preamble: request.inputs.map(userInputMessage),
+          })),
+          Effect.flatMap(({ preamble, systemPrompt }) =>
             Effect.uninterruptible(
               Effect.gen(function* () {
                 const batch = yield* storage.commitNodeBatch({
@@ -948,7 +935,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                   baseNodeId: request.baseNodeId,
                   kind: 'agent',
                 })
-                return { preamble, batch }
+                return { preamble, batch, systemPrompt }
               })
             )
           ),
@@ -966,12 +953,13 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
           Effect.tap(() =>
             Effect.logInfo('Agent run published lifecycle start', { runId })
           ),
-          Effect.flatMap(({ batch }) => {
+          Effect.flatMap(({ batch, systemPrompt }) => {
             const appendBaseNodeId = batch?.headNodeId ?? request.baseNodeId
             return storage.conversation(sessionId, appendBaseNodeId).pipe(
               Effect.map((conversation) => ({
                 appendBaseNodeId,
                 conversation,
+                systemPrompt,
               }))
             )
           }),
@@ -981,9 +969,15 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
               messageCountBeforeRun: conversation.content.length,
             })
           ),
-          Effect.flatMap(({ appendBaseNodeId, conversation }) =>
+          Effect.flatMap(({ appendBaseNodeId, conversation, systemPrompt }) =>
             Effect.gen(function* () {
-              const messageCountBeforeRun = conversation.content.length
+              const providerConversation = Prompt.make([
+                { role: 'system', content: systemPrompt },
+                ...conversation.content.filter(
+                  (message) => message.role !== 'system'
+                ),
+              ])
+              const messageCountBeforeRun = providerConversation.content.length
               const appendBaseRef = yield* Ref.make(appendBaseNodeId)
               const compactToolCallIdRef = yield* Ref.make<string | null>(null)
               const busHook = yield* createBusHook(sessionId, runId)
@@ -1052,12 +1046,58 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                     }
 
                     const summaryRunId = crypto.randomUUID()
+                    const summaryModelId =
+                      projectConfig.roles.summary.model ?? request.model
+                    const summaryResolvedModel = resolveModel(summaryModelId)
+                    if (summaryResolvedModel === undefined) {
+                      return yield* Effect.fail(
+                        `Summary model is not supported by this server: ${summaryModelId}`
+                      )
+                    }
+                    const summaryAuth = yield* providerAuth.getAuth(
+                      summaryResolvedModel.providerId
+                    )
+                    const summaryBillingMode: BillingMode =
+                      summaryAuth?.type === 'oauth' ? 'subscription' : 'api-key'
+                    const summaryModelServices = yield* modelResolver
+                      .resolve(dataDir, {
+                        id: summaryModelId,
+                        sessionId,
+                        thinkingLevel: 'off',
+                        onRetry: (info) =>
+                          Clock.currentTimeMillis.pipe(
+                            Effect.flatMap((now) =>
+                              bus.publish({
+                                _tag: 'RunRetrying',
+                                sessionId,
+                                runId: summaryRunId,
+                                title: aiRunRetryingMessage(info.error),
+                                message: '',
+                                retryAt: now + Duration.toMillis(info.delay),
+                                attempt: info.attempt,
+                                maxAttempts: info.maxAttempts,
+                              })
+                            )
+                          ),
+                      })
+                      .pipe(
+                        Effect.provideService(ProviderAuthStore, providerAuth),
+                        Effect.flatMap((layer) =>
+                          Effect.fromNullishOr(layer).pipe(
+                            Effect.mapError(
+                              () =>
+                                `Summary model is not supported by this server: ${summaryModelId}`
+                            )
+                          )
+                        )
+                      )
                     yield* storage.createRun({
                       id: summaryRunId,
                       sessionId,
-                      providerId: resolvedModel.providerId,
-                      modelId: resolvedModel.modelId,
-                      billingMode,
+                      kind: 'summary',
+                      providerId: summaryResolvedModel.providerId,
+                      modelId: summaryResolvedModel.modelId,
+                      billingMode: summaryBillingMode,
                       baseNodeId: baseHeadNodeId,
                     })
                     updateActiveRunParent(
@@ -1124,10 +1164,15 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                       }
 
                       return yield* Effect.gen(function* () {
+                        yield* storage.recordRunSystemPrompt(
+                          summaryRunId,
+                          summarySystemPrompt
+                        )
                         const chat = yield* Chat.fromPrompt(
                           summaryPrompt(
                             compactedPath.map((message) => message.encoded),
-                            input.instructions
+                            input.instructions,
+                            summarySystemPrompt
                           )
                         )
                         const summaryTitle = 'Generating summary'
@@ -1191,7 +1236,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                             ),
                             Stream.map((part) => part.delta),
                             Stream.mkString,
-                            Effect.provide(modelServices)
+                            Effect.provide(summaryModelServices)
                           )
                         const contentThroughEventId =
                           getContentThroughEventId(summaryRunId)
@@ -1263,7 +1308,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
               }
 
               return yield* Effect.provide(
-                run(conversation, {
+                run(providerConversation, {
                   toolkit: AllTools,
                   hooks: [trackedBusHook, persistHook],
                 }),

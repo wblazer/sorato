@@ -45,6 +45,8 @@ export const RunStatus = Schema.Literals([
   'failed',
 ])
 export type RunStatus = typeof RunStatus.Type
+export const RunKind = Schema.Literals(['agent', 'summary'])
+export type RunKind = typeof RunKind.Type
 export type ProviderAuthKind = typeof ProviderAuthKind.Type
 
 export const ProjectTableRow = Schema.Struct({
@@ -76,11 +78,22 @@ export const RunTableRow = Schema.Struct({
   id: RunId,
   session_id: SessionId,
   base_node_id: Schema.NullOr(NodeId),
+  kind: RunKind,
+  system_prompt_id: Schema.NullOr(Schema.String),
   status: RunStatus,
   completed_at: Schema.NullOr(IsoDateTime),
   created_at: IsoDateTime,
 })
 export interface RunTableRow extends Schema.Schema.Type<typeof RunTableRow> {}
+
+export const SystemPromptTableRow = Schema.Struct({
+  id: Schema.String,
+  content: Schema.String,
+  created_at: IsoDateTime,
+})
+export interface SystemPromptTableRow extends Schema.Schema.Type<
+  typeof SystemPromptTableRow
+> {}
 
 export const MessageTableRow = Schema.Struct({
   id: MessageId,
@@ -170,6 +183,8 @@ export const MessageNodeRow = Schema.Struct({
   summary_created_at: Schema.NullOr(IsoDateTime),
   run_created_at: Schema.NullOr(IsoDateTime),
   run_base_node_id: Schema.NullOr(NodeId),
+  run_kind: Schema.NullOr(RunKind),
+  run_system_prompt_id: Schema.NullOr(Schema.String),
   run_status: Schema.NullOr(RunStatus),
   run_completed_at: Schema.NullOr(IsoDateTime),
   model_call_id: Schema.NullOr(Schema.String),

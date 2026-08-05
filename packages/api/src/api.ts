@@ -79,6 +79,8 @@ export interface RunUsageResponse extends Schema.Schema.Type<
 export const RunSummaryResponse = Schema.Struct({
   id: Schema.String,
   status: Schema.Literals(['running', 'completed', 'interrupted', 'failed']),
+  kind: Schema.Literals(['agent', 'summary']),
+  systemPromptId: Schema.NullOr(Schema.String),
   providerId: Schema.String,
   modelId: Schema.String,
   billingMode: Schema.Literals(['api-key', 'subscription']),
@@ -88,6 +90,14 @@ export const RunSummaryResponse = Schema.Struct({
 }).annotate({ identifier: 'RunSummaryResponse' })
 export interface RunSummaryResponse extends Schema.Schema.Type<
   typeof RunSummaryResponse
+> {}
+
+export const SystemPromptResponse = Schema.Struct({
+  id: Schema.String,
+  content: Schema.String,
+}).annotate({ identifier: 'SystemPromptResponse' })
+export interface SystemPromptResponse extends Schema.Schema.Type<
+  typeof SystemPromptResponse
 > {}
 
 export const MessageNodeResponse = Schema.Struct({
@@ -464,6 +474,13 @@ export class SessionsGroup extends HttpApiGroup.make('sessions')
     HttpApiEndpoint.get('messages', '/:id/messages', {
       params: { id: SessionId },
       success: ConversationSnapshot,
+      error: StorageUnavailable.pipe(HttpApiSchema.status(503)),
+    })
+  )
+  .add(
+    HttpApiEndpoint.get('systemPrompt', '/:id/system-prompts/:promptId', {
+      params: { id: SessionId, promptId: Schema.String },
+      success: Schema.NullOr(SystemPromptResponse),
       error: StorageUnavailable.pipe(HttpApiSchema.status(503)),
     })
   )
