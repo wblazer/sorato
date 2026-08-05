@@ -51,8 +51,13 @@
     onFileSearch,
     onDismissStatus,
     onModelChange,
+    onScenarioChange,
+    onSelectionKindChange,
     models = [],
+    scenarios = [],
     model = null,
+    scenario = null,
+    selectionKind = 'model',
     modelOptions = {},
     modelLoading = false,
     modelDisabled = false,
@@ -81,8 +86,13 @@
     ) => Promise<ReadonlyArray<FileReferenceResult>>
     onDismissStatus?: () => void
     onModelChange?: (value: string, options?: ModelOptions) => void
+    onScenarioChange?: (value: string) => void
+    onSelectionKindChange?: (kind: 'model' | 'scenario') => void
     models?: ReadonlyArray<AvailableModel>
+    scenarios?: ReadonlyArray<AvailableModel>
     model?: string | null
+    scenario?: string | null
+    selectionKind?: 'model' | 'scenario'
     modelOptions?: ModelOptions
     modelLoading?: boolean
     modelDisabled?: boolean
@@ -126,6 +136,9 @@
 
   const selectedModel = $derived(
     models.find((item) => item.id === model) ?? null,
+  )
+  const scenarioMode = $derived(
+    import.meta.env.DEV && selectionKind === 'scenario',
   )
   const thinkingLevel = $derived(
     modelOptions.thinkingLevel ?? selectedModel?.capabilities.thinkingLevels[0],
@@ -920,14 +933,19 @@
           <div class="min-w-0 max-w-[min(20rem,60vw)]">
             <ModelSelector
               {models}
+              {scenarios}
               value={model}
+              scenarioValue={scenario}
+              {selectionKind}
               loading={modelLoading}
               disabled={disabled || modelDisabled}
               onChange={onModelChange}
+              {onScenarioChange}
+              {onSelectionKindChange}
             />
           </div>
 
-          {#if selectedModel?.capabilities.reasoning}
+          {#if !scenarioMode && selectedModel?.capabilities.reasoning}
             <Select.Root
               type="single"
               value={thinkingLevel}
@@ -959,7 +977,7 @@
             </Select.Root>
           {/if}
 
-          {#if selectedModel && selectedModel.capabilities.modes.length > 0}
+          {#if !scenarioMode && selectedModel && selectedModel.capabilities.modes.length > 0}
             <Select.Root
               type="single"
               value={selectedMode ?? 'default'}
@@ -992,7 +1010,10 @@
         </div>
 
         <div class="flex shrink-0 items-center gap-2">
-          <SessionTokenUsage messages={tokenUsageMessages} {models} />
+          <SessionTokenUsage
+            messages={tokenUsageMessages}
+            models={[...models, ...scenarios]}
+          />
 
           {#if isViewingActiveRun}
             <Button

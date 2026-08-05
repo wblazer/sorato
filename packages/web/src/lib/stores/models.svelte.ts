@@ -43,6 +43,7 @@ const modelOptionsKey = () => storageKey('model-options')
 
 function createModelsStore() {
   let models = $state<AvailableModelsResponse['models']>([])
+  let scenarios = $state<AvailableModelsResponse['models']>([])
   let defaultModel = $state<string | null>(null)
   let loading = $state(false)
   let error = $state<string | null>(null)
@@ -51,11 +52,15 @@ function createModelsStore() {
   let preferredOptions = $state<ModelOptions>({})
   let selectedModel = $state<string | null>(null)
   let selectedOptions = $state<ModelOptions>({})
+  let selectionKind = $state<'model' | 'scenario'>('model')
+  let selectedScenario = $state<string | null>(null)
+  let connectionScopeId = $state<string | null>(null)
   let req = 0
 
   function clear() {
     req += 1
     models = []
+    scenarios = []
     defaultModel = null
     loading = false
     error = null
@@ -64,6 +69,9 @@ function createModelsStore() {
     preferredOptions = {}
     selectedModel = null
     selectedOptions = {}
+    selectionKind = 'model'
+    selectedScenario = null
+    connectionScopeId = null
   }
 
   function recent() {
@@ -172,10 +180,24 @@ function createModelsStore() {
 
   function displayName(providerId: string, modelId: string) {
     return (
-      models.find(
+      [...models, ...scenarios].find(
         (item) => item.id === modelId || item.id === `${providerId}/${modelId}`
       )?.name ?? modelId
     )
+  }
+
+  function selectScenario(scenario: string) {
+    if (!import.meta.env.DEV || !scenarios.some((item) => item.id === scenario))
+      return
+    selectedScenario = scenario
+    selectionKind = 'scenario'
+  }
+
+  function setSelectionKind(kind: 'model' | 'scenario') {
+    selectionKind =
+      import.meta.env.DEV && kind === 'scenario' && scenarios.length > 0
+        ? 'scenario'
+        : 'model'
   }
 
   function load(nextProjectId: string) {
@@ -185,9 +207,19 @@ function createModelsStore() {
         return
       }
 
+      const activeConnectionScopeId =
+        connectionsStore.activeConnectionScopeId ?? null
+      if (connectionScopeId !== activeConnectionScopeId) {
+        yield* Effect.sync(() => {
+          clear()
+          connectionScopeId = activeConnectionScopeId
+        })
+      }
+
       const id = ++req
       const hasExistingForProject =
-        projectId === nextProjectId && models.length > 0
+        projectId === nextProjectId &&
+        (models.length > 0 || scenarios.length > 0)
       yield* Effect.sync(() => {
         projectId = nextProjectId
         loading = true
@@ -200,6 +232,9 @@ function createModelsStore() {
           Effect.sync(() => {
             const failedResult = null
             if (id !== req) return failedResult
+            scenarios = []
+            selectedScenario = null
+            if (selectionKind === 'scenario') selectionKind = 'model'
             if (!hasExistingForProject) {
               models = []
               defaultModel = null
@@ -215,9 +250,17 @@ function createModelsStore() {
       yield* Effect.sync(() => {
         if (id !== req) return
         if (result) {
-          models = result.models
+          models = result.models.filter((item) => item.kind === 'model')
+          scenarios = import.meta.env.DEV
+            ? result.models.filter((item) => item.kind === 'scenario')
+            : []
           defaultModel = result.defaultModel ?? null
           reconcileSelection()
+          if (!scenarios.some((item) => item.id === selectedScenario)) {
+            selectedScenario = scenarios[0]?.id ?? null
+          }
+          if (scenarios.length === 0) selectionKind = 'model'
+          else if (models.length === 0) selectionKind = 'scenario'
         }
         loading = false
       })
@@ -227,6 +270,12 @@ function createModelsStore() {
   return {
     get models() {
       return models
+    },
+    get scenarios() {
+      return scenarios
+    },
+    get availableModels() {
+      return [...models, ...scenarios]
     },
     get defaultModel() {
       return defaultModel
@@ -246,11 +295,29 @@ function createModelsStore() {
     get selectedOptions() {
       return selectedOptions
     },
+    get selectionKind() {
+      return selectionKind
+    },
+    get selectedScenario() {
+      return selectedScenario
+    },
+    get selectedTargetId() {
+      return import.meta.env.DEV && selectionKind === 'scenario'
+        ? selectedScenario
+        : selectedModel
+    },
+    get selectedTargetOptions() {
+      return import.meta.env.DEV && selectionKind === 'scenario'
+        ? {}
+        : selectedOptions
+    },
     clear,
     load,
     pick,
     displayName,
     select,
+    selectScenario,
+    setSelectionKind,
     recent,
     remember,
   }

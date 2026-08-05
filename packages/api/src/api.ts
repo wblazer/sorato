@@ -81,9 +81,13 @@ export const RunSummaryResponse = Schema.Struct({
   status: Schema.Literals(['running', 'completed', 'interrupted', 'failed']),
   kind: Schema.Literals(['agent', 'summary']),
   systemPromptId: Schema.NullOr(Schema.String),
-  providerId: Schema.String,
-  modelId: Schema.String,
-  billingMode: Schema.Literals(['api-key', 'subscription']),
+  attribution: Schema.NullOr(
+    Schema.Struct({
+      providerId: Schema.String,
+      modelId: Schema.String,
+      billingMode: Schema.Literals(['api-key', 'subscription', 'unbilled']),
+    })
+  ),
   usage: RunUsageResponse,
   createdAt: Schema.Number,
   completedAt: Schema.NullOr(Schema.Number),
@@ -118,7 +122,7 @@ export const MessageNodeResponse = Schema.Struct({
       assistantNodeId: Schema.String,
       providerId: Schema.String,
       modelId: Schema.String,
-      billingMode: Schema.Literals(['api-key', 'subscription']),
+      billingMode: Schema.Literals(['api-key', 'subscription', 'unbilled']),
       inputTokens: Schema.NullOr(Schema.Number),
       outputTokens: Schema.NullOr(Schema.Number),
       reasoningTokens: Schema.NullOr(Schema.Number),
@@ -321,6 +325,8 @@ export const ModelOption = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   provider: Schema.String,
+  kind: Schema.Literals(['model', 'scenario']),
+  description: Schema.optional(Schema.String),
   capabilities: Schema.Struct({
     attachment: Schema.Boolean,
     reasoning: Schema.Boolean,
@@ -422,6 +428,8 @@ export const HandshakeResponse = Schema.Struct({
   status: Schema.Literal('ok'),
   /** Tools available from this server runtime. */
   tools: Schema.Array(ToolInfo),
+  /** Whether this server was started with development-only capabilities. */
+  developerMode: Schema.Boolean,
 }).annotate({ identifier: 'HandshakeResponse' })
 export interface HandshakeResponse extends Schema.Schema.Type<
   typeof HandshakeResponse

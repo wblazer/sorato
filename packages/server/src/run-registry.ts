@@ -24,6 +24,7 @@ export interface RunRequest {
   readonly runId: string
   readonly inputs: ReadonlyArray<RunInput>
   readonly model: string
+  readonly modelKind: 'model' | 'scenario'
   readonly modelOptions: ModelOptions
   readonly baseNodeId: string | null
   readonly afterRunId: string | null
@@ -70,6 +71,7 @@ const sameRunBatch = (a: RunRequest, b: RunRequest) =>
   a.compactRange === undefined &&
   b.compactRange === undefined &&
   a.model === b.model &&
+  a.modelKind === b.modelKind &&
   a.baseNodeId === b.baseNodeId &&
   a.afterRunId === b.afterRunId &&
   JSON.stringify(a.modelOptions) === JSON.stringify(b.modelOptions)

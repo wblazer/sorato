@@ -69,9 +69,11 @@ const append = (
       id: runId,
       sessionId,
       kind: 'agent',
-      providerId: 'test',
-      modelId: 'test-model',
-      billingMode: 'api-key',
+      attribution: {
+        providerId: 'test',
+        modelId: 'test-model',
+        billingMode: 'api-key',
+      },
       baseNodeId: resolvedBaseNodeId,
     })
     const batch = yield* storage.commitNodeBatch({
@@ -475,6 +477,45 @@ describe('SessionStorage', () => {
       }).pipe(Effect.provide(testLayer()))
     )
 
+    it.effect('records run model attribution exactly once', () =>
+      Effect.gen(function* () {
+        const storage = yield* SessionStorage
+        const session = yield* storage.create(TEST_DIR, 'run attribution')
+        const runId = crypto.randomUUID()
+        yield* storage.createRun({
+          id: runId,
+          sessionId: session.id,
+          kind: 'summary',
+          baseNodeId: null,
+        })
+
+        yield* storage.recordRunModel({
+          id: runId,
+          providerId: 'scenario',
+          modelId: 'compaction',
+          billingMode: 'unbilled',
+        })
+
+        expect(yield* storage.getRun(runId)).toMatchObject({
+          attribution: {
+            providerId: 'scenario',
+            modelId: 'compaction',
+            billingMode: 'unbilled',
+          },
+        })
+
+        const reassignment = yield* storage
+          .recordRunModel({
+            id: runId,
+            providerId: 'openai',
+            modelId: 'different',
+            billingMode: 'api-key',
+          })
+          .pipe(Effect.flip)
+        expect(reassignment.operation).toBe('recordRunModel')
+      }).pipe(Effect.provide(testLayer()))
+    )
+
     it.effect('replays active run creation and base updates', () =>
       Effect.gen(function* () {
         const storage = yield* SessionStorage
@@ -696,9 +737,11 @@ describe('SessionStorage', () => {
           id: compactRunId,
           sessionId: target.id,
           kind: 'summary',
-          providerId: 'test',
-          modelId: 'test-model',
-          billingMode: 'api-key',
+          attribution: {
+            providerId: 'test',
+            modelId: 'test-model',
+            billingMode: 'api-key',
+          },
           baseNodeId: foreignEndNodeId,
         })
 
@@ -779,9 +822,11 @@ describe('SessionStorage', () => {
           id: compactRunId,
           sessionId: session.id,
           kind: 'summary',
-          providerId: 'test',
-          modelId: 'test-model',
-          billingMode: 'api-key',
+          attribution: {
+            providerId: 'test',
+            modelId: 'test-model',
+            billingMode: 'api-key',
+          },
           baseNodeId: resolvedNextUserNodeId,
         })
 

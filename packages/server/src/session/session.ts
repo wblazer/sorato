@@ -53,7 +53,11 @@ export type RunStatus = typeof RunStatus.Type
 export const RunKind = Schema.Literals(['agent', 'summary'])
 export type RunKind = typeof RunKind.Type
 
-export const BillingMode = Schema.Literals(['api-key', 'subscription'])
+export const BillingMode = Schema.Literals([
+  'api-key',
+  'subscription',
+  'unbilled',
+])
 export type BillingMode = typeof BillingMode.Type
 
 // ---------------------------------------------------------------------------
@@ -93,23 +97,28 @@ export interface Run extends RunUsage {
   readonly status: RunStatus
   readonly kind: RunKind
   readonly systemPromptId: string | null
-  readonly providerId: string
-  readonly modelId: string
-  readonly billingMode: BillingMode
+  readonly attribution: RunModelAttribution | null
   readonly baseNodeId: NodeId | null
   readonly createdAt: number
   readonly completedAt: number | null
 }
 
-export interface CreateRunInput {
+interface CreateRunBaseInput {
   readonly id: RunId
   readonly sessionId: SessionId
   readonly kind: RunKind
-  readonly providerId?: string
-  readonly modelId?: string
-  readonly billingMode?: BillingMode
   readonly baseNodeId: NodeId | null
   readonly createdAt?: number
+}
+
+export interface RunModelAttribution {
+  readonly providerId: string
+  readonly modelId: string
+  readonly billingMode: BillingMode
+}
+
+export type CreateRunInput = CreateRunBaseInput & {
+  readonly attribution?: RunModelAttribution
 }
 
 export interface SystemPrompt {
@@ -121,6 +130,10 @@ export interface CompleteRunInput {
   readonly id: RunId
   readonly status: Exclude<RunStatus, 'running'>
   readonly completedAt?: number
+}
+
+export interface RecordRunModelInput extends RunModelAttribution {
+  readonly id: RunId
 }
 
 /** A session — a container for a tree of messages. */
@@ -237,6 +250,11 @@ export interface SessionStorageApi {
 
   /** Create a run envelope for messages and usage caused by one execution. */
   readonly createRun: (input: CreateRunInput) => Effect<void, StorageError>
+
+  /** Assign the immutable model attribution once inference is resolved. */
+  readonly recordRunModel: (
+    input: RecordRunModelInput
+  ) => Effect<void, StorageError>
 
   /** Record the immutable rendered system prompt used by a run. */
   readonly recordRunSystemPrompt: (

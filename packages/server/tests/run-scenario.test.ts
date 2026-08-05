@@ -52,6 +52,7 @@ describe('RunScenario', () => {
         )
         expect(assistant?.modelCall?.providerId).toBe('openai')
         expect(assistant?.modelCall?.modelId).toBe('gpt-5.4-mini')
+        expect(assistant?.modelCall?.billingMode).toBe('unbilled')
         expect(persistedBatch.contentThroughEventId).toBe(1)
       }
 
@@ -358,9 +359,9 @@ describe('RunScenario', () => {
         expect((yield* scenario.getRun(active.runId)).status).toBe(
           'interrupted'
         )
-        expect((yield* scenario.getRun(firstQueued.runId)).status).toBe(
-          'interrupted'
-        )
+        const queuedRun = yield* scenario.getRun(firstQueued.runId)
+        expect(queuedRun.status).toBe('interrupted')
+        expect(queuedRun.attribution).toBeNull()
         const queuedEvents = yield* scenario.eventsForRun(firstQueued.runId)
         expect(queuedEvents.map((event) => event._tag)).toContain('RunEnd')
         expect(yield* scenario.isRunActive(firstQueued.runId)).toBe(false)

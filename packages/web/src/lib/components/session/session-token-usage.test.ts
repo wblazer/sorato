@@ -6,6 +6,7 @@ const model: AvailableModel = {
   id: 'provider/model',
   name: 'Model',
   provider: 'provider',
+  kind: 'model',
   capabilities: {
     attachment: false,
     reasoning: false,

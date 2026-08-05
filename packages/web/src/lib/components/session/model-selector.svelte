@@ -4,6 +4,7 @@
   import { Button } from '$lib/components/ui/button/index.js'
   import * as Command from '$lib/components/ui/command/index.js'
   import * as Popover from '$lib/components/ui/popover/index.js'
+  import { Switch } from '$lib/components/ui/switch/index.js'
   import { actionStore } from '$lib/stores/actions.svelte.js'
   import type { AvailableModel } from '$lib/types.js'
   import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon'
@@ -11,18 +12,28 @@
 
   interface Props {
     models: ReadonlyArray<AvailableModel>
+    scenarios?: ReadonlyArray<AvailableModel>
     value: string | null
+    scenarioValue?: string | null
+    selectionKind?: 'model' | 'scenario'
     loading?: boolean
     disabled?: boolean
     onChange?: (value: string) => void
+    onScenarioChange?: (value: string) => void
+    onSelectionKindChange?: (kind: 'model' | 'scenario') => void
   }
 
   let {
     models,
+    scenarios = [],
     value,
+    scenarioValue = null,
+    selectionKind = 'model',
     loading = false,
     disabled = false,
     onChange,
+    onScenarioChange,
+    onSelectionKindChange,
   }: Props = $props()
 
   let open = $state(false)
@@ -36,7 +47,15 @@
   const selectedModel = $derived(
     models.find((item) => item.id === value) ?? null,
   )
-  const showLoading = $derived(loading && models.length === 0)
+  const selectedScenario = $derived(
+    scenarios.find((item) => item.id === scenarioValue) ?? null,
+  )
+  const scenarioMode = $derived(
+    import.meta.env.DEV && selectionKind === 'scenario',
+  )
+  const showLoading = $derived(
+    loading && models.length === 0 && scenarios.length === 0,
+  )
 
   const modelsByProvider = $derived.by(() => {
     const groups = new Map<string, Array<AvailableModel>>()
@@ -66,6 +85,11 @@
 
   function selectModel(id: string) {
     onChange?.(id)
+    closeAndFocusTrigger()
+  }
+
+  function selectScenario(id: string) {
+    onScenarioChange?.(id)
     closeAndFocusTrigger()
   }
 
@@ -104,6 +128,7 @@
   }
 
   const triggerLabel = $derived.by(() => {
+    if (scenarioMode) return selectedScenario?.name ?? 'Select scenario'
     if (selectedModel) return selectedModel.name
     if (showLoading) return 'Loading models...'
     if (missing && value) return `${value} (unavailable)`
@@ -133,16 +158,39 @@
     align="start"
   >
     <Command.Root class="rounded-lg p-1" filter={filterModel}>
-      <Command.Input placeholder="Search models..." />
+      {#if import.meta.env.DEV && scenarios.length > 0}
+        <div
+          class="-mx-1 flex items-center justify-between border-b px-3 py-2.5"
+        >
+          <div class="min-w-0 pr-3">
+            <div class="text-sm font-medium">Developer scenarios</div>
+            <div class="truncate text-xs text-muted-foreground">
+              Use scripted inference without a provider
+            </div>
+          </div>
+          <Switch
+            size="sm"
+            checked={scenarioMode}
+            aria-label="Use developer scenarios"
+            onCheckedChange={(checked) =>
+              onSelectionKindChange?.(checked ? 'scenario' : 'model')}
+          />
+        </div>
+      {/if}
+      <Command.Input
+        placeholder={scenarioMode ? 'Search scenarios...' : 'Search models...'}
+      />
       <Command.List id={listboxId} class="h-60 py-1.5">
         {#if showLoading}
           <div class="px-3 py-6 text-center text-sm text-muted-foreground">
             Loading models...
           </div>
         {:else}
-          <Command.Empty>No models found.</Command.Empty>
+          <Command.Empty
+            >No {scenarioMode ? 'scenarios' : 'models'} found.</Command.Empty
+          >
 
-          {#if missing && value}
+          {#if !scenarioMode && missing && value}
             <Command.Group heading="Current selection">
               <Command.Item
                 value={`${value} unavailable`}
@@ -153,30 +201,53 @@
             </Command.Group>
           {/if}
 
-          {#each modelsByProvider as group (group.provider)}
-            <Command.Group heading={group.provider}>
-              {#each group.items as item (item.id)}
+          {#if scenarioMode}
+            <Command.Group heading="Scenarios">
+              {#each scenarios as item (item.id)}
                 <Command.Item
-                  value={`${item.name} ${item.id} ${item.provider}`}
-                  keywords={[item.provider, item.id]}
-                  onSelect={() => selectModel(item.id)}
+                  value={`${item.name} ${item.id} ${item.description ?? ''}`}
+                  keywords={[item.id, item.description ?? '']}
+                  onSelect={() => selectScenario(item.id)}
                 >
-                  <span class="truncate">{item.name}</span>
+                  <span class="min-w-0">
+                    <span class="block truncate">{item.name}</span>
+                    {#if item.description}
+                      <span class="block truncate text-xs text-muted-foreground"
+                        >{item.description}</span
+                      >
+                    {/if}
+                  </span>
                 </Command.Item>
               {/each}
             </Command.Group>
-          {/each}
+          {:else}
+            {#each modelsByProvider as group (group.provider)}
+              <Command.Group heading={group.provider}>
+                {#each group.items as item (item.id)}
+                  <Command.Item
+                    value={`${item.name} ${item.id} ${item.provider}`}
+                    keywords={[item.provider, item.id]}
+                    onSelect={() => selectModel(item.id)}
+                  >
+                    <span class="truncate">{item.name}</span>
+                  </Command.Item>
+                {/each}
+              </Command.Group>
+            {/each}
+          {/if}
         {/if}
       </Command.List>
-      <div class="-mx-1 border-t px-1.5 pt-1.5 pb-1">
-        <Command.Item
-          value="connect provider api key"
-          onSelect={connectProvider}
-        >
-          <PlugIcon class="text-muted-foreground" />
-          <span class="truncate">Connect provider</span>
-        </Command.Item>
-      </div>
+      {#if !scenarioMode}
+        <div class="-mx-1 border-t px-1.5 pt-1.5 pb-1">
+          <Command.Item
+            value="connect provider api key"
+            onSelect={connectProvider}
+          >
+            <PlugIcon class="text-muted-foreground" />
+            <span class="truncate">Connect provider</span>
+          </Command.Item>
+        </div>
+      {/if}
     </Command.Root>
   </Popover.Content>
 </Popover.Root>

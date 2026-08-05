@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "bun --bun vitest run",
     "db:reset": "bun --env-file=../../.env run scripts/reset-dev-db.ts",
-    "dev": "bun --env-file=../../.env --watch run src/main.ts",
+    "dev": "bun --env-file=../../.env --watch run src/dev-main.ts",
+    "start:dev": "bun --env-file=../../.env run src/dev-main.ts",
     "start": "bun --env-file=../../.env run src/main.ts"
   },
   "dependencies": {

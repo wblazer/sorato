@@ -213,4 +213,86 @@ describe('database migrations', () => {
 
     return test
   })
+
+  it.effect('upgrades databases with the earlier migration 7 schema', () => {
+    const path = join(tmpdir(), `sorato-migration-${crypto.randomUUID()}.db`)
+    const test = Effect.gen(function* () {
+      const sql = yield* SqlClient
+      yield* runMigrations({ toMigrationInclusive: 8 })
+      const now = new Date().toISOString()
+
+      yield* sql`
+        INSERT INTO projects (
+          id, name, path, created_at, updated_at, last_opened_at
+        ) VALUES ('project', 'Project', '/project', 0, 0, 0)
+      `
+      yield* sql`
+        INSERT INTO sessions (id, project_id, title, created_at, updated_at)
+        VALUES ('session', 'project', NULL, ${now}, ${now})
+      `
+
+      yield* sql`
+        INSERT INTO durable_sync_events (
+          event_type, session_id, run_id, payload, created_at
+        ) VALUES (
+          'node_batch_committed',
+          'session',
+          'run',
+          ${JSON.stringify({
+            _tag: 'NodeBatchCommitted',
+            nodes: [{ run: { providerId: 'openai', modelId: 'model' } }],
+          })},
+          0
+        )
+      `
+
+      yield* runMigrations()
+
+      yield* sql`
+        INSERT INTO runs (
+          id, session_id, base_node_id, kind,
+          provider_id, model_id, billing_mode,
+          status, created_at
+        ) VALUES (
+          'run', 'session', NULL, 'agent',
+          'scenario', 'streaming-markdown', 'unbilled',
+          'running', ${now}
+        )
+      `
+
+      const durableEvents = yield* sql<{ readonly count: number }>`
+        SELECT count(*) AS count FROM durable_sync_events
+      `
+      const runs = yield* sql<{
+        readonly provider_id: string
+        readonly model_id: string
+        readonly billing_mode: string
+      }>`
+        SELECT provider_id, model_id, billing_mode FROM runs WHERE id = 'run'
+      `
+      const deleteTriggers = yield* sql<{ readonly count: number }>`
+        SELECT count(*) AS count
+        FROM sqlite_master
+        WHERE type = 'trigger' AND name = 'durable_sync_events_no_delete'
+      `
+
+      expect(durableEvents).toEqual([{ count: 0 }])
+      expect(runs).toEqual([
+        {
+          provider_id: 'scenario',
+          model_id: 'streaming-markdown',
+          billing_mode: 'unbilled',
+        },
+      ])
+      expect(deleteTriggers).toEqual([{ count: 1 }])
+    }).pipe(
+      Effect.provide(SqliteClient.layer({ filename: path })),
+      Effect.provide(BunServices.layer),
+      Effect.ensuring(
+        Effect.promise(() => rm(path, { force: true })).pipe(Effect.orDie)
+      )
+    )
+
+    return test
+  })
 })

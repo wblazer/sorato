@@ -473,6 +473,19 @@ function createSessionStore() {
     sessionStatuses = next
   }
 
+  function clear() {
+    sessions = []
+    loading = false
+    error = null
+    stoppingRuns = new Set()
+    queuedMessages = new Map()
+    pendingRunStarts = new Map()
+    sessionStatuses = new Map()
+    activeRuns = new Map()
+    latestRunStart = null
+    runStartSequence = 0
+  }
+
   return {
     get sessions() {
       return sessions
@@ -515,6 +528,7 @@ function createSessionStore() {
     compactRange,
     stopAgent,
     fetchSessions,
+    clear,
   }
 }
 

@@ -22,9 +22,11 @@ const node = (status: 'running' | 'completed'): MessageNode => ({
     status,
     kind: 'agent',
     systemPromptId: null,
-    providerId: 'provider',
-    modelId: 'model',
-    billingMode: 'api-key',
+    attribution: {
+      providerId: 'provider',
+      modelId: 'model',
+      billingMode: 'api-key',
+    },
     usage: {
       inputTokens: null,
       outputTokens: null,

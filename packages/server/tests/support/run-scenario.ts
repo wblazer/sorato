@@ -8,7 +8,11 @@ import type { ServerEvent, StopResponse, StorageUnavailable } from '@sorato/api'
 import { makeSqlitePersistenceLive } from '../../src/db/sqlite.ts'
 import { AllToolsLayer } from '../../src/agent-config.ts'
 import { EventBus } from '../../src/event-bus.ts'
-import { ModelLayerResolver } from '../../src/model-catalog.ts'
+import {
+  LanguageModelResolver,
+  ModelCatalog,
+  ModelCatalogLive,
+} from '../../src/model-catalog.ts'
 import { ProjectStorage, type Project } from '../../src/project/project.ts'
 import { ProviderAuthStore } from '../../src/provider-auth.ts'
 import { runAgent } from '../../src/run-agent.ts'
@@ -128,7 +132,8 @@ export interface RunScenarioApi {
 type RunScenarioServices =
   | EventBus
   | EventRecorder
-  | ModelLayerResolver
+  | LanguageModelResolver
+  | ModelCatalog
   | ProjectStorage
   | ProviderAuthStore
   | RuntimeConfigService
@@ -204,6 +209,7 @@ const requestFor = (options: StartRunOptions, runId: string): RunRequest => ({
   runId,
   inputs: [{ text: options.input, attachments: [] }],
   model: TEST_MODEL,
+  modelKind: 'model',
   modelOptions: { thinkingLevel: 'off' },
   baseNodeId: options.baseNodeId ?? null,
   afterRunId: options.afterRunId ?? null,
@@ -216,6 +222,7 @@ const queueStartArgs = (options: StartRunOptions) =>
     options.input,
     [] as const,
     TEST_MODEL,
+    'model' as const,
     { thinkingLevel: 'off' as const },
     options.baseNodeId ?? null,
     options.afterRunId ?? null,
@@ -366,6 +373,7 @@ export const makeRunScenario = (options: RunScenarioOptions) => {
     testProjectLayer,
     providerAuthLayer,
     runtimeConfigLayer,
+    ModelCatalogLive,
     recordedEventBusLayer,
     mockSandboxLayer({ files: options.files }),
     AllToolsLayer,

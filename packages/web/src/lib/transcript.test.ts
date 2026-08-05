@@ -24,9 +24,11 @@ const node = (
     status: 'completed',
     kind,
     systemPromptId,
-    providerId: 'provider',
-    modelId: 'model',
-    billingMode: 'api-key',
+    attribution: {
+      providerId: 'provider',
+      modelId: 'model',
+      billingMode: 'api-key',
+    },
     usage: {
       inputTokens: null,
       outputTokens: null,

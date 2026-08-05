@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Match, Option } from 'effect'
+import type { LanguageModel } from 'effect/unstable/ai'
 import {
   ModelOption,
   ModelsResponse,
@@ -17,6 +18,8 @@ import {
   ProviderAuthStore,
   providerApiKey,
 } from './provider-auth.ts'
+import type { CostInfo } from './run-cost.ts'
+import type { BillingMode } from './session/session.ts'
 
 type CatalogProvider = (typeof MODEL_PROVIDERS)[number]
 type CatalogModel = CatalogProvider['models'][number]
@@ -34,6 +37,7 @@ type Entry = {
   readonly id: string
   readonly name: string
   readonly provider: string
+  readonly kind: 'model'
   readonly releaseDate?: string
   readonly capabilities: ModelCapabilities
 }
@@ -63,6 +67,20 @@ export type ModelSelection = ModelOptions & {
   readonly id: string
   readonly sessionId?: string
   readonly onRetry?: ProviderRetryHandler | undefined
+}
+
+export type ModelPurpose = 'agent' | 'summary' | 'title'
+
+export interface ModelAttribution {
+  readonly providerId: string
+  readonly modelId: string
+  readonly billingMode: BillingMode
+  readonly cost: CostInfo | undefined
+}
+
+export interface ResolvedLanguageModel {
+  readonly layer: Layer.Layer<LanguageModel.LanguageModel>
+  readonly attribution: ModelAttribution
 }
 
 const openAiOauthModels = new Set([
@@ -138,6 +156,7 @@ const toEntry = Effect.fn('ModelCatalog.toEntry')(function* (
       id: `${provider.id}/${model.id}`,
       name: model.name,
       provider: provider.name,
+      kind: 'model' as const,
       releaseDate: model.releaseDate,
       capabilities: {
         attachment: model.capabilities.attachment,
@@ -193,6 +212,7 @@ const listModelsEffect = Effect.fn('ModelCatalog.list')(function* (
       id: item.id,
       name: item.name,
       provider: item.provider,
+      kind: item.kind,
       capabilities: item.capabilities,
     })
   )
@@ -234,28 +254,22 @@ const ensureModelEffect = Effect.fn('ModelCatalog.ensure')(function* (
   const models = yield* listModels(dir)
 
   const option = models.models.find((item) => item.id === model)
-  return yield* Match.value(
-    option !== undefined && validOptions(option, options)
-  ).pipe(
-    Match.when(true, () =>
-      Effect.logDebug('Model selection accepted', { dir, model, options })
-    ),
-    Match.orElse(() =>
-      Effect.gen(function* () {
-        yield* Effect.logWarning('Model selection rejected', {
-          dir,
-          model,
-          options,
-        })
-        return yield* new ModelUnavailable({
-          code: 'model.unavailable',
-          model,
-          message: `Model is not available for this server: ${model}`,
-          retryable: false,
-        })
-      })
-    )
-  )
+  if (option !== undefined && validOptions(option, options)) {
+    yield* Effect.logDebug('Model selection accepted', { dir, model, options })
+    return option
+  }
+
+  yield* Effect.logWarning('Model selection rejected', {
+    dir,
+    model,
+    options,
+  })
+  return yield* new ModelUnavailable({
+    code: 'model.unavailable',
+    model,
+    message: `Model is not available for this server: ${model}`,
+    retryable: false,
+  })
 })
 
 export const ensureModel = (
@@ -268,63 +282,101 @@ export const ensureModel = (
     Effect.withLogSpan('server.ensureModel')
   )
 
-const modelLayerEffect = Effect.fn('ModelCatalog.modelLayer')(function* (
-  dataDir: string,
-  selection: ModelSelection
-) {
-  const [provider, ...rest] = selection.id.split('/')
-  const model = rest.join('/')
-  const validated = Match.value(`${provider}:${Number(model.length > 0)}`).pipe(
-    Match.when('anthropic:1', () => ({
-      provider: 'anthropic' as const,
-      model,
-    })),
-    Match.when('openai:1', () => ({ provider: 'openai' as const, model })),
-    Match.orElse(() => undefined)
-  )
-  if (!validated) {
-    yield* Effect.logWarning('Model layer unavailable', { selection })
-    return
+const resolveLanguageModelEffect = Effect.fn('LanguageModelResolver.resolve')(
+  function* (
+    dataDir: string,
+    selection: ModelSelection,
+    _purpose: ModelPurpose
+  ) {
+    const [provider, ...rest] = selection.id.split('/')
+    const model = rest.join('/')
+    const validated = Match.value(
+      `${provider}:${Number(model.length > 0)}`
+    ).pipe(
+      Match.when('anthropic:1', () => ({
+        provider: 'anthropic' as const,
+        model,
+      })),
+      Match.when('openai:1', () => ({ provider: 'openai' as const, model })),
+      Match.orElse(() => undefined)
+    )
+    if (!validated) {
+      yield* Effect.logWarning('Model layer unavailable', { selection })
+      return
+    }
+    const { provider: validProvider, model: validModel } = validated
+    const adapter = PROVIDER_ADAPTERS[validProvider]
+    const authStore = yield* ProviderAuthStore
+    const auth = yield* getAuth(validProvider)
+    const billingMode: BillingMode =
+      auth?.type === 'oauth' ? 'subscription' : 'api-key'
+    const apiKey = yield* providerApiKey(
+      validProvider,
+      MODEL_PROVIDERS.find((item) => item.id === validProvider)?.env ?? []
+    )
+    yield* Effect.logDebug('Model layer resolved', {
+      provider: validProvider,
+      model: validModel,
+      authType: auth?.type,
+      hasApiKey: apiKey !== undefined,
+    })
+    const resolved = resolveModel(selection.id)
+    if (resolved === undefined) return
+
+    const result: ResolvedLanguageModel = {
+      layer: adapter.layer(
+        dataDir,
+        { ...selection, id: validModel },
+        auth,
+        apiKey,
+        authStore
+      ),
+      attribution: {
+        providerId: resolved.providerId,
+        modelId: resolved.modelId,
+        billingMode,
+        cost: resolved.model.cost,
+      },
+    }
+    return result
   }
-  const { provider: validProvider, model: validModel } = validated
-  const adapter = PROVIDER_ADAPTERS[validProvider]
-  const authStore = yield* ProviderAuthStore
-  const auth = yield* getAuth(validProvider)
-  const apiKey = yield* providerApiKey(
-    validProvider,
-    MODEL_PROVIDERS.find((item) => item.id === validProvider)?.env ?? []
-  )
-  yield* Effect.logDebug('Model layer resolved', {
-    provider: validProvider,
-    model: validModel,
-    authType: auth?.type,
-    hasApiKey: apiKey !== undefined,
-  })
-  return adapter.layer(
-    dataDir,
-    { ...selection, id: validModel },
-    auth,
-    apiKey,
-    authStore
-  )
-})
+)
 
-export const modelLayer = (dataDir: string, selection: ModelSelection) =>
-  modelLayerEffect(dataDir, selection).pipe(
+export const resolveLanguageModel = (
+  dataDir: string,
+  selection: ModelSelection,
+  purpose: ModelPurpose
+) =>
+  resolveLanguageModelEffect(dataDir, selection, purpose).pipe(
     Effect.annotateLogs({ package: 'server', subsystem: 'model-catalog' }),
-    Effect.withLogSpan('server.modelLayer')
+    Effect.withLogSpan('server.resolveLanguageModel')
   )
 
-export interface ModelLayerResolverApi {
-  readonly resolve: typeof modelLayer
+export interface ModelCatalogApi {
+  readonly list: typeof listModels
+  readonly ensure: typeof ensureModel
 }
 
-export class ModelLayerResolver extends Context.Service<
-  ModelLayerResolver,
-  ModelLayerResolverApi
->()('@sorato/server/ModelLayerResolver') {}
+export class ModelCatalog extends Context.Service<
+  ModelCatalog,
+  ModelCatalogApi
+>()('@sorato/server/ModelCatalog') {}
 
-export const ModelLayerResolverLive = Layer.succeed(
-  ModelLayerResolver,
-  ModelLayerResolver.of({ resolve: modelLayer })
+export const ModelCatalogLive = Layer.succeed(
+  ModelCatalog,
+  ModelCatalog.of({ list: listModels, ensure: ensureModel })
+)
+
+export interface LanguageModelResolverApi {
+  readonly resolve: typeof resolveLanguageModel
+}
+
+export class LanguageModelResolver extends Context.Service<
+  LanguageModelResolver,
+  LanguageModelResolverApi
+>()('@sorato/server/LanguageModelResolver') {}
+
+export const LanguageModelResolverLive = Layer.succeed(
+  LanguageModelResolver,
+  LanguageModelResolver.of({ resolve: resolveLanguageModel })
 )

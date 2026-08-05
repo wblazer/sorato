@@ -72,6 +72,8 @@ export interface AvailableModel {
   id: string
   name: string
   provider: string
+  kind: 'model' | 'scenario'
+  description?: string
   capabilities: {
     attachment: boolean
     reasoning: boolean
@@ -131,9 +133,11 @@ export interface RunSummary {
   status: 'running' | 'completed' | 'interrupted' | 'failed'
   kind: 'agent' | 'summary'
   systemPromptId: string | null
-  providerId: string
-  modelId: string
-  billingMode: 'api-key' | 'subscription'
+  attribution: {
+    providerId: string
+    modelId: string
+    billingMode: 'api-key' | 'subscription' | 'unbilled'
+  } | null
   usage: RunUsage
   createdAt: number
   completedAt: number | null
@@ -146,7 +150,7 @@ export interface ModelCall extends RunUsage {
   assistantNodeId: string
   providerId: string
   modelId: string
-  billingMode: 'api-key' | 'subscription'
+  billingMode: 'api-key' | 'subscription' | 'unbilled'
   startedAt: number | null
   finishedAt: number
 }

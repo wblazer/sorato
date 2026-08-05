@@ -22,6 +22,7 @@ const runRequest = (input: string): RunRequest => ({
   runId: `run-${input}`,
   inputs: [{ text: input, attachments: [] }],
   model: 'openai/gpt-5.5',
+  modelKind: 'model',
   modelOptions: {},
   baseNodeId: null,
   afterRunId: null,

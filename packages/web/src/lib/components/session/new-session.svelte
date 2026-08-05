@@ -47,6 +47,14 @@
     modelsStore.select(value, options)
   }
 
+  function handleScenario(value: string) {
+    modelsStore.selectScenario(value)
+  }
+
+  function handleSelectionKind(kind: 'model' | 'scenario') {
+    modelsStore.setSelectionKind(kind)
+  }
+
   const sessionOptions = $derived.by(() =>
     sessionStore.sessions
       .map((session) => {
@@ -120,7 +128,7 @@
         await runConnectionPromise(modelsStore.load(activeProjectId))
       }
 
-      const model = modelsStore.selectedModel
+      const model = modelsStore.selectedTargetId
       if (!model) return false
 
       const session = await runConnectionPromise(
@@ -138,14 +146,17 @@
           model,
           null,
           null,
-          modelsStore.selectedOptions,
+          modelsStore.selectedTargetOptions,
         ),
       )
       if (!response) return false
 
       writeComposerDraft(draftStorageKey, '')
       writeComposerDraftAttachments(draftStorageKey, [])
-      tabStore.attachSession(tabId, session)
+      tabStore.attachSession(
+        tabId,
+        sessionStore.sessions.find((item) => item.id === session.id) ?? session,
+      )
 
       writeSelectedHead(
         selectedHeadStorageKey(
@@ -246,7 +257,7 @@
           onChange={handleProject}
         />
 
-        {#if modelsStore.error}
+        {#if modelsStore.error && modelsStore.selectionKind === 'model'}
           <Item.Root variant="danger" size="sm" class="text-left">
             <Item.Media variant="icon">
               <WarningCircleIcon />
@@ -259,7 +270,7 @@
               <Button variant="outline" onclick={retryModels}>Retry</Button>
             </Item.Actions>
           </Item.Root>
-        {:else if activeProjectId && !modelsStore.loading && modelsStore.models.length === 0}
+        {:else if activeProjectId && !modelsStore.loading && modelsStore.models.length === 0 && modelsStore.selectionKind === 'model'}
           <Item.Root variant="danger" size="sm" class="text-left">
             <Item.Media variant="icon">
               <WarningCircleIcon />
@@ -281,14 +292,19 @@
     onAttach={handleAttach}
     onFileSearch={searchFiles}
     onModelChange={handleModel}
+    onScenarioChange={handleScenario}
+    onSelectionKindChange={handleSelectionKind}
     {draftStorageKey}
     {historyStorageKey}
     models={modelsStore.models}
+    scenarios={modelsStore.scenarios}
     model={modelsStore.selectedModel}
+    scenario={modelsStore.selectedScenario}
+    selectionKind={modelsStore.selectionKind}
     modelOptions={modelsStore.selectedOptions}
     modelLoading={modelsStore.loading}
     modelDisabled={sending || !activeProjectId}
-    disabled={sending || !modelsStore.selectedModel || !activeProjectId}
+    disabled={sending || !modelsStore.selectedTargetId || !activeProjectId}
     autoFocus
     focusKey={tabStore.activeTabId}
     placeholder={activeProjectId

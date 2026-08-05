@@ -19,13 +19,7 @@ import {
   Stream,
 } from 'effect'
 import type { ActiveRunSummary } from '@sorato/api'
-import {
-  AiError,
-  Chat,
-  LanguageModel,
-  Prompt,
-  type Response,
-} from 'effect/unstable/ai'
+import { AiError, Chat, Prompt, type Response } from 'effect/unstable/ai'
 import {
   CurrentFiles,
   CurrentShell,
@@ -57,7 +51,10 @@ import {
   getContentThroughEventId,
   startEventReplay,
 } from './event-replay.ts'
-import { ModelLayerResolver, resolveModel } from './model-catalog.ts'
+import {
+  LanguageModelResolver,
+  type ResolvedLanguageModel,
+} from './model-catalog.ts'
 import { dataDir } from './data-dir.ts'
 import { createPersistenceHook } from './run-persistence.ts'
 import {
@@ -68,14 +65,13 @@ import {
 } from './run-registry.ts'
 import { runLifecycleCheckpoint } from './run-lifecycle-checkpoints.ts'
 import { generateSessionTitle } from './session-title.ts'
-import { ProviderAuthStore } from './provider-auth.ts'
 import { RuntimeConfigService } from './runtime-config.ts'
+import { ProviderAuthStore } from './provider-auth.ts'
 import {
   resolveRunEnvironment,
   runEnvironmentErrorToSandboxError,
   withRunEnvironment,
 } from './run-environment.ts'
-import type { BillingMode } from './session/session.ts'
 import { toNodeBatchCommitted } from './message-node-response.ts'
 
 interface RunSandboxServices {
@@ -556,7 +552,7 @@ const compactResolvedRange = (
 const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
   sessionId: SessionId,
   request: RunRequest,
-  modelServices: Layer.Layer<LanguageModel.LanguageModel> | undefined,
+  model: ResolvedLanguageModel,
   systemPrompt: string
 ) {
   const compactRange = request.compactRange
@@ -615,12 +611,6 @@ const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
     )
   )
 
-  if (modelServices === undefined) {
-    return yield* Effect.die(
-      new Error(`Model is not supported by this server: ${request.model}`)
-    )
-  }
-
   yield* storage.recordRunSystemPrompt(request.runId, systemPrompt)
 
   const summary = yield* chat.streamText({ prompt: [] }).pipe(
@@ -644,7 +634,7 @@ const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
     ),
     Stream.map((part) => part.delta),
     Stream.mkString,
-    Effect.provide(modelServices)
+    Effect.provide(model.layer)
   )
   const contentThroughEventId = getContentThroughEventId(request.runId)
 
@@ -745,7 +735,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     const projects = yield* ProjectStorage
     const sandbox = yield* Sandbox
     const bus = yield* EventBus
-    const modelResolver = yield* ModelLayerResolver
+    const modelResolver = yield* LanguageModelResolver
     const providerAuth = yield* ProviderAuthStore
 
     const session = yield* storage.get(sessionId)
@@ -784,40 +774,34 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
       baseNodeId: request.baseNodeId ?? null,
     })
 
-    const resolvedModel = resolveModel(request.model)
-    if (!resolvedModel) {
-      return yield* Effect.die(
-        new Error(`Model is not supported by this server: ${request.model}`)
+    const resolvedModel = yield* modelResolver
+      .resolve(
+        dataDir,
+        {
+          id: request.model,
+          sessionId,
+          onRetry: (info) =>
+            Clock.currentTimeMillis.pipe(
+              Effect.flatMap((now) =>
+                bus.publish({
+                  _tag: 'RunRetrying',
+                  sessionId,
+                  runId,
+                  title: aiRunRetryingMessage(info.error),
+                  message: '',
+                  retryAt: now + Duration.toMillis(info.delay),
+                  attempt: info.attempt,
+                  maxAttempts: info.maxAttempts,
+                })
+              )
+            ),
+          ...request.modelOptions,
+        },
+        request.compactRange === undefined ? 'agent' : 'summary'
       )
-    }
-    const auth = yield* providerAuth.getAuth(resolvedModel.providerId)
-    const billingMode: BillingMode =
-      auth?.type === 'oauth' ? 'subscription' : 'api-key'
-
-    const modelServices = yield* modelResolver
-      .resolve(dataDir, {
-        id: request.model,
-        sessionId,
-        onRetry: (info) =>
-          Clock.currentTimeMillis.pipe(
-            Effect.flatMap((now) =>
-              bus.publish({
-                _tag: 'RunRetrying',
-                sessionId,
-                runId,
-                title: aiRunRetryingMessage(info.error),
-                message: '',
-                retryAt: now + Duration.toMillis(info.delay),
-                attempt: info.attempt,
-                maxAttempts: info.maxAttempts,
-              })
-            )
-          ),
-        ...request.modelOptions,
-      })
       .pipe(
-        Effect.flatMap((layer) =>
-          Effect.fromNullishOr(layer).pipe(
+        Effect.flatMap((model) =>
+          Effect.fromNullishOr(model).pipe(
             Effect.mapError(
               () =>
                 new Error(
@@ -828,12 +812,18 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
           )
         )
       )
+    yield* storage.recordRunModel({
+      id: runId,
+      providerId: resolvedModel.attribution.providerId,
+      modelId: resolvedModel.attribution.modelId,
+      billingMode: resolvedModel.attribution.billingMode,
+    })
     yield* Effect.logInfo('Agent run resolved model layer', { runId })
 
     const compacted = yield* runCompactRange(
       sessionId,
       request,
-      modelServices,
+      resolvedModel,
       summarySystemPrompt
     )
     if (compacted) {
@@ -851,7 +841,9 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
     )
     const maybeSetTitle = generateSessionTitle(
       projectPath,
-      inputTexts(request.inputs).join('\n')
+      inputTexts(request.inputs).join('\n'),
+      request.model,
+      request.modelKind
     ).pipe(
       Effect.flatMap((title) =>
         Option.match(title, {
@@ -996,10 +988,10 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                 messageCountBeforeRun,
                 appendBaseRef,
                 {
-                  providerId: resolvedModel.providerId,
-                  modelId: resolvedModel.modelId,
-                  billingMode,
-                  cost: resolvedModel.model.cost,
+                  providerId: resolvedModel.attribution.providerId,
+                  modelId: resolvedModel.attribution.modelId,
+                  billingMode: resolvedModel.attribution.billingMode,
+                  cost: resolvedModel.attribution.cost,
                 }
               )
 
@@ -1047,43 +1039,38 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
 
                     const summaryRunId = crypto.randomUUID()
                     const summaryModelId =
-                      projectConfig.roles.summary.model ?? request.model
-                    const summaryResolvedModel = resolveModel(summaryModelId)
-                    if (summaryResolvedModel === undefined) {
-                      return yield* Effect.fail(
-                        `Summary model is not supported by this server: ${summaryModelId}`
+                      request.modelKind === 'scenario'
+                        ? request.model
+                        : (projectConfig.roles.summary.model ?? request.model)
+                    const summaryModel = yield* modelResolver
+                      .resolve(
+                        dataDir,
+                        {
+                          id: summaryModelId,
+                          sessionId,
+                          thinkingLevel: 'off',
+                          onRetry: (info) =>
+                            Clock.currentTimeMillis.pipe(
+                              Effect.flatMap((now) =>
+                                bus.publish({
+                                  _tag: 'RunRetrying',
+                                  sessionId,
+                                  runId: summaryRunId,
+                                  title: aiRunRetryingMessage(info.error),
+                                  message: '',
+                                  retryAt: now + Duration.toMillis(info.delay),
+                                  attempt: info.attempt,
+                                  maxAttempts: info.maxAttempts,
+                                })
+                              )
+                            ),
+                        },
+                        'summary'
                       )
-                    }
-                    const summaryAuth = yield* providerAuth.getAuth(
-                      summaryResolvedModel.providerId
-                    )
-                    const summaryBillingMode: BillingMode =
-                      summaryAuth?.type === 'oauth' ? 'subscription' : 'api-key'
-                    const summaryModelServices = yield* modelResolver
-                      .resolve(dataDir, {
-                        id: summaryModelId,
-                        sessionId,
-                        thinkingLevel: 'off',
-                        onRetry: (info) =>
-                          Clock.currentTimeMillis.pipe(
-                            Effect.flatMap((now) =>
-                              bus.publish({
-                                _tag: 'RunRetrying',
-                                sessionId,
-                                runId: summaryRunId,
-                                title: aiRunRetryingMessage(info.error),
-                                message: '',
-                                retryAt: now + Duration.toMillis(info.delay),
-                                attempt: info.attempt,
-                                maxAttempts: info.maxAttempts,
-                              })
-                            )
-                          ),
-                      })
                       .pipe(
                         Effect.provideService(ProviderAuthStore, providerAuth),
-                        Effect.flatMap((layer) =>
-                          Effect.fromNullishOr(layer).pipe(
+                        Effect.flatMap((model) =>
+                          Effect.fromNullishOr(model).pipe(
                             Effect.mapError(
                               () =>
                                 `Summary model is not supported by this server: ${summaryModelId}`
@@ -1095,9 +1082,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                       id: summaryRunId,
                       sessionId,
                       kind: 'summary',
-                      providerId: summaryResolvedModel.providerId,
-                      modelId: summaryResolvedModel.modelId,
-                      billingMode: summaryBillingMode,
+                      attribution: summaryModel.attribution,
                       baseNodeId: baseHeadNodeId,
                     })
                     updateActiveRunParent(
@@ -1236,7 +1221,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                             ),
                             Stream.map((part) => part.delta),
                             Stream.mkString,
-                            Effect.provide(summaryModelServices)
+                            Effect.provide(summaryModel.layer)
                           )
                         const contentThroughEventId =
                           getContentThroughEventId(summaryRunId)
@@ -1316,7 +1301,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                   Layer.succeed(CurrentShell, shell),
                   Layer.succeed(CurrentFiles, files),
                   Layer.succeed(CurrentCompaction, compaction),
-                  modelServices
+                  resolvedModel.layer
                 )
               )
             }).pipe(Effect.withSpan('RunAgent.runHarnessWithCompaction'))

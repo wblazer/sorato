@@ -24,9 +24,7 @@ export const toMessageNodeResponse = (node: MessageNode) =>
             status: node.run.status,
             kind: node.run.kind,
             systemPromptId: node.run.systemPromptId,
-            providerId: node.run.providerId,
-            modelId: node.run.modelId,
-            billingMode: node.run.billingMode,
+            attribution: node.run.attribution,
             usage: RunUsageResponse.make({
               inputTokens: node.run.inputTokens,
               outputTokens: node.run.outputTokens,

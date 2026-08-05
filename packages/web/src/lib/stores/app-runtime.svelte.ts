@@ -10,6 +10,7 @@ import { connectionsStore, type Connection } from './connections.svelte.js'
 import { projectStore } from './projects.svelte.js'
 import { sessionStore } from './sessions.svelte.js'
 import { messagesStore } from './messages.svelte.js'
+import { modelsStore } from './models.svelte.js'
 import { sseStore } from './sse.svelte.js'
 import { serverInfoStore } from './server-info.svelte.js'
 import { tabStore } from './tabs.svelte.js'
@@ -39,7 +40,11 @@ function createAppRuntime() {
 
     activatingConnectionKey = key
     readyConnectionKey = null
+    sseStore.disconnect()
     messagesStore.clearAll()
+    modelsStore.clear()
+    projectStore.clear()
+    sessionStore.clear()
     activationMessage =
       connection.source === 'integrated' ? 'Starting local server…' : null
     activationError = null
@@ -56,7 +61,6 @@ function createAppRuntime() {
 
       activatedConnectionKey = preparedKey
       tabStore.ensureActiveConnectionTabSet()
-      sseStore.disconnect()
       sseStore.connect()
       void runConnectionPromise(serverInfoStore.refresh())
 

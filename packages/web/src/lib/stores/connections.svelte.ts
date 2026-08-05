@@ -142,8 +142,12 @@ function createConnectionsStore() {
 
     return Effect.sync(() => {
       const now = Date.now()
+      const name = connection.name
+      const source = connection.source
       const newConnection: Connection = {
-        ...connection,
+        url: connection.url,
+        ...(name === undefined ? {} : { name }),
+        ...(source === undefined ? {} : { source }),
         id: crypto.randomUUID(),
         createdAt: now,
         lastUsedAt: now,

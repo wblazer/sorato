@@ -446,7 +446,7 @@
     input: string,
     attachments: ReadonlyArray<RunAttachment>,
   ): Promise<boolean> {
-    const model = modelsStore.selectedModel
+    const model = modelsStore.selectedTargetId
     if (!model) return false
 
     const baseNodeId = selectedHead.selectedBaseNodeId
@@ -461,7 +461,7 @@
         model,
         baseNodeId,
         afterRunId,
-        modelsStore.selectedOptions,
+        modelsStore.selectedTargetOptions,
       ),
     )
     if (!response) return false
@@ -505,6 +505,14 @@
 
   function handleModel(value: string, modelOptions?: ModelOptions) {
     modelsStore.select(value, modelOptions)
+  }
+
+  function handleScenario(value: string) {
+    modelsStore.selectScenario(value)
+  }
+
+  function handleSelectionKind(kind: 'model' | 'scenario') {
+    modelsStore.setSelectionKind(kind)
   }
 
   function handleAttach() {}
@@ -568,7 +576,7 @@
       {tabId}
       {sessionId}
       {selectedHead}
-      model={modelsStore.selectedModel}
+      model={modelsStore.selectedTargetId}
     />
   {/snippet}
 
@@ -709,8 +717,13 @@
     onFileSearch={searchFiles}
     onDismissStatus={handleDismissError}
     onModelChange={handleModel}
+    onScenarioChange={handleScenario}
+    onSelectionKindChange={handleSelectionKind}
     models={modelsStore.models}
+    scenarios={modelsStore.scenarios}
     model={modelsStore.selectedModel}
+    scenario={modelsStore.selectedScenario}
+    selectionKind={modelsStore.selectionKind}
     modelOptions={modelsStore.selectedOptions}
     modelLoading={modelsStore.loading}
     isViewingActiveRun={isFollowingActiveRun}

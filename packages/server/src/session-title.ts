@@ -1,6 +1,6 @@
 import { Effect, Match, Option, Stream } from 'effect'
 import { Chat, Prompt, type Response } from 'effect/unstable/ai'
-import { listModels, modelLayer } from './model-catalog.ts'
+import { LanguageModelResolver, ModelCatalog } from './model-catalog.ts'
 import { dataDir } from './data-dir.ts'
 import { RuntimeConfigService } from './runtime-config.ts'
 
@@ -42,11 +42,21 @@ const cleanTitle = (text: string) => {
 }
 
 const selectTitleModel = Effect.fn('SessionTitle.selectModel')(function* (
-  dir: string
+  dir: string,
+  requestedModel: string,
+  modelKind: 'model' | 'scenario'
 ) {
   const runtimeConfig = yield* RuntimeConfigService
   const cfg = yield* runtimeConfig.get(dir)
-  const models = yield* listModels(dir)
+  if (modelKind === 'scenario') {
+    return Option.some({
+      model: requestedModel,
+      systemPrompt: titleSystemPrompt(cfg.roles.title.instructions),
+    })
+  }
+
+  const catalog = yield* ModelCatalog
+  const models = yield* catalog.list(dir)
   const available = new Set(models.models.map((model) => model.id))
   const selected = Option.fromNullishOr(cfg.roles.title.model).pipe(
     Option.filter((model) => available.has(model)),
@@ -75,13 +85,18 @@ const selectTitleModel = Effect.fn('SessionTitle.selectModel')(function* (
 
 const generateWithModel = Effect.fn('SessionTitle.generateWithModel')(
   function* (model: string, systemPrompt: string, input: string) {
-    const services = yield* modelLayer(dataDir, {
-      id: model,
-      thinkingLevel: 'off',
-    })
-    const serviceLayer = yield* Match.value(services).pipe(
+    const resolver = yield* LanguageModelResolver
+    const resolved = yield* resolver.resolve(
+      dataDir,
+      {
+        id: model,
+        thinkingLevel: 'off',
+      },
+      'title'
+    )
+    const serviceLayer = yield* Match.value(resolved).pipe(
       Match.when(undefined, () => Effect.succeed(Option.none())),
-      Match.orElse((layer) => Effect.succeed(Option.some(layer)))
+      Match.orElse((model) => Effect.succeed(Option.some(model.layer)))
     )
 
     const truncatedInput = Match.value(input.length > MAX_INPUT_CHARS).pipe(
@@ -120,8 +135,13 @@ const generateWithModel = Effect.fn('SessionTitle.generateWithModel')(
 )
 
 export const generateSessionTitle = Effect.fn('SessionTitle.generate')(
-  function* (dir: string, input: string) {
-    const selection = yield* selectTitleModel(dir)
+  function* (
+    dir: string,
+    input: string,
+    requestedModel: string,
+    modelKind: 'model' | 'scenario'
+  ) {
+    const selection = yield* selectTitleModel(dir, requestedModel, modelKind)
     return yield* Option.match(selection, {
       onNone: () => Effect.succeed(Option.none<string>()),
       onSome: ({ model, systemPrompt }) =>

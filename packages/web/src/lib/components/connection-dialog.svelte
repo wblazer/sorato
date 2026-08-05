@@ -102,10 +102,12 @@
   }
 
   function doSave() {
-    onSave({
-      url: url.trim(),
-      name: name.trim() || undefined,
-    })
+    const trimmedName = name.trim()
+    onSave(
+      trimmedName.length > 0
+        ? { url: url.trim(), name: trimmedName }
+        : { url: url.trim() },
+    )
     onClose()
   }
 

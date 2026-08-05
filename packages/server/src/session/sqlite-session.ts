@@ -15,6 +15,7 @@ import {
   SessionStorage,
   StorageError,
   StoredMessage,
+  type BillingMode,
   type MessageNode,
   type ModelCall,
   type NodeId,
@@ -52,7 +53,19 @@ const CreateRunRowInput = Schema.Struct({
   session_id: Schema.String,
   base_node_id: Schema.NullOr(Schema.String),
   kind: Schema.Literals(['agent', 'summary']),
+  provider_id: Schema.NullOr(Schema.String),
+  model_id: Schema.NullOr(Schema.String),
+  billing_mode: Schema.NullOr(
+    Schema.Literals(['api-key', 'subscription', 'unbilled'])
+  ),
   created_at: Schema.String,
+})
+
+const RecordRunModelInput = Schema.Struct({
+  id: Schema.String,
+  provider_id: Schema.String,
+  model_id: Schema.String,
+  billing_mode: Schema.Literals(['api-key', 'subscription', 'unbilled']),
 })
 
 const SystemPromptIdInput = Schema.Struct({ id: Schema.String })
@@ -89,7 +102,7 @@ const CreateModelCallRowInput = Schema.Struct({
   assistant_node_id: Schema.String,
   provider_id: Schema.String,
   model_id: Schema.String,
-  billing_mode: Schema.Literals(['api-key', 'subscription']),
+  billing_mode: Schema.Literals(['api-key', 'subscription', 'unbilled']),
   input_tokens: Schema.NullOr(Schema.Number),
   output_tokens: Schema.NullOr(Schema.Number),
   reasoning_tokens: Schema.NullOr(Schema.Number),
@@ -194,6 +207,15 @@ const emptyUsage = {
   listPriceMicrosUsd: null,
 } as const
 
+const runAttribution = (
+  providerId: string | null,
+  modelId: string | null,
+  billingMode: BillingMode | null
+) =>
+  providerId === null || modelId === null || billingMode === null
+    ? null
+    : { providerId, modelId, billingMode }
+
 const toSession = (row: SessionRow): Session => ({
   id: row.id,
   projectId: row.project_id,
@@ -210,9 +232,7 @@ const toRun = (row: RunTableRow): Run => ({
   status: row.status,
   kind: row.kind,
   systemPromptId: row.system_prompt_id,
-  providerId: 'unknown',
-  modelId: 'unknown',
-  billingMode: 'api-key',
+  attribution: runAttribution(row.provider_id, row.model_id, row.billing_mode),
   baseNodeId: row.base_node_id,
   ...emptyUsage,
   createdAt: Date.parse(row.created_at),
@@ -228,9 +248,11 @@ const runFromNodeRow = (row: NodeRow): Run | null =>
         status: row.run_status ?? 'completed',
         kind: row.run_kind ?? 'agent',
         systemPromptId: row.run_system_prompt_id,
-        providerId: row.model_call_provider_id ?? 'unknown',
-        modelId: row.model_call_model_id ?? 'unknown',
-        billingMode: row.model_call_billing_mode ?? 'api-key',
+        attribution: runAttribution(
+          row.run_provider_id ?? row.model_call_provider_id,
+          row.run_model_id ?? row.model_call_model_id,
+          row.run_billing_mode ?? row.model_call_billing_mode
+        ),
         baseNodeId: row.run_base_node_id,
         ...emptyUsage,
         createdAt: Date.parse(row.run_created_at),
@@ -425,6 +447,9 @@ const nodeSelection = (sql: SqlClient) => sql`
     r.base_node_id AS run_base_node_id,
     r.kind AS run_kind,
     r.system_prompt_id AS run_system_prompt_id,
+    r.provider_id AS run_provider_id,
+    r.model_id AS run_model_id,
+    r.billing_mode AS run_billing_mode,
     r.status AS run_status,
     r.completed_at AS run_completed_at,
     mc.id AS model_call_id,
@@ -471,6 +496,9 @@ const chainNodeSelection = (sql: SqlClient) => sql`
     r.base_node_id AS run_base_node_id,
     r.kind AS run_kind,
     r.system_prompt_id AS run_system_prompt_id,
+    r.provider_id AS run_provider_id,
+    r.model_id AS run_model_id,
+    r.billing_mode AS run_billing_mode,
     r.status AS run_status,
     r.completed_at AS run_completed_at,
     mc.id AS model_call_id,
@@ -531,8 +559,28 @@ export const SqliteSession = (options: { readonly path: string }) =>
       const insertRunRow = SqlSchema.void({
         Request: CreateRunRowInput,
         execute: (row) => sql`
-          INSERT INTO runs (id, session_id, base_node_id, kind, status, created_at)
-          VALUES (${row.id}, ${row.session_id}, ${row.base_node_id}, ${row.kind}, 'running', ${row.created_at})
+          INSERT INTO runs (
+            id, session_id, base_node_id, kind,
+            provider_id, model_id, billing_mode,
+            status, created_at
+          )
+          VALUES (
+            ${row.id}, ${row.session_id}, ${row.base_node_id}, ${row.kind},
+            ${row.provider_id}, ${row.model_id}, ${row.billing_mode},
+            'running', ${row.created_at}
+          )
+        `,
+      })
+
+      const recordRunModelRow = SqlSchema.void({
+        Request: RecordRunModelInput,
+        execute: (row) => sql`
+          UPDATE runs
+          SET
+            provider_id = ${row.provider_id},
+            model_id = ${row.model_id},
+            billing_mode = ${row.billing_mode}
+          WHERE id = ${row.id}
         `,
       })
 
@@ -541,7 +589,10 @@ export const SqliteSession = (options: { readonly path: string }) =>
         Result: RunTableRow,
         execute: ({ id }) =>
           sql`
-            SELECT id, session_id, base_node_id, kind, system_prompt_id, status, completed_at, created_at
+            SELECT
+              id, session_id, base_node_id, kind, system_prompt_id,
+              provider_id, model_id, billing_mode,
+              status, completed_at, created_at
             FROM runs
             WHERE id = ${id}
           `,
@@ -807,10 +858,31 @@ export const SqliteSession = (options: { readonly path: string }) =>
           session_id: input.sessionId,
           base_node_id: input.baseNodeId ?? null,
           kind: input.kind,
+          provider_id: input.attribution?.providerId ?? null,
+          model_id: input.attribution?.modelId ?? null,
+          billing_mode: input.attribution?.billingMode ?? null,
           created_at: new Date(input.createdAt ?? Date.now()).toISOString(),
         }).pipe(
           Effect.mapError(
             sqlFailure('createRun', `Failed to create run: ${input.id}`)
+          )
+        )
+      })
+
+      const recordRunModel: SessionStorageApi['recordRunModel'] = Effect.fn(
+        'SessionStorage.recordRunModel'
+      )(function* (input) {
+        yield* recordRunModelRow({
+          id: input.id,
+          provider_id: input.providerId,
+          model_id: input.modelId,
+          billing_mode: input.billingMode,
+        }).pipe(
+          Effect.mapError(
+            sqlFailure(
+              'recordRunModel',
+              `Failed to record model for run: ${input.id}`
+            )
           )
         )
       })
@@ -1529,6 +1601,7 @@ export const SqliteSession = (options: { readonly path: string }) =>
         get,
         list,
         createRun,
+        recordRunModel,
         recordRunSystemPrompt,
         findSystemPrompt,
         getRun,

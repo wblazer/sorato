@@ -65,8 +65,7 @@ export const pricedUsage = (
     cacheWriteTokens: usage.cacheWriteTokens,
     totalTokens: usage.totalTokens,
     contextWindowTokens: contextWindowTokens ?? null,
-    actualCostMicrosUsd:
-      billingMode === 'subscription' ? 0 : listPriceMicrosUsd,
+    actualCostMicrosUsd: billingMode === 'api-key' ? listPriceMicrosUsd : 0,
     listPriceMicrosUsd,
   }
 }

@@ -27,7 +27,10 @@ function createProjectStore() {
 
       yield* Effect.sync(() => {
         projects = [...result]
-        if (!selectedProjectId && projects.length > 0) {
+        if (
+          !selectedProjectId ||
+          !projects.some((project) => project.id === selectedProjectId)
+        ) {
           selectedProjectId = projects[0]?.id ?? null
         }
         if (selectedProjectId) {
@@ -100,6 +103,13 @@ function createProjectStore() {
     return projects.find((project) => project.id === id) ?? missingProject
   }
 
+  function clear() {
+    projects = []
+    selectedProjectId = null
+    loading = false
+    error = null
+  }
+
   return {
     get projects() {
       return projects
@@ -121,6 +131,7 @@ function createProjectStore() {
     archiveProject,
     selectProject,
     getProject,
+    clear,
   }
 }
 

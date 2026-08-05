@@ -12,6 +12,7 @@ function createServerInfoStore() {
   let connectionId = $state<string | null>(null)
   let version = $state<string | null>(null)
   let tools = $state<ReadonlyArray<ServerToolInfo>>([])
+  let developerMode = $state(false)
   let loading = $state(false)
   let error = $state<string | null>(null)
 
@@ -27,6 +28,7 @@ function createServerInfoStore() {
         connectionId = connection?.id ?? null
         version = null
         tools = []
+        developerMode = false
         error = null
       })
 
@@ -43,6 +45,7 @@ function createServerInfoStore() {
         if (connectionId !== connection.id) return
         version = result.version
         tools = result.tools
+        developerMode = import.meta.env.DEV && result.developerMode
       })
     }).pipe(
       Effect.catch((cause: UiApiError) =>
@@ -60,6 +63,9 @@ function createServerInfoStore() {
     },
     get tools() {
       return tools
+    },
+    get developerMode() {
+      return developerMode
     },
     get loading() {
       return loading

@@ -1,6 +1,6 @@
 import { Context, Deferred, Effect, Layer, Ref, Stream } from 'effect'
 import { AiError, LanguageModel, Prompt, Response } from 'effect/unstable/ai'
-import { ModelLayerResolver } from '../../src/model-catalog.ts'
+import { LanguageModelResolver } from '../../src/model-catalog.ts'
 
 export interface ScriptedModelCheckpointStep {
   readonly type: 'checkpoint'
@@ -202,9 +202,18 @@ export const scriptedModelLayer = (
   )
 
   const resolverLayer = Layer.effect(
-    ModelLayerResolver,
+    LanguageModelResolver,
     Effect.map(ScriptedModelEnvironment, (environment) => ({
-      resolve: () => Effect.succeed(environment.languageModelLayer),
+      resolve: (_dataDir, selection) =>
+        Effect.succeed({
+          layer: environment.languageModelLayer,
+          attribution: {
+            providerId: selection.id.split('/')[0] ?? 'test',
+            modelId: selection.id.split('/').slice(1).join('/'),
+            billingMode: 'unbilled' as const,
+            cost: undefined,
+          },
+        }),
     }))
   )
 

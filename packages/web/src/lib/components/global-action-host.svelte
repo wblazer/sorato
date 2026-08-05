@@ -12,6 +12,7 @@
   import { projectStore } from '$lib/stores/projects.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { tabStore } from '$lib/stores/tabs.svelte.js'
+  import { serverInfoStore } from '$lib/stores/server-info.svelte.js'
   import { runConnectionPromise } from '$lib/connection-runtime.js'
   import { goto } from '$app/navigation'
   import { onMount } from 'svelte'
@@ -53,7 +54,7 @@
         keywords: ['open', 'folder', 'directory', 'workspace'],
         enabled: () =>
           !!connectionsStore.activeConnection &&
-          authStore.hasAuthenticatedProvider,
+          (authStore.hasAuthenticatedProvider || serverInfoStore.developerMode),
         run: () => {
           projectPickerOpen = true
         },

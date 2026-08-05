@@ -50,7 +50,12 @@ function getServerSpawnOptions(): {
 
   return {
     command: 'bun',
-    args: ['run', '--filter', '@sorato/server', 'start'],
+    args: [
+      'run',
+      '--filter',
+      '@sorato/server',
+      process.env.VITE_DEV_SERVER_URL ? 'start:dev' : 'start',
+    ],
     cwd: getWorkspaceRoot(),
   }
 }

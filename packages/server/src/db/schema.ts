@@ -47,6 +47,7 @@ export const RunStatus = Schema.Literals([
 export type RunStatus = typeof RunStatus.Type
 export const RunKind = Schema.Literals(['agent', 'summary'])
 export type RunKind = typeof RunKind.Type
+const BillingMode = Schema.Literals(['api-key', 'subscription', 'unbilled'])
 export type ProviderAuthKind = typeof ProviderAuthKind.Type
 
 export const ProjectTableRow = Schema.Struct({
@@ -80,6 +81,9 @@ export const RunTableRow = Schema.Struct({
   base_node_id: Schema.NullOr(NodeId),
   kind: RunKind,
   system_prompt_id: Schema.NullOr(Schema.String),
+  provider_id: Schema.NullOr(Schema.String),
+  model_id: Schema.NullOr(Schema.String),
+  billing_mode: Schema.NullOr(BillingMode),
   status: RunStatus,
   completed_at: Schema.NullOr(IsoDateTime),
   created_at: IsoDateTime,
@@ -139,7 +143,7 @@ export const ModelCallTableRow = Schema.Struct({
   assistant_node_id: NodeId,
   provider_id: Schema.String,
   model_id: Schema.String,
-  billing_mode: Schema.Literals(['api-key', 'subscription']),
+  billing_mode: Schema.Literals(['api-key', 'subscription', 'unbilled']),
   input_tokens: Schema.NullOr(Schema.Number),
   output_tokens: Schema.NullOr(Schema.Number),
   reasoning_tokens: Schema.NullOr(Schema.Number),
@@ -185,13 +189,16 @@ export const MessageNodeRow = Schema.Struct({
   run_base_node_id: Schema.NullOr(NodeId),
   run_kind: Schema.NullOr(RunKind),
   run_system_prompt_id: Schema.NullOr(Schema.String),
+  run_provider_id: Schema.NullOr(Schema.String),
+  run_model_id: Schema.NullOr(Schema.String),
+  run_billing_mode: Schema.NullOr(BillingMode),
   run_status: Schema.NullOr(RunStatus),
   run_completed_at: Schema.NullOr(IsoDateTime),
   model_call_id: Schema.NullOr(Schema.String),
   model_call_provider_id: Schema.NullOr(Schema.String),
   model_call_model_id: Schema.NullOr(Schema.String),
   model_call_billing_mode: Schema.NullOr(
-    Schema.Literals(['api-key', 'subscription'])
+    Schema.Literals(['api-key', 'subscription', 'unbilled'])
   ),
   model_call_input_tokens: Schema.NullOr(Schema.Number),
   model_call_output_tokens: Schema.NullOr(Schema.Number),

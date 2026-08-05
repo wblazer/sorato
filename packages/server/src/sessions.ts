@@ -25,7 +25,7 @@ import {
   StorageUnavailable,
   SystemPromptResponse,
 } from '@sorato/api'
-import { ensureModel } from './model-catalog.ts'
+import { ModelCatalog } from './model-catalog.ts'
 import type { ModelOptions, ThinkingLevel } from './model-catalog.ts'
 import type { RunAttachment, RunRequest } from './run-registry.ts'
 import { runAgent } from './run-agent.ts'
@@ -508,16 +508,12 @@ const appendStoppedQueuedInputs = (
 
       const request = yield* resolveRunBase(storage, sessionId, queuedRequest)
       const runId = request.runId
-      const [providerId = 'unknown', ...rest] = request.model.split('/')
       const headNodeId = yield* Effect.uninterruptible(
         Effect.gen(function* () {
           yield* storage.createRun({
             id: runId,
             sessionId,
             kind: 'agent',
-            providerId,
-            modelId: rest.join('/') || request.model,
-            billingMode: 'api-key',
             baseNodeId: request.baseNodeId,
           })
           const batch = yield* storage.commitNodeBatch({
@@ -738,6 +734,7 @@ export const enqueueRunRequest = Effect.fn('Sessions.enqueueRunRequest')((
   input: string,
   attachments: ReadonlyArray<RunAttachment>,
   model: string,
+  modelKind: RunRequest['modelKind'],
   options: ModelOptions,
   baseNodeId: string | null,
   afterRunId: string | null,
@@ -748,6 +745,7 @@ export const enqueueRunRequest = Effect.fn('Sessions.enqueueRunRequest')((
     runId,
     inputs: compactRange === undefined ? [{ text: input, attachments }] : [],
     model,
+    modelKind,
     modelOptions: options,
     baseNodeId,
     afterRunId,
@@ -788,6 +786,7 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
     const storage = yield* SessionStorage
     const projects = yield* ProjectStorage
     const runtimeConfig = yield* RuntimeConfigService
+    const modelCatalog = yield* ModelCatalog
 
     return handlers
       .handle('list', () =>
@@ -868,7 +867,7 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
                   .pipe(Effect.mapError(mapProjectError))
               ),
               Effect.flatMap((projectPath) =>
-                ensureModel(
+                modelCatalog.ensure(
                   projectPath,
                   payload.model,
                   modelOptions(payload.modelOptions)
@@ -882,13 +881,14 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
               model: payload.model,
             })
           ),
-          Effect.flatMap(() =>
+          Effect.flatMap((model) =>
             enqueueRunRequest(
               storage,
               params.id,
               payload.input,
               payload.attachments ?? [],
               payload.model,
+              model.kind,
               modelOptions(payload.modelOptions),
               payload.baseNodeId,
               payload.afterRunId ?? null
@@ -908,15 +908,22 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
                   .pipe(Effect.mapError(mapProjectError))
               ),
               Effect.flatMap((projectPath) =>
-                runtimeConfig.get(projectPath).pipe(
-                  Effect.map(
-                    (config) => config.roles.summary.model ?? payload.model
-                  ),
-                  Effect.flatMap((model) =>
-                    ensureModel(projectPath, model, {
-                      thinkingLevel: 'off',
-                    }).pipe(Effect.as(model))
-                  )
+                modelCatalog.ensure(projectPath, payload.model).pipe(
+                  Effect.flatMap((requested) => {
+                    if (requested.kind === 'scenario')
+                      return Effect.succeed(requested)
+
+                    return runtimeConfig.get(projectPath).pipe(
+                      Effect.map(
+                        (config) => config.roles.summary.model ?? payload.model
+                      ),
+                      Effect.flatMap((model) =>
+                        modelCatalog.ensure(projectPath, model, {
+                          thinkingLevel: 'off',
+                        })
+                      )
+                    )
+                  })
                 )
               )
             )
@@ -927,8 +934,9 @@ export const SessionsLive = HttpApiBuilder.group(Api, 'sessions', (handlers) =>
               params.id,
               '',
               [],
-              model,
-              { thinkingLevel: 'off' },
+              model.id,
+              model.kind,
+              model.kind === 'scenario' ? {} : { thinkingLevel: 'off' },
               payload.baseHeadNodeId,
               null,
               {

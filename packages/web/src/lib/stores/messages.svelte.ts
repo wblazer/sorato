@@ -752,9 +752,7 @@ function createMessagesStore() {
         status: 'running',
         kind: 'agent',
         systemPromptId: null,
-        providerId: '',
-        modelId: '',
-        billingMode: 'api-key',
+        attribution: null,
         usage: {
           inputTokens: null,
           outputTokens: null,
