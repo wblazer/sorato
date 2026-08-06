@@ -100,9 +100,17 @@ function createTestScroller(messages: ReadonlyArray<TestMessage>) {
   const viewport = document.createElement('div')
   const content = document.createElement('div')
   const spacer = document.createElement('div')
+  const scrollbar = document.createElement('div')
+  const thumb = document.createElement('div')
   const bindings: Array<{ destroy: () => void }> = []
 
+  viewport.dataset.slot = 'scroll-area-viewport'
+  scrollbar.dataset.slot = 'scroll-area-scrollbar'
+  thumb.dataset.slot = 'scroll-area-thumb'
+  scrollbar.append(thumb)
   root.append(viewport)
+  root.append(scrollbar)
+  root.dataset.slot = 'scroll-area'
   viewport.append(content)
   document.body.append(root)
 
@@ -183,6 +191,8 @@ function createTestScroller(messages: ReadonlyArray<TestMessage>) {
       flushFrames()
     },
     spacer,
+    scrollbar,
+    thumb,
     viewport,
     destroy() {
       for (const binding of bindings.toReversed()) binding.destroy()
@@ -236,7 +246,7 @@ describe('MessageScrollerController', () => {
     ])
 
     vi.advanceTimersByTime(300)
-    rendered.viewport.dispatchEvent(new WheelEvent('wheel'))
+    rendered.viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: -100 }))
     rendered.viewport.scrollTop = 60
     rendered.viewport.dispatchEvent(new Event('scroll'))
 
@@ -251,6 +261,219 @@ describe('MessageScrollerController', () => {
     rendered.resizeContent()
 
     expect(rendered.viewport.scrollTop).toBe(220)
+    expect(rendered.controller.canScrollToEnd).toBe(false)
+    rendered.destroy()
+  })
+
+  it('does not infer follow intent when shrinking content clamps a reader to the end', () => {
+    const rendered = createTestScroller([
+      { id: 'message-1', height: 100 },
+      { id: 'message-2', height: 100 },
+      { id: 'message-3', height: 100 },
+      { id: 'message-4', height: 100 },
+      { id: 'message-5', height: 100 },
+    ])
+
+    vi.advanceTimersByTime(300)
+    rendered.viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: -100 }))
+    rendered.viewport.scrollTop = 250
+    rendered.viewport.dispatchEvent(new Event('scroll'))
+
+    rendered.message('message-4').setAttribute('data-test-height', '30')
+    rendered.message('message-5').setAttribute('data-test-height', '0')
+    rendered.viewport.scrollTop = 230
+    rendered.viewport.dispatchEvent(new Event('scroll'))
+    rendered.resizeContent()
+
+    rendered.message('message-4').setAttribute('data-test-height', '100')
+    rendered.message('message-5').setAttribute('data-test-height', '100')
+    rendered.resizeContent()
+
+    expect(rendered.viewport.scrollTop).toBe(230)
+    expect(rendered.controller.canScrollToEnd).toBe(true)
+    rendered.destroy()
+  })
+
+  it('resumes following when the reader explicitly scrolls back to the end', () => {
+    const rendered = createTestScroller([
+      { id: 'message-1', height: 100 },
+      { id: 'message-2', height: 100 },
+      { id: 'message-3', height: 100 },
+    ])
+
+    vi.advanceTimersByTime(300)
+    rendered.viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: -100 }))
+    rendered.viewport.scrollTop = 100
+    rendered.viewport.dispatchEvent(new Event('scroll'))
+
+    rendered.viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: 100 }))
+    rendered.viewport.scrollTop = 200
+    rendered.viewport.dispatchEvent(new Event('scroll'))
+
+    rendered.message('message-3').setAttribute('data-test-height', '160')
+    rendered.resizeContent()
+
+    expect(rendered.viewport.scrollTop).toBe(260)
+    expect(rendered.controller.canScrollToEnd).toBe(false)
+    rendered.destroy()
+  })
+
+  it('retains endward keyboard intent across a multi-frame scroll sequence', () => {
+    const rendered = createTestScroller([
+      { id: 'message-1', height: 100 },
+      { id: 'message-2', height: 100 },
+      { id: 'message-3', height: 100 },
+    ])
+
+    vi.advanceTimersByTime(300)
+    rendered.viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: -100 }))
+    rendered.viewport.scrollTop = 100
+    rendered.viewport.dispatchEvent(new Event('scroll'))
+    rendered.viewport.dispatchEvent(new Event('scrollend'))
+
+    rendered.viewport.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'End' })
+    )
+    rendered.viewport.scrollTop = 150
+    rendered.viewport.dispatchEvent(new Event('scroll'))
+    rendered.flushFrames()
+    rendered.viewport.scrollTop = 200
+    rendered.viewport.dispatchEvent(new Event('scroll'))
+    rendered.viewport.dispatchEvent(new Event('scrollend'))
+    rendered.message('message-3').setAttribute('data-test-height', '160')
+    rendered.resizeContent()
+
+    expect(rendered.viewport.scrollTop).toBe(260)
+    expect(rendered.controller.canScrollToEnd).toBe(false)
+    rendered.destroy()
+  })
+
+  it('does not reuse endward intent after the native scroll sequence ends', () => {
+    const rendered = createTestScroller([
+      { id: 'message-1', height: 100 },
+      { id: 'message-2', height: 100 },
+      { id: 'message-3', height: 100 },
+      { id: 'message-4', height: 100 },
+    ])
+
+    vi.advanceTimersByTime(300)
+    rendered.viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: -100 }))
+    rendered.viewport.scrollTop = 100
+    rendered.viewport.dispatchEvent(new Event('scroll'))
+    rendered.viewport.dispatchEvent(new Event('scrollend'))
+
+    rendered.viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: 100 }))
+    rendered.viewport.scrollTop = 150
+    rendered.viewport.dispatchEvent(new Event('scroll'))
+    rendered.message('message-4').setAttribute('data-test-height', '0')
+    rendered.viewport.scrollTop = 200
+    rendered.viewport.dispatchEvent(new Event('scroll'))
+    rendered.resizeContent()
+    rendered.message('message-4').setAttribute('data-test-height', '100')
+    rendered.resizeContent()
+
+    expect(rendered.viewport.scrollTop).toBe(200)
+    expect(rendered.controller.canScrollToEnd).toBe(true)
+    rendered.destroy()
+  })
+
+  it('keeps following after a no-op downward wheel gesture at the end', () => {
+    const rendered = createTestScroller([
+      { id: 'message-1', height: 100 },
+      { id: 'message-2', height: 100 },
+    ])
+
+    vi.advanceTimersByTime(300)
+    rendered.viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: 100 }))
+    rendered.flushFrames()
+    rendered.message('message-2').setAttribute('data-test-height', '160')
+    rendered.resizeContent()
+
+    expect(rendered.viewport.scrollTop).toBe(160)
+    expect(rendered.controller.canScrollToEnd).toBe(false)
+    rendered.destroy()
+  })
+
+  it('expires an upward gesture that produces no scroll', () => {
+    const rendered = createTestScroller([
+      { id: 'message-1', height: 100 },
+      { id: 'message-2', height: 100 },
+      { id: 'message-3', height: 100 },
+      { id: 'message-4', height: 100 },
+    ])
+
+    vi.advanceTimersByTime(300)
+    rendered.viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: -100 }))
+    rendered.flushFrames()
+    rendered.message('message-4').setAttribute('data-test-height', '0')
+    rendered.viewport.scrollTop = 200
+    rendered.viewport.dispatchEvent(new Event('scroll'))
+    rendered.resizeContent()
+    rendered.message('message-4').setAttribute('data-test-height', '100')
+    rendered.resizeContent()
+
+    expect(rendered.viewport.scrollTop).toBe(200)
+    expect(rendered.controller.canScrollToEnd).toBe(true)
+    rendered.destroy()
+  })
+
+  it('ignores wheel gestures owned by a nested scroll area', () => {
+    const rendered = createTestScroller([
+      { id: 'message-1', height: 100 },
+      { id: 'message-2', height: 100 },
+    ])
+    const nestedViewport = document.createElement('div')
+    nestedViewport.dataset.slot = 'scroll-area-viewport'
+    rendered.message('message-2').append(nestedViewport)
+
+    vi.advanceTimersByTime(300)
+    nestedViewport.dispatchEvent(
+      new WheelEvent('wheel', { bubbles: true, deltaY: -100 })
+    )
+    rendered.flushFrames()
+    rendered.message('message-2').setAttribute('data-test-height', '160')
+    rendered.resizeContent()
+
+    expect(rendered.viewport.scrollTop).toBe(160)
+    expect(rendered.controller.canScrollToEnd).toBe(false)
+    rendered.destroy()
+  })
+
+  it('uses owned scrollbar pointer movement as user scroll direction', () => {
+    const rendered = createTestScroller([
+      { id: 'message-1', height: 100 },
+      { id: 'message-2', height: 100 },
+      { id: 'message-3', height: 100 },
+    ])
+
+    vi.advanceTimersByTime(300)
+    rendered.thumb.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        isPrimary: true,
+        pointerId: 7,
+      })
+    )
+    rendered.viewport.scrollTop = 100
+    rendered.viewport.dispatchEvent(new Event('scroll'))
+    window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7 }))
+
+    expect(rendered.controller.canScrollToEnd).toBe(true)
+
+    rendered.thumb.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        isPrimary: true,
+        pointerId: 8,
+      })
+    )
+    rendered.viewport.scrollTop = 200
+    rendered.viewport.dispatchEvent(new Event('scroll'))
+    window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 8 }))
+    rendered.message('message-3').setAttribute('data-test-height', '160')
+    rendered.resizeContent()
+
+    expect(rendered.viewport.scrollTop).toBe(260)
     expect(rendered.controller.canScrollToEnd).toBe(false)
     rendered.destroy()
   })

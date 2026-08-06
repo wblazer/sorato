@@ -172,6 +172,19 @@
                 void goto(url)
               },
             }),
+            actionStore.register({
+              id: 'developer.scroll-stability-playground',
+              title: 'Open Scroll Stability Diagnostics',
+              category: 'Developer',
+              description:
+                'Reproduce and measure streamed response scrolling with deterministic fixtures.',
+              keywords: ['scroll', 'streaming', 'layout', 'diagnostics'],
+              run: () => {
+                const url = new URL(window.location.href)
+                url.searchParams.set('developer', 'scroll-stability')
+                void goto(url)
+              },
+            }),
           ]
         : []),
     ]

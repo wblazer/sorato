@@ -12,6 +12,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "test": "bun --bun vitest run",
+    "test:e2e": "playwright test",
     "format": "oxfmt . --write"
   },
   "dependencies": {
@@ -28,6 +29,7 @@
     "@fontsource-variable/nunito-sans": "^5.2.7",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@internationalized/date": "^3.12.2",
+    "@playwright/test": "^1.62.1",
     "@sveltejs/adapter-static": "^3.0.10",
     "@sveltejs/kit": "^2.61.1",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",

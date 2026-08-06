@@ -6,6 +6,7 @@ export type ActionId =
   | 'app.settings'
   | 'connection.add'
   | 'developer.markdown-playground'
+  | 'developer.scroll-stability-playground'
   | 'directory.open'
   | 'project.add'
   | 'project.archive'

@@ -20,20 +20,12 @@ type MessageScrollerItemOptions = {
   readonly scrollAnchor?: boolean
 }
 
+type UserScrollDirection = 'start' | 'end'
+
 const defaultScrollEdgeThreshold = 8
 const defaultScrollPreviousItemPeek = 64
 const scrollPositionEpsilon = 0.5
 const autoscrollingClearDelay = 180
-const userScrollKeys = new Set([
-  'ArrowDown',
-  'ArrowUp',
-  'End',
-  'Home',
-  'PageDown',
-  'PageUp',
-  ' ',
-])
-
 const emptyScrollable: MessageScrollerScrollable = {
   start: false,
   end: false,
@@ -52,6 +44,15 @@ class MessageScrollerController {
   private streamingTurn: HTMLElement | null = null
   private autoscrolling = false
   private autoscrollingTimeout: number | null = null
+  private pendingUserScrollDirection: UserScrollDirection | null = null
+  private activeUserScrollDirection: UserScrollDirection | null = null
+  private userScrollGeometry: {
+    readonly clientHeight: number
+    readonly scrollHeight: number
+  } | null = null
+  private userScrollIntentFrame: number | null = null
+  private pointerScrollId: number | null = null
+  private lastTouchY: number | null = null
   private defaultScrollPositionApplied = false
   private pendingScrollFrame: number | null = null
   private pendingScrollToMessage: {
@@ -60,6 +61,7 @@ class MessageScrollerController {
   } | null = null
   private stateFrame: number | null = null
   private lastScrollTop = 0
+  private scrollWriteCount = 0
   private spacerGap = 0
   private spacerHeight = 0
   private prependRestore: {
@@ -90,8 +92,40 @@ class MessageScrollerController {
     this.rootElement = node
     this.writeStateAttributes()
 
+    const endPointerScroll = (event: PointerEvent) => {
+      if (event.pointerId === this.pointerScrollId) {
+        this.pointerScrollId = null
+      }
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Element) || !event.isPrimary) return
+
+      const scrollbar = target.closest('[data-slot="scroll-area-scrollbar"]')
+      const ownedScrollArea = this.viewportElement?.closest(
+        '[data-slot="scroll-area"]'
+      )
+      if (
+        !scrollbar ||
+        scrollbar.closest('[data-slot="scroll-area"]') !== ownedScrollArea
+      )
+        return
+
+      this.pointerScrollId = event.pointerId
+    }
+
+    node.addEventListener('pointerdown', handlePointerDown)
+    node.addEventListener('lostpointercapture', endPointerScroll)
+    window.addEventListener('pointerup', endPointerScroll)
+    window.addEventListener('pointercancel', endPointerScroll)
+
     return {
       destroy: () => {
+        node.removeEventListener('pointerdown', handlePointerDown)
+        node.removeEventListener('lostpointercapture', endPointerScroll)
+        window.removeEventListener('pointerup', endPointerScroll)
+        window.removeEventListener('pointercancel', endPointerScroll)
+        this.pointerScrollId = null
         if (this.rootElement === node) this.rootElement = null
       },
     }
@@ -102,9 +136,43 @@ class MessageScrollerController {
     this.writeStateAttributes()
 
     const handleScroll = () => this.syncAfterScroll()
-    const handleIntent = () => this.userScrollIntent()
+    const handleScrollEnd = () => this.endUserScrollSequence()
+    const ownsEvent = (event: Event) => {
+      const target = event.target
+      return (
+        target === node ||
+        (target instanceof Element &&
+          target.closest('[data-slot="scroll-area-viewport"]') === node)
+      )
+    }
+    const handleWheel = (event: WheelEvent) => {
+      if (!ownsEvent(event) || event.deltaY === 0) return
+      this.userScrollIntent(event.deltaY < 0 ? 'start' : 'end')
+    }
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (userScrollKeys.has(event.key)) this.userScrollIntent()
+      if (event.defaultPrevented || event.target !== node) return
+      const direction = getKeyScrollDirection(event)
+      if (direction) this.userScrollIntent(direction)
+    }
+    const handleTouchStart = (event: TouchEvent) => {
+      if (!ownsEvent(event)) return
+      this.lastTouchY = event.touches[0]?.clientY ?? null
+    }
+    const handleTouchMove = (event: TouchEvent) => {
+      if (!ownsEvent(event)) return
+      const touchY = event.touches[0]?.clientY
+      const previousTouchY = this.lastTouchY
+      this.lastTouchY = touchY ?? null
+      if (
+        touchY === undefined ||
+        previousTouchY === null ||
+        touchY === previousTouchY
+      )
+        return
+      this.userScrollIntent(touchY > previousTouchY ? 'start' : 'end')
+    }
+    const handleTouchEnd = () => {
+      this.lastTouchY = null
     }
     let resizeFrame = 0
     const resizeObserver =
@@ -118,8 +186,12 @@ class MessageScrollerController {
           })
 
     node.addEventListener('scroll', handleScroll)
-    node.addEventListener('wheel', handleIntent)
-    node.addEventListener('touchmove', handleIntent)
+    node.addEventListener('scrollend', handleScrollEnd)
+    node.addEventListener('wheel', handleWheel)
+    node.addEventListener('touchstart', handleTouchStart)
+    node.addEventListener('touchmove', handleTouchMove)
+    node.addEventListener('touchend', handleTouchEnd)
+    node.addEventListener('touchcancel', handleTouchEnd)
     node.addEventListener('keydown', handleKeyDown)
     resizeObserver?.observe(node)
 
@@ -130,9 +202,14 @@ class MessageScrollerController {
     return {
       destroy: () => {
         node.removeEventListener('scroll', handleScroll)
-        node.removeEventListener('wheel', handleIntent)
-        node.removeEventListener('touchmove', handleIntent)
+        node.removeEventListener('scrollend', handleScrollEnd)
+        node.removeEventListener('wheel', handleWheel)
+        node.removeEventListener('touchstart', handleTouchStart)
+        node.removeEventListener('touchmove', handleTouchMove)
+        node.removeEventListener('touchend', handleTouchEnd)
+        node.removeEventListener('touchcancel', handleTouchEnd)
         node.removeEventListener('keydown', handleKeyDown)
+        this.lastTouchY = null
         window.cancelAnimationFrame(resizeFrame)
         resizeObserver?.disconnect()
         if (this.viewportElement === node) this.viewportElement = null
@@ -261,6 +338,10 @@ class MessageScrollerController {
     if (this.stateFrame !== null) {
       window.cancelAnimationFrame(this.stateFrame)
       this.stateFrame = null
+    }
+    if (this.userScrollIntentFrame !== null) {
+      window.cancelAnimationFrame(this.userScrollIntentFrame)
+      this.userScrollIntentFrame = null
     }
   }
 
@@ -410,13 +491,53 @@ class MessageScrollerController {
   }
 
   private syncAfterScroll() {
-    this.commitScrollState()
+    const viewport = this.viewportElement
+    const scrollTop = viewport?.scrollTop ?? this.lastScrollTop
+    if (
+      viewport &&
+      this.userScrollGeometry &&
+      (viewport.clientHeight !== this.userScrollGeometry.clientHeight ||
+        viewport.scrollHeight !== this.userScrollGeometry.scrollHeight)
+    ) {
+      this.endUserScrollSequence()
+    }
+    const pointerDirection =
+      this.pointerScrollId === null || scrollTop === this.lastScrollTop
+        ? null
+        : scrollTop < this.lastScrollTop
+          ? 'start'
+          : 'end'
+    const userScrollDirection =
+      this.pendingUserScrollDirection ??
+      this.activeUserScrollDirection ??
+      pointerDirection
+    if (this.pendingUserScrollDirection !== null) {
+      this.activeUserScrollDirection = this.pendingUserScrollDirection
+    }
+    this.clearPendingUserScrollIntent()
+    this.commitScrollState({ userScrollDirection })
     this.capturePrependAnchor()
   }
 
-  private userScrollIntent() {
+  private userScrollIntent(direction: UserScrollDirection) {
+    this.activeUserScrollDirection = null
+    this.pendingUserScrollDirection = direction
+    this.userScrollGeometry = this.viewportElement
+      ? {
+          clientHeight: this.viewportElement.clientHeight,
+          scrollHeight: this.viewportElement.scrollHeight,
+        }
+      : null
+    if (this.userScrollIntentFrame !== null) {
+      window.cancelAnimationFrame(this.userScrollIntentFrame)
+    }
+    this.userScrollIntentFrame = window.requestAnimationFrame(() => {
+      this.userScrollIntentFrame = null
+      this.pendingUserScrollDirection = null
+    })
+
     if (
-      this.mode === 'following-bottom' ||
+      direction === 'start' ||
       this.mode === 'anchored-to-message' ||
       this.mode === 'settling-jump'
     ) {
@@ -425,7 +546,24 @@ class MessageScrollerController {
     }
   }
 
-  private reconcileFollowMode(scrollable: MessageScrollerScrollable) {
+  private clearPendingUserScrollIntent() {
+    this.pendingUserScrollDirection = null
+    if (this.userScrollIntentFrame !== null) {
+      window.cancelAnimationFrame(this.userScrollIntentFrame)
+      this.userScrollIntentFrame = null
+    }
+  }
+
+  private endUserScrollSequence() {
+    this.activeUserScrollDirection = null
+    this.userScrollGeometry = null
+    this.clearPendingUserScrollIntent()
+  }
+
+  private reconcileFollowMode(
+    scrollable: MessageScrollerScrollable,
+    userScrollDirection: UserScrollDirection | null
+  ) {
     const scrollTop = this.viewportElement?.scrollTop ?? 0
     const scrolledUp = scrollTop < this.lastScrollTop - scrollPositionEpsilon
 
@@ -433,6 +571,8 @@ class MessageScrollerController {
 
     if (
       this.autoScroll &&
+      userScrollDirection === 'end' &&
+      !scrolledUp &&
       !scrollable.end &&
       this.mode !== 'settling-jump' &&
       this.mode !== 'anchored-to-message'
@@ -448,7 +588,11 @@ class MessageScrollerController {
     }
   }
 
-  private commitScrollState() {
+  private commitScrollState({
+    userScrollDirection = null,
+  }: {
+    readonly userScrollDirection?: UserScrollDirection | null
+  } = {}) {
     const nextState = getMessageScrollerScrollable({
       content: this.contentElement,
       scrollEdgeThreshold: this.scrollEdgeThreshold,
@@ -456,7 +600,7 @@ class MessageScrollerController {
       viewport: this.viewportElement,
     })
 
-    this.reconcileFollowMode(nextState)
+    this.reconcileFollowMode(nextState, userScrollDirection)
 
     const publishedState =
       this.mode === 'following-bottom'
@@ -491,6 +635,8 @@ class MessageScrollerController {
       if (scrollable) element.setAttribute('data-scrollable', scrollable)
       else element.removeAttribute('data-scrollable')
 
+      element.dataset.scrollMode = this.mode
+      element.dataset.scrollWriteCount = String(this.scrollWriteCount)
       element.toggleAttribute('data-autoscrolling', this.autoscrolling)
     }
   }
@@ -591,15 +737,25 @@ class MessageScrollerController {
     const nextScrollTop = Math.max(0, scrollTop)
 
     if (Math.abs(viewport.scrollTop - nextScrollTop) <= scrollPositionEpsilon) {
-      viewport.scrollTop = nextScrollTop
+      this.writeScrollTop(nextScrollTop)
       this.commitScrollState()
       return
     }
 
     if (autoscrolling) this.setAutoScrolling(true)
 
-    viewport.scrollTo({ top: nextScrollTop, behavior })
+    this.writeScrollTop(nextScrollTop, behavior)
     this.scheduleStateCommit()
+  }
+
+  private writeScrollTop(scrollTop: number, behavior: ScrollBehavior = 'auto') {
+    const viewport = this.viewportElement
+    if (!viewport) return
+
+    this.scrollWriteCount += 1
+    this.writeStateAttributes()
+    if (behavior === 'auto') viewport.scrollTop = scrollTop
+    else viewport.scrollTo({ top: scrollTop, behavior })
   }
 
   private scrollToStart({
@@ -753,7 +909,7 @@ class MessageScrollerController {
 
     if (Math.abs(delta) <= scrollPositionEpsilon) return false
 
-    viewport.scrollTop += delta
+    this.writeScrollTop(viewport.scrollTop + delta)
     anchor.viewportTop = getElementViewportTop(anchor.element, viewport)
     this.scheduleStateCommit()
 
@@ -1015,6 +1171,26 @@ function readCssPixel(value: string | undefined) {
 
   const number = Number.parseFloat(value)
   return Number.isFinite(number) ? number : 0
+}
+
+function getKeyScrollDirection(
+  event: KeyboardEvent
+): UserScrollDirection | null {
+  if (event.key === ' ' && event.shiftKey) return 'start'
+
+  switch (event.key) {
+    case 'ArrowUp':
+    case 'Home':
+    case 'PageUp':
+      return 'start'
+    case ' ':
+    case 'ArrowDown':
+    case 'End':
+    case 'PageDown':
+      return 'end'
+    default:
+      return null
+  }
 }
 
 export { MessageScrollerController }

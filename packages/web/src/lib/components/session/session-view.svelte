@@ -626,7 +626,7 @@
                     row.type === 'message' &&
                     row.block.message.encoded.role === 'user',
                 }}
-                class="min-w-0 shrink-0 [contain-intrinsic-size:auto_10rem] [content-visibility:auto]"
+                class="min-w-0 shrink-0"
               >
                 {#if row.type === 'system-prompt'}
                   <SystemTranscript

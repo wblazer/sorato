@@ -3,6 +3,7 @@
   import favicon from '$lib/assets/favicon.svg'
   import GlobalActionHost from '$lib/components/global-action-host.svelte'
   import MarkdownPlayground from '$lib/components/markdown-playground.svelte'
+  import ScrollStabilityPlayground from '$lib/components/scroll-stability-playground.svelte'
   import { Sidebar } from '$lib/components/sidebar/index.js'
   import { hotkeyStore } from '$lib/stores/hotkeys.svelte.js'
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
@@ -22,6 +23,13 @@
   function closeMarkdownPlayground() {
     const url = new URL(page.url)
     url.searchParams.delete('developer')
+    void goto(url)
+  }
+
+  function closeScrollStabilityPlayground() {
+    const url = new URL(page.url)
+    url.searchParams.delete('developer')
+    url.searchParams.delete('contain')
     void goto(url)
   }
 
@@ -56,6 +64,11 @@
 <Tooltip.Provider>
   {#if import.meta.env.DEV && page.url.searchParams.get('developer') === 'markdown'}
     <MarkdownPlayground onClose={closeMarkdownPlayground} />
+  {:else if import.meta.env.DEV && page.url.searchParams.get('developer') === 'scroll-stability'}
+    <ScrollStabilityPlayground
+      onClose={closeScrollStabilityPlayground}
+      useContainment={page.url.searchParams.has('contain')}
+    />
   {:else if !clientSettingsStore.loaded}
     <AppLoading />
   {:else if connectionsStore.hasConnections}
