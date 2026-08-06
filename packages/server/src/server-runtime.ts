@@ -56,6 +56,54 @@ const apiLive = (developerMode: boolean) =>
 
 const sessionsDbPath = join(dataDir, 'sessions.db')
 const providerAuthDbPath = join(dataDir, 'server.db')
+const databaseLockPath = join(dataDir, 'database.lock')
+
+const acquireDatabaseLock = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  yield* fs.makeDirectory(dataDir, { recursive: true })
+
+  const acquire = fs.writeFileString(databaseLockPath, `${process.pid}\n`, {
+    flag: 'wx',
+  })
+
+  yield* acquire.pipe(
+    Effect.catch((error) =>
+      error.reason._tag !== 'AlreadyExists'
+        ? Effect.fail(error)
+        : Effect.gen(function* () {
+            const owner = yield* fs.readFileString(databaseLockPath)
+            const pid = Number.parseInt(owner.trim(), 10)
+            const ownerIsRunning =
+              Number.isSafeInteger(pid) &&
+              pid > 0 &&
+              (() => {
+                try {
+                  process.kill(pid, 0)
+                  return true
+                } catch {
+                  return false
+                }
+              })()
+
+            if (ownerIsRunning) return yield* Effect.fail(error)
+
+            yield* fs.remove(databaseLockPath, { force: true })
+            return yield* acquire
+          })
+    )
+  )
+})
+
+const withDatabaseLock = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  Effect.acquireUseRelease(
+    acquireDatabaseLock,
+    () => effect,
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem
+        yield* fs.remove(databaseLockPath, { force: true })
+      }).pipe(Effect.orDie)
+  )
 
 const sqliteClientLive = (filename: string) =>
   Layer.unwrap(
@@ -118,6 +166,7 @@ export const runServer = (options: ServerRuntimeOptions) => {
         developerMode: options.developerMode,
       }).pipe(
         Effect.andThen(Layer.launch(httpLive(options))),
+        withDatabaseLock,
         Effect.provide(LoggingLive(resolvedLogLevel)),
         Effect.annotateLogs({ package: 'server', subsystem: 'startup' })
       )

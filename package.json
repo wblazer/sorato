@@ -16,7 +16,7 @@
     "reference:sync": "bun run scripts/sync-reference.ts",
     "web": "bun run --filter @sorato/web dev",
     "server": "bun run --filter @sorato/server dev",
-    "db:reset": "bun run --filter @sorato/server db:reset",
+    "db:reset": "bun run packages/cli/src/main.ts db reset",
     "desktop": "bun run --filter @sorato/desktop dev",
     "desktop:build": "bun run --filter @sorato/web build && bun run --filter @sorato/desktop build"
   },
