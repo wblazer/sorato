@@ -78,10 +78,29 @@ export { Bash, BashHandler } from './tool/bash.ts'
 export { Write, WriteHandler } from './tool/write.ts'
 
 // Tool — glob (file pattern matching)
-export { Glob, GlobHandler } from './tool/glob.ts'
+export { Glob, GlobHandler, resolveGlobPattern } from './tool/glob.ts'
 
 // Tool — grep (regex content search)
 export { Grep, GrepHandler } from './tool/grep.ts'
 
 // Tool — web fetch (web content retrieval)
 export { WebFetch, WebFetchHandler, WebFetchError } from './tool/web-fetch.ts'
+
+// Agent Skills — standardized SKILL.md discovery and progressive loading
+export {
+  CurrentSkills,
+  LoadSkill,
+  LoadSkillHandler,
+  discoverSkills,
+  formatSkillsForPrompt,
+  makeCurrentSkills,
+  mountSkillFiles,
+  parseSkill,
+} from './skill.ts'
+export type {
+  CurrentSkillsApi,
+  Skill,
+  SkillDiagnostic,
+  SkillDiscovery,
+  SkillSource,
+} from './skill.ts'

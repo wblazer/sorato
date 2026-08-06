@@ -1,4 +1,5 @@
 import { Context, Layer, Option, Schema } from 'effect'
+import { resolveGlobPattern } from './glob.ts'
 
 export const MessageIconNameSchema = Schema.Literals([
   'tool',
@@ -180,9 +181,7 @@ const globSubtitle = ({ path, pattern }: ToolCallHeaderParams) => {
   const trimmedPattern = trimToUndefined(pattern)
   if (trimmedPattern === undefined) return trimToUndefined(path)
   const trimmedPath = trimToUndefined(path)
-  return trimmedPath === undefined
-    ? preview(trimmedPattern)
-    : preview(`${trimmedPath.replace(/\/+$/, '')}/${trimmedPattern}`)
+  return preview(resolveGlobPattern(trimmedPattern, trimmedPath))
 }
 
 const grepSubtitle = ({ path, pattern, include }: ToolCallHeaderParams) => {

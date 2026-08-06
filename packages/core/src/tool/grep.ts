@@ -155,7 +155,7 @@ export const Grep = Tool.make('Grep', {
     }),
     path: Schema.optionalKey(Schema.String).annotate({
       description:
-        'Directory to search in (sandbox-relative). Defaults to the sandbox root.',
+        'Absolute or project-relative directory to search. Defaults to the project root.',
     }),
     include: Schema.optionalKey(Schema.String).annotate({
       description:

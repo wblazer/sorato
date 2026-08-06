@@ -23,11 +23,16 @@ import { AiError, Chat, Prompt, type Response } from 'effect/unstable/ai'
 import {
   CurrentFiles,
   CurrentShell,
+  CurrentSkills,
   SandboxError,
+  discoverSkills,
+  makeCurrentSkills,
+  mountSkillFiles,
   run,
   Sandbox,
   type Shell,
   type Files,
+  type SkillSource,
 } from '@sorato/core'
 import { ProjectStorage } from './project/project.ts'
 import {
@@ -43,6 +48,7 @@ import {
   type CompactConversationInput,
   CurrentCompaction,
   resolveAgentSystemPrompt,
+  skillDirectories,
 } from './agent-config.ts'
 import { createBusHook, EventBus, type EventBusApi } from './event-bus.ts'
 import {
@@ -637,7 +643,6 @@ const runCompactRange = Effect.fn('RunAgent.compactRange')(function* (
     Effect.provide(model.layer)
   )
   const contentThroughEventId = getContentThroughEventId(request.runId)
-
   yield* Effect.uninterruptible(
     Effect.gen(function* () {
       const result = yield* storage.compactRange({
@@ -893,15 +898,36 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
         )
       ),
       Effect.flatMap(({ shell, files }: RunSandboxServices) =>
-        resolveAgentSystemPrompt(files, projectConfig.instructions).pipe(
-          Effect.tap((systemPrompt) =>
-            storage.recordRunSystemPrompt(runId, systemPrompt)
+        Effect.forEach(skillDirectories(projectPath), (source) =>
+          sandbox.acquire(source.directory).pipe(
+            Effect.map(
+              (session) =>
+                ({
+                  ...source,
+                  files: session.files,
+                }) satisfies SkillSource
+            )
+          )
+        ).pipe(Effect.map((skillSources) => ({ shell, files, skillSources })))
+      ),
+      Effect.flatMap(({ shell, files, skillSources }) =>
+        discoverSkills(skillSources).pipe(
+          Effect.flatMap(({ skills }) =>
+            resolveAgentSystemPrompt(
+              files,
+              projectConfig.instructions,
+              skills
+            ).pipe(Effect.map((systemPrompt) => ({ systemPrompt, skills })))
           ),
-          Effect.map((systemPrompt) => ({
+          Effect.tap((systemPrompt) =>
+            storage.recordRunSystemPrompt(runId, systemPrompt.systemPrompt)
+          ),
+          Effect.map(({ systemPrompt, skills }) => ({
             systemPrompt,
+            skills,
             preamble: request.inputs.map(userInputMessage),
           })),
-          Effect.flatMap(({ preamble, systemPrompt }) =>
+          Effect.flatMap(({ preamble, skills, systemPrompt }) =>
             Effect.uninterruptible(
               Effect.gen(function* () {
                 const batch = yield* storage.commitNodeBatch({
@@ -927,7 +953,7 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                   baseNodeId: request.baseNodeId,
                   kind: 'agent',
                 })
-                return { preamble, batch, systemPrompt }
+                return { preamble, batch, skills, systemPrompt }
               })
             )
           ),
@@ -945,12 +971,13 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
           Effect.tap(() =>
             Effect.logInfo('Agent run published lifecycle start', { runId })
           ),
-          Effect.flatMap(({ batch, systemPrompt }) => {
+          Effect.flatMap(({ batch, skills, systemPrompt }) => {
             const appendBaseNodeId = batch?.headNodeId ?? request.baseNodeId
             return storage.conversation(sessionId, appendBaseNodeId).pipe(
               Effect.map((conversation) => ({
                 appendBaseNodeId,
                 conversation,
+                skills,
                 systemPrompt,
               }))
             )
@@ -961,8 +988,10 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
               messageCountBeforeRun: conversation.content.length,
             })
           ),
-          Effect.flatMap(({ appendBaseNodeId, conversation, systemPrompt }) =>
+          Effect.flatMap((runContext) =>
             Effect.gen(function* () {
+              const { appendBaseNodeId, conversation, skills, systemPrompt } =
+                runContext
               const providerConversation = Prompt.make([
                 { role: 'system', content: systemPrompt },
                 ...conversation.content.filter(
@@ -1299,7 +1328,11 @@ export const runAgent = (sessionId: SessionId, request: RunRequest) => {
                 }),
                 Layer.mergeAll(
                   Layer.succeed(CurrentShell, shell),
-                  Layer.succeed(CurrentFiles, files),
+                  Layer.succeed(
+                    CurrentFiles,
+                    mountSkillFiles(files, skillSources)
+                  ),
+                  Layer.succeed(CurrentSkills, makeCurrentSkills(skills)),
                   Layer.succeed(CurrentCompaction, compaction),
                   resolvedModel.layer
                 )

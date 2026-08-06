@@ -54,7 +54,7 @@ export interface ExecResult {
 export interface ExecCommand {
   /** Shell command string (passed to the sandbox's shell). */
   readonly command: string
-  /** Working directory (sandbox-relative; absolute paths are sandbox-relative). */
+  /** Working directory (absolute, or relative to the acquired root). */
   readonly cwd?: string | undefined
   /** Environment variables to inject for this command. */
   readonly env?: Readonly<Record<string, string | undefined>> | undefined
@@ -86,11 +86,11 @@ export class CurrentShell extends Context.Service<CurrentShell, Shell>()(
 
 /** Files service — read and write files in the sandbox. */
 export interface Files {
-  /** Read a file from the sandbox filesystem (path is sandbox-relative). */
+  /** Read a file by absolute path, or relative to the acquired root. */
   readonly readFile: (path: string) => Effect<string, SandboxError>
 
   /**
-   * Write a file to the sandbox filesystem (path is sandbox-relative).
+   * Write a file by absolute path, or relative to the acquired root.
    * Implementations should create parent directories automatically.
    */
   readonly writeFile: (
@@ -98,13 +98,29 @@ export interface Files {
     content: string
   ) => Effect<void, SandboxError>
 
+  /** List children of an absolute directory, or one relative to the acquired root. */
+  readonly readDirectory: (
+    path: string,
+    limit: number
+  ) => Effect<DirectoryListing, SandboxError>
+
   /**
-   * Find files matching a glob pattern (evaluated from sandbox root).
-   * Returns sandbox-relative paths, sorted alphabetically.
+   * Find files matching an absolute pattern, or one relative to the acquired root.
+   * Returns paths in the same absolute/relative form, sorted alphabetically.
    */
   readonly glob: (
     pattern: string
   ) => Effect<ReadonlyArray<string>, SandboxError>
+}
+
+export interface DirectoryEntry {
+  readonly name: string
+  readonly type: 'file' | 'directory' | 'other'
+}
+
+export interface DirectoryListing {
+  readonly entries: ReadonlyArray<DirectoryEntry>
+  readonly truncated: boolean
 }
 
 /** Per-scenario files service. Tools that access files require this in their `R`. */

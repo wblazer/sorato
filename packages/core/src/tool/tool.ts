@@ -25,10 +25,13 @@ export { Bash, BashHandler } from './bash.ts'
 export { Write, WriteHandler } from './write.ts'
 
 // Glob — file pattern matching
-export { Glob, GlobHandler } from './glob.ts'
+export { Glob, GlobHandler, resolveGlobPattern } from './glob.ts'
 
 // Grep — regex content search
 export { Grep, GrepHandler } from './grep.ts'
 
 // WebFetch — web content retrieval
 export { WebFetch, WebFetchHandler, WebFetchError } from './web-fetch.ts'
+
+// Agent Skills
+export { LoadSkill, LoadSkillHandler } from '../skill.ts'

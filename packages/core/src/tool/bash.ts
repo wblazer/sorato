@@ -99,7 +99,7 @@ export const Bash = Tool.make('Bash', {
     }),
     cwd: Schema.optionalKey(Schema.String).annotate({
       description:
-        'Working directory (sandbox-relative). Defaults to the sandbox root.',
+        'Absolute or project-relative working directory. Defaults to the project root.',
     }),
     timeout: Schema.optionalKey(Schema.Number).annotate({
       description: `Timeout in milliseconds. Defaults to ${DEFAULT_TIMEOUT_MS}ms (${DEFAULT_TIMEOUT_MS / 1000}s). Use a longer timeout for builds/tests.`,

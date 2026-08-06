@@ -2,12 +2,15 @@
  * LocalSandbox — runs in the current process, no isolation.
  *
  * Uses Effect's ChildProcess and FileSystem services for process +
- * filesystem operations. The caller provides a root directory; all paths
- * are resolved under it. The sandbox does not create or clean up
- * directories — lifecycle management is the caller's responsibility.
+ * filesystem operations. Relative paths resolve from the caller-provided root
+ * directory; absolute paths retain their filesystem meaning. The sandbox does
+ * not create or clean up directories — lifecycle management is the caller's
+ * responsibility.
  * `LocalSandboxLive` is a convenience layer with Bun services already wired in.
  */
 import { Effect, Fiber, Layer, Match, Option, Ref, Stream } from 'effect'
+import { opendir } from 'node:fs/promises'
+import { basename, parse as parsePath } from 'node:path'
 import { FileSystem, Path } from 'effect'
 import { ChildProcess, ChildProcessSpawner } from 'effect/unstable/process'
 import { BunServices } from '@effect/platform-bun'
@@ -84,38 +87,12 @@ export const LocalSandbox = Layer.effect(Sandbox)(
       const rootDir = directory
       yield* Effect.logInfo('Local sandbox acquired', { directory: rootDir })
 
-      function validateResolvedPath(
-        resolved: string,
-        target: string,
-        operation: string
-      ) {
-        const relativeToRoot = path.relative(rootDir, resolved)
-        return Match.value(
-          relativeToRoot === '' ||
-            (!relativeToRoot.startsWith(`..${path.sep}`) &&
-              relativeToRoot !== '..' &&
-              !path.isAbsolute(relativeToRoot))
-        ).pipe(
-          Match.when(true, () => Effect.succeed(resolved)),
-          Match.orElse(() =>
-            Effect.fail(
-              new SandboxError({
-                operation,
-                message: `Path escapes sandbox root: ${target}`,
-              })
-            )
-          )
+      const resolvePath = (target: string, _operation: string) =>
+        Effect.succeed(
+          path.isAbsolute(target)
+            ? path.resolve(target)
+            : path.resolve(rootDir, target)
         )
-      }
-
-      const resolvePath = (target: string, operation: string) => {
-        const relative = Match.value(path.isAbsolute(target)).pipe(
-          Match.when(true, () => target.replace(/^\/+/, '')),
-          Match.orElse(() => target)
-        )
-        const resolved = path.resolve(rootDir, relative)
-        return validateResolvedPath(resolved, target, operation)
-      }
 
       // -- Shell service --------------------------------------------------
 
@@ -361,12 +338,81 @@ export const LocalSandbox = Layer.effect(Sandbox)(
           Effect.withLogSpan('sandbox.writeFile')
         )
 
+      const doReadDirectory = Effect.fn('Files.readDirectory')(function* (
+        directory: string,
+        limit: number
+      ) {
+        const resolved = yield* resolvePath(directory, 'readDirectory')
+        return yield* Effect.tryPromise({
+          try: async () => {
+            const handle = await opendir(resolved)
+            const entries: Array<{
+              readonly name: string
+              readonly type: 'file' | 'directory' | 'other'
+            }> = []
+            let truncated = false
+            for await (const entry of handle) {
+              if (entries.length === limit) {
+                truncated = true
+                break
+              }
+              entries.push({
+                name: entry.name,
+                type: entry.isFile()
+                  ? 'file'
+                  : entry.isDirectory()
+                    ? 'directory'
+                    : 'other',
+              })
+            }
+            return {
+              entries: entries.toSorted((left, right) =>
+                left.name.localeCompare(right.name)
+              ),
+              truncated,
+            }
+          },
+          catch: (error) =>
+            new SandboxError({
+              operation: 'readDirectory',
+              message: `Failed to read directory: ${directory}`,
+              error,
+            }),
+        })
+      })
+      const readDirectory: Files['readDirectory'] = (directory, limit) =>
+        doReadDirectory(directory, limit).pipe(
+          Effect.annotateLogs({ package: 'core', subsystem: 'sandbox' }),
+          Effect.withLogSpan('sandbox.readDirectory')
+        )
+
       const doGlob = Effect.fn('Files.glob')(function* (pattern: string) {
-        const g = new Bun.Glob(pattern)
+        const absolute = path.isAbsolute(pattern)
+        const baseRoot = absolute ? parsePath(pattern).root : rootDir
+        const relativePattern = absolute
+          ? pattern.slice(baseRoot.length)
+          : pattern
+        const segments = relativePattern
+          .split('/')
+          .filter((segment) => segment !== '')
+        const firstMagic = segments.findIndex((segment) =>
+          /[*?[\]{}]/.test(segment)
+        )
+        const literalSegments =
+          firstMagic === -1
+            ? segments.slice(0, -1)
+            : segments.slice(0, firstMagic)
+        const scanRoot = path.resolve(baseRoot, ...literalSegments)
+        const scanPattern =
+          firstMagic === -1
+            ? basename(relativePattern)
+            : segments.slice(firstMagic).join('/')
+        const g = new Bun.Glob(scanPattern)
         async function collectEntries() {
           const results: string[] = []
-          for await (const file of g.scan({ cwd: rootDir, dot: false })) {
-            results.push(file)
+          for await (const file of g.scan({ cwd: scanRoot, dot: false })) {
+            const resolved = path.resolve(scanRoot, file)
+            results.push(absolute ? resolved : path.relative(rootDir, resolved))
           }
           return results.sort()
         }
@@ -391,7 +437,7 @@ export const LocalSandbox = Layer.effect(Sandbox)(
           Effect.withLogSpan('sandbox.glob')
         )
 
-      const files: Files = { readFile, writeFile, glob }
+      const files: Files = { readFile, writeFile, readDirectory, glob }
 
       return { shell, files } satisfies SandboxSession
     })

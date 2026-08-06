@@ -1,3 +1,5 @@
+import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { Context, Effect, Layer, Schema } from 'effect'
 import { FetchHttpClient } from 'effect/unstable/http'
 import { Tool } from 'effect/unstable/ai'
@@ -11,6 +13,8 @@ import {
   Grep,
   GrepHandler,
   LocalSandboxLive,
+  LoadSkill,
+  LoadSkillHandler,
   Read,
   ReadHandler,
   Toolkit,
@@ -19,7 +23,10 @@ import {
   WebFetch,
   WebFetchHandler,
   type Files,
+  type Skill,
+  formatSkillsForPrompt,
 } from '@sorato/core'
+import { configRoot } from './runtime-config.ts'
 
 export const SYSTEM_PROMPT = `You are a helpful coding agent. You have access to tools for reading, editing, writing, and searching files, as well as running shell commands. Use them as needed to help the user.
 
@@ -30,6 +37,29 @@ Guidelines:
 - Never run destructive git commands unless explicitly asked.`
 
 export const AGENTS_MD_PATH = 'AGENTS.md'
+
+export interface SkillDirectory {
+  readonly directory: string
+}
+
+/** Ordered from lowest to highest duplicate-name precedence. */
+export const skillDirectories = (
+  projectPath: string
+): ReadonlyArray<SkillDirectory> => {
+  const directories: ReadonlyArray<SkillDirectory> = [
+    { directory: join(homedir(), '.agents', 'skills') },
+    { directory: join(configRoot(), 'skills') },
+    { directory: join(projectPath, '.agents', 'skills') },
+    { directory: join(projectPath, '.sorato', 'skills') },
+  ]
+  const byRoot = new Map<string, SkillDirectory>()
+  for (const source of directories) {
+    const directory = resolve(source.directory)
+    byRoot.delete(directory)
+    byRoot.set(directory, { ...source, directory })
+  }
+  return [...byRoot.values()]
+}
 
 const CompactNodeBoundary = Schema.Struct({
   type: Schema.Literal('node'),
@@ -123,10 +153,15 @@ export const CompactConversation = Tool.make('CompactConversation', {
 })
 
 export const resolveAgentSystemPrompt = Effect.fn('resolveAgentSystemPrompt')(
-  function* (files: Files, instructions: ReadonlyArray<string>) {
+  function* (
+    files: Files,
+    instructions: ReadonlyArray<string>,
+    skills: ReadonlyArray<Skill>
+  ) {
     const agents = yield* files
       .readFile(AGENTS_MD_PATH)
       .pipe(Effect.catch(() => Effect.succeed(undefined)))
+    const skillCatalog = formatSkillsForPrompt(skills)
 
     return [
       SYSTEM_PROMPT,
@@ -140,6 +175,7 @@ export const resolveAgentSystemPrompt = Effect.fn('resolveAgentSystemPrompt')(
         : [
             `Project-specific instructions and guidelines:\n\n<project_instructions path="${AGENTS_MD_PATH}">\n${agents}\n</project_instructions>`,
           ]),
+      ...(skillCatalog === undefined ? [] : [skillCatalog]),
     ].join('\n\n')
   }
 )
@@ -152,6 +188,7 @@ export const AllToolInfos = [
   { name: 'Glob', displayName: 'Find files' },
   { name: 'Grep', displayName: 'Search files' },
   { name: 'WebFetch', displayName: 'Fetch web page' },
+  { name: 'LoadSkill', displayName: 'Load skill' },
   { name: 'CompactConversation', displayName: 'Compact conversation' },
 ] as const
 
@@ -163,6 +200,7 @@ export const AllTools = Toolkit.make(
   Glob,
   Grep,
   WebFetch,
+  LoadSkill,
   CompactConversation
 )
 
@@ -174,6 +212,7 @@ export const AllToolsLayer = AllTools.toLayer({
   ...GlobHandler,
   ...GrepHandler,
   ...WebFetchHandler,
+  ...LoadSkillHandler,
   CompactConversation: (input: CompactConversationInput) =>
     Effect.gen(function* () {
       const compaction = yield* CurrentCompaction

@@ -28,7 +28,7 @@ export const Write = Tool.make('Write', {
   parameters: Schema.Struct({
     path: Schema.String.annotate({
       description:
-        'Path to the file (relative to sandbox root). Parent directories are created if needed.',
+        'Absolute or project-relative path to the file. Parent directories are created if needed.',
     }),
     content: Schema.String.annotate({
       description: 'The full content to write to the file.',

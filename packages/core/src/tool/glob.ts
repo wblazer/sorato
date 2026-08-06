@@ -9,8 +9,17 @@
  * patterns. When truncated, the LLM gets a hint to narrow the pattern.
  */
 import { Tool } from 'effect/unstable/ai'
-import { Effect, Option, Match, Schema } from 'effect'
+import { isAbsolute, join } from 'node:path'
+import { Effect, Match, Schema } from 'effect'
 import { CurrentFiles, SandboxError } from '../sandbox/sandbox.ts'
+
+export const resolveGlobPattern = (
+  pattern: string,
+  basePath?: string | undefined
+) =>
+  isAbsolute(pattern) || basePath === undefined
+    ? pattern
+    : join(basePath, pattern)
 
 const formatMatchesOutput = (matches: ReadonlyArray<string>): string => {
   const shown = matches.slice(0, MAX_RESULTS)
@@ -44,11 +53,11 @@ export const Glob = Tool.make('Glob', {
   parameters: Schema.Struct({
     pattern: Schema.String.annotate({
       description:
-        'Glob pattern to match against. Evaluated from the sandbox root (or from `path` if provided). Examples: "**/*.ts", "src/**/*.json", "*.md".',
+        'Absolute or project-relative glob pattern to match. Examples: "**/*.ts", "src/**/*.json", "/tmp/*.md".',
     }),
     path: Schema.optionalKey(Schema.String).annotate({
       description:
-        'Optional base directory to search within (sandbox-relative). The pattern is evaluated relative to this directory. Defaults to the sandbox root.',
+        'Optional absolute or project-relative base directory. The pattern is evaluated relative to this directory. Defaults to the project root.',
     }),
   }),
   success: Schema.String,
@@ -72,13 +81,7 @@ export const GlobHandler = {
     Effect.gen(function* () {
       const files = yield* CurrentFiles
 
-      // If a base path is provided, scope the pattern under it
-      const effectivePattern = Option.fromUndefinedOr(path).pipe(
-        Option.match({
-          onNone: () => pattern,
-          onSome: (basePath) => `${basePath.replace(/\/+$/, '')}/${pattern}`,
-        })
-      )
+      const effectivePattern = resolveGlobPattern(pattern, path)
 
       const matches = yield* files.glob(effectivePattern)
       yield* Effect.logDebug('Glob tool completed search', {

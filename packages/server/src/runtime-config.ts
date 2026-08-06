@@ -54,7 +54,7 @@ export class RuntimeConfigError extends Schema.TaggedErrorClass<RuntimeConfigErr
   }
 ) {}
 
-const configRoot = () =>
+export const configRoot = () =>
   join(process.env.XDG_CONFIG_HOME ?? join(homedir(), '.config'), 'sorato')
 
 const globalConfigFiles = () => [

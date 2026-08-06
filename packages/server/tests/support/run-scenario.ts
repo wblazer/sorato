@@ -375,7 +375,10 @@ export const makeRunScenario = (options: RunScenarioOptions) => {
     runtimeConfigLayer,
     ModelCatalogLive,
     recordedEventBusLayer,
-    mockSandboxLayer({ files: options.files }),
+    mockSandboxLayer({
+      files: options.files,
+      rootDirectory: TEST_PROJECT_ID,
+    }),
     AllToolsLayer,
     scriptedModelLayer(options.model)
   )
