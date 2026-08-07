@@ -3,7 +3,7 @@ import { Prompt as PromptSchemas } from 'effect/unstable/ai'
 import {
   MessageHeaderDisplaySchema,
   ToolResultDisplaySchema,
-} from './tool/tool-output.ts'
+} from './presentation.ts'
 
 export const SystemMessageSource = Schema.Literals([
   'system-prompt',

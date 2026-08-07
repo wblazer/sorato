@@ -201,6 +201,7 @@ describe('Agent Skills', () => {
   it('lets absolute glob patterns override an optional base path', () => {
     expect(resolveGlobPattern('/tmp/*.md', '/repo')).toBe('/tmp/*.md')
     expect(resolveGlobPattern('*.md', '/repo')).toBe('/repo/*.md')
+    expect(resolveGlobPattern('../*.md', '/repo/src')).toBe('/repo/*.md')
   })
 
   it.effect(

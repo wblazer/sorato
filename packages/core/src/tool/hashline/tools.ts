@@ -14,11 +14,8 @@
 import { Tool } from 'effect/unstable/ai'
 import { Effect, Match, Option, Schema } from 'effect'
 import { CurrentFiles, SandboxError } from '../../sandbox/sandbox.ts'
-import {
-  patchFromLines,
-  ToolOutputRegistry,
-  type InlineDiffHunk,
-} from '../tool-output.ts'
+import type { InlineDiffHunk } from '../../presentation.ts'
+import { patchFromLines, ToolOutputRegistry } from '../tool-output.ts'
 import {
   encode,
   hashLine,

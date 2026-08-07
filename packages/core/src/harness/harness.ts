@@ -19,7 +19,7 @@ import type { Effect } from 'effect/Effect'
 import type {
   MessageHeaderDisplay,
   ToolResultDisplay,
-} from '../tool/tool-output.ts'
+} from '../presentation.ts'
 
 // ---------------------------------------------------------------------------
 // Hooks

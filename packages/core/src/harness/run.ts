@@ -36,14 +36,14 @@ import type {
 import type {
   MessageHeaderDisplay,
   ToolResultDisplay,
-} from '../tool/tool-output.ts'
+} from '../presentation.ts'
 
 import { Cause, Effect, Exit, Ref, Stream } from 'effect'
 import { Chat, Prompt } from 'effect/unstable/ai'
+import { stringifyToolResult } from '../presentation.ts'
 import {
   ToolOutputRegistry,
   ToolOutputRegistryLive,
-  stringifyToolResult,
   toolCallHeader,
 } from '../tool/tool-output.ts'
 
