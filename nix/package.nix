@@ -1,7 +1,9 @@
 {
   lib,
   stdenv,
+  autoPatchelfHook,
   bun,
+  bun2nix,
   electron,
   makeWrapper,
   nodejs,
@@ -13,79 +15,39 @@
     root = ../.;
     fileset = lib.fileset.unions [
       ../bun.lock
+      ../bun.nix
       ../package.json
       ../packages
       ../tsconfig.json
     ];
   };
 
-  nodeModules = stdenv.mkDerivation {
-    pname = "${pname}-node-modules";
-    inherit version src;
-
-    nativeBuildInputs = [bun];
-
-    dontConfigure = true;
-    dontBuild = true;
-
-    installPhase = ''
-      runHook preInstall
-
-      export TMPDIR=$PWD/.tmp
-      export HOME=$TMPDIR/home
-      export BUN_INSTALL=$TMPDIR/bun-install
-      export BUN_INSTALL_CACHE_DIR=$TMPDIR/bun-cache
-      export BUN_TMPDIR=$TMPDIR/bun-tmp
-      mkdir -p $HOME $BUN_INSTALL $BUN_INSTALL_CACHE_DIR $BUN_TMPDIR
-      bun install --frozen-lockfile --ignore-scripts
-      mkdir -p $out/packages
-      cp -R node_modules $out/node_modules
-      for package in packages/*; do
-        if [ -d "$package/node_modules" ]; then
-          mkdir -p "$out/$package"
-          cp -R "$package/node_modules" "$out/$package/node_modules"
-        fi
-      done
-
-      runHook postInstall
-    '';
-
-    outputHashAlgo = "sha256";
-    outputHashMode = "recursive";
-    outputHash = "sha256-SckPSDbNXUS3lf74WZSFG1zKIyht9v2bveH1zhQKAwo=";
+  bunDeps = bun2nix.fetchBunDeps {
+    bunNix = ../bun.nix;
   };
 in
   stdenv.mkDerivation {
-    inherit pname version src;
+    inherit bunDeps pname src version;
 
     nativeBuildInputs = [
       bun
+      bun2nix.hook
       makeWrapper
       nodejs
+    ] ++ lib.optionals stdenv.hostPlatform.isLinux [autoPatchelfHook];
+
+    buildInputs = lib.optionals stdenv.hostPlatform.isLinux [stdenv.cc.cc.lib];
+
+    bunInstallFlags = [
+      "--frozen-lockfile"
+      "--linker=hoisted"
+      "--backend=copyfile"
     ];
+
+    dontRunLifecycleScripts = true;
 
     ELECTRON_BINARY = "${electron}/bin/electron";
     ELECTRON_SKIP_BINARY_DOWNLOAD = "1";
-
-    configurePhase = ''
-      runHook preConfigure
-
-      export TMPDIR=$PWD/.tmp
-      export HOME=$TMPDIR/home
-      export BUN_INSTALL=$TMPDIR/bun-install
-      export BUN_TMPDIR=$TMPDIR/bun-tmp
-      mkdir -p $HOME $BUN_INSTALL $BUN_TMPDIR
-      cp -R ${nodeModules}/node_modules node_modules
-      for packageModules in ${nodeModules}/packages/*/node_modules; do
-        package="packages/$(basename "$(dirname "$packageModules")")"
-        mkdir -p "$package"
-        cp -R "$packageModules" "$package/node_modules"
-      done
-      chmod -R u+w node_modules packages/*/node_modules
-      patchShebangs node_modules packages/*/node_modules
-
-      runHook postConfigure
-    '';
 
     buildPhase = ''
       runHook preBuild
@@ -109,20 +71,37 @@ in
         $out/share/icons/hicolor/scalable/apps
 
       cp -r server-dist/. $out/share/sorato/server/
-      cp -RL packages/server/node_modules $out/share/sorato/server/node_modules
-      for dependencyModules in node_modules/.bun/@ff-labs+fff-node@*/node_modules node_modules/.bun/ffi-rs@*/node_modules; do
-        cp -RL "$dependencyModules"/. $out/share/sorato/server/node_modules/
-      done
 
       makeWrapper ${bun}/bin/bun $out/bin/sorato-server \
         --add-flags "$out/share/sorato/server/main.js"
 
       cp sorato-cli.js $out/share/sorato/cli.js
 
+      rm -rf node_modules packages/*/node_modules
+      bun install \
+        --frozen-lockfile \
+        --production \
+        --filter @sorato/server \
+        --filter @sorato/desktop \
+        --ignore-scripts \
+        --linker=hoisted \
+        --backend=copyfile \
+        --offline
+      rm -rf node_modules/@sorato
+      ${lib.optionalString stdenv.hostPlatform.isGnu ''
+        rm -rf node_modules/@ff-labs/fff-bin-linux-*-musl
+        rm -rf node_modules/@yuuang/ffi-rs-linux-*-musl
+        rm -f node_modules/@msgpackr-extract/msgpackr-extract-linux-*/*.musl.node
+      ''}
+      ${lib.optionalString stdenv.hostPlatform.isMusl ''
+        rm -rf node_modules/@ff-labs/fff-bin-linux-*-gnu
+        rm -rf node_modules/@yuuang/ffi-rs-linux-*-gnu
+        rm -f node_modules/@msgpackr-extract/msgpackr-extract-linux-*/*.glibc.node
+      ''}
+
       cp packages/desktop/package.json $out/share/sorato/packages/desktop/package.json
-      cp -r node_modules $out/share/sorato/node_modules
+      cp -R node_modules $out/share/sorato/node_modules
       cp -r packages/desktop/dist-electron $out/share/sorato/packages/desktop/dist-electron
-      cp -r packages/desktop/node_modules $out/share/sorato/packages/desktop/node_modules
       cp -r packages/web/build $out/share/sorato/packages/web/build
       cp packages/web/src/lib/assets/favicon.svg $out/share/icons/hicolor/scalable/apps/sorato.svg
 

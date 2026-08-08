@@ -1,13 +1,19 @@
 {
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
+    bun2nix = {
+      # Includes offline manifest-cache support for sandboxed installs.
+      url = "github:nix-community/bun2nix/3489482505adf9eafd4498c8e53015b5da980e13";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
+    bun2nix,
     self,
     nixpkgs,
   }: let
-    supportedSystems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
+    supportedSystems = ["x86_64-linux" "aarch64-linux" "aarch64-darwin"];
     forEachSupportedSystem = f:
       nixpkgs.lib.genAttrs supportedSystems (system:
         f {
@@ -16,7 +22,10 @@
         });
   in {
     packages = forEachSupportedSystem ({pkgs, ...}: let
-      sorato = pkgs.callPackage ./nix/package.nix {};
+      sorato = pkgs.callPackage ./nix/package.nix {
+        bun2nix = bun2nix.packages.${pkgs.stdenv.hostPlatform.system}.default;
+        electron = pkgs.electron_42;
+      };
     in {
       default = sorato;
       sorato = sorato;

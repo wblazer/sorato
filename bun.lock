@@ -50,10 +50,10 @@
       "version": "0.0.1",
       "dependencies": {
         "effect": "4.0.0-beta.99",
-        "electron": "^42.3.0",
       },
       "devDependencies": {
         "@types/node": "^25.9.1",
+        "electron": "^42.3.0",
         "tsdown": "^0.22.1",
         "typescript": "^7.0.2",
       },

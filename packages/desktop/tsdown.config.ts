@@ -5,6 +5,9 @@ const shared = {
   outDir: 'dist-electron',
   sourcemap: true,
   outExtensions: () => ({ js: '.cjs' }),
+  deps: {
+    neverBundle: ['electron'],
+  },
 }
 
 export default defineConfig([
