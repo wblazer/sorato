@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button/index.js'
-  import * as Accordion from '$lib/components/ui/accordion/index.js'
+  import Markdown from '$lib/components/markdown.svelte'
   import * as Item from '$lib/components/ui/item/index.js'
   import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import * as Tooltip from '$lib/components/ui/tooltip/index.js'
@@ -23,14 +23,17 @@
     RunAttachment,
     SessionRunStatus,
   } from '$lib/types.js'
-  import type { BackgroundSummaryRun } from '$lib/stores/messages.svelte.js'
+  import type { BackgroundChildRun } from '$lib/stores/messages.svelte.js'
+  import { streamedSummarySections } from '$lib/background-child-presentation.js'
+  import type { PlanSnapshot } from '$lib/plan-presentation.js'
+  import { planProgress } from '$lib/plan-presentation.js'
   import ArrowUpIcon from 'phosphor-svelte/lib/ArrowUpIcon'
-  import CircleNotchIcon from 'phosphor-svelte/lib/CircleNotchIcon'
   import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
   import StopIcon from 'phosphor-svelte/lib/StopIcon'
   import XIcon from 'phosphor-svelte/lib/XIcon'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
   import ModelSelector from './model-selector.svelte'
+  import PlanDock from './plan-dock.svelte'
   import SessionTokenUsage from './session-token-usage.svelte'
 
   type FileReferenceResult = {
@@ -72,7 +75,8 @@
     draftKey,
     placeholder,
     sessionStatus = null,
-    backgroundSummaries = [],
+    backgroundChildRuns = [],
+    currentPlan = null,
     tokenUsageMessages = [],
   }: {
     onSend: (
@@ -107,7 +111,8 @@
     draftKey?: string | number | null
     placeholder?: string
     sessionStatus?: SessionRunStatus | null
-    backgroundSummaries?: ReadonlyArray<BackgroundSummaryRun>
+    backgroundChildRuns?: ReadonlyArray<BackgroundChildRun>
+    currentPlan?: PlanSnapshot | null
     tokenUsageMessages?: ReadonlyArray<MessageNode>
   } = $props()
 
@@ -133,6 +138,24 @@
   let attachmentError = $state<string | null>(null)
   let previewAttachment = $state<ComposerAttachment | null>(null)
   let previewOpen = $state(false)
+  let selectedChildRunId = $state<string | null>(null)
+  let selectedChildRunSnapshot = $state<BackgroundChildRun | null>(null)
+  let childRunOpen = $state(false)
+  const selectedChildRun = $derived(
+    backgroundChildRuns.find(
+      (childRun) => childRun.runId === selectedChildRunId,
+    ) ?? selectedChildRunSnapshot,
+  )
+  const selectedSummarySections = $derived(
+    selectedChildRun?.title === 'Summarizing'
+      ? streamedSummarySections(selectedChildRun.text)
+      : [],
+  )
+  const visiblePlan = $derived.by(() => {
+    if (currentPlan === null) return null
+    const progress = planProgress(currentPlan)
+    return progress.total > 0 && !progress.complete ? currentPlan : null
+  })
 
   const selectedModel = $derived(
     models.find((item) => item.id === model) ?? null,
@@ -656,6 +679,14 @@
   })
 
   $effect(() => {
+    if (selectedChildRunId === null) return
+    const current = backgroundChildRuns.find(
+      (childRun) => childRun.runId === selectedChildRunId,
+    )
+    if (current !== undefined) selectedChildRunSnapshot = current
+  })
+
+  $effect(() => {
     const query = mentionQuery
     const open = mentionOpen
     const search = onFileSearch
@@ -696,45 +727,25 @@
 <div class="bg-background pb-5 pt-0">
   <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
     <div class="relative">
-      {#if backgroundSummaries.length > 0}
-        {#each backgroundSummaries as summary (summary.runId)}
-          <Accordion.Root
-            type="multiple"
-            class="relative z-0 -mb-2 rounded-t-lg border border-border bg-inset shadow-sm shadow-shadow/30"
-          >
-            <Accordion.Item value="content" class="bg-inset data-open:bg-inset">
-              <Accordion.Trigger
-                level={4}
-                class="flex w-full items-start gap-x-2 gap-y-1 border-0 border-b border-border bg-inset px-3 pb-4 pt-2 text-sm font-normal text-foreground no-underline hover:bg-inset-hover hover:no-underline aria-expanded:pb-2"
-              >
-                <span
-                  class="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,max-content)_minmax(0,1fr)] items-start gap-x-2 gap-y-1"
-                >
-                  <CircleNotchIcon
-                    class="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground"
-                  />
-                  <span class="whitespace-nowrap font-semibold leading-5">
-                    Generating summary
-                  </span>
-                </span>
-              </Accordion.Trigger>
-
-              <Accordion.Content>
-                <ScrollArea
-                  orientation="vertical"
-                  class="max-h-[32rem]"
-                  viewportClass="max-h-[32rem] rounded-none"
-                >
-                  <div
-                    class="whitespace-pre-wrap bg-inset px-3 py-2 font-mono text-xs leading-relaxed text-muted-foreground"
-                  >
-                    {summary.text}
-                  </div>
-                </ScrollArea>
-              </Accordion.Content>
-            </Accordion.Item>
-          </Accordion.Root>
-        {/each}
+      {#if backgroundChildRuns.length > 0}
+        <div
+          class="mb-1 flex max-w-full gap-3 overflow-x-auto px-1 text-xs text-muted-foreground"
+          aria-label="Background agents"
+        >
+          {#each backgroundChildRuns as childRun (childRun.runId)}
+            <button
+              type="button"
+              class="shrink-0 py-1 hover:text-foreground"
+              onclick={() => {
+                selectedChildRunId = childRun.runId
+                selectedChildRunSnapshot = childRun
+                childRunOpen = true
+              }}
+            >
+              {childRun.title}…
+            </button>
+          {/each}
+        </div>
       {/if}
 
       {#if status}
@@ -808,6 +819,10 @@
             <div class="px-1 pt-1 text-xs text-danger">{attachmentError}</div>
           {/if}
         </div>
+      {/if}
+
+      {#if visiblePlan}
+        <PlanDock snapshot={visiblePlan} />
       {/if}
 
       <Textarea
@@ -1062,6 +1077,39 @@
       >
         {previewAttachment.fileName}
       </Dialog.Description>
+    {/if}
+  </Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root bind:open={childRunOpen}>
+  <Dialog.Content
+    class="max-h-[min(38rem,calc(100vh-2rem))] gap-0 overflow-hidden p-0 sm:max-w-2xl"
+  >
+    <div class="border-b border-border px-5 py-3 pr-12">
+      <Dialog.Title class="text-sm font-medium">
+        {selectedChildRun?.title ?? 'Background agent'}
+      </Dialog.Title>
+    </div>
+    {#if selectedChildRun}
+      <div class="max-h-[30rem] overflow-y-auto px-5 py-5" aria-live="polite">
+        {#if selectedChildRun.title === 'Summarizing'}
+          {#if selectedSummarySections.length > 0}
+            <div class="space-y-5">
+              {#each selectedSummarySections as section}
+                <section>
+                  <Markdown text={section.text} />
+                </section>
+              {/each}
+            </div>
+          {:else}
+            <div class="text-sm text-muted-foreground">Preparing summary…</div>
+          {/if}
+        {:else if selectedChildRun.text.trim().length > 0}
+          <Markdown text={selectedChildRun.text} />
+        {:else}
+          <div class="text-sm text-muted-foreground">Working…</div>
+        {/if}
+      </div>
     {/if}
   </Dialog.Content>
 </Dialog.Root>

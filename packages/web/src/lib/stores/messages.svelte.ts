@@ -56,10 +56,11 @@ type NodeBatchCommittedEvent = Extract<
 >
 type RunEndEvent = Extract<ServerEvent, { readonly _tag: 'RunEnd' }>
 
-export interface BackgroundSummaryRun {
+export interface BackgroundChildRun {
   readonly sessionId: string
   readonly runId: string
   readonly baseNodeId: string | null
+  readonly kind: ActiveRunSummary['kind']
   readonly parentRunId: string | undefined
   readonly title: string
   readonly text: string
@@ -81,7 +82,7 @@ function createMessagesStore() {
   let tabStates = $state<Record<string, MessageTabState>>({})
 
   let streamContent = $state<StreamContentState>(emptyStreamContentState)
-  let backgroundSummaries = $state(new Map<string, BackgroundSummaryRun>())
+  let backgroundChildRuns = $state(new Map<string, BackgroundChildRun>())
   const lastCursors = new Map<string, StreamCursor>()
   const refreshOrder = new MessageRefreshOrder()
 
@@ -240,15 +241,15 @@ function createMessagesStore() {
         )
       }
       if (applied) {
-        acknowledgeBackgroundSummaryThrough(
+        acknowledgeBackgroundChildRunThrough(
           event.runId,
           event.contentThroughEventId
         )
       }
     }
 
-    if (applied && backgroundSummaries.has(event.runId)) {
-      removeBackgroundSummary(event.runId)
+    if (applied && backgroundChildRuns.has(event.runId)) {
+      removeBackgroundChildRun(event.runId)
     }
 
     if (applied) {
@@ -424,51 +425,51 @@ function createMessagesStore() {
     )
   }
 
-  function openBackgroundSummaryStream(summary: BackgroundSummaryRun) {
-    if (backgroundFibers.has(summary.runId)) return
+  function openBackgroundChildRunStream(childRun: BackgroundChildRun) {
+    if (backgroundFibers.has(childRun.runId)) return
 
-    resetCursor(summary.runId)
-    setRunCursor(summary.runId)
+    resetCursor(childRun.runId)
+    setRunCursor(childRun.runId)
 
     const fiber = runConnectionFork(
       Effect.gen(function* () {
         const events = yield* ServerEventSource
         yield* events
           .stream({
-            runId: summary.runId,
-            getSince: () => getLastCursor(summary.runId),
+            runId: childRun.runId,
+            getSince: () => getLastCursor(childRun.runId),
           })
           .pipe(
             Stream.runForEach((event) =>
               Effect.sync(() => {
                 if (
                   !('sessionId' in event) ||
-                  event.sessionId !== summary.sessionId
+                  event.sessionId !== childRun.sessionId
                 )
                   return
-                if ('runId' in event && event.runId !== summary.runId) return
+                if ('runId' in event && event.runId !== childRun.runId) return
 
                 switch (event._tag) {
                   case 'RunStart':
                     break
 
                   case 'TextDelta':
+                  case 'ReasoningDelta':
+                  case 'ToolCall':
+                  case 'ToolResult':
                     setContentCursor(event.runId, event.eventId)
-                    appendBackgroundSummaryEvent(event)
+                    appendBackgroundChildRunEvent(event)
                     break
 
                   case 'RunEnd':
-                    handleRunStreamEnd(event)
+                    removeBackgroundChildRun(event.runId)
                     break
 
                   case 'RunFailed':
                   case 'ReplayReset':
-                    removeBackgroundSummary(event.runId)
+                    removeBackgroundChildRun(event.runId)
                     break
 
-                  case 'ReasoningDelta':
-                  case 'ToolCall':
-                  case 'ToolResult':
                   case 'RunRetrying':
                   case 'ActiveRunUpserted':
                   case 'SessionTitleUpdated':
@@ -483,7 +484,7 @@ function createMessagesStore() {
           )
       })
     )
-    backgroundFibers.set(summary.runId, fiber)
+    backgroundFibers.set(childRun.runId, fiber)
   }
 
   function selectRunStream(
@@ -522,12 +523,12 @@ function createMessagesStore() {
     openRunStream(tabId, sessionId, runId)
   }
 
-  function appendBackgroundSummaryEvent(event: ContentEvent) {
-    const existing = backgroundSummaries.get(event.runId)
+  function appendBackgroundChildRunEvent(event: ContentEvent) {
+    const existing = backgroundChildRuns.get(event.runId)
     if (!existing) return
     const content = appendContentEvent(existing.content, event)
 
-    const next = new Map(backgroundSummaries)
+    const next = new Map(backgroundChildRuns)
     next.set(event.runId, {
       ...existing,
       content,
@@ -535,15 +536,18 @@ function createMessagesStore() {
         .flatMap((part) => (part.type === 'text' ? [part.text] : []))
         .join(''),
     })
-    backgroundSummaries = next
+    backgroundChildRuns = next
   }
 
-  function acknowledgeBackgroundSummaryThrough(runId: string, eventId: number) {
-    const existing = backgroundSummaries.get(runId)
+  function acknowledgeBackgroundChildRunThrough(
+    runId: string,
+    eventId: number
+  ) {
+    const existing = backgroundChildRuns.get(runId)
     if (!existing) return
     const content = acknowledgeContentThrough(existing.content, eventId)
 
-    const next = new Map(backgroundSummaries)
+    const next = new Map(backgroundChildRuns)
     next.set(runId, {
       ...existing,
       content,
@@ -551,36 +555,40 @@ function createMessagesStore() {
         .flatMap((part) => (part.type === 'text' ? [part.text] : []))
         .join(''),
     })
-    backgroundSummaries = next
+    backgroundChildRuns = next
   }
 
-  function removeBackgroundSummary(runId: string) {
+  function removeBackgroundChildRun(runId: string) {
     closeBackgroundStream(runId)
     resetCursor(runId)
-    if (!backgroundSummaries.has(runId)) return
+    if (!backgroundChildRuns.has(runId)) return
 
-    const next = new Map(backgroundSummaries)
+    const next = new Map(backgroundChildRuns)
     next.delete(runId)
-    backgroundSummaries = next
+    backgroundChildRuns = next
   }
 
-  function hydrateBackgroundSummaries(runs: ReadonlyArray<ActiveRunSummary>) {
+  function hydrateBackgroundChildRuns(runs: ReadonlyArray<ActiveRunSummary>) {
     for (const run of runs) {
-      if (run.kind !== 'summary' || run.visibility !== 'background') continue
-      const existing = backgroundSummaries.get(run.runId)
-      const summary: BackgroundSummaryRun = {
+      if (run.visibility !== 'background') continue
+      const existing = backgroundChildRuns.get(run.runId)
+      const childRun: BackgroundChildRun = {
         sessionId: run.sessionId,
         runId: run.runId,
         baseNodeId: run.baseNodeId,
+        kind: run.kind,
         parentRunId: run.parentRunId,
-        title: run.title ?? 'Generating summary',
+        title:
+          run.title ??
+          (run.kind === 'summary' ? 'Generating summary' : 'Background agent'),
         text: existing?.text ?? '',
         content: existing?.content ?? emptyStreamContentState,
       }
-      const next = new Map(backgroundSummaries)
-      next.set(run.runId, summary)
-      backgroundSummaries = next
-      if (!backgroundFibers.has(run.runId)) openBackgroundSummaryStream(summary)
+      const next = new Map(backgroundChildRuns)
+      next.set(run.runId, childRun)
+      backgroundChildRuns = next
+      if (!backgroundFibers.has(run.runId))
+        openBackgroundChildRunStream(childRun)
     }
   }
 
@@ -802,7 +810,7 @@ function createMessagesStore() {
   sseStore.onEvent((event) => {
     if (event._tag === 'ActiveRunUpserted') {
       advanceDurableSequence(event.sessionId, event.sequence, event.runId)
-      hydrateBackgroundSummaries([activeRunFromUpserted(event)])
+      hydrateBackgroundChildRuns([activeRunFromUpserted(event)])
     }
     if (event._tag === 'NodeBatchCommitted') {
       applyNodeBatch(event)
@@ -848,7 +856,7 @@ function createMessagesStore() {
     closeRunStream()
     closeBackgroundStreams()
     resetStreamContent()
-    backgroundSummaries = new Map()
+    backgroundChildRuns = new Map()
     resetCursor()
     streamedTabId = null
     streamedSessionId = null
@@ -879,13 +887,13 @@ function createMessagesStore() {
     get activeStreamTabId() {
       return streamedTabId
     },
-    backgroundSummariesForSession(sessionId: string | null) {
+    backgroundChildRunsForSession(sessionId: string | null) {
       if (sessionId === null) return []
-      return [...backgroundSummaries.values()].filter(
-        (summary) => summary.sessionId === sessionId
+      return [...backgroundChildRuns.values()].filter(
+        (childRun) => childRun.sessionId === sessionId
       )
     },
-    hydrateBackgroundSummaries,
+    hydrateBackgroundChildRuns,
     messagesForTab(tabId: string | null) {
       return stateFor(tabId).messages
     },

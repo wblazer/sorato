@@ -132,6 +132,11 @@ const partialAssistantMsg = (text: string): StoredMessageEncoded =>
     })
   )
 
+const messageTextForTest = (message: StoredMessageEncoded): string =>
+  typeof message.content === 'string'
+    ? message.content
+    : JSON.stringify(message.content)
+
 const toolCallMsg = (
   id: string,
   name: string,
@@ -896,6 +901,110 @@ describe('SessionStorage', () => {
         expect(systemNodeId).toBeTruthy()
         expect(userNodeId).toBeTruthy()
       }).pipe(Effect.provide(testLayer()))
+    )
+
+    it.effect(
+      'atomically compacts disjoint ranges while preserving interjected users and source access',
+      () =>
+        Effect.gen(function* () {
+          const storage = yield* SessionStorage
+          const session = yield* storage.create(TEST_DIR, 'multi-compact')
+          const callId = crypto.randomUUID()
+          const nodeIds = yield* append(storage, session.id, [
+            bootstrapSystemMsg('System'),
+            userMsg('Implement the feature'),
+            assistantMsg('Work before the interjection'),
+            userMsg('Preserve this clarification verbatim'),
+            assistantMsg('Work after the interjection'),
+            toolCallMsg(callId, 'update_plan', {
+              plan: [{ step: 'Next step', status: 'in_progress' }],
+            }),
+            toolResultMsg(callId, 'update_plan', 'Plan updated'),
+          ])
+          const headNodeId = expectDefined(
+            nodeIds.at(-1),
+            'expected source head'
+          )
+          const firstStartNodeId = expectDefined(
+            nodeIds[2],
+            'expected first range start'
+          )
+          const secondStartNodeId = expectDefined(
+            nodeIds[4],
+            'expected second range start'
+          )
+          const compactRunId = crypto.randomUUID()
+          yield* storage.createRun({
+            id: compactRunId,
+            sessionId: session.id,
+            kind: 'summary',
+            baseNodeId: headNodeId,
+          })
+
+          const result = yield* storage.compactRanges({
+            sessionId: session.id,
+            runId: compactRunId,
+            baseHeadNodeId: headNodeId,
+            ranges: [
+              {
+                startNodeId: firstStartNodeId,
+                endNodeId: firstStartNodeId,
+                summaryContent: 'First work summary',
+              },
+              {
+                startNodeId: secondStartNodeId,
+                endNodeId: secondStartNodeId,
+                summaryContent: 'Second work summary',
+              },
+            ],
+          })
+
+          expect(result.summaryNodeIds).toHaveLength(2)
+          const compacted = yield* storage.messages(
+            session.id,
+            result.batch.headNodeId
+          )
+          expect(
+            compacted.map((message) =>
+              message.kind === 'summary'
+                ? message.encoded.role === 'user'
+                  ? message.encoded.metadata?.summary?.content
+                  : null
+                : messageTextForTest(message.encoded)
+            )
+          ).toEqual([
+            'System',
+            'Implement the feature',
+            'First work summary',
+            'Preserve this clarification verbatim',
+            'Second work summary',
+            expect.stringContaining('update_plan'),
+            expect.stringContaining('Plan updated'),
+          ])
+
+          const firstSummary = expectDefined(
+            compacted.find(
+              (message) => message.id === result.summaryNodeIds[0]
+            ),
+            'expected first summary node'
+          )
+          const source = yield* storage.summarySource(
+            session.id,
+            expectDefined(firstSummary.summaryId, 'expected summary id')
+          )
+          expect(source.messages).toHaveLength(1)
+          expect(source.messages[0]?.encoded.content).toBe(
+            'Work before the interjection'
+          )
+
+          const providerConversation = yield* storage.conversation(
+            session.id,
+            result.batch.headNodeId
+          )
+          expect(JSON.stringify(providerConversation)).toContain(
+            `Summary reference: ${firstSummary.summaryId}`
+          )
+        }).pipe(Effect.provide(testLayer()))
     )
   })
 

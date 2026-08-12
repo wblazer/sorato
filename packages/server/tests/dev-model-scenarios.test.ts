@@ -80,6 +80,9 @@ describe('development model scenarios', () => {
       expect(result.models.map((model) => model.id)).toContain(
         'scenario/streaming-markdown'
       )
+      expect(result.models.map((model) => model.id)).toContain(
+        'scenario/plan-compaction'
+      )
     }).pipe(Effect.provide(testLayer))
   )
 
@@ -123,6 +126,30 @@ describe('development model scenarios', () => {
         billingMode: 'unbilled',
         cost: undefined,
       })
+    }).pipe(Effect.provide(testLayer))
+  )
+
+  it.effect('provides valid plan-compaction summary output', () =>
+    Effect.gen(function* () {
+      const response = yield* responseText(
+        'scenario/plan-compaction',
+        'summary'
+      ).pipe(Effect.forkChild)
+
+      yield* Effect.yieldNow
+      yield* TestClock.adjust(Duration.seconds(20))
+
+      expect(JSON.parse((yield* Fiber.join(response)).deltas.join(''))).toEqual(
+        {
+          summaries: [
+            {
+              rangeIndex: 0,
+              content:
+                'The project manifest inspection completed using the real Glob tool. The plan is ready to advance to reporting.',
+            },
+          ],
+        }
+      )
     }).pipe(Effect.provide(testLayer))
   )
 

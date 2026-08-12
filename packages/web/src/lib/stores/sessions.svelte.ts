@@ -83,7 +83,7 @@ function createSessionStore() {
     }
 
     activeRuns = next
-    messagesStore.hydrateBackgroundSummaries(
+    messagesStore.hydrateBackgroundChildRuns(
       nextSessions.flatMap((session) => session.activeRuns ?? [])
     )
   }

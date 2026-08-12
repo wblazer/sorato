@@ -39,6 +39,7 @@ export interface ScriptedModelControllerApi {
   readonly checkpoints: Effect.Effect<ReadonlyArray<ScriptedModelCheckpoint>>
   readonly calls: Effect.Effect<number>
   readonly prompts: Effect.Effect<ReadonlyArray<Prompt.Prompt>>
+  readonly toolNames: Effect.Effect<ReadonlyArray<ReadonlyArray<string>>>
 }
 
 export class ScriptedModelController extends Context.Service<
@@ -156,15 +157,21 @@ export const scriptedModelLayer = (
         ReadonlyArray<ScriptedModelCheckpoint>
       >([])
       const promptsRef = yield* Ref.make<ReadonlyArray<Prompt.Prompt>>([])
+      const toolNamesRef = yield* Ref.make<
+        ReadonlyArray<ReadonlyArray<string>>
+      >([])
 
       const languageModelLayer = Layer.effect(
         LanguageModel.LanguageModel,
         LanguageModel.make({
           generateText: () => Effect.succeed([]),
           streamText: (options) =>
-            Ref.update(promptsRef, (prompts) => [
-              ...prompts,
-              options.prompt,
+            Effect.all([
+              Ref.update(promptsRef, (prompts) => [...prompts, options.prompt]),
+              Ref.update(toolNamesRef, (calls) => [
+                ...calls,
+                options.tools.map((tool) => tool.name),
+              ]),
             ]).pipe(
               Effect.map(() =>
                 streamForCall(callsRef, scripts, gates, checkpointsRef)
@@ -187,6 +194,7 @@ export const scriptedModelLayer = (
         checkpoints: Ref.get(checkpointsRef),
         calls: Ref.get(callsRef),
         prompts: Ref.get(promptsRef),
+        toolNames: Ref.get(toolNamesRef),
       })
 
       return ScriptedModelEnvironment.of({ controller, languageModelLayer })

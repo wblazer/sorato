@@ -23,6 +23,7 @@
   import AssistantTranscript from './assistant-transcript.svelte'
   import MessagePartComponent from './message-part.svelte'
   import { roleIcons } from './message-icons.js'
+  import SummaryTranscript from './summary-transcript.svelte'
   import SystemTranscript from './system-transcript.svelte'
   import ToolCallResult from './tool-call-result.svelte'
 
@@ -53,12 +54,19 @@
 
   /** Normalize content to an array of parts for uniform rendering. */
   const parts = $derived(messageParts(message))
+  const summaryContent = $derived(
+    message.encoded.role === 'user'
+      ? message.encoded.metadata?.summary?.content
+      : undefined,
+  )
+  const prettySummaryText = $derived(
+    summaryContent ??
+      parts
+        .flatMap((part) => (part.type === 'text' ? [part.text] : []))
+        .join('\n\n'),
+  )
 
   const renderParts = $derived.by((): ReadonlyArray<TranscriptItem> => {
-    const summaryContent =
-      message.encoded.role === 'user'
-        ? message.encoded.metadata?.summary?.content
-        : undefined
     if (isPrettySummary && summaryContent !== undefined) {
       return projectTranscript(
         [
@@ -118,25 +126,14 @@
     message.encoded.role === 'assistant' &&
       message.run?.status === 'interrupted',
   )
-  const userDisplay = $derived(
-    message.encoded.role === 'user' ? message.encoded.display : undefined,
-  )
   const systemDisplay = $derived(
     message.encoded.role === 'system' ? message.encoded.display : undefined,
   )
   const systemTitle = $derived(
-    isPrettySummary
-      ? (userDisplay?.title ?? 'Summary')
-      : systemDisplay
-        ? (systemDisplay.title ?? 'System')
-        : 'System',
+    systemDisplay ? (systemDisplay.title ?? 'System') : 'System',
   )
-  const systemSubtitle = $derived(
-    isPrettySummary ? userDisplay?.subtitle : systemDisplay?.subtitle,
-  )
-  const systemIcon = $derived(
-    isPrettySummary ? roleIcons.summary : roleIcons.system,
-  )
+  const systemSubtitle = $derived(systemDisplay?.subtitle)
+  const systemIcon = $derived(roleIcons.system)
 
   const itemAccordionKey = (item: TranscriptItem, index: number): string => {
     if (item.type === 'combined-tool') return `tool:${item.call.id}`
@@ -308,7 +305,13 @@
           {/if}
         </div>
       </div>
-    {:else if isSystem || isPrettySummary}
+    {:else if isPrettySummary}
+      <SummaryTranscript
+        text={prettySummaryText}
+        {accordionState}
+        accordionKey={`${accordionKey}:summary`}
+      />
+    {:else if isSystem}
       <SystemTranscript
         items={renderParts}
         title={systemTitle}

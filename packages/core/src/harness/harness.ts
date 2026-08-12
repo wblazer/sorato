@@ -86,6 +86,11 @@ export type HarnessEvent =
       readonly result: HarnessResult
     }
   | {
+      readonly _tag: 'ConversationRebased'
+      /** Replacement history that will be sent on the next model call. */
+      readonly conversation: Prompt.Prompt
+    }
+  | {
       readonly _tag: 'RunEnd'
       readonly output: string
       readonly usage: HarnessUsage | undefined
@@ -134,6 +139,17 @@ export interface HarnessConfig<
 
   /** Lifecycle hooks. All hooks run for every event — compose freely. */
   readonly hooks?: ReadonlyArray<HarnessHook<HookE, HookR>> | undefined
+
+  /**
+   * Optionally replace provider-visible history after a completed model call.
+   * This runs after ModelCallComplete hooks so callers can first persist that
+   * call, rewrite durable history, and then return the rewritten branch.
+   */
+  readonly rebaseConversation?:
+    | ((
+        conversation: Prompt.Prompt
+      ) => Effect<Prompt.Prompt | undefined, HookE, HookR>)
+    | undefined
 }
 
 // ---------------------------------------------------------------------------

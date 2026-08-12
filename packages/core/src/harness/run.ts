@@ -376,6 +376,17 @@ export const run = <
         result: makeResult(turnConversation),
       })
 
+      if (config.rebaseConversation !== undefined) {
+        const rebased = yield* config.rebaseConversation(turnConversation)
+        if (rebased !== undefined) {
+          yield* Ref.set(chat.history, rebased)
+          yield* fireHooks(config, {
+            _tag: 'ConversationRebased',
+            conversation: rebased,
+          })
+        }
+      }
+
       return hadToolCalls
     })
 

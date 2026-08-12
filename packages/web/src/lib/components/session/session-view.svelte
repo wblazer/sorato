@@ -13,6 +13,7 @@
   import { SessionsApi } from '$lib/connection-services.js'
   import { searchProjectFiles } from '$lib/project-file-search.js'
   import { runConnectionPromise } from '$lib/connection-runtime.js'
+  import { currentPlan as deriveCurrentPlan } from '$lib/plan-presentation.js'
   import {
     composerDraftStorageKey,
     composerHistoryStorageKey,
@@ -24,6 +25,7 @@
     RunAttachment,
   } from '$lib/types.js'
   import {
+    messageParts,
     persistedSources,
     latestAgentSystemPrompt,
     projectTranscript,
@@ -111,10 +113,16 @@
       ? messagesStore.streamingPartsForTab(tabId)
       : [],
   )
-  const backgroundSummaries = $derived.by(() =>
+  const currentPlan = $derived.by(() =>
+    deriveCurrentPlan(
+      visibleMessages.flatMap(messageParts),
+      followedStreamingParts,
+    ),
+  )
+  const backgroundChildRuns = $derived.by(() =>
     messagesStore
-      .backgroundSummariesForSession(sessionId)
-      .filter((summary) => shouldShowBackgroundSummary(summary)),
+      .backgroundChildRunsForSession(sessionId)
+      .filter((childRun) => shouldShowBackgroundChildRun(childRun)),
   )
   const showStreamingIndicator = $derived(
     selectedHeadValue?.type === 'run' &&
@@ -540,14 +548,14 @@
     sessionStore.clearSessionError(sessionId)
   }
 
-  function shouldShowBackgroundSummary(summary: {
+  function shouldShowBackgroundChildRun(childRun: {
     readonly runId: string
     readonly parentRunId: string | undefined
     readonly baseNodeId: string | null
   }) {
     const head = selectedHeadValue
     if (head?.type === 'run') {
-      return head.runId === (summary.parentRunId ?? summary.runId)
+      return head.runId === (childRun.parentRunId ?? childRun.runId)
     }
 
     return false
@@ -735,7 +743,8 @@
     draftText={composerDraftText}
     draftKey={composerDraftKey}
     {sessionStatus}
-    {backgroundSummaries}
+    {backgroundChildRuns}
+    currentPlan={currentPlan ?? null}
     tokenUsageMessages={visibleMessages}
     disabled={isStoppingFollowedRun}
   />

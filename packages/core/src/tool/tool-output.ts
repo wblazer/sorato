@@ -170,8 +170,25 @@ const toolIcons: Partial<Record<string, MessageIconName>> = {
   webfetch: 'globe',
 }
 
+const toolTitles: Partial<Record<string, string>> = {
+  read: 'Read file',
+  write: 'Write file',
+  edit: 'Edit file',
+  bash: 'Run command',
+  glob: 'Find files',
+  grep: 'Search files',
+  webfetch: 'Fetch web page',
+  loadskill: 'Load skill',
+  update_plan: 'Update plan',
+  recall_summary: 'Recall summary',
+  compactconversation: 'Compact conversation',
+}
+
 const toolIcon = (toolName: string): MessageIconName | undefined =>
   toolIcons[toolName.toLowerCase()]
+
+const toolTitle = (toolName: string): string =>
+  toolTitles[toolName.toLowerCase()] ?? toolName
 
 export const toolCallHeader = (
   toolName: string,
@@ -180,7 +197,7 @@ export const toolCallHeader = (
   const subtitle = displaySubtitle(toolName, params)
   const icon = toolIcon(toolName)
   return {
-    title: toolName,
+    title: toolTitle(toolName),
     ...(icon !== undefined ? { icon } : {}),
     ...(subtitle !== undefined ? { subtitle } : {}),
   }

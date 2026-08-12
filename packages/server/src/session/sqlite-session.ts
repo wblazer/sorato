@@ -9,6 +9,7 @@ import {
   MessageNodeRow,
   RunTableRow,
   SessionWithLastUserMessageRow,
+  SummaryTableRow,
   SystemPromptTableRow,
 } from '../db/schema.ts'
 import {
@@ -69,6 +70,10 @@ const RecordRunModelInput = Schema.Struct({
 })
 
 const SystemPromptIdInput = Schema.Struct({ id: Schema.String })
+const SessionSummaryInput = Schema.Struct({
+  session_id: Schema.String,
+  summary_id: Schema.String,
+})
 const SessionSystemPromptInput = Schema.Struct({
   session_id: Schema.String,
   prompt_id: Schema.String,
@@ -334,10 +339,16 @@ const summaryEncoded = (content: string): StoredMessageEncoded =>
     metadata: { summary: { content: summaryDisplayContent(content) } },
   })
 
-const promptSummaryEncoded = (content: string): Prompt.MessageEncoded =>
+const promptSummaryEncoded = (
+  content: string,
+  summaryId: string
+): Prompt.MessageEncoded =>
   Schema.decodeUnknownSync(Prompt.Message)({
     role: 'user',
-    content: summaryModelContent(content),
+    content: [
+      `Summary reference: ${summaryId}. Use recall_summary with this reference if exact facts from its source are needed.`,
+      summaryModelContent(content),
+    ].join('\n\n'),
   })
 
 const toMessageNode = (row: NodeRow): MessageNode => ({
@@ -612,6 +623,18 @@ export const SqliteSession = (options: { readonly path: string }) =>
         Result: SystemPromptTableRow,
         execute: ({ id }) => sql`
           SELECT id, content, created_at FROM system_prompts WHERE id = ${id}
+        `,
+      })
+
+      const findSessionSummaryRow = SqlSchema.findOneOption({
+        Request: SessionSummaryInput,
+        Result: SummaryTableRow,
+        execute: (row) => sql`
+          SELECT
+            id, session_id, content, source_start_node_id,
+            source_end_node_id, run_id, created_at
+          FROM summaries
+          WHERE id = ${row.summary_id} AND session_id = ${row.session_id}
         `,
       })
 
@@ -1164,7 +1187,12 @@ export const SqliteSession = (options: { readonly path: string }) =>
         return Schema.decodeUnknownSync(Prompt.Prompt)({
           content: [...rows].reverse().flatMap((row) => {
             if (row.kind === 'summary') {
-              return [promptSummaryEncoded(row.summary_content ?? '')]
+              return [
+                promptSummaryEncoded(
+                  row.summary_content ?? '',
+                  row.summary_id ?? row.id
+                ),
+              ]
             }
             if (row.message_content === null) return []
             const decoded = decodePromptMessageOption(row.message_content)
@@ -1584,6 +1612,276 @@ export const SqliteSession = (options: { readonly path: string }) =>
         }
       })
 
+      const compactRanges: SessionStorageApi['compactRanges'] = Effect.fn(
+        'SessionStorage.compactRanges'
+      )(function* (input) {
+        yield* get(input.sessionId)
+        const run = yield* getRun(input.runId)
+        if (run.sessionId !== input.sessionId) {
+          return yield* Effect.fail(
+            new StorageError({
+              operation: 'compactRanges',
+              message: `Run ${input.runId} does not belong to session ${input.sessionId}`,
+            })
+          )
+        }
+        if (input.ranges.length === 0) {
+          return yield* Effect.fail(
+            notFound('compactRanges', 'At least one compact range is required')
+          )
+        }
+
+        const rows = yield* listNodeChainRows({
+          node_id: input.baseHeadNodeId,
+          session_id: input.sessionId,
+        }).pipe(
+          Effect.mapError(
+            sqlFailure(
+              'compactRanges',
+              `Failed to load compact ranges path: ${input.sessionId}`
+            )
+          )
+        )
+        const path = [...rows].reverse()
+        const ranges = yield* Effect.forEach(input.ranges, (range, index) => {
+          const startIndex = path.findIndex(
+            (row) => row.id === range.startNodeId
+          )
+          const endIndex = path.findIndex((row) => row.id === range.endNodeId)
+          if (startIndex < 0 || endIndex < startIndex) {
+            return Effect.fail(
+              notFound(
+                'compactRanges',
+                `Compact range ${index} must be ordered on the selected head ancestry path`
+              )
+            )
+          }
+          if (
+            path
+              .slice(startIndex, endIndex + 1)
+              .some((row) => isBootstrapSystemRow(row))
+          ) {
+            return Effect.fail(
+              notFound(
+                'compactRanges',
+                'Compact ranges cannot include bootstrap system messages'
+              )
+            )
+          }
+          return Effect.succeed({ ...range, startIndex, endIndex })
+        })
+
+        for (let index = 1; index < ranges.length; index++) {
+          const previous = ranges[index - 1]
+          const current = ranges[index]
+          if (
+            previous === undefined ||
+            current === undefined ||
+            current.startIndex <= previous.endIndex
+          ) {
+            return yield* Effect.fail(
+              notFound(
+                'compactRanges',
+                'Compact ranges must be ordered and pairwise disjoint'
+              )
+            )
+          }
+        }
+
+        const firstRange = ranges[0]
+        if (firstRange === undefined) {
+          return yield* Effect.fail(
+            notFound('compactRanges', 'At least one compact range is required')
+          )
+        }
+
+        const now = nowIso()
+        let nextParentNodeId: string | null =
+          path[firstRange.startIndex]?.parent_node_id ?? null
+        const summaryRows: Array<{
+          readonly id: string
+          readonly nodeId: string
+          readonly startNodeId: string
+          readonly endNodeId: string
+          readonly content: string
+        }> = []
+        const committedNodeRows: CompactNodeInsertRow[] = []
+        let pathIndex = firstRange.startIndex
+        let rangeIndex = 0
+
+        while (pathIndex < path.length) {
+          const range = ranges[rangeIndex]
+          if (range !== undefined && pathIndex === range.startIndex) {
+            const summaryId = crypto.randomUUID()
+            const summaryNodeId = crypto.randomUUID()
+            summaryRows.push({
+              id: summaryId,
+              nodeId: summaryNodeId,
+              startNodeId: range.startNodeId,
+              endNodeId: range.endNodeId,
+              content: range.summaryContent,
+            })
+            committedNodeRows.push({
+              id: summaryNodeId,
+              session_id: input.sessionId,
+              parent_node_id: nextParentNodeId,
+              kind: 'summary',
+              message_id: null,
+              summary_id: summaryId,
+              source_node_id: null,
+              run_id: input.runId,
+              created_at: now,
+            })
+            nextParentNodeId = summaryNodeId
+            pathIndex = range.endIndex + 1
+            rangeIndex += 1
+            continue
+          }
+
+          const row = path[pathIndex]
+          if (row === undefined) break
+          const nodeId = crypto.randomUUID()
+          committedNodeRows.push({
+            id: nodeId,
+            session_id: input.sessionId,
+            parent_node_id: nextParentNodeId,
+            kind: row.kind,
+            message_id: row.message_id,
+            summary_id: row.summary_id,
+            source_node_id: row.source_node_id ?? row.id,
+            run_id: row.run_id,
+            created_at: now,
+          })
+          nextParentNodeId = nodeId
+          pathIndex += 1
+        }
+        const headNodeId = nextParentNodeId
+        if (headNodeId === null) {
+          return yield* Effect.fail(
+            notFound(
+              'compactRanges',
+              'Compaction did not produce a branch head'
+            )
+          )
+        }
+
+        const committed = yield* sql
+          .withTransaction(
+            Effect.gen(function* () {
+              for (const summary of summaryRows) {
+                yield* sql`
+                  INSERT INTO summaries (
+                    id, session_id, content, source_start_node_id,
+                    source_end_node_id, run_id, created_at
+                  ) VALUES (
+                    ${summary.id}, ${input.sessionId},
+                    ${summaryMessageContent(summary.content)},
+                    ${summary.startNodeId}, ${summary.endNodeId},
+                    ${input.runId}, ${now}
+                  )
+                `
+              }
+              yield* sql`INSERT INTO nodes ${sql.insert(committedNodeRows)}`
+              yield* sql`UPDATE sessions SET updated_at = ${now} WHERE id = ${input.sessionId}`
+              const nodes = yield* loadNodesByIds(
+                committedNodeRows.map((row) => row.id),
+                'compactRanges'
+              )
+              const payload = {
+                _tag: 'NodeBatchCommitted' as const,
+                sessionId: input.sessionId,
+                runId: input.runId,
+                nodes: nodes.map(toMessageNodeResponse),
+                headNodeId,
+                sessionUpdatedAt: Date.parse(now),
+                ...(input.contentThroughEventId === undefined
+                  ? {}
+                  : { contentThroughEventId: input.contentThroughEventId }),
+              }
+              const { sequence } = yield* insertDurableSyncEventRow({
+                event_type: 'node_batch_committed',
+                session_id: input.sessionId,
+                run_id: input.runId,
+                payload: JSON.stringify(payload),
+                created_at: Date.parse(now),
+              })
+              return { sequence, nodes }
+            })
+          )
+          .pipe(
+            Effect.mapError(
+              sqlFailure(
+                'compactRanges',
+                `Failed to compact ranges for session: ${input.sessionId}`
+              )
+            )
+          )
+
+        return {
+          summaryNodeIds: summaryRows.map((summary) => summary.nodeId),
+          batch: {
+            sequence: committed.sequence,
+            sessionId: input.sessionId,
+            runId: input.runId,
+            nodes: committed.nodes,
+            headNodeId,
+            sessionUpdatedAt: Date.parse(now),
+            ...(input.contentThroughEventId === undefined
+              ? {}
+              : { contentThroughEventId: input.contentThroughEventId }),
+          },
+        }
+      })
+
+      const summarySource: SessionStorageApi['summarySource'] = Effect.fn(
+        'SessionStorage.summarySource'
+      )(function* (sessionId, summaryId) {
+        yield* get(sessionId)
+        const summary = yield* findSessionSummaryRow({
+          session_id: sessionId,
+          summary_id: summaryId,
+        }).pipe(
+          Effect.mapError(
+            sqlFailure('summarySource', `Failed to find summary: ${summaryId}`)
+          )
+        )
+        if (Option.isNone(summary)) {
+          return yield* Effect.fail(
+            notFound(
+              'summarySource',
+              `Summary ${summaryId} was not found in session ${sessionId}`
+            )
+          )
+        }
+        const rows = yield* listNodeChainRows({
+          node_id: summary.value.source_end_node_id,
+          session_id: sessionId,
+        }).pipe(
+          Effect.mapError(
+            sqlFailure(
+              'summarySource',
+              `Failed to load source for summary: ${summaryId}`
+            )
+          )
+        )
+        const path = [...rows].reverse()
+        const startIndex = path.findIndex(
+          (row) => row.id === summary.value.source_start_node_id
+        )
+        if (startIndex < 0) {
+          return yield* Effect.fail(
+            notFound(
+              'summarySource',
+              `Summary ${summaryId} source range is no longer reachable`
+            )
+          )
+        }
+        return {
+          summaryId,
+          messages: path.slice(startIndex).map(toMessageNode),
+        }
+      })
+
       const leaves: SessionStorageApi['leaves'] = Effect.fn(
         'SessionStorage.leaves'
       )(function* (sessionId) {
@@ -1617,6 +1915,8 @@ export const SqliteSession = (options: { readonly path: string }) =>
         durableEventsAfter,
         commitNodeBatch,
         compactRange,
+        compactRanges,
+        summarySource,
         leaves,
       } satisfies SessionStorageApi
     })

@@ -221,6 +221,11 @@ export const createPersistenceHook = Effect.fn(
           return
         }
 
+        if (event._tag === 'ConversationRebased') {
+          nextMessageIndex = event.conversation.content.length
+          return
+        }
+
         if (event._tag === 'RunResult') {
           yield* persistResult(
             event.result,

@@ -211,6 +211,28 @@ export interface CompactRangeResult {
   readonly batch: CommittedNodeBatch
 }
 
+export interface CompactRangesInput {
+  readonly sessionId: SessionId
+  readonly runId: RunId
+  readonly baseHeadNodeId: NodeId
+  readonly ranges: ReadonlyArray<{
+    readonly startNodeId: NodeId
+    readonly endNodeId: NodeId
+    readonly summaryContent: string
+  }>
+  readonly contentThroughEventId?: number
+}
+
+export interface CompactRangesResult {
+  readonly summaryNodeIds: ReadonlyArray<NodeId>
+  readonly batch: CommittedNodeBatch
+}
+
+export interface SummarySource {
+  readonly summaryId: string
+  readonly messages: ReadonlyArray<MessageNode>
+}
+
 export interface CommitNodeBatchInput {
   readonly sessionId: SessionId
   readonly runId: RunId
@@ -356,6 +378,17 @@ export interface SessionStorageApi {
   readonly compactRange: (
     input: CompactRangeInput
   ) => Effect<CompactRangeResult, StorageError>
+
+  /** Atomically replace ordered, disjoint ancestry ranges with summaries. */
+  readonly compactRanges: (
+    input: CompactRangesInput
+  ) => Effect<CompactRangesResult, StorageError>
+
+  /** Load the original bounded source transcript for one session summary. */
+  readonly summarySource: (
+    sessionId: SessionId,
+    summaryId: string
+  ) => Effect<SummarySource, StorageError>
 
   /**
    * Move the head to any message in the tree.

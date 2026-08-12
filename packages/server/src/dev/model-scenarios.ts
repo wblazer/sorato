@@ -261,6 +261,86 @@ const scenarios = [
       title: [[Scripted.text('Compaction Scenario'), Scripted.finish()]],
     },
   },
+  {
+    option: option(
+      'plan-compaction',
+      'Plan compaction',
+      'Compacts completed update_plan work, retrieves a source fact in another background child, and continues from the rebased transcript.'
+    ),
+    plans: {
+      agent: [
+        [
+          Scripted.toolCall('plan-compaction-initial', 'update_plan', {
+            plan: [
+              { step: 'Inspect project manifests', status: 'in_progress' },
+              { step: 'Report the result', status: 'pending' },
+            ],
+          }),
+          Scripted.finish('tool-calls'),
+        ],
+        [
+          Scripted.toolCall('plan-compaction-glob', 'Glob', {
+            pattern: '**/package.json',
+          }),
+          Scripted.finish('tool-calls'),
+        ],
+        [
+          Scripted.toolCall('plan-compaction-transition', 'update_plan', {
+            explanation: 'The project manifests were inspected.',
+            plan: [
+              { step: 'Inspect project manifests', status: 'completed' },
+              { step: 'Report the result', status: 'in_progress' },
+            ],
+          }),
+          Scripted.finish('tool-calls'),
+        ],
+        (prompt) => {
+          const summaryId = latestUserText(prompt).match(
+            /Summary reference: ([^.\s]+)/
+          )?.[1]
+          return summaryId === undefined
+            ? [
+                Scripted.text(
+                  'The rebased prompt did not contain a summary reference.',
+                  'plan-compaction-missing-summary'
+                ),
+                Scripted.finish(),
+              ]
+            : [
+                Scripted.toolCall('plan-compaction-recall', 'recall_summary', {
+                  summaryId,
+                  question: 'Which real tool inspected the project manifests?',
+                }),
+                Scripted.finish('tool-calls'),
+              ]
+        },
+        streamedText('plan-compaction-answer', [
+          'The completed inspection was compacted before the plan transition. ',
+          'A background recovery child confirmed that the real Glob tool inspected ',
+          'the manifests, and this response is continuing without exposing the raw summary source.',
+        ]),
+      ],
+      summary: [
+        (prompt) =>
+          latestUserText(prompt).includes('<untrusted-summary-source>')
+            ? streamedText(
+                'plan-compaction-recovery',
+                [
+                  'The compacted source records that the real Glob tool inspected the project manifests.',
+                ],
+                { milliseconds: 250 }
+              )
+            : streamedText(
+                'plan-compaction-summary',
+                [
+                  '{"summaries":[{"rangeIndex":0,"content":"The project manifest inspection completed using the real Glob tool. The plan is ready to advance to reporting."}]}',
+                ],
+                { milliseconds: 250 }
+              ),
+      ],
+      title: [[Scripted.text('Plan Compaction Scenario'), Scripted.finish()]],
+    },
+  },
 ] satisfies ReadonlyArray<ModelScenario>
 
 const byId = new Map(

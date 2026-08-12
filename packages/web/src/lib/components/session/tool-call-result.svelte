@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ToolCallPart, ToolResultPart } from '$lib/types.js'
-  import MessageIcon from './message-icon.svelte'
+  import PlanUpdate from './plan-update.svelte'
   import ToolResult from './tool-result.svelte'
   import CircleNotchIcon from 'phosphor-svelte/lib/CircleNotchIcon'
 
@@ -20,7 +20,9 @@
   const subtitle = $derived(call.header?.subtitle)
 </script>
 
-{#if result}
+{#if call.name === 'update_plan'}
+  <PlanUpdate {call} {result} />
+{:else if result}
   <ToolResult {call} part={result} {accordionState} {accordionKey} />
 {:else}
   <div class="rounded-md border border-border bg-inset">
