@@ -54,8 +54,12 @@ const reconnectSchedule = Schedule.exponential('500 millis').pipe(
 export interface ServerEventStreamOptions {
   /** Filter events to one run. Omit for global control stream. */
   readonly runId?: string
-  /** Cursor getter used when opening/reconnecting a run stream. */
+  /** Filter one multiplexed connection to several runs. */
+  readonly runIds?: ReadonlyArray<string>
+  /** Cursor getter used when opening/reconnecting a single-run stream. */
   readonly getSince?: () => StreamCursor | null
+  /** Cursor getter used when opening/reconnecting a multiplexed run stream. */
+  readonly getSinceForRun?: (runId: string) => StreamCursor | null
   /** Durable cursor getter used when opening/reconnecting the global stream. */
   readonly getSinceSequence?: () => number
 }
@@ -66,10 +70,18 @@ function formatCursor(cursor: StreamCursor): string {
 
 function buildUrl(apiBase: string, options: ServerEventStreamOptions) {
   const url = new URL('/events', apiBase)
+  const runIds = options.runId ? [options.runId] : [...(options.runIds ?? [])]
   if (options.runId) {
     url.searchParams.set('runId', options.runId)
     const cursor = options.getSince?.()
     if (cursor) url.searchParams.set('since', formatCursor(cursor))
+  } else if (runIds.length > 0) {
+    url.searchParams.set('runIds', runIds.join(','))
+    const cursors = runIds.flatMap((runId) => {
+      const cursor = options.getSinceForRun?.(runId)
+      return cursor ? [formatCursor(cursor)] : []
+    })
+    if (cursors.length > 0) url.searchParams.set('cursors', cursors.join(','))
   } else {
     const sequence = options.getSinceSequence?.() ?? 0
     if (sequence > 0) url.searchParams.set('sinceSequence', String(sequence))

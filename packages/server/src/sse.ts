@@ -5,6 +5,8 @@
  *   - no params: global lifecycle stream
  *   - `runId`: stream/replay content and lifecycle for one active run
  *   - `since`: replay content events after the `runId:eventId` cursor
+ *   - `runIds`: comma-separated active runs multiplexed over one connection
+ *   - `cursors`: comma-separated `runId:eventId` cursors for `runIds`
  *   - `sinceSequence`: replay durable sync events after a global sequence
  */
 import { HttpServerResponse } from 'effect/unstable/http'
@@ -239,23 +241,41 @@ const heartbeatStream = Stream.tick('5 seconds').pipe(
 const makeSseStream = (
   bus: EventBusApi,
   storage: SessionStorageApi,
-  runId: string | undefined,
-  cursor: StreamCursor | undefined,
+  runIds: ReadonlyArray<string>,
+  cursors: ReadonlyMap<string, StreamCursor>,
   sinceSequence: number
 ) =>
-  (runId
-    ? liveRunStream(bus, runId, cursor)
+  (runIds.length > 0
+    ? Stream.mergeAll(
+        runIds.map((runId) => liveRunStream(bus, runId, cursors.get(runId))),
+        { concurrency: 'unbounded' }
+      )
     : liveGlobalStream(bus, storage, sinceSequence)
   ).pipe(Stream.merge(heartbeatStream), Stream.encodeText)
 
 export const EventsLive = HttpApiBuilder.group(Api, 'events', (handlers) =>
   handlers.handleRaw('stream', (context) => {
     const url = new URL(context.request.url, 'http://localhost')
-    const runId = url.searchParams.get('runId') ?? undefined
-    const cursor = parseCursor(url.searchParams.get('since'))
+    const runIds = [
+      ...new Set(
+        [
+          ...url.searchParams.getAll('runId'),
+          ...(url.searchParams.get('runIds')?.split(',') ?? []),
+        ].filter((runId) => runId.length > 0)
+      ),
+    ]
+    const cursors = new Map(
+      [
+        ...url.searchParams.getAll('since'),
+        ...(url.searchParams.get('cursors')?.split(',') ?? []),
+      ].flatMap((raw) => {
+        const cursor = parseCursor(raw)
+        return cursor ? ([[cursor.runId, cursor]] as const) : []
+      })
+    )
     const rawSinceSequence = Number(
       url.searchParams.get('sinceSequence') ??
-        (runId === undefined
+        (runIds.length === 0
           ? (context.request.headers['last-event-id'] ?? 0)
           : 0)
     )
@@ -267,13 +287,13 @@ export const EventsLive = HttpApiBuilder.group(Api, 'events', (handlers) =>
       const bus = yield* EventBus
       const storage = yield* SessionStorage
       yield* Effect.logInfo('SSE connection requested', {
-        runId,
-        hasCursor: cursor !== undefined,
+        runIds,
+        cursorCount: cursors.size,
         sinceSequence,
       })
 
       return HttpServerResponse.stream(
-        makeSseStream(bus, storage, runId, cursor, sinceSequence),
+        makeSseStream(bus, storage, runIds, cursors, sinceSequence),
         {
           headers: {
             'Content-Type': 'text/event-stream',

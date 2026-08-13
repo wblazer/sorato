@@ -89,6 +89,29 @@ describe('serverEvents', () => {
     expect(secondSource.closed).toBe(true)
   })
 
+  it('multiplexes run streams and resumes each cursor independently', async () => {
+    vi.stubGlobal('EventSource', FakeEventSource)
+    const cursors = new Map([
+      ['run-1', { runId: 'run-1', eventId: 3 }],
+      ['run-2', { runId: 'run-2', eventId: 7 }],
+    ])
+
+    const fiber = Effect.runFork(
+      serverEvents('http://localhost:3000', {
+        runIds: ['run-1', 'run-2'],
+        getSinceForRun: (runId) => cursors.get(runId) ?? null,
+      }).pipe(Stream.runDrain)
+    )
+    const source = await FakeEventSource.next()
+
+    expect(source.url).toBe(
+      'http://localhost:3000/events?runIds=run-1%2Crun-2&cursors=run-1%3A3%2Crun-2%3A7'
+    )
+
+    await Effect.runPromise(Fiber.interrupt(fiber))
+    expect(source.closed).toBe(true)
+  })
+
   it('resumes global streams from the latest durable sequence', async () => {
     vi.stubGlobal('EventSource', FakeEventSource)
     let sequence = 4

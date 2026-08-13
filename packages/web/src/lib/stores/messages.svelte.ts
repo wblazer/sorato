@@ -87,7 +87,7 @@ function createMessagesStore() {
   const refreshOrder = new MessageRefreshOrder()
 
   let streamFiber: Fiber.Fiber<void, SseError> | null = null
-  const backgroundFibers = new Map<string, Fiber.Fiber<void, SseError>>()
+  let backgroundFiber: Fiber.Fiber<void, SseError> | null = null
   let streamedTabId = $state<string | null>(null)
   let streamedSessionId = $state<string | null>(null)
   let streamedRunId = $state<string | null>(null)
@@ -331,14 +331,9 @@ function createMessagesStore() {
     streamFiber = null
   }
 
-  function closeBackgroundStream(runId: string) {
-    const fiber = backgroundFibers.get(runId)
-    if (fiber) Effect.runFork(Fiber.interrupt(fiber))
-    backgroundFibers.delete(runId)
-  }
-
-  function closeBackgroundStreams() {
-    for (const runId of backgroundFibers.keys()) closeBackgroundStream(runId)
+  function closeBackgroundStream() {
+    if (backgroundFiber) Effect.runFork(Fiber.interrupt(backgroundFiber))
+    backgroundFiber = null
   }
 
   function acceptContentEvent(event: ContentEvent) {
@@ -425,29 +420,37 @@ function createMessagesStore() {
     )
   }
 
-  function openBackgroundChildRunStream(childRun: BackgroundChildRun) {
-    if (backgroundFibers.has(childRun.runId)) return
+  function openBackgroundChildRunStream() {
+    const runs = [...backgroundChildRuns.values()]
+    if (runs.length === 0) {
+      closeBackgroundStream()
+      return
+    }
 
-    resetCursor(childRun.runId)
-    setRunCursor(childRun.runId)
+    closeBackgroundStream()
+    for (const run of runs) {
+      if (getLastCursor(run.runId) === null) setRunCursor(run.runId)
+    }
 
-    const fiber = runConnectionFork(
+    backgroundFiber = runConnectionFork(
       Effect.gen(function* () {
         const events = yield* ServerEventSource
         yield* events
           .stream({
-            runId: childRun.runId,
-            getSince: () => getLastCursor(childRun.runId),
+            runIds: runs.map((run) => run.runId),
+            getSinceForRun: getLastCursor,
           })
           .pipe(
             Stream.runForEach((event) =>
               Effect.sync(() => {
+                if (!('runId' in event)) return
+                const childRun = backgroundChildRuns.get(event.runId)
                 if (
+                  !childRun ||
                   !('sessionId' in event) ||
                   event.sessionId !== childRun.sessionId
                 )
                   return
-                if ('runId' in event && event.runId !== childRun.runId) return
 
                 switch (event._tag) {
                   case 'RunStart':
@@ -462,21 +465,13 @@ function createMessagesStore() {
                     break
 
                   case 'RunEnd':
-                    removeBackgroundChildRun(event.runId)
-                    break
-
                   case 'RunFailed':
                   case 'ReplayReset':
                     removeBackgroundChildRun(event.runId)
                     break
 
                   case 'RunRetrying':
-                  case 'ActiveRunUpserted':
-                  case 'SessionTitleUpdated':
                   case 'RunBaseUpdated':
-                    break
-                  case 'NodeBatchCommitted':
-                    applyNodeBatch(event)
                     break
                 }
               })
@@ -484,7 +479,6 @@ function createMessagesStore() {
           )
       })
     )
-    backgroundFibers.set(childRun.runId, fiber)
   }
 
   function selectRunStream(
@@ -559,20 +553,22 @@ function createMessagesStore() {
   }
 
   function removeBackgroundChildRun(runId: string) {
-    closeBackgroundStream(runId)
     resetCursor(runId)
     if (!backgroundChildRuns.has(runId)) return
 
     const next = new Map(backgroundChildRuns)
     next.delete(runId)
     backgroundChildRuns = next
+    if (next.size === 0) closeBackgroundStream()
   }
 
   function hydrateBackgroundChildRuns(runs: ReadonlyArray<ActiveRunSummary>) {
+    let changed = false
+    const next = new Map(backgroundChildRuns)
     for (const run of runs) {
       if (run.visibility !== 'background') continue
-      const existing = backgroundChildRuns.get(run.runId)
-      const childRun: BackgroundChildRun = {
+      const existing = next.get(run.runId)
+      next.set(run.runId, {
         sessionId: run.sessionId,
         runId: run.runId,
         baseNodeId: run.baseNodeId,
@@ -583,12 +579,12 @@ function createMessagesStore() {
           (run.kind === 'summary' ? 'Generating summary' : 'Background agent'),
         text: existing?.text ?? '',
         content: existing?.content ?? emptyStreamContentState,
-      }
-      const next = new Map(backgroundChildRuns)
-      next.set(run.runId, childRun)
-      backgroundChildRuns = next
-      if (!backgroundFibers.has(run.runId))
-        openBackgroundChildRunStream(childRun)
+      })
+      if (!existing) changed = true
+    }
+    backgroundChildRuns = next
+    if (changed || (backgroundFiber === null && next.size > 0)) {
+      openBackgroundChildRunStream()
     }
   }
 
@@ -827,6 +823,7 @@ function createMessagesStore() {
     }
     if (event._tag === 'RunEnd') {
       handleDurableRunEnd(event)
+      removeBackgroundChildRun(event.runId)
     }
     if (event._tag === 'SessionTitleUpdated') {
       advanceDurableSequence(event.sessionId, event.sequence)
@@ -854,7 +851,7 @@ function createMessagesStore() {
 
   function clearActiveStream() {
     closeRunStream()
-    closeBackgroundStreams()
+    closeBackgroundStream()
     resetStreamContent()
     backgroundChildRuns = new Map()
     resetCursor()

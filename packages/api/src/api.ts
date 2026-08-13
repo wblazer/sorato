@@ -309,7 +309,9 @@ export interface AuthStatusResponse extends Schema.Schema.Type<
 
 export const EventsQuery = Schema.Struct({
   runId: Schema.optional(Schema.String),
+  runIds: Schema.optional(Schema.String),
   since: Schema.optional(Schema.String),
+  cursors: Schema.optional(Schema.String),
   sinceSequence: Schema.optional(Schema.Number),
 }).annotate({ identifier: 'EventsQuery' })
 export interface EventsQuery extends Schema.Schema.Type<typeof EventsQuery> {}
