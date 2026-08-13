@@ -77,6 +77,7 @@ const makeRuntime = (
         status: unused,
         set: unused,
         oauthAuthorize: unused,
+        oauthStatus: unused,
       })
     ),
     Layer.succeed(DirectoriesApi, DirectoriesApi.of({ list: unused })),

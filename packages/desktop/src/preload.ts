@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import {
   CLIENT_CONFIG_GET_CHANNEL,
   CLIENT_CONFIG_SET_OVERRIDES_CHANNEL,
+  EXTERNAL_URL_OPEN_CHANNEL,
   IMAGES_SELECT_CHANNEL,
   INTEGRATED_SERVER_START_CHANNEL,
   INTEGRATED_SERVER_STOP_CHANNEL,
@@ -28,6 +29,8 @@ contextBridge.exposeInMainWorld('soratoDesktop', {
   getClientConfig: () => ipcRenderer.invoke(CLIENT_CONFIG_GET_CHANNEL),
   setClientConfigOverrides: (overrides: ClientConfig) =>
     ipcRenderer.invoke(CLIENT_CONFIG_SET_OVERRIDES_CHANNEL, overrides),
+  openExternal: (url: string) =>
+    ipcRenderer.invoke(EXTERNAL_URL_OPEN_CHANNEL, url),
   selectImages: () => ipcRenderer.invoke(IMAGES_SELECT_CHANNEL),
   startIntegratedServer: () =>
     ipcRenderer.invoke(INTEGRATED_SERVER_START_CHANNEL),

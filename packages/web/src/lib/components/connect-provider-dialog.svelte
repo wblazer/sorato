@@ -11,7 +11,7 @@
   import { authStore } from '$lib/stores/auth.svelte.js'
   import { modelsStore } from '$lib/stores/models.svelte.js'
   import { useId } from 'bits-ui'
-  import { Effect } from 'effect'
+  import { Effect, Schedule } from 'effect'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
 
   interface Props {
@@ -34,9 +34,17 @@
   let provider = $state<(typeof providers)[number] | null>(null)
   let key = $state('')
   let saving = $state(false)
-  let oauthSaving = $state(false)
+  let oauthState = $state<'idle' | 'starting' | 'waiting'>('idle')
   let error = $state<string | null>(null)
   const keyInputId = useId()
+  const oauthBusy = $derived(oauthState !== 'idle')
+  const oauthLabel = $derived(
+    oauthState === 'starting'
+      ? 'Opening browser...'
+      : oauthState === 'waiting'
+        ? 'Waiting for sign-in...'
+        : 'Sign in with ChatGPT',
+  )
 
   function effectErrorMessage(cause: unknown, context: string): string {
     if (
@@ -83,28 +91,113 @@
   }
 
   async function signInWithChatGpt() {
-    if (provider?.id !== 'openai' || oauthSaving) return
+    if (provider?.id !== 'openai' || oauthBusy) return
 
-    oauthSaving = true
+    const desktop = window.soratoDesktop
+    let authWindow: Window | null = null
+    oauthState = 'starting'
     error = null
     try {
+      if (!desktop) {
+        authWindow = window.open('about:blank', '_blank')
+        if (!authWindow) {
+          throw new Error(
+            'The browser blocked the ChatGPT sign-in window. Allow pop-ups for Sorato and try again.',
+          )
+        }
+        authWindow.opener = null
+      }
+
       const authorize = Effect.gen(function* () {
         const authApi = yield* AuthApi
         return yield* authApi.oauthAuthorize('openai')
-      })
+      }).pipe(
+        Effect.timeoutOrElse({
+          duration: '10 seconds',
+          orElse: () =>
+            Effect.fail(
+              new Error(
+                'The Sorato server did not start ChatGPT sign-in within 10 seconds.',
+              ),
+            ),
+        }),
+      )
 
       const result = await runConnectionPromise(authorize)
-      window.open(result.url, '_blank', 'noopener,noreferrer')
-      window.setTimeout(() => {
-        void runConnectionPromise(authStore.load())
-        if (modelsStore.projectId) {
-          void runConnectionPromise(modelsStore.load(modelsStore.projectId))
+      if (desktop) {
+        await desktop.openExternal(result.url)
+      } else if (authWindow && !authWindow.closed) {
+        authWindow.location.replace(result.url)
+      } else {
+        throw new Error(
+          'The ChatGPT sign-in window was closed before it opened.',
+        )
+      }
+
+      oauthState = 'waiting'
+      const waitForAuthorization = Effect.gen(function* () {
+        const authApi = yield* AuthApi
+        const checkStatus = authApi
+          .oauthStatus('openai', result.attemptId)
+          .pipe(
+            Effect.flatMap((status) =>
+              status.status === 'failed'
+                ? Effect.fail(
+                    new Error(status.message ?? 'ChatGPT sign-in failed.'),
+                  )
+                : Effect.succeed(status.status),
+            ),
+          )
+
+        yield* checkStatus.pipe(
+          Effect.repeat({
+            schedule: Schedule.spaced('1 second'),
+            until: (status) => status === 'succeeded',
+          }),
+          Effect.timeoutOrElse({
+            duration: Math.max(1, result.expiresAt - Date.now() + 1000),
+            orElse: () =>
+              checkStatus.pipe(
+                Effect.flatMap((status) =>
+                  status === 'succeeded'
+                    ? Effect.succeed(status)
+                    : Effect.fail(
+                        new Error(
+                          'This ChatGPT sign-in attempt expired. Start a new sign-in attempt.',
+                        ),
+                      ),
+                ),
+              ),
+          }),
+        )
+
+        yield* authStore.load()
+        if (
+          !authStore.providers.some(
+            (item) => item.id === 'openai' && item.authenticated,
+          )
+        ) {
+          return yield* Effect.fail(
+            new Error(
+              authStore.error ??
+                'ChatGPT sign-in completed, but the saved credentials could not be verified.',
+            ),
+          )
         }
-      }, 2500)
+        if (modelsStore.projectId) {
+          yield* modelsStore.load(modelsStore.projectId)
+        }
+      })
+
+      await runConnectionPromise(waitForAuthorization)
+      open = false
     } catch (cause) {
+      if (oauthState === 'starting' && authWindow && !authWindow.closed) {
+        authWindow.close()
+      }
       error = effectErrorMessage(cause, 'Failed to start ChatGPT sign-in')
     } finally {
-      oauthSaving = false
+      oauthState = 'idle'
     }
   }
 </script>
@@ -168,11 +261,18 @@
               class="mt-3 w-full"
               type="button"
               variant="outline"
-              disabled={oauthSaving}
+              disabled={oauthBusy}
+              aria-busy={oauthBusy}
               onclick={() => void signInWithChatGpt()}
             >
-              {oauthSaving ? 'Opening browser...' : 'Sign in with ChatGPT'}
+              {oauthLabel}
             </Button>
+            {#if oauthState === 'waiting'}
+              <p class="mt-2 text-xs text-muted-foreground">
+                Finish signing in in your browser. Sorato will update when it
+                completes.
+              </p>
+            {/if}
           </div>
 
           <div class="flex items-center gap-3 text-xs text-muted-foreground">
@@ -189,6 +289,7 @@
             bind:value={key}
             type="password"
             autocomplete="off"
+            disabled={oauthBusy}
           />
         </div>
 
@@ -208,11 +309,12 @@
           <Button
             type="button"
             variant="ghost"
+            disabled={saving || oauthBusy}
             onclick={() => (provider = null)}
           >
             Back
           </Button>
-          <Button type="submit" disabled={saving || !key.trim()}>
+          <Button type="submit" disabled={saving || oauthBusy || !key.trim()}>
             {saving ? 'Connecting...' : 'Connect'}
           </Button>
         </Dialog.DialogFooter>

@@ -163,6 +163,9 @@
   const scenarioMode = $derived(
     import.meta.env.DEV && selectionKind === 'scenario',
   )
+  const targetSelected = $derived(
+    scenarioMode ? scenario !== null : model !== null,
+  )
   const thinkingLevel = $derived(
     modelOptions.thinkingLevel ?? selectedModel?.capabilities.thinkingLevels[0],
   )
@@ -326,6 +329,8 @@
     if (
       (trimmed.length === 0 && attachments.length === 0) ||
       disabled ||
+      modelLoading ||
+      !targetSelected ||
       submitting
     )
       return
@@ -953,7 +958,7 @@
               scenarioValue={scenario}
               {selectionKind}
               loading={modelLoading}
-              disabled={disabled || modelDisabled}
+              disabled={disabled || modelDisabled || modelLoading}
               onChange={onModelChange}
               {onScenarioChange}
               {onSelectionKindChange}
@@ -1045,6 +1050,8 @@
             <Button
               onclick={handleSubmit}
               disabled={disabled ||
+                modelLoading ||
+                !targetSelected ||
                 submitting ||
                 (!input.trim() && attachments.length === 0)}
               size="icon-lg"

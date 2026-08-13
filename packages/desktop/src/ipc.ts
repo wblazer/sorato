@@ -1,4 +1,4 @@
-import { dialog, ipcMain } from 'electron'
+import { dialog, ipcMain, shell } from 'electron'
 import { readFile, stat } from 'node:fs/promises'
 import { basename, extname } from 'node:path'
 import {
@@ -8,6 +8,7 @@ import {
 import {
   CLIENT_CONFIG_GET_CHANNEL,
   CLIENT_CONFIG_SET_OVERRIDES_CHANNEL,
+  EXTERNAL_URL_OPEN_CHANNEL,
   IMAGES_SELECT_CHANNEL,
   INTEGRATED_SERVER_START_CHANNEL,
   INTEGRATED_SERVER_STOP_CHANNEL,
@@ -68,6 +69,15 @@ const selectImages = async () => {
   )
 }
 
+const openExternal = async (value: unknown) => {
+  if (typeof value !== 'string') throw new Error('External URL is required.')
+  const url = new URL(value)
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('Only HTTP and HTTPS URLs can be opened externally.')
+  }
+  await shell.openExternal(url.toString())
+}
+
 export function registerIpcHandlers() {
   ipcMain.handle(CLIENT_CONFIG_GET_CHANNEL, () => loadResolvedClientConfig())
   ipcMain.handle(CLIENT_CONFIG_SET_OVERRIDES_CHANNEL, (_event, overrides) =>
@@ -75,5 +85,6 @@ export function registerIpcHandlers() {
   )
   ipcMain.handle(INTEGRATED_SERVER_START_CHANNEL, () => startIntegratedServer())
   ipcMain.handle(INTEGRATED_SERVER_STOP_CHANNEL, () => stopIntegratedServer())
+  ipcMain.handle(EXTERNAL_URL_OPEN_CHANNEL, (_event, url) => openExternal(url))
   ipcMain.handle(IMAGES_SELECT_CHANNEL, () => selectImages())
 }

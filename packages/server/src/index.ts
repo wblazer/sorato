@@ -1,6 +1,7 @@
 export { Api } from '@sorato/api'
 export {
   AuthOauthAuthorizeResponse,
+  AuthOauthStatusResponse,
   AuthSetResponse,
   DirectoryEntry,
   DirectoryError,

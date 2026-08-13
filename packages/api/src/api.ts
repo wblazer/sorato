@@ -316,9 +316,19 @@ export interface EventsQuery extends Schema.Schema.Type<typeof EventsQuery> {}
 
 export const AuthOauthAuthorizeResponse = Schema.Struct({
   url: Schema.String,
+  attemptId: Schema.String,
+  expiresAt: Schema.Number,
 }).annotate({ identifier: 'AuthOauthAuthorizeResponse' })
 export interface AuthOauthAuthorizeResponse extends Schema.Schema.Type<
   typeof AuthOauthAuthorizeResponse
+> {}
+
+export const AuthOauthStatusResponse = Schema.Struct({
+  status: Schema.Literals(['pending', 'succeeded', 'failed']),
+  message: Schema.optional(Schema.String),
+}).annotate({ identifier: 'AuthOauthStatusResponse' })
+export interface AuthOauthStatusResponse extends Schema.Schema.Type<
+  typeof AuthOauthStatusResponse
 > {}
 
 export const ModelOption = Schema.Struct({
@@ -700,6 +710,13 @@ export class AuthGroup extends HttpApiGroup.make('auth')
         ProviderCredentialsUnavailable.pipe(HttpApiSchema.status(503)),
         ProviderAuthUnsupported.pipe(HttpApiSchema.status(400)),
       ],
+    })
+  )
+  .add(
+    HttpApiEndpoint.get('oauthStatus', '/:provider/oauth/:attemptId', {
+      params: { provider: Schema.String, attemptId: Schema.String },
+      success: AuthOauthStatusResponse,
+      error: ProviderAuthUnsupported.pipe(HttpApiSchema.status(400)),
     })
   )
   .prefix('/auth') {}

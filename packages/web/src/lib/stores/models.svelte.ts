@@ -41,6 +41,16 @@ const selectionKey = (id: string | undefined) =>
 
 const modelOptionsKey = () => storageKey('model-options')
 
+const modelLoadTimeout: UiApiError = {
+  title: 'Model loading timed out',
+  message:
+    'The server did not finish loading models within 30 seconds. Retry the request or check the server logs.',
+  tag: 'TimeoutError',
+  code: 'models.timeout',
+  status: null,
+  retryable: true,
+}
+
 function createModelsStore() {
   let models = $state<AvailableModelsResponse['models']>([])
   let scenarios = $state<AvailableModelsResponse['models']>([])
@@ -201,6 +211,11 @@ function createModelsStore() {
   }
 
   function load(nextProjectId: string) {
+    let id: number | null = null
+    const clearLoading = Effect.sync(() => {
+      if (id === req) loading = false
+    })
+
     return Effect.gen(function* () {
       if (!connectionsStore.activeConnection) {
         yield* Effect.sync(clear)
@@ -216,7 +231,7 @@ function createModelsStore() {
         })
       }
 
-      const id = ++req
+      id = ++req
       const hasExistingForProject =
         projectId === nextProjectId &&
         (models.length > 0 || scenarios.length > 0)
@@ -228,6 +243,10 @@ function createModelsStore() {
 
       const modelsApi = yield* ModelsApi
       const result = yield* modelsApi.list(nextProjectId).pipe(
+        Effect.timeoutOrElse({
+          duration: '30 seconds',
+          orElse: () => Effect.fail(modelLoadTimeout),
+        }),
         Effect.catch((cause: UiApiError) =>
           Effect.sync(() => {
             const failedResult = null
@@ -262,9 +281,8 @@ function createModelsStore() {
           if (scenarios.length === 0) selectionKind = 'model'
           else if (models.length === 0) selectionKind = 'scenario'
         }
-        loading = false
       })
-    })
+    }).pipe(Effect.ensuring(clearLoading))
   }
 
   return {

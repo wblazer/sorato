@@ -3,6 +3,7 @@ import { HttpApiBuilder } from 'effect/unstable/httpapi'
 import {
   Api,
   AuthOauthAuthorizeResponse,
+  AuthOauthStatusResponse,
   ProviderAuthUnsupported,
   ProviderCredentialsUnavailable,
   AuthProviderStatus,
@@ -10,7 +11,7 @@ import {
   AuthStatusResponse,
 } from '@sorato/api'
 import { MODEL_PROVIDERS } from './models.generated.ts'
-import { startOpenAiOauth } from './openai-chatgpt-auth.ts'
+import { openAiOauthStatus, startOpenAiOauth } from './openai-chatgpt-auth.ts'
 import { hasProviderAuth, setApiKey } from './provider-auth.ts'
 
 const authErrorMessage = (error: unknown, fallback: string) =>
@@ -91,6 +92,31 @@ export const AuthLive = HttpApiBuilder.group(Api, 'auth', (handlers) =>
                 'Failed to start ChatGPT sign-in'
               )
             )
+          ),
+        ][Number(params.provider === 'openai')] ??
+        Effect.fail(
+          new ProviderAuthUnsupported({
+            code: 'provider.oauth_unsupported',
+            provider: params.provider,
+            message: 'OAuth is only supported for OpenAI',
+            retryable: false,
+          })
+        )
+    )
+    .handle(
+      'oauthStatus',
+      ({ params }) =>
+        [
+          Effect.fail(
+            new ProviderAuthUnsupported({
+              code: 'provider.oauth_unsupported',
+              provider: params.provider,
+              message: 'OAuth is only supported for OpenAI',
+              retryable: false,
+            })
+          ),
+          openAiOauthStatus(params.attemptId).pipe(
+            Effect.map((result) => AuthOauthStatusResponse.make(result))
           ),
         ][Number(params.provider === 'openai')] ??
         Effect.fail(

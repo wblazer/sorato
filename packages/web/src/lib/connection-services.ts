@@ -1,5 +1,6 @@
 import type {
   AuthOauthAuthorizeResponse,
+  AuthOauthStatusResponse,
   AuthSetResponse,
   AuthStatusResponse,
   CompactRunResponse,
@@ -139,6 +140,10 @@ export interface AuthApiShape {
   readonly oauthAuthorize: (
     providerId: string
   ) => Effect.Effect<AuthOauthAuthorizeResponse, UiApiError>
+  readonly oauthStatus: (
+    providerId: string,
+    attemptId: string
+  ) => Effect.Effect<AuthOauthStatusResponse, UiApiError>
 }
 
 export class AuthApi extends Context.Service<AuthApi, AuthApiShape>()(

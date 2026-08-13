@@ -40,15 +40,66 @@ class OpenAiChatGptAuthError extends Schema.TaggedErrorClass<OpenAiChatGptAuthEr
   }
 ) {}
 
-type Pending = {
+type ActiveAttempt = {
+  readonly status: 'pending' | 'processing'
   readonly store: ProviderAuthStoreApi
   readonly pkce: Pkce
   readonly port: number
+  readonly expiresAt: number
 }
+
+type TerminalAttempt =
+  | { readonly status: 'succeeded'; readonly removeAt: number }
+  | {
+      readonly status: 'failed'
+      readonly message: string
+      readonly removeAt: number
+    }
+
+type Attempt = ActiveAttempt | TerminalAttempt
 
 let server: Server | undefined
 let serverPort: number | undefined
-const pending = new Map<string, Pending>()
+const attempts = new Map<string, Attempt>()
+const ATTEMPT_TTL_MS = 3 * 60 * 1000
+const TERMINAL_RETENTION_MS = 10 * 60 * 1000
+const attemptExpiredMessage =
+  'This ChatGPT sign-in attempt expired. Start a new sign-in attempt.'
+
+const terminalAttempt = (
+  status:
+    | { readonly status: 'succeeded' }
+    | { readonly status: 'failed'; readonly message: string }
+): TerminalAttempt => ({
+  ...status,
+  removeAt: Date.now() + TERMINAL_RETENTION_MS,
+})
+
+const pruneAttempts = () => {
+  const now = Date.now()
+  for (const [state, attempt] of attempts) {
+    if ('removeAt' in attempt && attempt.removeAt <= now) {
+      attempts.delete(state)
+      continue
+    }
+    if (attempt.status === 'pending' && attempt.expiresAt <= now) {
+      attempts.set(
+        state,
+        terminalAttempt({ status: 'failed', message: attemptExpiredMessage })
+      )
+    }
+  }
+}
+
+const finishAttempt = (
+  state: string,
+  status:
+    | { readonly status: 'succeeded' }
+    | { readonly status: 'failed'; readonly message: string }
+) => {
+  if (attempts.get(state)?.status !== 'processing') return
+  attempts.set(state, terminalAttempt(status))
+}
 
 const base64Url = (buffer: ArrayBuffer) =>
   Buffer.from(buffer).toString('base64url')
@@ -253,10 +304,16 @@ export const currentOpenAiOauth = Effect.fn('OpenAiChatGptAuth.current')(
 const exchangeCode = async (
   code: string,
   verifier: string,
-  port: number
+  port: number,
+  expiresAt: number
 ): Promise<TokenResponse> => {
+  const remaining = expiresAt - Date.now()
+  if (remaining <= 0) {
+    throw new OpenAiChatGptAuthError({ message: attemptExpiredMessage })
+  }
   const response = await fetch(`${ISSUER}/oauth/token`, {
     method: 'POST',
+    signal: AbortSignal.timeout(remaining),
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       grant_type: 'authorization_code',
@@ -290,9 +347,9 @@ const listen = (candidate: number) =>
       }
 
       const state = url.searchParams.get('state') ?? ''
-      const current = pending.get(state)
-      pending.delete(state)
-      if (!current) {
+      pruneAttempts()
+      const current = attempts.get(state)
+      if (!current || current.status !== 'pending') {
         response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
         response.end(
           authPage({
@@ -302,22 +359,38 @@ const listen = (candidate: number) =>
         )
         return
       }
+      attempts.set(state, { ...current, status: 'processing' })
 
       const code = url.searchParams.get('code')
       if (!code) {
+        const message = 'Missing authorization code.'
+        finishAttempt(state, { status: 'failed', message })
         response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
         response.end(
           authPage({
             title: 'Sign-in failed',
-            message: 'Missing authorization code.',
+            message,
           })
         )
         return
       }
 
-      await exchangeCode(code, current.pkce.verifier, current.port)
-        .then((tokens) => Effect.runPromise(saveTokens(current.store, tokens)))
+      await exchangeCode(
+        code,
+        current.pkce.verifier,
+        current.port,
+        current.expiresAt
+      )
+        .then((tokens) => {
+          if (Date.now() >= current.expiresAt) {
+            throw new OpenAiChatGptAuthError({
+              message: attemptExpiredMessage,
+            })
+          }
+          return Effect.runPromise(saveTokens(current.store, tokens))
+        })
         .then(() => {
+          finishAttempt(state, { status: 'succeeded' })
           response.writeHead(200, {
             'Content-Type': 'text/html; charset=utf-8',
           })
@@ -331,6 +404,7 @@ const listen = (candidate: number) =>
         .catch((error) => {
           const message =
             error instanceof Error ? error.message : 'Sign-in failed'
+          finishAttempt(state, { status: 'failed', message })
           response.writeHead(500, {
             'Content-Type': 'text/html; charset=utf-8',
           })
@@ -384,7 +458,15 @@ export const startOpenAiOauth = Effect.fn('OpenAiChatGptAuth.start')(
     const port = yield* ensureServer()
     const codes = yield* Effect.promise(pkce)
     const state = randomString(43)
-    pending.set(state, { store, pkce: codes, port })
+    const expiresAt = Date.now() + ATTEMPT_TTL_MS
+    pruneAttempts()
+    attempts.set(state, {
+      status: 'pending',
+      store,
+      pkce: codes,
+      port,
+      expiresAt,
+    })
     const url = new URL(`${ISSUER}/oauth/authorize`)
     url.search = new URLSearchParams({
       response_type: 'code',
@@ -398,8 +480,28 @@ export const startOpenAiOauth = Effect.fn('OpenAiChatGptAuth.start')(
       state,
       originator: ORIGINATOR,
     }).toString()
-    return { url: url.toString() }
+    return { url: url.toString(), attemptId: state, expiresAt }
   }
+)
+
+export const openAiOauthStatus = Effect.fn('OpenAiChatGptAuth.status')(
+  (attemptId: string) =>
+    Effect.sync(() => {
+      pruneAttempts()
+      const attempt = attempts.get(attemptId)
+      if (!attempt) {
+        return {
+          status: 'failed' as const,
+          message: 'This ChatGPT sign-in attempt expired or is not recognized.',
+        }
+      }
+      if (attempt.status === 'pending' || attempt.status === 'processing') {
+        return { status: 'pending' as const }
+      }
+      return 'message' in attempt
+        ? { status: 'failed' as const, message: attempt.message }
+        : { status: 'succeeded' as const }
+    })
 )
 
 export const soratoUserAgent = () =>

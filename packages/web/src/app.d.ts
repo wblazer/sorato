@@ -10,6 +10,7 @@ declare global {
       setClientConfigOverrides: (
         overrides: ClientConfig
       ) => Promise<ResolvedClientConfig>
+      openExternal: (url: string) => Promise<void>
       selectImages: () => Promise<
         ReadonlyArray<{
           readonly mediaType: string

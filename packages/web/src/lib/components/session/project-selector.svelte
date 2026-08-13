@@ -72,32 +72,35 @@
 </script>
 
 <Popover.Root bind:open>
-  <Popover.Trigger bind:ref={triggerRef}>
-    <Button
-      type="button"
-      variant="outline"
-      size="lg"
-      class="h-14 w-full justify-between gap-3 px-4 text-left text-base"
-      role="combobox"
-      aria-controls={listboxId}
-      aria-expanded={open}
-      {disabled}
-    >
-      <span class="flex min-w-0 flex-1 items-center gap-2">
-        <FolderOpenIcon class="size-5 shrink-0 text-muted-foreground" />
-        <span class="min-w-0 flex-1">
-          <span class="block truncate font-medium">{triggerLabel}</span>
-          {#if selectedProject}
-            <span
-              class="block truncate text-sm font-normal text-muted-foreground"
-            >
-              {selectedProject.path}
-            </span>
-          {/if}
+  <Popover.Trigger bind:ref={triggerRef} {disabled}>
+    {#snippet child({ props })}
+      <Button
+        {...props}
+        type="button"
+        variant="outline"
+        size="lg"
+        class="h-14 w-full justify-between gap-3 px-4 text-left text-base"
+        role="combobox"
+        aria-controls={listboxId}
+        aria-expanded={open}
+        {disabled}
+      >
+        <span class="flex min-w-0 flex-1 items-center gap-2">
+          <FolderOpenIcon class="size-5 shrink-0 text-muted-foreground" />
+          <span class="min-w-0 flex-1">
+            <span class="block truncate font-medium">{triggerLabel}</span>
+            {#if selectedProject}
+              <span
+                class="block truncate text-sm font-normal text-muted-foreground"
+              >
+                {selectedProject.path}
+              </span>
+            {/if}
+          </span>
         </span>
-      </span>
-      <CaretDownIcon class="shrink-0 text-muted-foreground" />
-    </Button>
+        <CaretDownIcon class="shrink-0 text-muted-foreground" />
+      </Button>
+    {/snippet}
   </Popover.Trigger>
 
   <Popover.Content

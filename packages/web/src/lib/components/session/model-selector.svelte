@@ -57,6 +57,10 @@
     loading && models.length === 0 && scenarios.length === 0,
   )
 
+  $effect(() => {
+    if (disabled) open = false
+  })
+
   const modelsByProvider = $derived.by(() => {
     const groups = new Map<string, Array<AvailableModel>>()
 
@@ -84,16 +88,24 @@
   }
 
   function selectModel(id: string) {
+    if (disabled) return
     onChange?.(id)
     closeAndFocusTrigger()
   }
 
   function selectScenario(id: string) {
+    if (disabled) return
     onScenarioChange?.(id)
     closeAndFocusTrigger()
   }
 
+  function selectKind(kind: 'model' | 'scenario') {
+    if (disabled) return
+    onSelectionKindChange?.(kind)
+  }
+
   function connectProvider() {
+    if (disabled) return
     open = false
     queueMicrotask(() => actionStore.trigger('provider.connect'))
   }
@@ -138,19 +150,23 @@
 </script>
 
 <Popover.Root bind:open>
-  <Popover.Trigger bind:ref={triggerRef}>
-    <Button
-      type="button"
-      variant="ghost"
-      class="min-w-0 justify-between text-foreground"
-      role="combobox"
-      aria-controls={listboxId}
-      aria-expanded={open}
-      {disabled}
-    >
-      <span class="truncate">{triggerLabel}</span>
-      <CaretDownIcon class="shrink-0 text-muted-foreground" />
-    </Button>
+  <Popover.Trigger bind:ref={triggerRef} {disabled}>
+    {#snippet child({ props })}
+      <Button
+        {...props}
+        type="button"
+        variant="ghost"
+        class="min-w-0 justify-between text-foreground"
+        role="combobox"
+        aria-controls={listboxId}
+        aria-expanded={open}
+        aria-busy={showLoading}
+        {disabled}
+      >
+        <span class="truncate">{triggerLabel}</span>
+        <CaretDownIcon class="shrink-0 text-muted-foreground" />
+      </Button>
+    {/snippet}
   </Popover.Trigger>
 
   <Popover.Content
@@ -173,7 +189,7 @@
             checked={scenarioMode}
             aria-label="Use developer scenarios"
             onCheckedChange={(checked) =>
-              onSelectionKindChange?.(checked ? 'scenario' : 'model')}
+              selectKind(checked ? 'scenario' : 'model')}
           />
         </div>
       {/if}

@@ -304,7 +304,7 @@
     modelOptions={modelsStore.selectedOptions}
     modelLoading={modelsStore.loading}
     modelDisabled={sending || !activeProjectId}
-    disabled={sending || !modelsStore.selectedTargetId || !activeProjectId}
+    disabled={sending || !activeProjectId}
     autoFocus
     focusKey={tabStore.activeTabId}
     placeholder={activeProjectId

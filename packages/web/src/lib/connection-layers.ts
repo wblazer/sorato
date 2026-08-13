@@ -174,6 +174,13 @@ export const AuthApiLive = Layer.effect(
           client.auth.oauthAuthorize({ params: { provider: providerId } }),
           'Failed to start provider sign-in'
         ),
+      oauthStatus: (providerId, attemptId) =>
+        runApiEffect(
+          client.auth.oauthStatus({
+            params: { provider: providerId, attemptId },
+          }),
+          'Failed to check provider sign-in'
+        ),
     })
   })
 )
