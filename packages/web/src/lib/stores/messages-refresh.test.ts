@@ -102,22 +102,21 @@ describe('messagesStore refresh ordering', () => {
   })
 
   it('applies an intermediate response while a newer refresh is pending', async () => {
-    const tabId = 'intermediate-refresh-tab'
     const sessionId = 'intermediate-refresh-session'
     const activePrompt = userMessage('active', sessionId, 'Active prompt')
     const queuedPrompt = userMessage('queued', sessionId, 'Queued prompt')
     const controlled = makeControlledMessagesApi()
-    messagesStore.prepareSession(tabId, sessionId)
+    messagesStore.prepareSession(sessionId)
 
     const intermediateRefresh = Effect.runPromise(
       messagesStore
-        .loadMessages(tabId, sessionId, { force: true })
+        .loadMessages(sessionId, { force: true })
         .pipe(Effect.provide(controlled.layer))
     )
     await Effect.runPromise(controlled.waitForRequestCount(1))
     const newestRefresh = Effect.runPromise(
       messagesStore
-        .loadMessages(tabId, sessionId, { force: true })
+        .loadMessages(sessionId, { force: true })
         .pipe(Effect.provide(controlled.layer))
     )
     await Effect.runPromise(controlled.waitForRequestCount(2))
@@ -127,9 +126,7 @@ describe('messagesStore refresh ordering', () => {
     )
     await intermediateRefresh
     expect(
-      messagesStore
-        .messagesForTab(tabId)
-        .map((message) => message.encoded.content)
+      messagesStore.messages.map((message) => message.encoded.content)
     ).toEqual(['Active prompt'])
 
     await Effect.runPromise(
@@ -140,29 +137,26 @@ describe('messagesStore refresh ordering', () => {
     )
     await newestRefresh
     expect(
-      messagesStore
-        .messagesForTab(tabId)
-        .map((message) => message.encoded.content)
+      messagesStore.messages.map((message) => message.encoded.content)
     ).toEqual(['Active prompt', 'Queued prompt'])
   })
 
   it('keeps newer nodes when an older forced snapshot completes last', async () => {
-    const tabId = 'queued-message-tab'
     const sessionId = 'queued-message-session'
     const activePrompt = userMessage('active', sessionId, 'Active prompt')
     const queuedPrompt = userMessage('queued', sessionId, 'Queued prompt')
     const controlled = makeControlledMessagesApi()
-    messagesStore.prepareSession(tabId, sessionId)
+    messagesStore.prepareSession(sessionId)
 
     const runEndRefresh = Effect.runPromise(
       messagesStore
-        .loadMessages(tabId, sessionId, { force: true })
+        .loadMessages(sessionId, { force: true })
         .pipe(Effect.provide(controlled.layer))
     )
     await Effect.runPromise(controlled.waitForRequestCount(1))
     const queuedMessageRefresh = Effect.runPromise(
       messagesStore
-        .loadMessages(tabId, sessionId, { force: true })
+        .loadMessages(sessionId, { force: true })
         .pipe(Effect.provide(controlled.layer))
     )
     await Effect.runPromise(controlled.waitForRequestCount(2))
@@ -180,22 +174,19 @@ describe('messagesStore refresh ordering', () => {
     await runEndRefresh
 
     expect(
-      messagesStore
-        .messagesForTab(tabId)
-        .map((message) => message.encoded.content)
+      messagesStore.messages.map((message) => message.encoded.content)
     ).toEqual(['Active prompt', 'Queued prompt'])
   })
 
   it('keeps a retained transcript visible during forced recovery', async () => {
-    const tabId = 'retained-tab'
     const sessionId = 'retained-session'
     const retained = userMessage('retained', sessionId, 'Retained prompt')
     const controlled = makeControlledMessagesApi()
-    messagesStore.prepareSession(tabId, sessionId)
+    messagesStore.prepareSession(sessionId)
 
     const initial = Effect.runPromise(
       messagesStore
-        .loadMessages(tabId, sessionId, { force: true })
+        .loadMessages(sessionId, { force: true })
         .pipe(Effect.provide(controlled.layer))
     )
     await Effect.runPromise(controlled.waitForRequestCount(1))
@@ -206,13 +197,13 @@ describe('messagesStore refresh ordering', () => {
 
     const recovery = Effect.runPromise(
       messagesStore
-        .loadMessages(tabId, sessionId, { force: true })
+        .loadMessages(sessionId, { force: true })
         .pipe(Effect.provide(controlled.layer))
     )
     await Effect.runPromise(controlled.waitForRequestCount(2))
 
-    expect(messagesStore.loadingForTab(tabId)).toBe(false)
-    expect(messagesStore.messagesForTab(tabId)).toEqual([retained])
+    expect(messagesStore.loading).toBe(false)
+    expect(messagesStore.messages).toEqual([retained])
 
     await Effect.runPromise(
       controlled.resolve(1, { sequence: 1, nodes: [retained] })
@@ -221,18 +212,17 @@ describe('messagesStore refresh ordering', () => {
   })
 
   it('does not add an optimistic node after its committed event won the race', async () => {
-    const tabId = 'response-race-tab'
     const sessionId = 'response-race-session'
     const committed = {
       ...userMessage('committed', sessionId, 'Already committed'),
       runId: 'run-1',
     }
     const controlled = makeControlledMessagesApi()
-    messagesStore.prepareSession(tabId, sessionId)
+    messagesStore.prepareSession(sessionId)
 
     const load = Effect.runPromise(
       messagesStore
-        .loadMessages(tabId, sessionId, { force: true })
+        .loadMessages(sessionId, { force: true })
         .pipe(Effect.provide(controlled.layer))
     )
     await Effect.runPromise(controlled.waitForRequestCount(1))
@@ -242,7 +232,6 @@ describe('messagesStore refresh ordering', () => {
     await load
 
     messagesStore.addOptimisticUserMessage(
-      tabId,
       sessionId,
       'Already committed',
       [],
@@ -250,6 +239,6 @@ describe('messagesStore refresh ordering', () => {
       'run-1'
     )
 
-    expect(messagesStore.messagesForTab(tabId)).toEqual([committed])
+    expect(messagesStore.messages).toEqual([committed])
   })
 })

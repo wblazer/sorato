@@ -1,7 +1,6 @@
 <script lang="ts">
   import DirectoryPicker from '$lib/components/directory-picker.svelte'
   import { projectStore } from '$lib/stores/projects.svelte.js'
-  import { sessionStore } from '$lib/stores/sessions.svelte.js'
   import { actionStore } from '$lib/stores/actions.svelte.js'
   import CaretUpDownIcon from 'phosphor-svelte/lib/CaretUpDownIcon'
   import { runConnectionPromise } from '$lib/connection-runtime.js'
@@ -75,7 +74,7 @@
               : 'hover:bg-base-hover',
           )}
           onclick={() => {
-            sessionStore.selectProject(project.id)
+            projectStore.selectProject(project.id)
             open = false
           }}
         >

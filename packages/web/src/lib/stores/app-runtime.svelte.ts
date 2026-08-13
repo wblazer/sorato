@@ -13,7 +13,6 @@ import { messagesStore } from './messages.svelte.js'
 import { modelsStore } from './models.svelte.js'
 import { sseStore } from './sse.svelte.js'
 import { serverInfoStore } from './server-info.svelte.js'
-import { tabStore } from './tabs.svelte.js'
 import { Effect } from 'effect'
 
 function createAppRuntime() {
@@ -60,7 +59,6 @@ function createAppRuntime() {
       installConnectionRuntime(preparedKey, makeConnectionRuntime(prepared))
 
       activatedConnectionKey = preparedKey
-      tabStore.ensureActiveConnectionTabSet()
       sseStore.connect()
       void runConnectionPromise(serverInfoStore.refresh())
 
@@ -76,14 +74,13 @@ function createAppRuntime() {
         runConnectionPromise(projectStore.fetchProjects()),
         runConnectionPromise(sessionStore.fetchSessions()),
       ])
-      tabStore.reconcileSessions(sessionStore.sessions)
       if (
         connectionsStore.activeConnection?.id !== prepared.id ||
         connectionsStore.activeConnection.url !== prepared.url
       )
         return
 
-      await runConnectionPromise(tabStore.loadActiveTabMessages())
+      await runConnectionPromise(sessionStore.loadSelectedSessionMessages())
       if (
         connectionsStore.activeConnection?.id !== prepared.id ||
         connectionsStore.activeConnection.url !== prepared.url

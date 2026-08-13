@@ -20,10 +20,16 @@ export type ComposerDraftAttachment = typeof DraftAttachmentSchema.Type
 
 export const composerDraftStorageKey = (
   connectionId: string | null | undefined,
-  tabId: string | null | undefined
+  sessionScope: string | null | undefined
 ) =>
-  connectionId && tabId
-    ? storageKey('connection', connectionId, 'tab', tabId, 'composer-draft')
+  connectionId && sessionScope
+    ? storageKey(
+        'connection',
+        connectionId,
+        'session',
+        sessionScope,
+        'composer-draft'
+      )
     : null
 
 export const composerHistoryStorageKey = (

@@ -1,6 +1,6 @@
 /**
- * Messages store — persisted messages scoped to each tab plus streaming content
- * for the selected run in the active tab.
+ * Messages store — persisted messages and streaming content for the single
+ * active session.
  *
  * Heavy content SSE is run-scoped: `/events?runId=...&since=...`. The global
  * SSE stream still carries lifecycle events used by the session store.
@@ -39,7 +39,7 @@ import { requestSessionRefresh } from './session-refresh-bus.js'
 import { MessageRefreshOrder } from './message-refresh-order.js'
 import { activeRunFromUpserted } from '$lib/active-run-events.js'
 
-interface MessageTabState {
+interface MessageState {
   readonly sessionId: string | null
   readonly messages: MessageNode[]
   readonly loading: boolean
@@ -67,7 +67,7 @@ export interface BackgroundChildRun {
   readonly content: StreamContentState
 }
 
-const emptyTabState: MessageTabState = {
+const emptyMessageState: MessageState = {
   sessionId: null,
   messages: [],
   loading: false,
@@ -79,7 +79,7 @@ const emptyTabState: MessageTabState = {
 }
 
 function createMessagesStore() {
-  let tabStates = $state<Record<string, MessageTabState>>({})
+  let messageState = $state<MessageState>(emptyMessageState)
 
   let streamContent = $state<StreamContentState>(emptyStreamContentState)
   let backgroundChildRuns = $state(new Map<string, BackgroundChildRun>())
@@ -88,13 +88,12 @@ function createMessagesStore() {
 
   let streamFiber: Fiber.Fiber<void, SseError> | null = null
   let backgroundFiber: Fiber.Fiber<void, SseError> | null = null
-  let streamedTabId = $state<string | null>(null)
   let streamedSessionId = $state<string | null>(null)
   let streamedRunId = $state<string | null>(null)
   let streamedRunBaseNodeId = $state<string | null>(null)
-  let durableRunCompletions = $state<
-    Record<string, ReadonlyMap<string, string | null>>
-  >({})
+  let durableRunCompletions = $state<ReadonlyMap<string, string | null>>(
+    new Map()
+  )
   const latestCommittedRunHeads = new Map<string, string>()
   const endedRuns = new Set<string>()
   const runStreamEndedRuns = new Set<string>()
@@ -102,28 +101,15 @@ function createMessagesStore() {
   const finalizedRuns = new Set<string>()
   const runEndSequences = new Map<string, number>()
 
-  function updateTabState(
-    tabId: string,
-    update: (state: MessageTabState) => MessageTabState
-  ) {
-    tabStates = {
-      ...tabStates,
-      [tabId]: update(tabStates[tabId] ?? emptyTabState),
-    }
+  function updateMessageState(update: (state: MessageState) => MessageState) {
+    messageState = update(messageState)
   }
 
-  function stateFor(tabId: string | null): MessageTabState {
-    return tabId === null ? emptyTabState : (tabStates[tabId] ?? emptyTabState)
-  }
-
-  function loadedTabsForSession(sessionId: string): ReadonlyArray<string> {
-    return Object.entries(tabStates)
-      .filter(
-        ([, state]) =>
-          state.sessionId === sessionId &&
-          (state.loaded || state.pendingSnapshots > 0)
-      )
-      .map(([tabId]) => tabId)
+  function hasLoadedSession(sessionId: string): boolean {
+    return (
+      messageState.sessionId === sessionId &&
+      (messageState.loaded || messageState.pendingSnapshots > 0)
+    )
   }
 
   function resetStreamContent() {
@@ -131,8 +117,9 @@ function createMessagesStore() {
   }
 
   function hasCanonicalRunContent(sessionId: string, runId: string): boolean {
-    return loadedTabsForSession(sessionId).some((tabId) =>
-      stateFor(tabId).messages.some(
+    return (
+      hasLoadedSession(sessionId) &&
+      messageState.messages.some(
         (node) =>
           node.runId === runId &&
           !node.id.startsWith('optimistic-') &&
@@ -158,9 +145,8 @@ function createMessagesStore() {
       return
     if (streamedRunId === runId && streamContent.events.length > 0) return
 
-    for (const tabId of loadedTabsForSession(sessionId)) {
+    if (hasLoadedSession(sessionId)) {
       markDurableRunCompletion(
-        tabId,
         runId,
         latestCommittedRunHeads.get(runId) ?? null
       )
@@ -185,19 +171,18 @@ function createMessagesStore() {
     runId = ''
   ) {
     const mutation: DurableNodeBatch = { sequence, runId, nodes: [] }
-    for (const tabId of loadedTabsForSession(sessionId)) {
-      updateTabState(tabId, (state) => {
-        if (sequence <= state.sequence) return state
-        return {
-          ...state,
-          sequence,
-          bufferedBatches:
-            state.pendingSnapshots > 0
-              ? [...state.bufferedBatches, mutation]
-              : state.bufferedBatches,
-        }
-      })
-    }
+    if (!hasLoadedSession(sessionId)) return
+    updateMessageState((state) => {
+      if (sequence <= state.sequence) return state
+      return {
+        ...state,
+        sequence,
+        bufferedBatches:
+          state.pendingSnapshots > 0
+            ? [...state.bufferedBatches, mutation]
+            : state.bufferedBatches,
+      }
+    })
   }
 
   function applyNodeBatch(event: NodeBatchCommittedEvent) {
@@ -209,8 +194,8 @@ function createMessagesStore() {
     let applied = false
     latestCommittedRunHeads.set(event.runId, event.headNodeId)
 
-    for (const tabId of loadedTabsForSession(event.sessionId)) {
-      updateTabState(tabId, (state) => {
+    if (hasLoadedSession(event.sessionId)) {
+      updateMessageState((state) => {
         const next = applyDurableNodeBatch(
           { sequence: state.sequence, nodes: state.messages },
           batch
@@ -301,29 +286,18 @@ function createMessagesStore() {
     lastCursors.delete(runId)
   }
 
-  function markDurableRunCompletion(
-    tabId: string,
-    runId: string,
-    focusNodeId: string | null
-  ) {
-    const completions = new Map(durableRunCompletions[tabId] ?? [])
+  function markDurableRunCompletion(runId: string, focusNodeId: string | null) {
+    const completions = new Map(durableRunCompletions)
     completions.set(runId, focusNodeId)
-    durableRunCompletions = {
-      ...durableRunCompletions,
-      [tabId]: completions,
-    }
+    durableRunCompletions = completions
   }
 
-  function clearDurableRunCompletion(tabId: string, runId: string) {
-    const existing = durableRunCompletions[tabId]
-    if (!existing?.has(runId)) return
+  function clearDurableRunCompletion(runId: string) {
+    if (!durableRunCompletions.has(runId)) return
 
-    const nextCompletions = new Map(existing)
+    const nextCompletions = new Map(durableRunCompletions)
     nextCompletions.delete(runId)
-    durableRunCompletions = {
-      ...durableRunCompletions,
-      [tabId]: nextCompletions,
-    }
+    durableRunCompletions = nextCompletions
   }
 
   function closeRunStream() {
@@ -355,7 +329,7 @@ function createMessagesStore() {
     }
   }
 
-  function openRunStream(tabId: string, sessionId: string, runId: string) {
+  function openRunStream(sessionId: string, runId: string) {
     closeRunStream()
 
     streamFiber = runConnectionFork(
@@ -371,7 +345,7 @@ function createMessagesStore() {
               Effect.sync(() => {
                 if (!('sessionId' in event) || event.sessionId !== sessionId)
                   return
-                if (stateFor(tabId).sessionId !== sessionId) {
+                if (messageState.sessionId !== sessionId) {
                   closeRunStream()
                   return
                 }
@@ -482,7 +456,6 @@ function createMessagesStore() {
   }
 
   function selectRunStream(
-    tabId: string,
     sessionId: string,
     runId: string | null,
     baseNodeId: string | null = null
@@ -490,7 +463,6 @@ function createMessagesStore() {
     if (runId === null) {
       closeRunStream()
       if (streamedRunId !== null) resetCursor(streamedRunId)
-      streamedTabId = null
       streamedSessionId = null
       streamedRunId = null
       streamedRunBaseNodeId = null
@@ -499,7 +471,6 @@ function createMessagesStore() {
     }
 
     if (
-      streamedTabId === tabId &&
       streamedSessionId === sessionId &&
       streamedRunId === runId &&
       streamFiber !== null
@@ -509,12 +480,11 @@ function createMessagesStore() {
     if (streamedRunId !== null) resetCursor(streamedRunId)
     resetStreamContent()
     resetCursor(runId)
-    clearDurableRunCompletion(tabId, runId)
-    streamedTabId = tabId
+    clearDurableRunCompletion(runId)
     streamedSessionId = sessionId
     streamedRunId = runId
     streamedRunBaseNodeId = baseNodeId
-    openRunStream(tabId, sessionId, runId)
+    openRunStream(sessionId, runId)
   }
 
   function appendBackgroundChildRunEvent(event: ContentEvent) {
@@ -588,9 +558,10 @@ function createMessagesStore() {
     }
   }
 
-  function prepareSession(tabId: string, sessionId: string) {
-    refreshOrder.clear(tabId)
-    updateTabState(tabId, () => ({
+  function prepareSession(sessionId: string) {
+    refreshOrder.clear()
+    clearActiveStream()
+    messageState = {
       sessionId,
       messages: [],
       loading: false,
@@ -599,12 +570,10 @@ function createMessagesStore() {
       sequence: 0,
       pendingSnapshots: 0,
       bufferedBatches: [],
-    }))
-    if (streamedTabId === tabId) clearActiveStream()
+    }
   }
 
   function loadMessages(
-    tabId: string,
     sessionId: string,
     opts?: { readonly force?: boolean; readonly recoverRunId?: string }
   ) {
@@ -614,12 +583,12 @@ function createMessagesStore() {
         commit()
         return true
       }
-      return refreshOrder.commitIfFresh(tabId, refreshRequest, commit)
+      return refreshOrder.commitIfFresh(refreshRequest, commit)
     }
     const finishSnapshot = Effect.sync(() => {
       if (refreshRequest === undefined) return
-      if (stateFor(tabId).sessionId !== sessionId) return
-      updateTabState(tabId, (state) => {
+      if (messageState.sessionId !== sessionId) return
+      updateMessageState((state) => {
         const pendingSnapshots = Math.max(0, state.pendingSnapshots - 1)
         return {
           ...state,
@@ -632,7 +601,7 @@ function createMessagesStore() {
     })
 
     return Effect.gen(function* () {
-      const existing = stateFor(tabId)
+      const existing = messageState
       const hasExisting =
         existing.sessionId === sessionId &&
         existing.loaded === true &&
@@ -642,9 +611,12 @@ function createMessagesStore() {
       refreshRequest = request
 
       yield* Effect.sync(() => {
-        updateTabState(tabId, (state) => {
+        if (messageState.sessionId !== sessionId) {
+          selectRunStream(sessionId, null)
+        }
+        updateMessageState((state) => {
           const sameSession = state.sessionId === sessionId
-          const current = sameSession ? state : emptyTabState
+          const current = sameSession ? state : emptyMessageState
           const baseline: DurableNodeBatch = {
             sequence: current.sequence,
             runId: '',
@@ -671,8 +643,9 @@ function createMessagesStore() {
       yield* preloader.preloadMessages(snapshot.nodes)
 
       yield* Effect.sync(() => {
-        refreshOrder.commitIfFresh(tabId, request, () => {
-          updateTabState(tabId, (state) => {
+        refreshOrder.commitIfFresh(request, () => {
+          if (messageState.sessionId !== sessionId) return
+          updateMessageState((state) => {
             const next = applyConversationSnapshot(
               { sequence: state.sequence, nodes: state.messages },
               snapshot,
@@ -690,7 +663,7 @@ function createMessagesStore() {
 
           if (
             opts?.recoverRunId !== undefined &&
-            streamedTabId === tabId &&
+            streamedSessionId === sessionId &&
             streamedRunId === opts.recoverRunId
           ) {
             closeRunStream()
@@ -705,12 +678,13 @@ function createMessagesStore() {
       Effect.catch((cause: UiApiError) =>
         Effect.sync(() => {
           commitIfFreshRequest(() => {
-            const existing = stateFor(tabId)
+            if (messageState.sessionId !== sessionId) return
+            const existing = messageState
             const hasExisting =
               existing.sessionId === sessionId &&
               existing.loaded === true &&
               existing.error === null
-            updateTabState(tabId, (state) => ({
+            updateMessageState((state) => ({
               ...state,
               sessionId,
               messages: hasExisting ? state.messages : [],
@@ -725,14 +699,13 @@ function createMessagesStore() {
   }
 
   function addOptimisticUserMessage(
-    tabId: string,
     sessionId: string,
     input: string,
     attachments: ReadonlyArray<RunAttachment>,
     parentNodeId: string | null,
     runId: string
   ) {
-    const state = stateFor(tabId)
+    const state = messageState
     const alreadyCommitted = state.messages.some(
       (message) =>
         message.runId === runId &&
@@ -791,7 +764,7 @@ function createMessagesStore() {
       },
       createdAt: now,
     }
-    updateTabState(tabId, (current) => ({
+    updateMessageState((current) => ({
       ...current,
       sessionId,
       messages: [
@@ -812,9 +785,9 @@ function createMessagesStore() {
       applyNodeBatch(event)
     }
     if (event._tag === 'ReplayReset') {
-      for (const tabId of loadedTabsForSession(event.sessionId)) {
+      if (hasLoadedSession(event.sessionId)) {
         void runConnectionPromise(
-          loadMessages(tabId, event.sessionId, {
+          loadMessages(event.sessionId, {
             force: true,
             recoverRunId: event.runId,
           })
@@ -830,23 +803,18 @@ function createMessagesStore() {
     }
   })
 
-  function clearTab(tabId: string) {
-    refreshOrder.clear(tabId)
-    if (streamedTabId === tabId) {
+  function clearSession() {
+    refreshOrder.clear()
+    if (streamedSessionId === messageState.sessionId) {
       closeRunStream()
       resetStreamContent()
       resetCursor()
-      streamedTabId = null
       streamedSessionId = null
       streamedRunId = null
       streamedRunBaseNodeId = null
     }
-    const nextRefreshes = { ...durableRunCompletions }
-    delete nextRefreshes[tabId]
-    durableRunCompletions = nextRefreshes
-    const next = { ...tabStates }
-    delete next[tabId]
-    tabStates = next
+    durableRunCompletions = new Map()
+    messageState = emptyMessageState
   }
 
   function clearActiveStream() {
@@ -855,11 +823,10 @@ function createMessagesStore() {
     resetStreamContent()
     backgroundChildRuns = new Map()
     resetCursor()
-    streamedTabId = null
     streamedSessionId = null
     streamedRunId = null
     streamedRunBaseNodeId = null
-    durableRunCompletions = {}
+    durableRunCompletions = new Map()
     endedRuns.clear()
     runStreamEndedRuns.clear()
     watermarkedRuns.clear()
@@ -871,7 +838,7 @@ function createMessagesStore() {
   function clearAll() {
     refreshOrder.clearAll()
     clearActiveStream()
-    tabStates = {}
+    messageState = emptyMessageState
   }
 
   return {
@@ -881,9 +848,6 @@ function createMessagesStore() {
     get activeRunBaseNodeId() {
       return streamedRunBaseNodeId
     },
-    get activeStreamTabId() {
-      return streamedTabId
-    },
     backgroundChildRunsForSession(sessionId: string | null) {
       if (sessionId === null) return []
       return [...backgroundChildRuns.values()].filter(
@@ -891,34 +855,29 @@ function createMessagesStore() {
       )
     },
     hydrateBackgroundChildRuns,
-    messagesForTab(tabId: string | null) {
-      return stateFor(tabId).messages
+    get messages() {
+      return messageState.messages
     },
-    loadingForTab(tabId: string | null) {
-      return stateFor(tabId).loading
+    get loading() {
+      return messageState.loading
     },
-    loadedForTab(tabId: string | null) {
-      return stateFor(tabId).loaded
+    get loaded() {
+      return messageState.loaded
     },
-    durableRunFocusForTab(
-      tabId: string | null,
-      runId: string
-    ): string | null | undefined {
-      return tabId === null
-        ? undefined
-        : durableRunCompletions[tabId]?.get(runId)
+    durableRunFocus(runId: string): string | null | undefined {
+      return durableRunCompletions.get(runId)
     },
-    errorForTab(tabId: string | null) {
-      return stateFor(tabId).error
+    get error() {
+      return messageState.error
     },
-    streamingPartsForTab(tabId: string | null) {
-      return streamedTabId === tabId ? streamContent.parts : []
+    get streamingParts() {
+      return streamContent.parts
     },
     prepareSession,
     loadMessages,
     selectRunStream,
     addOptimisticUserMessage,
-    clearTab,
+    clearSession,
     clearActiveStream,
     clearAll,
     clear: clearAll,

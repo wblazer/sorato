@@ -8,7 +8,7 @@ describe('MessageRefreshOrder', () => {
     order.begin()
     let visibleMessages: ReadonlyArray<string> = []
 
-    const committed = order.commitIfFresh('tab-1', intermediateRefresh, () => {
+    const committed = order.commitIfFresh(intermediateRefresh, () => {
       visibleMessages = ['intermediate response']
     })
 
@@ -22,10 +22,10 @@ describe('MessageRefreshOrder', () => {
     const queuedMessageRefresh = order.begin()
     let visibleMessages = ['active prompt']
 
-    order.commitIfFresh('tab-1', queuedMessageRefresh, () => {
+    order.commitIfFresh(queuedMessageRefresh, () => {
       visibleMessages = ['active prompt', 'queued prompt']
     })
-    const staleCommitted = order.commitIfFresh('tab-1', runEndRefresh, () => {
+    const staleCommitted = order.commitIfFresh(runEndRefresh, () => {
       visibleMessages = ['active prompt']
     })
 
@@ -33,23 +33,19 @@ describe('MessageRefreshOrder', () => {
     expect(visibleMessages).toEqual(['active prompt', 'queued prompt'])
   })
 
-  it('invalidates pending responses when a tab is cleared', () => {
+  it('invalidates pending responses when the active session is cleared', () => {
     const order = new MessageRefreshOrder()
     const pendingRefresh = order.begin()
-    order.clear('tab-1')
+    order.clear()
 
-    expect(order.commitIfFresh('tab-1', pendingRefresh, () => undefined)).toBe(
-      false
-    )
+    expect(order.commitIfFresh(pendingRefresh, () => undefined)).toBe(false)
   })
 
-  it('invalidates pending responses when all tabs are cleared', () => {
+  it('invalidates pending responses when all state is cleared', () => {
     const order = new MessageRefreshOrder()
     const pendingRefresh = order.begin()
     order.clearAll()
 
-    expect(order.commitIfFresh('tab-1', pendingRefresh, () => undefined)).toBe(
-      false
-    )
+    expect(order.commitIfFresh(pendingRefresh, () => undefined)).toBe(false)
   })
 })

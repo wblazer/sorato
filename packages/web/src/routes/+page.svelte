@@ -5,41 +5,17 @@
   import { authStore } from '$lib/stores/auth.svelte.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
-  import { tabStore } from '$lib/stores/tabs.svelte.js'
   import { serverInfoStore } from '$lib/stores/server-info.svelte.js'
 
-  const activeTab = $derived(tabStore.activeTab)
-  const selectedSession = $derived(
-    sessionStore.sessions.find((s) => s.id === activeTab?.sessionId),
-  )
-
-  function sessionFor(tab: NonNullable<typeof activeTab>) {
-    return sessionStore.sessions.find((session) => session.id === tab.sessionId)
-  }
+  const selectedSession = $derived(sessionStore.selectedSession)
 </script>
 
-{#if !activeTab}
-  <div class="h-full"></div>
-{:else if !authStore.hasAuthenticatedProvider && !serverInfoStore.developerMode}
+{#if !authStore.hasAuthenticatedProvider && !serverInfoStore.developerMode}
   <ProviderRequired />
 {:else if projectStore.projects.length === 0}
   <ProjectRequired />
+{:else if selectedSession}
+  <SessionView sessionId={selectedSession.id} title={selectedSession.title} />
 {:else}
-  {#each tabStore.tabs as tab (tab.id)}
-    {@const session = sessionFor(tab)}
-    {#if session}
-      <div class="h-full" hidden={tab.id !== tabStore.activeTabId}>
-        <SessionView
-          tabId={tab.id}
-          sessionId={session.id}
-          title={session.title}
-          active={tab.id === tabStore.activeTabId}
-        />
-      </div>
-    {/if}
-  {/each}
-
-  {#if !selectedSession}
-    <NewSession />
-  {/if}
+  <NewSession />
 {/if}

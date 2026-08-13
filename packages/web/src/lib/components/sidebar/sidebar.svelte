@@ -1,41 +1,173 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
+  import { Schema } from 'effect'
   import ConnectionManager from '../connection-manager.svelte'
   import { Button } from '$lib/components/ui/button/index.js'
+  import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js'
   import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import { actionStore } from '$lib/stores/actions.svelte.js'
   import { appLayoutStore } from '$lib/stores/app-layout.svelte.js'
+  import { projectStore } from '$lib/stores/projects.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
-  import { tabStore } from '$lib/stores/tabs.svelte.js'
+  import { runConnectionPromise } from '$lib/connection-runtime.js'
+  import { getJsonWithSchema, setJsonWithSchema } from '$lib/storage.js'
   import { cn } from '$lib/utils.js'
+  import type { Session } from '$lib/types.js'
+  import ArrowCounterClockwiseIcon from 'phosphor-svelte/lib/ArrowCounterClockwiseIcon'
+  import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon'
+  import CheckIcon from 'phosphor-svelte/lib/CheckIcon'
+  import FolderPlusIcon from 'phosphor-svelte/lib/FolderPlusIcon'
+  import FolderSimpleIcon from 'phosphor-svelte/lib/FolderSimpleIcon'
   import GearSixIcon from 'phosphor-svelte/lib/GearSixIcon'
-  import PlusIcon from 'phosphor-svelte/lib/PlusIcon'
+  import MagnifyingGlassIcon from 'phosphor-svelte/lib/MagnifyingGlassIcon'
+  import PencilSimpleIcon from 'phosphor-svelte/lib/PencilSimpleIcon'
   import XIcon from 'phosphor-svelte/lib/XIcon'
 
   let sidebarElement: HTMLElement | null = $state(null)
   let resizeCleanup: (() => void) | null = null
+  let searchQuery = $state('')
+  let projectScopeId = $state('all')
+  let selectedSearchIndex = $state(0)
+  let settledExpanded = $state(
+    getJsonWithSchema('sidebar-settled-expanded', Schema.Boolean, true),
+  )
+
+  const scopedProject = $derived(
+    projectScopeId === 'all' ? null : projectStore.getProject(projectScopeId),
+  )
+  const scopedSessions = $derived.by(() => {
+    const projectId = projectScopeId === 'all' ? null : projectScopeId
+    return sessionStore.sessions
+      .filter((session) => !projectId || session.projectId === projectId)
+      .sort((left, right) => sessionTimestamp(right) - sessionTimestamp(left))
+  })
+  const activeSessions = $derived(
+    scopedSessions.filter(
+      (session) => !sessionStore.settledSessionIds.has(session.id),
+    ),
+  )
+  const settledSessions = $derived(
+    scopedSessions.filter((session) =>
+      sessionStore.settledSessionIds.has(session.id),
+    ),
+  )
+  const visibleSettledSessions = $derived(
+    settledExpanded
+      ? settledSessions
+      : settledSessions.filter(
+          (session) => session.id === sessionStore.selectedSessionId,
+        ),
+  )
+  const searchResults = $derived.by(() => {
+    const term = searchQuery.trim().toLowerCase()
+    if (!term) return []
+
+    return scopedSessions.filter((session) => {
+      const project = projectStore.getProject(session.projectId)
+      return `${sessionStore.displayTitle(session)} ${project?.name ?? ''}`
+        .toLowerCase()
+        .includes(term)
+    })
+  })
+
+  $effect(() => {
+    if (
+      projectScopeId !== 'all' &&
+      !projectStore.projects.some((project) => project.id === projectScopeId)
+    ) {
+      projectScopeId = 'all'
+    }
+  })
 
   onDestroy(() => {
     resizeCleanup?.()
   })
 
-  function tabTitle(tab: (typeof tabStore.tabs)[number]) {
-    if (tab.title) return tab.title
-    if (tab.sessionId) {
-      const session = sessionStore.sessions.find(
-        (item) => item.id === tab.sessionId,
-      )
-      return session ? sessionStore.displayTitle(session) : 'New Session'
-    }
-    return 'New Tab'
+  function sessionTimestamp(session: Session): number {
+    return session.lastUserMessageAt ?? session.updatedAt
   }
 
-  function isRunning(tab: (typeof tabStore.tabs)[number]) {
-    return tab.sessionId ? sessionStore.isRunning(tab.sessionId) : false
+  function formatRelativeTime(timestamp: number): string {
+    const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000))
+    if (seconds < 60) return 'now'
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60) return `${minutes}m`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours}h`
+    const days = Math.floor(hours / 24)
+    if (days < 30) return `${days}d`
+    return `${Math.floor(days / 30)}mo`
+  }
+
+  function projectName(session: Session): string {
+    return projectStore.getProject(session.projectId)?.name ?? 'Unknown project'
   }
 
   function openSettings() {
     actionStore.trigger('app.settings')
+  }
+
+  function openNewSession() {
+    sessionStore.startNewSession(scopedProject?.id)
+  }
+
+  function openSession(sessionId: string) {
+    sessionStore.selectSession(sessionId)
+    searchQuery = ''
+    selectedSearchIndex = 0
+  }
+
+  function settleSession(event: MouseEvent | KeyboardEvent, sessionId: string) {
+    event.stopPropagation()
+    sessionStore.settleSession(sessionId)
+  }
+
+  function unsettleSession(
+    event: MouseEvent | KeyboardEvent,
+    sessionId: string,
+  ) {
+    event.stopPropagation()
+    sessionStore.unsettleSession(sessionId)
+  }
+
+  function toggleSettledShelf() {
+    settledExpanded = !settledExpanded
+    setJsonWithSchema(
+      'sidebar-settled-expanded',
+      Schema.Boolean,
+      settledExpanded,
+    )
+  }
+
+  function handleSearchInput(event: Event) {
+    searchQuery = (event.currentTarget as HTMLInputElement).value
+    selectedSearchIndex = 0
+  }
+
+  function handleSearchKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      searchQuery = ''
+      selectedSearchIndex = 0
+      return
+    }
+    if (searchResults.length === 0) return
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      selectedSearchIndex = (selectedSearchIndex + 1) % searchResults.length
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      selectedSearchIndex =
+        (selectedSearchIndex - 1 + searchResults.length) % searchResults.length
+    } else if (event.key === 'Enter') {
+      event.preventDefault()
+      const session = searchResults[selectedSearchIndex]
+      if (session) openSession(session.id)
+    }
+
+    document
+      .getElementById(`sidebar-session-result-${selectedSearchIndex}`)
+      ?.scrollIntoView({ block: 'nearest' })
   }
 
   function startSidebarResize(event: PointerEvent) {
@@ -111,70 +243,315 @@
   data-slot="sidebar"
   style={`--app-sidebar-width: ${appLayoutStore.sidebarWidth}px; width: var(--app-sidebar-width)`}
 >
-  <ScrollArea class="min-h-0 flex-1" viewportClass="px-2 pt-2 pb-2">
-    <div class="flex flex-col gap-1">
-      <div class="sticky top-0 z-20 bg-background pb-1">
-        <Button
-          type="button"
-          variant="ghost"
-          class="h-9 w-full justify-center gap-2 rounded-lg px-2 text-sm text-muted-foreground"
-          onclick={tabStore.openNewTab}
-        >
-          <PlusIcon class="size-4" />
-          <span>New Tab</span>
-        </Button>
-      </div>
+  <div class="relative z-20 grid shrink-0 gap-1 bg-background p-2 pb-1">
+    <Button class="w-full justify-start" onclick={openNewSession}>
+      <PencilSimpleIcon data-icon="inline-start" />
+      New session
+    </Button>
 
-      {#each tabStore.tabs as tab (tab.id)}
-        <div
-          class={cn(
-            'group relative h-9 w-full rounded-lg text-sm',
-            tab.id === tabStore.activeTabId
-              ? 'bg-selected/80 text-foreground'
-              : 'text-foreground hover:bg-base-hover/60',
-          )}
-        >
+    <div class="w-full">
+      <div
+        class="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-base-hover hover:text-foreground focus-within:bg-base-hover focus-within:text-foreground"
+      >
+        <MagnifyingGlassIcon class="size-4 shrink-0 opacity-80" />
+        <input
+          type="text"
+          value={searchQuery}
+          oninput={handleSearchInput}
+          onkeydown={handleSearchKeydown}
+          placeholder="Search"
+          aria-label="Search sessions"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={searchQuery.length > 0 && searchResults.length > 0}
+          aria-controls={searchQuery
+            ? 'sidebar-session-search-results'
+            : undefined}
+          aria-activedescendant={searchQuery &&
+          searchResults[selectedSearchIndex]
+            ? `sidebar-session-result-${selectedSearchIndex}`
+            : undefined}
+          class="min-w-0 flex-1 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground"
+        />
+        {#if searchQuery}
           <button
             type="button"
-            title={tabTitle(tab)}
-            class={cn(
-              'hit-area-y-0.5 flex size-full min-w-0 items-center gap-2 rounded-lg px-2 text-left group-hover:pr-9',
-              tab.id === tabStore.activeTabId && 'pr-9',
-            )}
-            onclick={() => tabStore.setActiveTab(tab.id)}
-          >
-            <span class="flex size-4 shrink-0 items-center justify-center">
-              {#if isRunning(tab)}
-                <span class="size-2 animate-pulse rounded-full bg-accent"
-                ></span>
-              {/if}
-            </span>
-
-            <span
-              class="min-w-0 flex-1 overflow-hidden whitespace-nowrap [mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]"
-              >{tabTitle(tab)}</span
-            >
-          </button>
-
-          <button
-            type="button"
-            aria-label="Close tab"
-            class={cn(
-              'absolute top-1/2 right-1.5 z-10 size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground opacity-80 hover:text-foreground hover:opacity-100',
-              tab.id === tabStore.activeTabId
-                ? 'hidden hover:bg-selected group-hover:flex'
-                : 'hidden hover:bg-base-hover group-hover:flex',
-            )}
-            onclick={(event) => {
-              event.stopPropagation()
-              tabStore.closeTab(tab.id)
+            aria-label="Clear session search"
+            class="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground"
+            onclick={() => {
+              searchQuery = ''
+              selectedSearchIndex = 0
             }}
           >
-            <XIcon class="size-3.5" />
+            <XIcon class="size-3" />
           </button>
-        </div>
-      {/each}
+        {/if}
+      </div>
     </div>
+
+    <div class="flex items-center gap-1">
+      <DropdownMenu.Root>
+        <DropdownMenu.Trigger
+          class="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-sm font-medium text-muted-foreground outline-none hover:bg-base-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-selected data-[state=open]:text-foreground"
+          aria-label="Filter sessions by project"
+        >
+          <FolderSimpleIcon class="size-4 shrink-0" />
+          <span class="min-w-0 flex-1 truncate text-left">
+            {scopedProject?.name ?? 'All projects'}
+          </span>
+          <CaretDownIcon class="size-3.5 shrink-0" />
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Content
+          align="start"
+          class="w-[var(--app-sidebar-width)] max-w-80"
+        >
+          <DropdownMenu.RadioGroup bind:value={projectScopeId}>
+            <DropdownMenu.RadioItem value="all">
+              <FolderSimpleIcon />
+              <span class="truncate">All projects</span>
+            </DropdownMenu.RadioItem>
+            {#each projectStore.projects as project (project.id)}
+              <DropdownMenu.RadioItem value={project.id}>
+                <span class="truncate">{project.name}</span>
+              </DropdownMenu.RadioItem>
+            {/each}
+          </DropdownMenu.RadioGroup>
+        </DropdownMenu.Content>
+      </DropdownMenu.Root>
+      <Button
+        variant="ghost"
+        size="icon"
+        class="size-8"
+        aria-label="Add project"
+        title="Add project"
+        onclick={() => actionStore.trigger('project.add')}
+      >
+        <FolderPlusIcon />
+      </Button>
+    </div>
+  </div>
+
+  <ScrollArea class="min-h-0 flex-1" viewportClass="px-2 pb-2">
+    {#if searchQuery}
+      <ul
+        id="sidebar-session-search-results"
+        role="listbox"
+        aria-label="Session search results"
+        class="flex flex-col gap-px"
+      >
+        {#each searchResults as session, index (session.id)}
+          <li>
+            <button
+              id={`sidebar-session-result-${index}`}
+              type="button"
+              role="option"
+              tabindex="-1"
+              aria-selected={index === selectedSearchIndex}
+              aria-current={session.id === sessionStore.selectedSessionId
+                ? 'page'
+                : undefined}
+              class={cn(
+                'flex h-12 w-full min-w-0 items-center rounded-md px-2.5 text-left outline-none hover:bg-base-hover focus-visible:ring-2 focus-visible:ring-ring',
+                (index === selectedSearchIndex ||
+                  session.id === sessionStore.selectedSessionId) &&
+                  'bg-selected',
+              )}
+              onclick={() => openSession(session.id)}
+              onmouseenter={() => (selectedSearchIndex = index)}
+            >
+              <span class="min-w-0 flex-1">
+                <span
+                  class="block truncate text-sm font-medium text-foreground"
+                >
+                  {sessionStore.displayTitle(session)}
+                </span>
+                <span class="block truncate text-xs text-muted-foreground">
+                  {projectName(session)}
+                </span>
+              </span>
+              <span class="ml-2 shrink-0 text-xs text-muted-foreground/70">
+                {formatRelativeTime(sessionTimestamp(session))}
+              </span>
+            </button>
+          </li>
+        {:else}
+          <li class="px-3 py-8 text-center text-xs text-muted-foreground">
+            No matching sessions
+          </li>
+        {/each}
+      </ul>
+    {:else if sessionStore.loading && sessionStore.sessions.length === 0}
+      <p class="px-3 py-8 text-center text-xs text-muted-foreground">
+        Loading sessions…
+      </p>
+    {:else if sessionStore.error}
+      <div class="space-y-2 px-2 py-6 text-center">
+        <p class="text-xs text-danger-muted-foreground">
+          {sessionStore.error}
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          onclick={() =>
+            void runConnectionPromise(sessionStore.fetchSessions())}
+        >
+          Retry
+        </Button>
+      </div>
+    {:else}
+      <ul class="flex flex-col gap-1" aria-label="Active sessions">
+        {#each activeSessions as session (session.id)}
+          <li>
+            <div
+              role="button"
+              tabindex="0"
+              aria-label={`${sessionStore.displayTitle(session)}, ${projectName(session)}`}
+              aria-current={session.id === sessionStore.selectedSessionId
+                ? 'page'
+                : undefined}
+              class={cn(
+                'group/session relative h-[3.75rem] w-full overflow-hidden rounded-md px-2.5 py-2 text-left outline-none transition-colors hover:bg-base-hover focus-visible:ring-2 focus-visible:ring-ring',
+                session.id === sessionStore.selectedSessionId && 'bg-selected',
+              )}
+              onclick={() => openSession(session.id)}
+              onkeydown={(event) => {
+                if (
+                  event.target === event.currentTarget &&
+                  (event.key === 'Enter' || event.key === ' ')
+                ) {
+                  event.preventDefault()
+                  openSession(session.id)
+                }
+              }}
+            >
+              <span class="flex h-5 min-w-0 items-center gap-2">
+                <span
+                  class="min-w-0 flex-1 truncate text-xs font-medium text-muted-foreground"
+                >
+                  {projectName(session)}
+                </span>
+                {#if session.status === 'running'}
+                  <span
+                    class="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-accent transition-opacity group-hover/session:opacity-0 group-focus-within/session:opacity-0"
+                  >
+                    <span class="size-1.5 animate-pulse rounded-full bg-accent"
+                    ></span>
+                    Running
+                  </span>
+                {:else}
+                  <span
+                    class="shrink-0 text-xs text-muted-foreground/70 transition-opacity group-hover/session:opacity-0 group-focus-within/session:opacity-0"
+                  >
+                    {formatRelativeTime(sessionTimestamp(session))}
+                  </span>
+                {/if}
+                <span
+                  class="pointer-events-none absolute top-1.5 right-1.5 flex h-6 items-center opacity-0 transition-opacity group-hover/session:pointer-events-auto group-hover/session:opacity-100 group-focus-within/session:pointer-events-auto group-focus-within/session:opacity-100"
+                >
+                  <button
+                    type="button"
+                    aria-label="Settle session"
+                    class="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:text-foreground"
+                    onclick={(event) => settleSession(event, session.id)}
+                  >
+                    <CheckIcon class="size-3.5" />
+                    Settle
+                  </button>
+                </span>
+              </span>
+              <span
+                class="mt-1 block truncate text-sm font-medium text-foreground/90"
+              >
+                {sessionStore.displayTitle(session)}
+              </span>
+            </div>
+          </li>
+        {/each}
+      </ul>
+
+      {#if settledSessions.length > 0}
+        <div class="mt-3">
+          <button
+            type="button"
+            class="mb-1 flex w-full items-center gap-2 px-2.5 text-left"
+            aria-expanded={settledExpanded}
+            onclick={toggleSettledShelf}
+          >
+            <span class="text-xs font-medium text-muted-foreground/60">
+              {settledExpanded
+                ? 'Settled'
+                : `Settled (${settledSessions.length})`}
+            </span>
+            <span class="h-px flex-1 bg-border/70"></span>
+            <CaretDownIcon
+              class={cn(
+                'size-3 text-muted-foreground/60 transition-transform',
+                settledExpanded && 'rotate-180',
+              )}
+            />
+          </button>
+
+          <ul class="flex flex-col gap-px" aria-label="Settled sessions">
+            {#each visibleSettledSessions as session (session.id)}
+              <li>
+                <div
+                  role="button"
+                  tabindex="0"
+                  title={`${sessionStore.displayTitle(session)} — ${projectName(session)}`}
+                  aria-label={`${sessionStore.displayTitle(session)}, ${projectName(session)}`}
+                  aria-current={session.id === sessionStore.selectedSessionId
+                    ? 'page'
+                    : undefined}
+                  class={cn(
+                    'group/settled flex h-9 w-full min-w-0 items-center gap-2 rounded-md px-2.5 text-left text-muted-foreground outline-none transition-colors hover:bg-base-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
+                    session.id === sessionStore.selectedSessionId &&
+                      'bg-selected text-foreground',
+                  )}
+                  onclick={() => openSession(session.id)}
+                  onkeydown={(event) => {
+                    if (
+                      event.target === event.currentTarget &&
+                      (event.key === 'Enter' || event.key === ' ')
+                    ) {
+                      event.preventDefault()
+                      openSession(session.id)
+                    }
+                  }}
+                >
+                  <span
+                    class="min-w-0 flex-1 truncate text-sm opacity-65 transition-opacity group-hover/settled:opacity-100"
+                  >
+                    {sessionStore.displayTitle(session)}
+                  </span>
+                  <span
+                    class="shrink-0 text-xs text-muted-foreground/55 group-hover/settled:hidden group-focus-within/settled:hidden"
+                  >
+                    {formatRelativeTime(sessionTimestamp(session))}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Un-settle session"
+                    title="Un-settle session"
+                    class="hidden size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground group-hover/settled:flex group-focus-within/settled:flex"
+                    onclick={(event) => unsettleSession(event, session.id)}
+                  >
+                    <ArrowCounterClockwiseIcon class="size-3.5" />
+                  </button>
+                </div>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+
+      {#if scopedSessions.length === 0}
+        <p class="px-3 py-8 text-center text-xs text-muted-foreground">
+          {scopedProject
+            ? `No sessions in ${scopedProject.name} yet`
+            : 'No sessions yet'}
+        </p>
+      {/if}
+    {/if}
   </ScrollArea>
 
   <div class="mt-auto grid w-full gap-1 border-t border-border p-2">

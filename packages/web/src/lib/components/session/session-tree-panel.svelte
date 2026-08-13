@@ -29,12 +29,10 @@
   import { iconForMessageName, roleIcons } from './message-icons.js'
 
   let {
-    tabId,
     sessionId,
     selectedHead,
     model,
   }: {
-    tabId: string
     sessionId: string
     selectedHead: SessionSelectedHeadController
     model: string | null
@@ -99,7 +97,7 @@
         readonly attachment: SessionTreeActiveRun['attachment']
       } & TreeRowLayout)
 
-  const messages = $derived(messagesStore.messagesForTab(tabId))
+  const messages = $derived(messagesStore.messages)
   const activeRuns = $derived(sessionStore.activeRunsFor(sessionId))
   const selectedHeadValue = $derived(selectedHead.renderHead)
   const treeModel = $derived.by(() =>
@@ -606,7 +604,7 @@
     </div>
 
     <Tabs.Content value="tree" class="flex min-h-0 flex-col overflow-hidden">
-      {#if messagesStore.loadingForTab(tabId)}
+      {#if messagesStore.loading}
         <LoadingState />
       {:else if rows.length === 0}
         <div class="p-3 text-sm text-muted-foreground">No messages yet.</div>

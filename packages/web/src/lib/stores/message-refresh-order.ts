@@ -1,31 +1,28 @@
 export class MessageRefreshOrder {
-  private latestCommittedRequestByTab = new Map<string, number>()
+  private latestCommittedRequest = 0
   private nextRequest = 0
-  private minimumFreshRequest = 0
 
   begin(): number {
     const request = ++this.nextRequest
     return request
   }
 
-  isFresh(tabId: string, request: number): boolean {
-    const latestCommitted = this.latestCommittedRequestByTab.get(tabId) ?? 0
-    return request >= Math.max(latestCommitted, this.minimumFreshRequest)
+  isFresh(request: number): boolean {
+    return request >= this.latestCommittedRequest
   }
 
-  commitIfFresh(tabId: string, request: number, commit: () => void): boolean {
-    if (!this.isFresh(tabId, request)) return false
+  commitIfFresh(request: number, commit: () => void): boolean {
+    if (!this.isFresh(request)) return false
     commit()
-    this.latestCommittedRequestByTab.set(tabId, request)
+    this.latestCommittedRequest = request
     return true
   }
 
-  clear(tabId: string): void {
-    this.latestCommittedRequestByTab.set(tabId, ++this.nextRequest)
+  clear(): void {
+    this.latestCommittedRequest = ++this.nextRequest
   }
 
   clearAll(): void {
-    this.minimumFreshRequest = ++this.nextRequest
-    this.latestCommittedRequestByTab.clear()
+    this.clear()
   }
 }

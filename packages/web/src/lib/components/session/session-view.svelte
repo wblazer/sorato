@@ -48,22 +48,14 @@
   import { activeRunForHead } from './composer-run-control.js'
   import { assistantToolGroupKey, runSegmentKey } from './message-row-key.js'
   let {
-    tabId,
     sessionId,
     title,
-    active = true,
   }: {
-    tabId: string
     sessionId: string
     title: string | null
-    active?: boolean
   } = $props()
 
-  const selectedHead = new SessionSelectedHeadController(
-    () => tabId,
-    () => sessionId,
-    () => active,
-  )
+  const selectedHead = new SessionSelectedHeadController(() => sessionId)
   const scroller = new MessageScrollerController({
     autoScroll: true,
     defaultScrollPosition: 'last-anchor',
@@ -97,9 +89,9 @@
   const effectiveSystemPrompt = $derived(
     latestAgentSystemPrompt(visibleMessages),
   )
-  const messagesLoading = $derived(messagesStore.loadingForTab(tabId))
-  const messagesLoaded = $derived(messagesStore.loadedForTab(tabId))
-  const messagesError = $derived(messagesStore.errorForTab(tabId))
+  const messagesLoading = $derived(messagesStore.loading)
+  const messagesLoaded = $derived(messagesStore.loaded)
+  const messagesError = $derived(messagesStore.error)
   const selectedHeadValue = $derived(selectedHead.renderHead)
   const followedRun = $derived(activeRunForHead(selectedHeadValue, activeRuns))
   const isStoppingFollowedRun = $derived(
@@ -108,9 +100,8 @@
   const isFollowingActiveRun = $derived(followedRun !== null)
   const followedStreamingParts = $derived(
     selectedHeadValue?.type === 'run' &&
-      messagesStore.activeStreamTabId === tabId &&
       messagesStore.activeRunId === selectedHeadValue.runId
-      ? messagesStore.streamingPartsForTab(tabId)
+      ? messagesStore.streamingParts
       : [],
   )
   const currentPlan = $derived.by(() =>
@@ -135,7 +126,10 @@
       : 'streaming',
   )
   const draftStorageKey = $derived(
-    composerDraftStorageKey(connectionsStore.activeConnectionScopeId, tabId),
+    composerDraftStorageKey(
+      connectionsStore.activeConnectionScopeId,
+      sessionId,
+    ),
   )
   const historyStorageKey = $derived(
     composerHistoryStorageKey(connectionsStore.activeConnectionScopeId),
@@ -415,9 +409,8 @@
   }
 
   $effect(() => {
-    if (!active) return
     if (!messagesLoaded && !messagesLoading) {
-      void runConnectionPromise(messagesStore.loadMessages(tabId, sessionId))
+      void runConnectionPromise(messagesStore.loadMessages(sessionId))
     }
   })
 
@@ -485,7 +478,6 @@
       // Show the user's message immediately — don't wait for the server
       // round-trip. The optimistic node is replaced on the next refresh.
       messagesStore.addOptimisticUserMessage(
-        tabId,
         sessionId,
         input,
         attachments,
@@ -563,7 +555,7 @@
 
   function retryMessages() {
     void runConnectionPromise(
-      messagesStore.loadMessages(tabId, sessionId, { force: true }),
+      messagesStore.loadMessages(sessionId, { force: true }),
     )
   }
 
@@ -581,7 +573,6 @@
 
   {#snippet panel()}
     <SessionTreePanel
-      {tabId}
       {sessionId}
       {selectedHead}
       model={modelsStore.selectedTargetId}
@@ -736,7 +727,7 @@
     modelLoading={modelsStore.loading}
     isViewingActiveRun={isFollowingActiveRun}
     isStopping={isStoppingFollowedRun}
-    autoFocus={active}
+    autoFocus
     focusKey={sessionId}
     {draftStorageKey}
     {historyStorageKey}

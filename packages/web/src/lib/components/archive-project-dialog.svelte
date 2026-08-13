@@ -6,7 +6,6 @@
   import * as Item from '$lib/components/ui/item/index.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
-  import { tabStore } from '$lib/stores/tabs.svelte.js'
   import { runConnectionPromise } from '$lib/connection-runtime.js'
   import FolderOpenIcon from 'phosphor-svelte/lib/FolderOpenIcon'
   import WarningCircleIcon from 'phosphor-svelte/lib/WarningCircleIcon'
@@ -55,7 +54,6 @@
         projectStore.archiveProject(projectId, includeSessions),
       )
       if (ok) {
-        tabStore.clearProject(projectId)
         await runConnectionPromise(sessionStore.fetchSessions())
         open = false
       }

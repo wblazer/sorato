@@ -128,7 +128,6 @@ describe('messagesStore run completion', () => {
   it('keeps the committed assistant when the run stream ends first', async () => {
     const sessionId = 'session-1'
     const runId = 'run-1'
-    const tabId = 'tab-1'
     const globalEvents = await Effect.runPromise(Queue.unbounded<ServerEvent>())
     const runEvents = await Effect.runPromise(Queue.unbounded<ServerEvent>())
     installConnectionRuntime(
@@ -136,8 +135,8 @@ describe('messagesStore run completion', () => {
       makeRuntime(globalEvents, runEvents)
     )
 
-    messagesStore.prepareSession(tabId, sessionId)
-    messagesStore.selectRunStream(tabId, sessionId, runId)
+    messagesStore.prepareSession(sessionId)
+    messagesStore.selectRunStream(sessionId, runId)
     sseStore.connect()
 
     await Effect.runPromise(
@@ -150,7 +149,7 @@ describe('messagesStore run completion', () => {
       })
     )
     await vi.waitFor(() => {
-      expect(messagesStore.streamingPartsForTab(tabId)).toEqual([
+      expect(messagesStore.streamingParts).toEqual([
         { type: 'text', text: 'Final answer' },
       ])
     })
@@ -180,9 +179,9 @@ describe('messagesStore run completion', () => {
     await Effect.runPromise(Queue.offer(globalEvents, runEnd))
 
     await vi.waitFor(() => {
-      expect(messagesStore.messagesForTab(tabId)).toEqual([node])
-      expect(messagesStore.streamingPartsForTab(tabId)).toEqual([])
-      expect(messagesStore.durableRunFocusForTab(tabId, runId)).toBe(node.id)
+      expect(messagesStore.messages).toEqual([node])
+      expect(messagesStore.streamingParts).toEqual([])
+      expect(messagesStore.durableRunFocus(runId)).toBe(node.id)
     })
   })
 })

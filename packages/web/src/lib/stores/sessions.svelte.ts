@@ -8,7 +8,7 @@ import type {
   Session,
   SessionRunStatus,
 } from '$lib/types.js'
-import { Effect } from 'effect'
+import { Effect, Schema } from 'effect'
 import { patchSessionFromNodeBatch } from '$lib/session-events.js'
 import {
   activeRunFromUpserted,
@@ -20,7 +20,12 @@ import { sseStore } from './sse.svelte.js'
 import { messagesStore } from './messages.svelte.js'
 import { projectStore } from './projects.svelte.js'
 import { onSessionRefreshRequest } from './session-refresh-bus.js'
-import { tabStore } from './tabs.svelte.js'
+import { connectionsStore } from './connections.svelte.js'
+import {
+  getJsonWithSchema,
+  setJsonWithSchema,
+  storageKey,
+} from '$lib/storage.js'
 
 export interface QueuedMessageDraft {
   id: string
@@ -30,18 +35,77 @@ export interface QueuedMessageDraft {
   createdAt: number
 }
 
+const SelectedSessionSchema = Schema.NullOr(Schema.String)
+const SettledSessionIdsSchema = Schema.Array(Schema.String)
+
+const selectedSessionKey = (connectionId: string) =>
+  storageKey('connection', connectionId, 'selected-session')
+
+const settledSessionIdsKey = (connectionId: string) =>
+  storageKey('connection', connectionId, 'settled-sessions')
+
 function createSessionStore() {
   let sessions = $state<Session[]>([])
+  let navigationConnectionId = $state<string | null>(null)
+  let selectedSessionId = $state<string | null>(null)
+  let settledSessionIds = $state(new Set<string>())
   let loading = $state(false)
   let error = $state<string | null>(null)
 
-  const filteredSessions = $derived.by(() => {
-    const projectId =
-      tabStore.activeTab?.projectId ?? projectStore.selectedProjectId
-    return sessions
-      .filter((s) => s.projectId === projectId)
-      .sort((a, b) => b.updatedAt - a.updatedAt)
-  })
+  function persistSelectedSession() {
+    const connectionId = connectionsStore.activeConnectionScopeId
+    if (!connectionId) return
+    setJsonWithSchema(
+      selectedSessionKey(connectionId),
+      SelectedSessionSchema,
+      selectedSessionId
+    )
+  }
+
+  function persistSettledSessions() {
+    const connectionId = connectionsStore.activeConnectionScopeId
+    if (!connectionId) return
+    setJsonWithSchema(
+      settledSessionIdsKey(connectionId),
+      SettledSessionIdsSchema,
+      [...settledSessionIds]
+    )
+  }
+
+  function reconcileNavigation(nextSessions: ReadonlyArray<Session>) {
+    const connectionId = connectionsStore.activeConnectionScopeId
+    if (!connectionId) return
+
+    if (navigationConnectionId !== connectionId) {
+      navigationConnectionId = connectionId
+      selectedSessionId = getJsonWithSchema(
+        selectedSessionKey(connectionId),
+        SelectedSessionSchema,
+        null
+      )
+      settledSessionIds = new Set(
+        getJsonWithSchema(
+          settledSessionIdsKey(connectionId),
+          SettledSessionIdsSchema,
+          []
+        )
+      )
+    }
+
+    const knownSessionIds = new Set(nextSessions.map((session) => session.id))
+    if (selectedSessionId && !knownSessionIds.has(selectedSessionId)) {
+      selectedSessionId = null
+      persistSelectedSession()
+    }
+
+    const reconciledSettledIds = new Set(
+      [...settledSessionIds].filter((id) => knownSessionIds.has(id))
+    )
+    if (reconciledSettledIds.size !== settledSessionIds.size) {
+      settledSessionIds = reconciledSettledIds
+      persistSettledSessions()
+    }
+  }
 
   // ── Running / stopping state from SSE ───────────────────────────────
   //
@@ -182,7 +246,6 @@ function createSessionStore() {
             }
           : session
       )
-      tabStore.updateSessionTitle(event.sessionId, event.title)
     }
   })
 
@@ -195,7 +258,6 @@ function createSessionStore() {
       yield* Effect.sync(() => {
         sessions = sessions.map((s) => (s.id === sessionId ? fresh : s))
         hydrateActiveRuns([fresh])
-        tabStore.updateSessionTitle(fresh.id, fresh.title)
 
         if (fresh.status === 'idle') {
           const nextQueued = new Map(queuedMessages)
@@ -228,6 +290,7 @@ function createSessionStore() {
 
       yield* Effect.sync(() => {
         sessions = [...result]
+        reconcileNavigation(result)
         hydrateActiveRuns(result)
       })
     }).pipe(
@@ -244,15 +307,9 @@ function createSessionStore() {
    * Create a new session in the selected project.
    * Returns the new session, or null on error.
    */
-  function createSession(
-    projectId?: string,
-    tabId: string | null | undefined = tabStore.activeTab?.id
-  ) {
+  function createSession(projectId?: string) {
     return Effect.gen(function* () {
-      const resolvedProjectId =
-        projectId ??
-        tabStore.activeTab?.projectId ??
-        projectStore.selectedProjectId
+      const resolvedProjectId = projectId ?? projectStore.selectedProjectId
       const noSession = null
       if (!resolvedProjectId) return noSession
 
@@ -263,7 +320,6 @@ function createSessionStore() {
 
       return yield* Effect.sync(() => {
         sessions = [session, ...sessions]
-        if (tabId) tabStore.attachSession(tabId, session)
         return session
       })
     }).pipe(
@@ -473,8 +529,57 @@ function createSessionStore() {
     sessionStatuses = next
   }
 
+  function selectSession(
+    id: string,
+    options: { readonly loadMessages?: boolean } = {}
+  ) {
+    const session = sessions.find((item) => item.id === id)
+    if (!session) return
+
+    selectedSessionId = id
+    persistSelectedSession()
+    projectStore.selectProject(session.projectId)
+    if (options.loadMessages !== false) {
+      void runConnectionPromise(messagesStore.loadMessages(id))
+    }
+  }
+
+  function startNewSession(projectId?: string) {
+    selectedSessionId = null
+    persistSelectedSession()
+    messagesStore.clearSession()
+    if (projectId) projectStore.selectProject(projectId)
+  }
+
+  function settleSession(id: string) {
+    if (settledSessionIds.has(id)) return
+    settledSessionIds = new Set([...settledSessionIds, id])
+    persistSettledSessions()
+  }
+
+  function unsettleSession(id: string) {
+    if (!settledSessionIds.has(id)) return
+    const next = new Set(settledSessionIds)
+    next.delete(id)
+    settledSessionIds = next
+    persistSettledSessions()
+  }
+
+  function loadSelectedSessionMessages() {
+    if (!selectedSessionId) return Effect.void
+
+    const selectedSession = sessions.find(
+      (session) => session.id === selectedSessionId
+    )
+    if (selectedSession) projectStore.selectProject(selectedSession.projectId)
+    return messagesStore.loadMessages(selectedSessionId)
+  }
+
   function clear() {
     sessions = []
+    navigationConnectionId = null
+    selectedSessionId = null
+    settledSessionIds = new Set()
     loading = false
     error = null
     stoppingRuns = new Set()
@@ -490,8 +595,16 @@ function createSessionStore() {
     get sessions() {
       return sessions
     },
-    get filteredSessions() {
-      return filteredSessions
+    get selectedSessionId() {
+      return selectedSessionId
+    },
+    get selectedSession() {
+      return (
+        sessions.find((session) => session.id === selectedSessionId) ?? null
+      )
+    },
+    get settledSessionIds() {
+      return settledSessionIds
     },
     get loading() {
       return loading
@@ -499,19 +612,10 @@ function createSessionStore() {
     get error() {
       return error
     },
-    selectProject(projectId: string) {
-      projectStore.selectProject(projectId)
-      if (tabStore.activeTab)
-        tabStore.setDraftProject(tabStore.activeTab.id, projectId)
-    },
-    selectSession(id: string) {
-      const session = sessions.find((item) => item.id === id)
-      const tab = tabStore.activeTab
-      if (!session || !tab) return
-
-      tabStore.attachSession(tab.id, session)
-      void runConnectionPromise(messagesStore.loadMessages(tab.id, id))
-    },
+    selectSession,
+    startNewSession,
+    settleSession,
+    unsettleSession,
     isRunning,
     isRunActive,
     activeRunsFor,
@@ -528,6 +632,7 @@ function createSessionStore() {
     compactRange,
     stopAgent,
     fetchSessions,
+    loadSelectedSessionMessages,
     clear,
   }
 }

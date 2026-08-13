@@ -6,6 +6,7 @@ import type { MessageNode } from '$lib/types.js'
 import {
   completedRunHead,
   isDescendantOrSame,
+  latestMessageHead,
   reconcileSelectedHead,
   renderHeadWhileNodePending,
   shouldResolveRunHead,
@@ -27,13 +28,12 @@ export class SessionSelectedHeadController {
   get selectedHeadStorageKey() {
     return makeSelectedHeadStorageKey(
       connectionsStore.activeConnectionScopeId,
-      this.sessionId(),
-      this.tabId()
+      this.sessionId()
     )
   }
 
   readonly renderHead = $derived.by(() => {
-    const messages = messagesStore.messagesForTab(this.tabId())
+    const messages = messagesStore.messages
     const ids = new Set(messages.map((message) => message.id))
     const renderHead = renderHeadWhileNodePending(
       this.selectedHead,
@@ -44,7 +44,7 @@ export class SessionSelectedHeadController {
       messages,
       renderHead,
       (runId) => sessionStore.isRunActive(runId),
-      (runId) => messagesStore.durableRunFocusForTab(this.tabId(), runId)
+      (runId) => messagesStore.durableRunFocus(runId)
     )
   })
 
@@ -61,17 +61,10 @@ export class SessionSelectedHeadController {
   )
 
   readonly visibleMessages = $derived.by(() =>
-    selectedMessages(
-      messagesStore.messagesForTab(this.tabId()),
-      this.renderHead
-    )
+    selectedMessages(messagesStore.messages, this.renderHead)
   )
 
-  constructor(
-    private readonly tabId: () => string,
-    private readonly sessionId: () => string,
-    private readonly isActive: () => boolean = () => true
-  ) {
+  constructor(private readonly sessionId: () => string) {
     $effect(() => {
       if (typeof window === 'undefined') return
 
@@ -90,8 +83,8 @@ export class SessionSelectedHeadController {
 
     $effect(() => {
       const key = this.selectedHeadStorageKey
-      const messages = messagesStore.messagesForTab(this.tabId())
-      if (!messagesStore.loadedForTab(this.tabId())) return
+      const messages = messagesStore.messages
+      if (!messagesStore.loaded) return
 
       const ids = new Set(messages.map((message) => message.id))
 
@@ -99,7 +92,7 @@ export class SessionSelectedHeadController {
         const stored = readSelectedHead(key)
         const next = stored.exists
           ? reconcileSelectedHead(stored.value, ids, false)
-          : null
+          : latestMessageHead(messages)
 
         this.selectedHead = next
         this.pendingNodeFallbackHead = null
@@ -122,8 +115,7 @@ export class SessionSelectedHeadController {
       const selectedRun =
         this.selectedHead?.type === 'run' ? this.selectedHead : null
       if (selectedRun === null) return
-      const durableFocusNodeId = messagesStore.durableRunFocusForTab(
-        this.tabId(),
+      const durableFocusNodeId = messagesStore.durableRunFocus(
         selectedRun.runId
       )
       if (
@@ -186,11 +178,8 @@ export class SessionSelectedHeadController {
     })
 
     $effect(() => {
-      if (!this.isActive()) return
-
       const head = this.renderHead
       messagesStore.selectRunStream(
-        this.tabId(),
         this.sessionId(),
         head?.type === 'run' ? head.runId : null,
         head?.type === 'run' ? head.baseNodeId : null
@@ -199,9 +188,7 @@ export class SessionSelectedHeadController {
   }
 
   setSelectedHead(head: SelectedHead) {
-    const ids = new Set(
-      messagesStore.messagesForTab(this.tabId()).map((message) => message.id)
-    )
+    const ids = new Set(messagesStore.messages.map((message) => message.id))
     this.pendingNodeFallbackHead =
       head?.type === 'node' && !ids.has(head.nodeId) ? this.renderHead : null
     this.selectedHead = head

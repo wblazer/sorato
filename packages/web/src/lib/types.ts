@@ -19,16 +19,6 @@ export interface Project {
   lastOpenedAt: number | null
 }
 
-export interface AppTab {
-  id: string
-  sessionId: string | null
-  projectId: string | null
-  title: string | null
-  kind: 'new' | 'session'
-  createdAt: number
-  updatedAt: number
-}
-
 export interface Session {
   id: string
   projectId: string

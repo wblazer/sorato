@@ -11,7 +11,6 @@
   import { connectionsStore } from '$lib/stores/connections.svelte.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
   import { sessionStore } from '$lib/stores/sessions.svelte.js'
-  import { tabStore } from '$lib/stores/tabs.svelte.js'
   import { serverInfoStore } from '$lib/stores/server-info.svelte.js'
   import { runConnectionPromise } from '$lib/connection-runtime.js'
   import { goto } from '$app/navigation'
@@ -28,9 +27,7 @@
     const project = await runConnectionPromise(
       projectStore.createLocalProject(path),
     )
-    if (project && tabStore.activeTab) {
-      tabStore.setDraftProject(tabStore.activeTab.id, project.id)
-    }
+    if (project) sessionStore.startNewSession(project.id)
   }
 
   onMount(() => {
@@ -74,7 +71,7 @@
         id: 'session.open',
         title: 'Open Session',
         category: 'Sessions',
-        description: 'Search recent sessions and open one in the current tab.',
+        description: 'Search recent sessions and open one.',
         keywords: ['resume', 'search', 'conversation'],
         defaultShortcut: 'Control+O',
         enabled: () => sessionStore.sessions.length > 0,
@@ -83,56 +80,13 @@
         },
       }),
       actionStore.register({
-        id: 'tab.new',
-        title: 'New Tab',
-        category: 'Tabs',
-        description: 'Open a new tab.',
-        keywords: ['new', 'tab'],
-        defaultShortcut: 'Control+T',
-        run: tabStore.openNewTab,
-      }),
-      actionStore.register({
-        id: 'tab.close',
-        title: 'Close Tab',
-        category: 'Tabs',
-        description: 'Close the current tab.',
-        keywords: ['close', 'tab'],
-        defaultShortcut: 'Control+W',
-        enabled: () => !!tabStore.activeTab,
-        run: () => {
-          if (tabStore.activeTab) tabStore.closeTab(tabStore.activeTab.id)
-        },
-      }),
-      actionStore.register({
-        id: 'tab.next',
-        title: 'Next Tab',
-        category: 'Tabs',
-        description: 'Switch to the next tab.',
-        keywords: ['next', 'tab', 'switch'],
-        defaultShortcut: 'Control+Tab',
-        enabled: () => tabStore.tabs.length > 1,
-        run: tabStore.activateNextTab,
-      }),
-      actionStore.register({
-        id: 'tab.previous',
-        title: 'Previous Tab',
-        category: 'Tabs',
-        description: 'Switch to the previous tab.',
-        keywords: ['previous', 'prev', 'tab', 'switch'],
-        defaultShortcut: 'Control+Shift+Tab',
-        enabled: () => tabStore.tabs.length > 1,
-        run: tabStore.activatePreviousTab,
-      }),
-      actionStore.register({
         id: 'session.new',
         title: 'New Session',
         category: 'Sessions',
-        description: 'Show the new session composer in the current tab.',
+        description: 'Show the new session composer.',
         keywords: ['chat', 'compose', 'conversation'],
         defaultShortcut: 'Control+N',
-        run: () => {
-          tabStore.resetActiveTabToNewSession()
-        },
+        run: () => sessionStore.startNewSession(),
       }),
       actionStore.register({
         id: 'app.command-palette',

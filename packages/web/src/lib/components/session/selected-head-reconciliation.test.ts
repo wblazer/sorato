@@ -3,6 +3,7 @@ import type { MessageNode } from '$lib/types.js'
 import {
   completedRunHead,
   hasTerminalPersistedRun,
+  latestMessageHead,
   reconcileSelectedHead,
   renderHeadWhileNodePending,
   shouldResolveRunHead,
@@ -74,6 +75,28 @@ describe('selected head reconciliation', () => {
     expect(
       shouldResolveRunHead([node('completed')], 'run-1', false, false)
     ).toBe(true)
+  })
+
+  it('opens an unvisited session at its newest conversation leaf', () => {
+    const root = { ...node('completed'), id: 'root', createdAt: 1 }
+    const newestLeaf = {
+      ...node('completed'),
+      id: 'newest-leaf',
+      parentId: root.id,
+      createdAt: 3,
+    }
+    const olderLeaf = {
+      ...node('completed'),
+      id: 'older-leaf',
+      parentId: root.id,
+      createdAt: 2,
+    }
+
+    expect(latestMessageHead([root, newestLeaf, olderLeaf])).toEqual({
+      type: 'node',
+      nodeId: newestLeaf.id,
+    })
+    expect(latestMessageHead([])).toBeNull()
   })
 
   it('focuses the committed replacement branch after compaction', () => {

@@ -12,6 +12,26 @@ export const reconcileSelectedHead = (
   return head.baseNodeId === null || ids.has(head.baseNodeId) ? head : null
 }
 
+export const latestMessageHead = (
+  messages: ReadonlyArray<MessageNode>
+): SelectedHead => {
+  const parentIds = new Set(
+    messages.flatMap((message) =>
+      message.parentId === null ? [] : [message.parentId]
+    )
+  )
+  let latestLeaf: MessageNode | null = null
+
+  for (const message of messages) {
+    if (parentIds.has(message.id)) continue
+    if (latestLeaf === null || message.createdAt >= latestLeaf.createdAt) {
+      latestLeaf = message
+    }
+  }
+
+  return latestLeaf === null ? null : { type: 'node', nodeId: latestLeaf.id }
+}
+
 export const renderHeadWhileNodePending = (
   selectedHead: SelectedHead,
   ids: ReadonlySet<string>,
