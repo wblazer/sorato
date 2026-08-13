@@ -16,7 +16,7 @@ const JsonEnvironment = Schema.Record(
   Schema.NullOr(Schema.String)
 )
 
-export class RunEnvironmentError extends Schema.TaggedErrorClass<RunEnvironmentError>()(
+export class RunEnvironmentError extends Schema.TaggedError<RunEnvironmentError>()(
   'RunEnvironmentError',
   {
     operation: Schema.String,

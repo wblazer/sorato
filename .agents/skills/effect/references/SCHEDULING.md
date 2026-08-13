@@ -15,8 +15,8 @@ Use `Schedule` for retry, polling, pacing, and repeated background work instead 
 - Use `Schedule.exponential(...)` or `Schedule.fibonacci(...)` for backoff.
 - Add `Schedule.jittered` to avoid synchronized retry storms.
 - Use `Schedule.recurs(...)` for a counter schedule or `Schedule.upTo({ times })` to bound a delay schedule.
-- Use `Schedule.tapInput(...)` to log retry inputs.
-- Use `Schedule.tap(...)` when full schedule metadata matters.
+- Use `Schedule.tap(({ input }) => ...)` to log retry inputs.
+- `Schedule.tap(...)` also provides full schedule metadata when needed.
 - Use `Effect.retryOrElse(...)` when exhausted retries need a fallback/reporting effect.
 - Retry only at the narrowest boundary with proven idempotency.
 - Exhausted failures should remain visible unless the boundary has a truthful fallback.
@@ -84,7 +84,7 @@ const reconcileWithRetry = (target: Target) =>
   reconcile(target).pipe(
     Effect.retryOrElse(
       projectionRetrySchedule.pipe(
-        Schedule.tapInput((error) =>
+        Schedule.tap(({ input: error }) =>
           Effect.logWarning('Agent.Projection.reconcile.retrying').pipe(
             Effect.annotateLogs({ operation: error.operation })
           )

@@ -28,14 +28,14 @@ const EVENT_TAGS = [
   'ReplayReset',
 ] as const
 
-export class SseConnectionError extends Schema.TaggedErrorClass<SseConnectionError>()(
+export class SseConnectionError extends Schema.TaggedError<SseConnectionError>()(
   'SseConnectionError',
   {
     message: Schema.String,
   }
 ) {}
 
-export class SseDecodeError extends Schema.TaggedErrorClass<SseDecodeError>()(
+export class SseDecodeError extends Schema.TaggedError<SseDecodeError>()(
   'SseDecodeError',
   {
     event: Schema.String,

@@ -429,6 +429,7 @@ export const run = <
               name: call.name,
               isFailure: true,
               result: INTERRUPTED_TOOL_RESULT,
+              providerExecuted: false,
             })
           )
           yield* fireHooks(config, {

@@ -4,7 +4,7 @@
     {
       "name": "effect-v4",
       "url": "https://github.com/Effect-TS/effect.git",
-      "ref": "effect@4.0.0-beta.99"
+      "ref": "effect@4.0.0-rc.108"
     },
     {
       "name": "opencode",

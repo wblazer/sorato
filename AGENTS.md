@@ -64,9 +64,8 @@ Project conventions and specialized project-local skills take precedence over
 generic guidance. For API details, verify against the installed packages and
 the matching source in `.reference/effect-v4/`; never guess at Effect APIs.
 
-The Effect skill's scheduling guide was authored across a beta API transition.
-For Effect 4.0.0-beta.99, use `Schedule.tap(({ input }) => ...)`, not the
-removed `Schedule.tapInput(...)`.
+For Effect 4.0.0-rc.108, use `Schedule.tap(({ input }) => ...)`; the former
+`Schedule.tapInput(...)` API has been removed.
 
 ### Breaking Changes
 

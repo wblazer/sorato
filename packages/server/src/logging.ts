@@ -33,7 +33,7 @@ const logLevelsByName = new Map<string, LogLevel.LogLevel>([
   ['none', 'None'],
 ])
 
-export class LoggingConfigError extends Schema.TaggedErrorClass<LoggingConfigError>()(
+export class LoggingConfigError extends Schema.TaggedError<LoggingConfigError>()(
   'LoggingConfigError',
   {
     message: Schema.String,

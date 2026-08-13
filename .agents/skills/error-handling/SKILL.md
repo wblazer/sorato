@@ -23,12 +23,12 @@ This doctrine is informed by Distilled's SDK error translation and Alchemy's inf
 
 ## Error Shape
 
-Prefer serializable `Schema.TaggedErrorClass` for anything crossing process, HTTP, SSE, or persistence boundaries.
+Prefer serializable `Schema.TaggedError` for anything crossing process, HTTP, SSE, or persistence boundaries.
 
 ```ts
 import { Schema } from 'effect'
 
-export class ProviderApiError extends Schema.TaggedErrorClass<ProviderApiError>()(
+export class ProviderApiError extends Schema.TaggedError<ProviderApiError>()(
   'ProviderApiError',
   {
     provider: Schema.String,
@@ -41,7 +41,7 @@ export class ProviderApiError extends Schema.TaggedErrorClass<ProviderApiError>(
   }
 ) {}
 
-export class ProviderTransportError extends Schema.TaggedErrorClass<ProviderTransportError>()(
+export class ProviderTransportError extends Schema.TaggedError<ProviderTransportError>()(
   'ProviderTransportError',
   {
     provider: Schema.String,
@@ -50,7 +50,7 @@ export class ProviderTransportError extends Schema.TaggedErrorClass<ProviderTran
   }
 ) {}
 
-export class ProviderParseError extends Schema.TaggedErrorClass<ProviderParseError>()(
+export class ProviderParseError extends Schema.TaggedError<ProviderParseError>()(
   'ProviderParseError',
   {
     provider: Schema.String,

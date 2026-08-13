@@ -18,7 +18,7 @@ const MAX_RESPONSE_SIZE = 5 * 1024 * 1024
 const DEFAULT_TIMEOUT_MS = 30_000
 const MAX_TIMEOUT_MS = 120_000
 
-export class WebFetchError extends Schema.TaggedErrorClass<WebFetchError>()(
+export class WebFetchError extends Schema.TaggedError<WebFetchError>()(
   'WebFetchError',
   {
     url: Schema.String,

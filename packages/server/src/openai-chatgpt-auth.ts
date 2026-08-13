@@ -32,7 +32,7 @@ const JwtClaims = Schema.Struct({
 })
 type JwtClaims = typeof JwtClaims.Type
 
-class OpenAiChatGptAuthError extends Schema.TaggedErrorClass<OpenAiChatGptAuthError>()(
+class OpenAiChatGptAuthError extends Schema.TaggedError<OpenAiChatGptAuthError>()(
   'OpenAiChatGptAuthError',
   {
     message: Schema.String,

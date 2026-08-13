@@ -4,7 +4,7 @@ import type { Effect } from 'effect/Effect'
 export const ProjectId = Schema.String
 export type ProjectId = string
 
-export class ProjectError extends Schema.TaggedErrorClass<ProjectError>()(
+export class ProjectError extends Schema.TaggedError<ProjectError>()(
   'ProjectError',
   {
     operation: Schema.String,

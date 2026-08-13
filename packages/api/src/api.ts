@@ -188,7 +188,7 @@ export interface ProjectResponse extends Schema.Schema.Type<
 
 const ErrorCode = Schema.String
 
-export class StorageUnavailable extends Schema.TaggedErrorClass<StorageUnavailable>()(
+export class StorageUnavailable extends Schema.TaggedError<StorageUnavailable>()(
   'StorageUnavailable',
   {
     code: ErrorCode,
@@ -207,7 +207,7 @@ export class StorageUnavailable extends Schema.TaggedErrorClass<StorageUnavailab
   }
 }
 
-export class ProjectOperationFailed extends Schema.TaggedErrorClass<ProjectOperationFailed>()(
+export class ProjectOperationFailed extends Schema.TaggedError<ProjectOperationFailed>()(
   'ProjectOperationFailed',
   {
     code: ErrorCode,
@@ -226,7 +226,7 @@ export class ProjectOperationFailed extends Schema.TaggedErrorClass<ProjectOpera
   }
 }
 
-export class ProviderCredentialsUnavailable extends Schema.TaggedErrorClass<ProviderCredentialsUnavailable>()(
+export class ProviderCredentialsUnavailable extends Schema.TaggedError<ProviderCredentialsUnavailable>()(
   'ProviderCredentialsUnavailable',
   {
     code: ErrorCode,
@@ -236,7 +236,7 @@ export class ProviderCredentialsUnavailable extends Schema.TaggedErrorClass<Prov
   }
 ) {}
 
-export class ProviderAuthUnsupported extends Schema.TaggedErrorClass<ProviderAuthUnsupported>()(
+export class ProviderAuthUnsupported extends Schema.TaggedError<ProviderAuthUnsupported>()(
   'ProviderAuthUnsupported',
   {
     code: ErrorCode,
@@ -246,7 +246,7 @@ export class ProviderAuthUnsupported extends Schema.TaggedErrorClass<ProviderAut
   }
 ) {}
 
-export class ProviderNotConfigured extends Schema.TaggedErrorClass<ProviderNotConfigured>()(
+export class ProviderNotConfigured extends Schema.TaggedError<ProviderNotConfigured>()(
   'ProviderNotConfigured',
   {
     code: ErrorCode,
@@ -255,7 +255,7 @@ export class ProviderNotConfigured extends Schema.TaggedErrorClass<ProviderNotCo
   }
 ) {}
 
-export class ModelCatalogUnavailable extends Schema.TaggedErrorClass<ModelCatalogUnavailable>()(
+export class ModelCatalogUnavailable extends Schema.TaggedError<ModelCatalogUnavailable>()(
   'ModelCatalogUnavailable',
   {
     code: ErrorCode,
@@ -264,7 +264,7 @@ export class ModelCatalogUnavailable extends Schema.TaggedErrorClass<ModelCatalo
   }
 ) {}
 
-export class ModelUnavailable extends Schema.TaggedErrorClass<ModelUnavailable>()(
+export class ModelUnavailable extends Schema.TaggedError<ModelUnavailable>()(
   'ModelUnavailable',
   {
     code: ErrorCode,
@@ -274,7 +274,7 @@ export class ModelUnavailable extends Schema.TaggedErrorClass<ModelUnavailable>(
   }
 ) {}
 
-export class RunRejected extends Schema.TaggedErrorClass<RunRejected>()(
+export class RunRejected extends Schema.TaggedError<RunRejected>()(
   'RunRejected',
   {
     code: ErrorCode,
@@ -422,7 +422,7 @@ export const RunAttachment = Schema.Struct({
 })
 export type RunAttachment = typeof RunAttachment.Type
 
-export class DirectoryError extends Schema.TaggedErrorClass<DirectoryError>()(
+export class DirectoryError extends Schema.TaggedError<DirectoryError>()(
   'DirectoryError',
   { message: Schema.String }
 ) {}

@@ -17,15 +17,15 @@
     "start": "bun --env-file=../../.env run src/main.ts"
   },
   "dependencies": {
-    "@effect/platform-bun": "4.0.0-beta.99",
-    "@effect/sql-sqlite-bun": "4.0.0-beta.99",
+    "@effect/platform-bun": "4.0.0-rc.108",
+    "@effect/sql-sqlite-bun": "4.0.0-rc.108",
     "@ff-labs/fff-node": "^0.9.6",
     "@sorato/api": "workspace:*",
     "@sorato/core": "workspace:*",
-    "effect": "4.0.0-beta.99"
+    "effect": "4.0.0-rc.108"
   },
   "devDependencies": {
-    "@effect/vitest": "4.0.0-beta.99",
+    "@effect/vitest": "4.0.0-rc.108",
     "vitest": "^4.1.7"
   }
 }

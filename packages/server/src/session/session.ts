@@ -64,7 +64,7 @@ export type BillingMode = typeof BillingMode.Type
 // Errors
 // ---------------------------------------------------------------------------
 
-export class StorageError extends Schema.TaggedErrorClass<StorageError>()(
+export class StorageError extends Schema.TaggedError<StorageError>()(
   'StorageError',
   {
     operation: Schema.String,

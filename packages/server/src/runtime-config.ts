@@ -47,7 +47,7 @@ export class RuntimeConfigService extends Context.Service<
   RuntimeConfigApi
 >()('@sorato/RuntimeConfig') {}
 
-export class RuntimeConfigError extends Schema.TaggedErrorClass<RuntimeConfigError>()(
+export class RuntimeConfigError extends Schema.TaggedError<RuntimeConfigError>()(
   'RuntimeConfigError',
   {
     message: Schema.String,

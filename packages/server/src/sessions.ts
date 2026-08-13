@@ -616,10 +616,17 @@ const stopRunAndChildren = Effect.fn('Sessions.stopRunAndChildren')(function* (
       handled = true
     }
 
-    if (snapshot.activeFiber !== null) {
+    const activeFiber = snapshot.activeFiber
+    if (activeFiber !== null) {
       const queuedFollowers = drainQueuedRunsAfterRun(runId)
-      yield* Fiber.interrupt(snapshot.activeFiber).pipe(Effect.exit)
-      yield* awaitWorkerStop(snapshot)
+      if (snapshot.workerFiber === null) {
+        yield* Fiber.interrupt(activeFiber).pipe(Effect.exit)
+      } else {
+        // The worker already joins the active fiber. Signal interruption here,
+        // then join the worker so only one observer awaits active completion.
+        yield* Effect.sync(() => activeFiber.interruptUnsafe())
+        yield* awaitWorkerStop(snapshot)
+      }
       if (
         snapshot.activeRunRequest !== null &&
         (yield* storage.findRun(runId)) === null

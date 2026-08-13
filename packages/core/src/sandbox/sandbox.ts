@@ -28,7 +28,7 @@ import type { Scope } from 'effect/Scope'
 // Errors
 // ---------------------------------------------------------------------------
 
-export class SandboxError extends Schema.TaggedErrorClass<SandboxError>()(
+export class SandboxError extends Schema.TaggedError<SandboxError>()(
   'SandboxError',
   {
     operation: Schema.String,

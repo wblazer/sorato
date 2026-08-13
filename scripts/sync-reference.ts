@@ -6,7 +6,7 @@
  * skip the bulk of git history blobs but can still check out any pinned commit.
  *
  * `ref` may be:
- *   - a tag      (e.g. "effect@4.0.0-beta.99")  -> pinned, reproducible
+ *   - a tag      (e.g. "effect@4.0.0-rc.108")   -> pinned, reproducible
  *   - a commit   (40-char sha)                  -> pinned, reproducible
  *   - a branch   (e.g. "main")                  -> tracks that branch
  *   - "latest"   -> tracks the remote's default branch HEAD

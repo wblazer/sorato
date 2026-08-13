@@ -11,13 +11,10 @@ import {
   Schema,
 } from 'effect'
 
-export class AuthError extends Schema.TaggedErrorClass<AuthError>()(
-  'AuthError',
-  {
-    message: Schema.String,
-    cause: Schema.optional(Schema.Defect()),
-  }
-) {}
+export class AuthError extends Schema.TaggedError<AuthError>()('AuthError', {
+  message: Schema.String,
+  cause: Schema.optional(Schema.Defect()),
+}) {}
 
 export const ProviderAuthInfo = Schema.Struct({
   type: Schema.Literal('api'),
