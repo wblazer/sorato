@@ -5,6 +5,8 @@
   import { Button } from '$lib/components/ui/button/index.js'
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js'
   import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
+  import StreamingDots from '$lib/components/ui/streaming-dots.svelte'
+  import * as Tooltip from '$lib/components/ui/tooltip/index.js'
   import { actionStore } from '$lib/stores/actions.svelte.js'
   import { appLayoutStore } from '$lib/stores/app-layout.svelte.js'
   import { projectStore } from '$lib/stores/projects.svelte.js'
@@ -244,7 +246,7 @@
   style={`--app-sidebar-width: ${appLayoutStore.sidebarWidth}px; width: var(--app-sidebar-width)`}
 >
   <div class="relative z-20 grid shrink-0 gap-1 bg-background p-2 pb-1">
-    <Button class="w-full justify-start" onclick={openNewSession}>
+    <Button class="w-full" onclick={openNewSession}>
       <PencilSimpleIcon data-icon="inline-start" />
       New session
     </Button>
@@ -318,16 +320,23 @@
           </DropdownMenu.RadioGroup>
         </DropdownMenu.Content>
       </DropdownMenu.Root>
-      <Button
-        variant="ghost"
-        size="icon"
-        class="size-8"
-        aria-label="Add project"
-        title="Add project"
-        onclick={() => actionStore.trigger('project.add')}
-      >
-        <FolderPlusIcon />
-      </Button>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          {#snippet child({ props })}
+            <Button
+              {...props}
+              variant="ghost"
+              size="icon"
+              class="size-8"
+              aria-label="Add project"
+              onclick={() => actionStore.trigger('project.add')}
+            >
+              <FolderPlusIcon />
+            </Button>
+          {/snippet}
+        </Tooltip.Trigger>
+        <Tooltip.Content side="right">Add project</Tooltip.Content>
+      </Tooltip.Root>
     </div>
   </div>
 
@@ -351,10 +360,11 @@
                 ? 'page'
                 : undefined}
               class={cn(
-                'flex h-12 w-full min-w-0 items-center rounded-md px-2.5 text-left outline-none hover:bg-base-hover focus-visible:ring-2 focus-visible:ring-ring',
-                (index === selectedSearchIndex ||
-                  session.id === sessionStore.selectedSessionId) &&
-                  'bg-selected',
+                'flex h-12 w-full min-w-0 cursor-default select-none items-center rounded-md px-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                index === selectedSearchIndex ||
+                  session.id === sessionStore.selectedSessionId
+                  ? 'bg-selected hover:bg-selected'
+                  : 'hover:bg-base-hover',
               )}
               onclick={() => openSession(session.id)}
               onmouseenter={() => (selectedSearchIndex = index)}
@@ -410,8 +420,10 @@
                 ? 'page'
                 : undefined}
               class={cn(
-                'group/session relative h-[3.75rem] w-full overflow-hidden rounded-md px-2.5 py-2 text-left outline-none transition-colors hover:bg-base-hover focus-visible:ring-2 focus-visible:ring-ring',
-                session.id === sessionStore.selectedSessionId && 'bg-selected',
+                'group/session relative h-[3.75rem] w-full cursor-default select-none overflow-hidden rounded-md px-2.5 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
+                session.id === sessionStore.selectedSessionId
+                  ? 'bg-selected hover:bg-selected'
+                  : 'hover:bg-base-hover',
               )}
               onclick={() => openSession(session.id)}
               onkeydown={(event) => {
@@ -431,13 +443,10 @@
                   {projectName(session)}
                 </span>
                 {#if session.status === 'running'}
-                  <span
-                    class="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-accent transition-opacity group-hover/session:opacity-0 group-focus-within/session:opacity-0"
-                  >
-                    <span class="size-1.5 animate-pulse rounded-full bg-accent"
-                    ></span>
-                    Running
-                  </span>
+                  <StreamingDots
+                    label="Running"
+                    class="text-muted-foreground/70 transition-opacity group-hover/session:opacity-0 group-focus-within/session:opacity-0"
+                  />
                 {:else}
                   <span
                     class="shrink-0 text-xs text-muted-foreground/70 transition-opacity group-hover/session:opacity-0 group-focus-within/session:opacity-0"
@@ -460,7 +469,12 @@
                 </span>
               </span>
               <span
-                class="mt-1 block truncate text-sm font-medium text-foreground/90"
+                class={cn(
+                  'mt-1 block truncate text-sm font-medium',
+                  session.id === sessionStore.selectedSessionId
+                    ? 'text-foreground'
+                    : 'text-foreground/90',
+                )}
               >
                 {sessionStore.displayTitle(session)}
               </span>
@@ -497,15 +511,15 @@
                 <div
                   role="button"
                   tabindex="0"
-                  title={`${sessionStore.displayTitle(session)} — ${projectName(session)}`}
                   aria-label={`${sessionStore.displayTitle(session)}, ${projectName(session)}`}
                   aria-current={session.id === sessionStore.selectedSessionId
                     ? 'page'
                     : undefined}
                   class={cn(
-                    'group/settled flex h-9 w-full min-w-0 items-center gap-2 rounded-md px-2.5 text-left text-muted-foreground outline-none transition-colors hover:bg-base-hover hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
-                    session.id === sessionStore.selectedSessionId &&
-                      'bg-selected text-foreground',
+                    'group/settled flex h-9 w-full min-w-0 cursor-default select-none items-center gap-2 rounded-md px-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
+                    session.id === sessionStore.selectedSessionId
+                      ? 'bg-selected text-foreground hover:bg-selected'
+                      : 'text-muted-foreground hover:bg-base-hover hover:text-foreground',
                   )}
                   onclick={() => openSession(session.id)}
                   onkeydown={(event) => {
@@ -519,7 +533,12 @@
                   }}
                 >
                   <span
-                    class="min-w-0 flex-1 truncate text-sm opacity-65 transition-opacity group-hover/settled:opacity-100"
+                    class={cn(
+                      'min-w-0 flex-1 truncate text-sm transition-opacity',
+                      session.id === sessionStore.selectedSessionId
+                        ? 'font-medium text-foreground opacity-100'
+                        : 'opacity-65 group-hover/settled:opacity-100',
+                    )}
                   >
                     {sessionStore.displayTitle(session)}
                   </span>
@@ -528,15 +547,25 @@
                   >
                     {formatRelativeTime(sessionTimestamp(session))}
                   </span>
-                  <button
-                    type="button"
-                    aria-label="Un-settle session"
-                    title="Un-settle session"
-                    class="hidden size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:text-foreground group-hover/settled:flex group-focus-within/settled:flex"
-                    onclick={(event) => unsettleSession(event, session.id)}
-                  >
-                    <ArrowCounterClockwiseIcon class="size-3.5" />
-                  </button>
+                  <Tooltip.Root>
+                    <Tooltip.Trigger>
+                      {#snippet child({ props })}
+                        <button
+                          {...props}
+                          type="button"
+                          aria-label="Un-settle session"
+                          class="hidden size-6 shrink-0 cursor-default items-center justify-center rounded-md text-muted-foreground hover:text-foreground group-hover/settled:flex group-focus-within/settled:flex"
+                          onclick={(event) =>
+                            unsettleSession(event, session.id)}
+                        >
+                          <ArrowCounterClockwiseIcon class="size-3.5" />
+                        </button>
+                      {/snippet}
+                    </Tooltip.Trigger>
+                    <Tooltip.Content side="right">
+                      Un-settle session
+                    </Tooltip.Content>
+                  </Tooltip.Root>
                 </div>
               </li>
             {/each}
