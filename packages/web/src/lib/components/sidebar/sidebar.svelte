@@ -4,6 +4,7 @@
   import ConnectionManager from '../connection-manager.svelte'
   import { Button } from '$lib/components/ui/button/index.js'
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js'
+  import * as InputGroup from '$lib/components/ui/input-group/index.js'
   import { ScrollArea } from '$lib/components/ui/scroll-area/index.js'
   import StreamingDots from '$lib/components/ui/streaming-dots.svelte'
   import * as Tooltip from '$lib/components/ui/tooltip/index.js'
@@ -245,51 +246,51 @@
   data-slot="sidebar"
   style={`--app-sidebar-width: ${appLayoutStore.sidebarWidth}px; width: var(--app-sidebar-width)`}
 >
-  <div class="relative z-20 grid shrink-0 gap-1 bg-background p-2 pb-1">
-    <Button class="w-full" onclick={openNewSession}>
+  <div
+    class="relative z-20 grid shrink-0 grid-cols-[minmax(0,1fr)] gap-1 bg-background p-2 pb-1"
+  >
+    <Button class="w-full min-w-0 overflow-hidden" onclick={openNewSession}>
       <PencilSimpleIcon data-icon="inline-start" />
-      New session
+      <span class="min-w-0 truncate">New session</span>
     </Button>
 
-    <div class="w-full">
-      <div
-        class="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-base-hover hover:text-foreground focus-within:bg-base-hover focus-within:text-foreground"
-      >
+    <InputGroup.Root>
+      <InputGroup.Addon>
         <MagnifyingGlassIcon class="size-4 shrink-0 opacity-80" />
-        <input
-          type="text"
-          value={searchQuery}
-          oninput={handleSearchInput}
-          onkeydown={handleSearchKeydown}
-          placeholder="Search"
-          aria-label="Search sessions"
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={searchQuery.length > 0 && searchResults.length > 0}
-          aria-controls={searchQuery
-            ? 'sidebar-session-search-results'
-            : undefined}
-          aria-activedescendant={searchQuery &&
-          searchResults[selectedSearchIndex]
-            ? `sidebar-session-result-${selectedSearchIndex}`
-            : undefined}
-          class="min-w-0 flex-1 bg-transparent text-sm font-medium text-foreground outline-none placeholder:text-muted-foreground"
-        />
-        {#if searchQuery}
-          <button
+      </InputGroup.Addon>
+      <InputGroup.Input
+        type="text"
+        value={searchQuery}
+        oninput={handleSearchInput}
+        onkeydown={handleSearchKeydown}
+        placeholder="Search"
+        aria-label="Search sessions"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={searchQuery.length > 0 && searchResults.length > 0}
+        aria-controls={searchQuery
+          ? 'sidebar-session-search-results'
+          : undefined}
+        aria-activedescendant={searchQuery && searchResults[selectedSearchIndex]
+          ? `sidebar-session-result-${selectedSearchIndex}`
+          : undefined}
+      />
+      {#if searchQuery}
+        <InputGroup.Addon align="inline-end">
+          <InputGroup.Button
             type="button"
+            size="icon-xs"
             aria-label="Clear session search"
-            class="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground"
             onclick={() => {
               searchQuery = ''
               selectedSearchIndex = 0
             }}
           >
             <XIcon class="size-3" />
-          </button>
-        {/if}
-      </div>
-    </div>
+          </InputGroup.Button>
+        </InputGroup.Addon>
+      {/if}
+    </InputGroup.Root>
 
     <div class="flex items-center gap-1">
       <DropdownMenu.Root>
