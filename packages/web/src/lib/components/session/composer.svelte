@@ -734,21 +734,24 @@
     <div class="relative">
       {#if backgroundChildRuns.length > 0}
         <div
-          class="mb-1 flex max-w-full gap-3 overflow-x-auto px-1 text-xs text-muted-foreground"
+          class="mb-2 flex max-w-full gap-2 overflow-x-auto px-1"
           aria-label="Background agents"
         >
           {#each backgroundChildRuns as childRun (childRun.runId)}
-            <button
-              type="button"
-              class="shrink-0 py-1 hover:text-foreground"
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-6 shrink-0 rounded-full px-2.5 text-xs text-muted-foreground shadow-none hover:text-foreground"
               onclick={() => {
                 selectedChildRunId = childRun.runId
                 selectedChildRunSnapshot = childRun
                 childRunOpen = true
               }}
             >
-              {childRun.title}…
-            </button>
+              {childRun.title === 'Generating summary'
+                ? 'Summarizing'
+                : childRun.title}
+            </Button>
           {/each}
         </div>
       {/if}

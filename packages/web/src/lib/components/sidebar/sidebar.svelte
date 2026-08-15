@@ -16,7 +16,7 @@
   import { getJsonWithSchema, setJsonWithSchema } from '$lib/storage.js'
   import { cn } from '$lib/utils.js'
   import type { Session } from '$lib/types.js'
-  import ArrowCounterClockwiseIcon from 'phosphor-svelte/lib/ArrowCounterClockwiseIcon'
+  import ArrowUUpLeftIcon from 'phosphor-svelte/lib/ArrowUUpLeftIcon'
   import CaretDownIcon from 'phosphor-svelte/lib/CaretDownIcon'
   import CheckIcon from 'phosphor-svelte/lib/CheckIcon'
   import FolderPlusIcon from 'phosphor-svelte/lib/FolderPlusIcon'
@@ -559,7 +559,7 @@
                           onclick={(event) =>
                             unsettleSession(event, session.id)}
                         >
-                          <ArrowCounterClockwiseIcon class="size-3.5" />
+                          <ArrowUUpLeftIcon class="size-3.5" />
                         </button>
                       {/snippet}
                     </Tooltip.Trigger>
